@@ -46,7 +46,10 @@ export default function TabelaSolicitacoes({
   }, [columns]);
 
   return (
-    <div ref={tableWrapRef} className="bg-white rounded-xl shadow overflow-x-auto">
+    <div
+      ref={tableWrapRef}
+      className="bg-white rounded-xl shadow overflow-x-auto ring-1 ring-gray-200"
+    >
 
       <table className="min-w-full text-sm table-fixed">
         <colgroup>
@@ -55,12 +58,12 @@ export default function TabelaSolicitacoes({
           ))}
         </colgroup>
 
-        <thead className="bg-gray-100">
+        <thead className="bg-gray-50">
           <tr>
             {columns.map((col, index) => (
               <th
                 key={col.id}
-                className="p-2 text-left relative select-none whitespace-nowrap"
+                className="p-3 text-left relative select-none whitespace-nowrap text-xs uppercase tracking-wide text-gray-600 border-b border-gray-200 sticky top-0 z-10 bg-gray-50"
                 style={{ width: `${widths[index]}px` }}
               >
                 {col.label}

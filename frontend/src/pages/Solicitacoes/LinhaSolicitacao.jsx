@@ -75,7 +75,7 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
 
   return (
     <>
-      <tr className="border-t hover:bg-gray-50">
+      <tr className="border-b odd:bg-white even:bg-gray-50/50 hover:bg-blue-50/40">
 
         <td
           className="p-2 whitespace-nowrap"
@@ -156,10 +156,10 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
         </td>
 
         <td className="p-2 whitespace-nowrap">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
 
           <button
-            className="hover:underline"
+            className="hover:underline text-xs"
             style={{ color: acaoCores.ver || '#2563eb' }}
             onClick={() =>
               navigate(`/solicitacoes/${solicitacao.id}`)
@@ -169,6 +169,7 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
           </button>
           {podeAssumir && (
             <button
+              className="text-xs hover:underline"
               style={{ color: acaoCores.assumir || '#16a34a' }}
               onClick={async () => {
                 await fetch(
@@ -188,7 +189,7 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
 
           {podeAtribuir && (
             <button
-              className="hover:underline"
+              className="hover:underline text-xs"
               style={{ color: acaoCores.atribuir || '#7c3aed' }}
               onClick={() => setModalAtribuir(true)}
             >
@@ -198,7 +199,7 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
 
           {!isSetorObra && (
             <button
-              className="hover:underline"
+              className="hover:underline text-xs"
               style={{ color: acaoCores.enviar || '#f97316' }}
               onClick={() => setModalEnviar(true)}
             >
@@ -207,7 +208,7 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
           )}
 
           <button
-            className="hover:underline"
+            className="hover:underline text-xs"
             style={{ color: acaoCores.ocultar || '#6b7280' }}
             onClick={ocultar}
             disabled={!podeOcultar}
