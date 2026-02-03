@@ -46,7 +46,7 @@ export default function TabelaSolicitacoes({
   }, [columns]);
 
   return (
-    <div ref={tableWrapRef} className="bg-white rounded-xl shadow">
+    <div ref={tableWrapRef} className="bg-white rounded-xl shadow overflow-x-auto">
 
       <table className="min-w-full text-sm table-fixed">
         <colgroup>

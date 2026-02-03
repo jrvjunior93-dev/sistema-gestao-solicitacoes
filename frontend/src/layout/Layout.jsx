@@ -113,7 +113,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
+    <div className="flex min-h-screen bg-gray-100 overflow-x-hidden">
       {menuAberto && (
         <aside className="w-64 bg-slate-900 text-white flex flex-col p-5">
         <div className="flex-1">
@@ -152,8 +152,8 @@ export default function Layout() {
       </aside>
       )}
 
-      <main className="flex-1 p-6 overflow-y-auto">
-        <div className="flex items-center mb-4">
+      <main className="flex-1 p-6 overflow-y-auto overflow-x-hidden">
+        <div className="flex items-center mb-4 w-full">
           {!menuAberto && (
             <button
               onClick={() => setMenuAberto(true)}
@@ -164,7 +164,7 @@ export default function Layout() {
               &#9776;
             </button>
           )}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center">
             <NotificacoesBell />
           </div>
         </div>
