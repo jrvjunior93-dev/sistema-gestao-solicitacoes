@@ -1,9 +1,22 @@
-node_modules
-.env
+# Frontend build
 dist
+frontend/dist
+
+# Backend static
+backend/dist
+backend/public
+
+# Env
+.env
+frontend/.env
+backend/.env
+backend/uploads
 build
 .vscode
-backend/.env
+
+# Env
+.env
 frontend/.env
-backend/uploads
-backend/public
+backend/.env
+
+node_modules
