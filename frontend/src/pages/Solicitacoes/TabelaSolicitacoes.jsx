@@ -11,6 +11,7 @@ export default function TabelaSolicitacoes({
 
   const columns = useMemo(
     () => ([
+      { id: 'data', label: 'Data', width: 110, min: 90, weight: 0.9 },
       { id: 'codigo', label: 'Codigo', width: 100, min: 80, weight: 0.9 },
       { id: 'obra', label: 'Obra', width: 140, min: 100, weight: 1.1 },
       { id: 'contrato', label: 'Contrato', width: 120, min: 95, weight: 1 },

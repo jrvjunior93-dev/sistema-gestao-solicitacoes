@@ -38,6 +38,19 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
 
   const navigate = useNavigate();
   const podeOcultar = ['CONCLUIDA', 'FINALIZADA'].includes(solicitacao.status_global);
+  const dataCriacaoRaw =
+    solicitacao.createdAt ||
+    solicitacao.data_criacao ||
+    solicitacao.created_at ||
+    null;
+  const dataCriacao = dataCriacaoRaw ? new Date(dataCriacaoRaw) : null;
+  const dataCriacaoValida = dataCriacao && !Number.isNaN(dataCriacao.getTime());
+  const dataCriacaoLabel = dataCriacaoValida
+    ? dataCriacao.toLocaleDateString('pt-BR')
+    : '-';
+  const dataCriacaoTitle = dataCriacaoValida
+    ? dataCriacao.toLocaleString('pt-BR')
+    : '';
 
   async function ocultar() {
     if (!confirm('Ocultar esta solicitação da sua lista?')) return;
@@ -63,6 +76,13 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
   return (
     <>
       <tr className="border-t hover:bg-gray-50">
+
+        <td
+          className="p-2 whitespace-nowrap"
+          title={dataCriacaoTitle}
+        >
+          {dataCriacaoLabel}
+        </td>
 
         <td
           className="p-2 font-medium whitespace-nowrap truncate"
