@@ -1,23 +1,24 @@
 const db = require('../../models');
 
 module.exports = async function gerarCodigoSolicitacao() {
-  const ano = new Date().getFullYear();
-
   const ultima = await db.Solicitacao.findOne({
     where: {
       codigo: {
-        [db.Sequelize.Op.like]: `SOL-${ano}-%`
+        [db.Sequelize.Op.like]: 'SOL-%'
       }
     },
-    order: [['createdAt', 'DESC']]
+    order: [['id', 'DESC']]
   });
 
   let sequencial = 1;
 
-  if (ultima) {
-    const ultimoNumero = parseInt(ultima.codigo.split('-')[2]);
-    sequencial = ultimoNumero + 1;
+  if (ultima?.codigo) {
+    const partes = String(ultima.codigo).split('-');
+    const ultimoNumero = parseInt(partes[partes.length - 1], 10);
+    if (!Number.isNaN(ultimoNumero)) {
+      sequencial = ultimoNumero + 1;
+    }
   }
 
-  return `SOL-${ano}-${String(sequencial).padStart(6, '0')}`;
+  return `SOL-${sequencial}`;
 };

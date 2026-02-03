@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User } = require('../models');
+const { User, Setor } = require('../models');
 
 const JWT_SECRET = 'segredo_super_secreto';
 
@@ -11,7 +11,16 @@ module.exports = {
 
       const { email, senha } = req.body;
 
-      const user = await User.findOne({ where: { email } });
+      const user = await User.findOne({
+        where: { email },
+        include: [
+          {
+            model: Setor,
+            as: 'setor',
+            attributes: ['id', 'nome', 'codigo']
+          }
+        ]
+      });
 
       if (!user)
         return res.status(401).json({ error: 'Usuário não encontrado' });
@@ -31,7 +40,8 @@ module.exports = {
         {
           id: user.id,
           perfil: user.perfil,
-          area: user.area
+          area: user.setor?.codigo || null,
+          setor_id: user.setor_id
         },
         JWT_SECRET,
         { expiresIn: '8h' }
@@ -44,7 +54,8 @@ module.exports = {
           nome: user.nome,
           email: user.email,
           perfil: user.perfil,
-          setor_id: user.setor_id
+          setor_id: user.setor_id,
+          setor: user.setor
         }
       });
 

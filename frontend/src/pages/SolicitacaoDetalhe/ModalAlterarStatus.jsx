@@ -1,18 +1,51 @@
+import { useEffect, useState } from 'react';
+import { getStatusSetor } from '../../services/statusSetor';
+
 export default function ModalAlterarStatus({
   aberto,
+  setor,
   onClose,
   onSalvar
 }) {
+  const [status, setStatus] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  if (!aberto) return null;
+  useEffect(() => {
+    if (!aberto) return;
+    carregarStatus();
+  }, [aberto, setor]);
 
-  const status = [
+  async function carregarStatus() {
+    try {
+      setLoading(true);
+      if (setor) {
+        const data = await getStatusSetor({ setor });
+        const ativos = (Array.isArray(data) ? data : [])
+          .filter(s => s.ativo)
+          .sort((a, b) => a.ordem - b.ordem)
+          .map(s => s.nome);
+        setStatus(ativos);
+        return;
+      }
+      setStatus([]);
+    } catch (error) {
+      console.error(error);
+      setStatus([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const fallback = [
     'EM_ANALISE',
     'AGUARDANDO_AJUSTE',
     'APROVADA',
     'REJEITADA',
     'CONCLUIDA'
   ];
+  const lista = status.length > 0 ? status : fallback;
+
+  if (!aberto) return null;
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -24,7 +57,10 @@ export default function ModalAlterarStatus({
         </h2>
 
         <div className="space-y-2">
-          {status.map(s => (
+          {loading && (
+            <p className="text-sm text-gray-500">Carregando status...</p>
+          )}
+          {!loading && lista.map(s => (
             <button
               key={s}
               onClick={() => onSalvar(s)}

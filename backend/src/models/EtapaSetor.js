@@ -19,6 +19,11 @@ module.exports = (sequelize, DataTypes) => {
     ordem: {
       type: DataTypes.INTEGER,
       allowNull: false
+    },
+
+    ativo: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true
     }
   }, {
     tableName: 'etapas_setor',

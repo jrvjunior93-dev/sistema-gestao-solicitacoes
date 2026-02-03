@@ -1,18 +1,27 @@
 import { useEffect, useState } from 'react';
 import Filtros from './Filtros';
 import TabelaSolicitacoes from './TabelaSolicitacoes';
-
-const API_URL = 'http://localhost:3001';
+import { API_URL, authHeaders } from '../../services/api';
+import { getSetores } from '../../services/setores';
+import { getTiposSolicitacao } from '../../services/tiposSolicitacao';
+import { getMinhasObras } from '../../services/obras';
+import { getSetorPermissoes } from '../../services/setorPermissoes';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function Solicitacoes() {
 
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [setoresMap, setSetoresMap] = useState({});
+  const [tiposSolicitacao, setTiposSolicitacao] = useState([]);
+  const [permissaoUsuario, setPermissaoUsuario] = useState(null);
+  const { user } = useAuth();
 
   const [filtros, setFiltros] = useState({
+    obra_descricao: '',
+    obra_ids: '',
+    tipo_solicitacao_id: '',
     status: '',
-    area: '',
-    obra_id: '',
     codigo_contrato: ''
   });
 
@@ -24,6 +33,51 @@ export default function Solicitacoes() {
     carregar();
   }, [filtros]);
 
+  useEffect(() => {
+    carregarSetores();
+    carregarTiposSolicitacao();
+    carregarPermissoes();
+  }, []);
+
+  async function carregarTiposSolicitacao() {
+    try {
+      const data = await getTiposSolicitacao();
+      setTiposSolicitacao(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function carregarSetores() {
+    try {
+      const data = await getSetores();
+      const map = {};
+      (Array.isArray(data) ? data : []).forEach(s => {
+        map[s.codigo] = s.nome;
+      });
+      setSetoresMap(map);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function carregarPermissoes() {
+    try {
+      if (user?.perfil !== 'USUARIO') {
+        setPermissaoUsuario(null);
+        return;
+      }
+      const setorToken = user?.setor?.codigo || user?.setor?.nome || user?.area || user?.setor_id;
+      if (!setorToken) return;
+      const data = await getSetorPermissoes({ setor: setorToken });
+      const item = Array.isArray(data) && data.length > 0 ? data[0] : null;
+      setPermissaoUsuario(item);
+    } catch (error) {
+      console.error(error);
+      setPermissaoUsuario(null);
+    }
+  }
+
   async function carregar() {
     try {
       setLoading(true);
@@ -33,9 +87,7 @@ export default function Solicitacoes() {
       const res = await fetch(
         `${API_URL}/solicitacoes?${params}`,
         {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`
-          }
+          headers: authHeaders()
         }
       );
 
@@ -54,6 +106,19 @@ export default function Solicitacoes() {
     }
   }
 
+  async function buscarObraDescricao() {
+    const descricao = (filtros.obra_descricao || '').trim();
+    if (!descricao) return;
+    const data = await getMinhasObras({ descricao });
+    const lista = Array.isArray(data) ? data : [];
+    if (lista.length === 0) {
+      setFiltros(prev => ({ ...prev, obra_ids: '0' }));
+      return;
+    }
+    const ids = lista.map(o => o.id).join(',');
+    setFiltros(prev => ({ ...prev, obra_ids: ids }));
+  }
+
   /* ===============================
      RENDER
   =============================== */
@@ -70,6 +135,8 @@ export default function Solicitacoes() {
       <Filtros
         filtros={filtros}
         setFiltros={setFiltros}
+        onBuscarObraDescricao={buscarObraDescricao}
+        tiposSolicitacao={tiposSolicitacao}
       />
 
       {loading && (
@@ -84,8 +151,11 @@ export default function Solicitacoes() {
         <TabelaSolicitacoes
           solicitacoes={solicitacoes}
           onAtualizar={carregar}
+          setoresMap={setoresMap}
+          permissaoUsuario={permissaoUsuario}
         />
       )}
+
 
     </div>
   );

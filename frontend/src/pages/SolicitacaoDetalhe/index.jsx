@@ -1,20 +1,31 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 
 import Header from './Header';
 import Timeline from './Timeline';
 import Comentarios from './Comentarios';
 import Anexos from './Anexos';
-
-const API_URL = 'http://localhost:3001';
+import Pedido from './Pedido';
+import ModalAlterarStatus from './ModalAlterarStatus';
+import { updateStatusSolicitacao } from '../../services/solicitacoes';
+import { API_URL, authHeaders } from '../../services/api';
 
 export default function SolicitacaoDetalhe() {
 
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const setorTokens = [
+    String(user?.setor?.codigo || '').toUpperCase(),
+    String(user?.setor?.nome || '').toUpperCase(),
+    String(user?.area || '').toUpperCase()
+  ];
+  const isSetorObra = setorTokens.includes('OBRA');
 
   const [solicitacao, setSolicitacao] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [modalStatus, setModalStatus] = useState(false);
 
   useEffect(() => {
     carregar();
@@ -27,9 +38,7 @@ export default function SolicitacaoDetalhe() {
       const res = await fetch(
         `${API_URL}/solicitacoes/${id}`,
         {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`
-          }
+          headers: authHeaders()
         }
       );
 
@@ -47,6 +56,17 @@ export default function SolicitacaoDetalhe() {
   if (loading) return <p>Carregando...</p>;
   if (!solicitacao) return null;
 
+  async function salvarStatus(novoStatus) {
+    try {
+      await updateStatusSolicitacao(solicitacao.id, novoStatus);
+      setModalStatus(false);
+      carregar();
+    } catch (error) {
+      console.error(error);
+      alert(error?.message || 'Erro ao atualizar status');
+    }
+  }
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
 
@@ -59,7 +79,11 @@ export default function SolicitacaoDetalhe() {
       </button>
 
       {/* CABEÇALHO */}
-      <Header solicitacao={solicitacao} />
+      <Header
+        solicitacao={solicitacao}
+        onAlterarStatus={() => setModalStatus(true)}
+        mostrarAlterarStatus={!isSetorObra}
+      />
 
       {/* CONTEÚDO */}
       <div className="grid md:grid-cols-2 gap-6">
@@ -71,10 +95,20 @@ export default function SolicitacaoDetalhe() {
         <div className="space-y-6">
 
           {/* CAMPO COMENTÁRIO */}
-          <Comentarios
-            solicitacaoId={id}
-            onSucesso={carregar}
-          />
+          {!isSetorObra && (
+            <Comentarios
+              solicitacaoId={id}
+              onSucesso={carregar}
+            />
+          )}
+
+          {!isSetorObra && (
+            <Pedido
+              solicitacaoId={id}
+              numeroPedido={solicitacao.numero_pedido}
+              onSucesso={carregar}
+            />
+          )}
 
           {/* UPLOAD */}
           <Anexos
@@ -85,6 +119,15 @@ export default function SolicitacaoDetalhe() {
         </div>
 
       </div>
+
+      {!isSetorObra && (
+        <ModalAlterarStatus
+          aberto={modalStatus}
+          setor={solicitacao.area_responsavel}
+          onClose={() => setModalStatus(false)}
+          onSalvar={salvarStatus}
+        />
+      )}
 
     </div>
   );

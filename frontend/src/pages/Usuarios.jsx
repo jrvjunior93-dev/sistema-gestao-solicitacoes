@@ -12,7 +12,7 @@ export default function Usuarios() {
 
   async function carregar() {
     const data = await getUsuarios();
-    setUsuarios(data);
+    setUsuarios(Array.isArray(data) ? data : []);
   }
 
   async function toggleAtivo(usuario) {
@@ -25,49 +25,62 @@ export default function Usuarios() {
   }
 
   return (
-    <div>
-      <h1>Usuários</h1>
+    <div className="page">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="page-title">Usuarios</h1>
+          <p className="page-subtitle">Cadastro e gestao de usuarios.</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => navigate('/usuarios/novo')}>
+          Novo usuario
+        </button>
+      </div>
 
-      <button onClick={() => navigate('/usuarios/novo')}>
-        Novo Usuário
-      </button>
-
-      <table border="1" cellPadding="8" cellSpacing="0" width="100%">
-        <thead>
-          <tr>
-            <th>Nome</th>
-            <th>Email</th>
-            <th>Cargo</th>
-            <th>Setor</th>
-            <th>Obras</th>
-            <th>Ativo</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {usuarios.map(u => (
-            <tr key={u.id}>
-              <td>{u.nome}</td>
-              <td>{u.email}</td>
-              <td>{u.cargoInfo?.nome || '-'}</td>
-              <td>{u.setor?.nome || '-'}</td>
-              <td>
-                {u.vinculos.map(v => v.obra.nome).join(', ')}
-              </td>
-              <td>{u.ativo ? 'Sim' : 'Não'}</td>
-              <td>
-                <button onClick={() => navigate(`/usuarios/${u.id}/editar`)}>
-                  Editar
-                </button>{' '}
-                <button onClick={() => toggleAtivo(u)}>
-                  {u.ativo ? 'Desativar' : 'Ativar'}
-                </button>
-              </td>
+      <div className="card">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Email</th>
+              <th>Cargo</th>
+              <th>Setor</th>
+              <th>Obras</th>
+              <th>Ativo</th>
+              <th>Acoes</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {usuarios.map(u => (
+              <tr key={u.id}>
+                <td>{u.nome}</td>
+                <td>{u.email}</td>
+                <td>{u.cargoInfo?.nome || '-'}</td>
+                <td>{u.setor?.nome || '-'}</td>
+                <td>
+                  {(u.vinculos || [])
+                    .map(v => v.obra ? (v.obra.codigo ? `${v.obra.codigo} - ${v.obra.nome}` : v.obra.nome) : null)
+                    .filter(Boolean)
+                    .join(', ')}
+                </td>
+                <td>{u.ativo ? 'Sim' : 'Nao'}</td>
+                <td>
+                  <button className="btn btn-outline" onClick={() => navigate(`/usuarios/${u.id}`)}>
+                    Editar
+                  </button>{' '}
+                  <button className="btn btn-secondary" onClick={() => toggleAtivo(u)}>
+                    {u.ativo ? 'Desativar' : 'Ativar'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {usuarios.length === 0 && (
+              <tr>
+                <td colSpan="7" align="center">Nenhum usuario cadastrado</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

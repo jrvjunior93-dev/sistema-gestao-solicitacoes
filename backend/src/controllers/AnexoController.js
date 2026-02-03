@@ -7,6 +7,7 @@ const {
   Historico,
   User
 } = require('../models');
+const { criarNotificacao } = require('../services/notificacoes');
 
 class AnexoController {
 
@@ -21,7 +22,20 @@ class AnexoController {
       }
 
       if (!tipo) {
-        return res.status(400).json({ error: 'tipo Ã© obrigatÃ³rio' });
+        return res.status(400).json({ error: 'tipo é obrigatório' });
+      }
+
+      const tiposPermitidos = [
+        'ANEXO',
+        'SOLICITACAO',
+        'CONTRATO',
+        'COMPROVANTE'
+      ];
+
+      const tipoNormalizado = String(tipo).toUpperCase();
+
+      if (!tiposPermitidos.includes(tipoNormalizado)) {
+        return res.status(400).json({ error: 'tipo inválido' });
       }
 
       if (!req.files || req.files.length === 0) {
@@ -40,7 +54,7 @@ class AnexoController {
         __dirname,
         '../../uploads/solicitacoes',
         codigo,
-        tipo.toLowerCase()
+        tipoNormalizado.toLowerCase()
       );
 
       if (!fs.existsSync(pastaDestino)) {
@@ -64,7 +78,7 @@ class AnexoController {
 
         const anexo = await Anexo.create({
           solicitacao_id,
-          tipo,
+          tipo: tipoNormalizado,
           nome_original: file.originalname,
           caminho_arquivo: caminhoRelativo,
           uploaded_by: usuario.id,
@@ -85,6 +99,15 @@ class AnexoController {
           })
         });
       }
+
+
+      await criarNotificacao({
+        solicitacao_id,
+        tipo: 'ANEXO_ADICIONADO',
+        mensagem: `${usuario?.nome || 'Usuario'} anexou ${registros.length} arquivo(s) na solicitacao ${codigo}`,
+        created_by: usuario.id,
+        metadata: { total: registros.length }
+      });
 
       return res.status(201).json(registros);
 
@@ -120,3 +143,4 @@ class AnexoController {
 }
 
 module.exports = new AnexoController();
+

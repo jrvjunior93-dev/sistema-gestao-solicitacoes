@@ -2,8 +2,7 @@ module.exports = (sequelize, DataTypes) => {
   const SetorPermissao = sequelize.define('SetorPermissao', {
     setor: {
       type: DataTypes.STRING,
-      allowNull: false,
-      unique: true
+      allowNull: false
     },
 
     usuario_pode_assumir: {

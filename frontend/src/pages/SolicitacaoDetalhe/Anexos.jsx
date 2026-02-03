@@ -1,6 +1,5 @@
 import { useState } from 'react';
-
-const API_URL = 'http://localhost:3001';
+import { API_URL, authHeaders } from '../../services/api';
 
 export default function Anexos({ solicitacaoId, onSucesso }) {
 
@@ -25,9 +24,7 @@ export default function Anexos({ solicitacaoId, onSucesso }) {
         `${API_URL}/anexos/upload`,
         {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem('token')}`
-          },
+          headers: authHeaders(),
           body: formData
         }
       );

@@ -1,7 +1,6 @@
 import StatusBadge from '../../components/StatusBadge';
 
-
-export default function Header({ solicitacao }) {
+export default function Header({ solicitacao, onAlterarStatus, mostrarAlterarStatus = true }) {
 
   return (
     <div className="bg-white p-6 rounded-xl shadow">
@@ -18,7 +17,17 @@ export default function Header({ solicitacao }) {
           </p>
         </div>
 
-        <StatusBadge status={solicitacao.status_global} />
+        <div className="flex items-center gap-3">
+          <StatusBadge status={solicitacao.status_global} />
+          {mostrarAlterarStatus && (
+            <button
+              onClick={onAlterarStatus}
+              className="btn btn-outline"
+            >
+              Alterar status
+            </button>
+          )}
+        </div>
 
       </div>
 

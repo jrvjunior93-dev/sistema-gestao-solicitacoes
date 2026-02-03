@@ -1,7 +1,9 @@
-const API_URL = 'http://localhost:3001';
+import { API_URL, authHeaders } from './api';
 
 export async function getSolicitacoes(params = '') {
-  const res = await fetch(`${API_URL}/solicitacoes${params}`);
+  const res = await fetch(`${API_URL}/solicitacoes${params}`, {
+    headers: authHeaders()
+  });
 
   if (!res.ok) {
     throw new Error('Erro ao buscar solicitações');
@@ -13,7 +15,7 @@ export async function getSolicitacoes(params = '') {
 export async function createSolicitacao(data) {
   const res = await fetch(`${API_URL}/solicitacoes`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data)
   });
 
@@ -25,7 +27,9 @@ export async function createSolicitacao(data) {
 }
 
 export async function getSolicitacaoById(id) {
-  const res = await fetch(`${API_URL}/solicitacoes/${id}`);
+  const res = await fetch(`${API_URL}/solicitacoes/${id}`, {
+    headers: authHeaders()
+  });
 
   if (!res.ok) {
     throw new Error('Erro ao buscar solicitação');
@@ -37,7 +41,7 @@ export async function getSolicitacaoById(id) {
 export async function updateStatusSolicitacao(id, status) {
   const res = await fetch(`${API_URL}/solicitacoes/${id}/status`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ status })
   });
 
@@ -48,3 +52,5 @@ export async function updateStatusSolicitacao(id, status) {
 
   return true;
 }
+
+

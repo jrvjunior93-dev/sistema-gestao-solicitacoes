@@ -22,9 +22,16 @@ db.TipoSolicitacao = require('./TipoSolicitacao')(sequelize, Sequelize);
 db.EtapaSetor = require('./EtapaSetor')(sequelize, Sequelize);
 db.Cargo = require('./Cargo')(sequelize, Sequelize);
 db.Comprovante = require('./Comprovante')(sequelize, Sequelize);
+db.Contrato = require('./Contrato')(sequelize, Sequelize);
+db.ContratoAnexo = require('./ContratoAnexo')(sequelize, Sequelize);
+db.TipoMacroContrato = require('./TipoMacroContrato')(sequelize, Sequelize);
+db.TipoSubContrato = require('./TipoSubContrato')(sequelize, Sequelize);
 db.SolicitacaoVisibilidadeUsuario =
   require('./SolicitacaoVisibilidadeUsuario')(sequelize, Sequelize);
 db.SetorPermissao = require('./SetorPermissao')(sequelize, Sequelize);
+db.Notificacao = require('./Notificacao')(sequelize, Sequelize);
+db.NotificacaoDestinatario = require('./NotificacaoDestinatario')(sequelize, Sequelize);
+db.ConfiguracaoSistema = require('./ConfiguracaoSistema')(sequelize, Sequelize);
 
   
 
@@ -157,6 +164,89 @@ db.Solicitacao.belongsTo(db.TipoSolicitacao, {
   as: 'tipo'
 });
 
+db.TipoSolicitacao.hasMany(db.Solicitacao, {
+  foreignKey: 'tipo_macro_id',
+  as: 'solicitacoesMacro'
+});
+
+db.Solicitacao.belongsTo(db.TipoSolicitacao, {
+  foreignKey: 'tipo_macro_id',
+  as: 'tipoMacroSolicitacao'
+});
+
+db.TipoSubContrato.hasMany(db.Solicitacao, {
+  foreignKey: 'tipo_sub_id',
+  as: 'solicitacoes'
+});
+
+db.Solicitacao.belongsTo(db.TipoSubContrato, {
+  foreignKey: 'tipo_sub_id',
+  as: 'tipoSubSolicitacao'
+});
+
+// =====================
+// CONTRATOS
+// =====================
+db.Obra.hasMany(db.Contrato, {
+  foreignKey: 'obra_id',
+  as: 'contratos'
+});
+
+db.Contrato.belongsTo(db.Obra, {
+  foreignKey: 'obra_id',
+  as: 'obra'
+});
+
+db.TipoSolicitacao.hasMany(db.TipoSubContrato, {
+  foreignKey: 'tipo_macro_id',
+  as: 'subtipos'
+});
+
+db.TipoSubContrato.belongsTo(db.TipoSolicitacao, {
+  foreignKey: 'tipo_macro_id',
+  as: 'macro'
+});
+
+db.TipoSolicitacao.hasMany(db.Contrato, {
+  foreignKey: 'tipo_macro_id',
+  as: 'contratos'
+});
+
+db.Contrato.belongsTo(db.TipoSolicitacao, {
+  foreignKey: 'tipo_macro_id',
+  as: 'tipoMacro'
+});
+
+db.TipoSubContrato.hasMany(db.Contrato, {
+  foreignKey: 'tipo_sub_id',
+  as: 'contratos'
+});
+
+db.Contrato.belongsTo(db.TipoSubContrato, {
+  foreignKey: 'tipo_sub_id',
+  as: 'tipoSub'
+});
+
+db.Contrato.hasMany(db.Solicitacao, {
+  foreignKey: 'contrato_id',
+  as: 'solicitacoes'
+});
+
+db.Solicitacao.belongsTo(db.Contrato, {
+  foreignKey: 'contrato_id',
+  as: 'contrato'
+});
+
+db.Contrato.hasMany(db.ContratoAnexo, {
+  foreignKey: 'contrato_id',
+  as: 'anexos'
+});
+
+db.ContratoAnexo.belongsTo(db.Contrato, {
+  foreignKey: 'contrato_id',
+  as: 'contrato'
+});
+
 
 // =====================
 // USUÁRIO x SETOR
@@ -194,22 +284,53 @@ db.User.hasMany(db.Historico, {
 
 db.User.hasMany(db.SolicitacaoVisibilidadeUsuario, {
   foreignKey: 'usuario_id',
-  as: 'visibilidades'
+  as: 'visibilidades',
+  onDelete: 'RESTRICT',
+  onUpdate: 'CASCADE'
 });
 
 db.SolicitacaoVisibilidadeUsuario.belongsTo(db.User, {
   foreignKey: 'usuario_id',
-  as: 'usuario'
+  as: 'usuario',
+  onDelete: 'RESTRICT',
+  onUpdate: 'CASCADE'
 });
 
 db.Solicitacao.hasMany(db.SolicitacaoVisibilidadeUsuario, {
   foreignKey: 'solicitacao_id',
-  as: 'visibilidades'
+  as: 'visibilidades',
+  onDelete: 'RESTRICT',
+  onUpdate: 'CASCADE'
 });
 
 db.SolicitacaoVisibilidadeUsuario.belongsTo(db.Solicitacao, {
   foreignKey: 'solicitacao_id',
-  as: 'solicitacao'
+  as: 'solicitacao',
+  onDelete: 'RESTRICT',
+  onUpdate: 'CASCADE'
+});
+
+// =====================
+// NOTIFICACOES
+// =====================
+db.Notificacao.hasMany(db.NotificacaoDestinatario, {
+  foreignKey: 'notificacao_id',
+  as: 'destinatarios'
+});
+
+db.NotificacaoDestinatario.belongsTo(db.Notificacao, {
+  foreignKey: 'notificacao_id',
+  as: 'notificacao'
+});
+
+db.User.hasMany(db.NotificacaoDestinatario, {
+  foreignKey: 'usuario_id',
+  as: 'notificacoes'
+});
+
+db.NotificacaoDestinatario.belongsTo(db.User, {
+  foreignKey: 'usuario_id',
+  as: 'usuario'
 });
 
 

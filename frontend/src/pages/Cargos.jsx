@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   getCargos,
   criarCargo,
+  atualizarCargo,
   ativarCargo,
   desativarCargo
 } from '../services/cargos';
@@ -10,6 +11,10 @@ export default function Cargos() {
   const [cargos, setCargos] = useState([]);
   const [nome, setNome] = useState('');
   const [codigo, setCodigo] = useState('');
+  const [editId, setEditId] = useState(null);
+  const [editNome, setEditNome] = useState('');
+  const [editCodigo, setEditCodigo] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     carregar();
@@ -33,59 +38,148 @@ export default function Cargos() {
     carregar();
   }
 
+  function iniciarEdicao(item) {
+    setEditId(item.id);
+    setEditNome(item.nome);
+    setEditCodigo(item.codigo);
+  }
+
+  function cancelarEdicao() {
+    setEditId(null);
+    setEditNome('');
+    setEditCodigo('');
+  }
+
+  async function salvarEdicao(id) {
+    try {
+      setSaving(true);
+      await atualizarCargo(id, {
+        nome: editNome,
+        codigo: editCodigo
+      });
+      cancelarEdicao();
+      carregar();
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao salvar edicao');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <div>
-      <h1>Cargos</h1>
+    <div className="page">
+      <div>
+        <h1 className="page-title">Cargos</h1>
+        <p className="page-subtitle">Cadastro e manutencao de cargos.</p>
+      </div>
 
-      <form onSubmit={handleSubmit}>
-        <input
-          placeholder="Nome do cargo"
-          value={nome}
-          onChange={e => setNome(e.target.value)}
-          required
-        />
+      <div className="card">
+        <div className="card-header">
+          <h2 className="font-semibold">Novo cargo</h2>
+        </div>
+        <form onSubmit={handleSubmit} className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1 text-sm">
+            Nome do cargo
+            <input
+              className="input"
+              placeholder="Ex: Analista"
+              value={nome}
+              onChange={e => setNome(e.target.value)}
+              required
+            />
+          </label>
 
-        <input
-          placeholder="Código (ex: FINANCEIRO)"
-          value={codigo}
-          onChange={e => setCodigo(e.target.value.toUpperCase())}
-          required
-        />
+          <label className="grid gap-1 text-sm">
+            Codigo
+            <input
+              className="input"
+              placeholder="Ex: FINANCEIRO"
+              value={codigo}
+              onChange={e => setCodigo(e.target.value.toUpperCase())}
+              required
+            />
+          </label>
 
-        <button type="submit">Adicionar</button>
-      </form>
+          <button type="submit" className="btn btn-primary md:col-span-2">
+            Adicionar
+          </button>
+        </form>
+      </div>
 
-      <table border="1" cellPadding="8" cellSpacing="0">
-        <thead>
-          <tr>
-            <th>Nome</th>
-            <th>Código</th>
-            <th>Status</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {cargos.map(c => (
-            <tr key={c.id}>
-              <td>{c.nome}</td>
-              <td>{c.codigo}</td>
-              <td>{c.ativo ? 'Ativo' : 'Inativo'}</td>
-              <td>
-                {c.ativo ? (
-                  <button onClick={() => desativarCargo(c.id)}>
-                    Desativar
-                  </button>
-                ) : (
-                  <button onClick={() => ativarCargo(c.id)}>
-                    Ativar
-                  </button>
-                )}
-              </td>
+      <div className="card">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Codigo</th>
+              <th>Status</th>
+              <th>Acoes</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {cargos.map(c => (
+              <tr key={c.id}>
+                <td>
+                  {editId === c.id ? (
+                    <input
+                      className="input"
+                      value={editNome}
+                      onChange={e => setEditNome(e.target.value)}
+                    />
+                  ) : (
+                    c.nome
+                  )}
+                </td>
+                <td>
+                  {editId === c.id ? (
+                    <input
+                      className="input"
+                      value={editCodigo}
+                      onChange={e => setEditCodigo(e.target.value.toUpperCase())}
+                    />
+                  ) : (
+                    c.codigo
+                  )}
+                </td>
+                <td>{c.ativo ? 'Ativo' : 'Inativo'}</td>
+                <td>
+                  {editId === c.id ? (
+                    <>
+                      <button className="btn btn-primary" onClick={() => salvarEdicao(c.id)} disabled={saving}>
+                        {saving ? 'Salvando...' : 'Salvar'}
+                      </button>{' '}
+                      <button className="btn btn-outline" onClick={cancelarEdicao} disabled={saving}>
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="btn btn-outline" onClick={() => iniciarEdicao(c)}>
+                        Editar
+                      </button>{' '}
+                      {c.ativo ? (
+                        <button className="btn btn-secondary" onClick={async () => { await desativarCargo(c.id); carregar(); }}>
+                          Desativar
+                        </button>
+                      ) : (
+                        <button className="btn btn-success" onClick={async () => { await ativarCargo(c.id); carregar(); }}>
+                          Ativar
+                        </button>
+                      )}
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {cargos.length === 0 && (
+              <tr>
+                <td colSpan="4" align="center">Nenhum cargo cadastrado</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

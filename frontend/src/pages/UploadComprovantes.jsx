@@ -50,18 +50,19 @@ export default function UploadComprovantes() {
       <h1>Upload de Comprovantes (Em Massa)</h1>
 
       <form onSubmit={handleUpload}>
-        <div>
+        <label className="grid gap-1 text-sm">
+          Arquivos
           <input
             type="file"
             multiple
             accept=".pdf,.jpg,.jpeg,.png,.html"
             onChange={handleFileChange}
           />
-        </div>
+        </label>
 
         <br />
 
-        <button type="submit" disabled={loading}>
+        <button type="submit" className="btn btn-primary" disabled={loading}>
           {loading ? 'Enviando...' : 'Enviar arquivos'}
         </button>
       </form>

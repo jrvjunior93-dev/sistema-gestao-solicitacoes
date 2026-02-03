@@ -1,15 +1,21 @@
 import { useEffect, useState } from 'react';
-
-const API_URL = 'http://localhost:3001';
+import { API_URL, authHeaders } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function ModalAtribuirResponsavel({
   solicitacaoId,
+  obraId,
+  isSetorObraSolicitacao,
+  isUsuarioSetorObra,
   onClose,
   onSucesso
 }) {
 
   const [usuarios, setUsuarios] = useState([]);
   const [usuarioSelecionado, setUsuarioSelecionado] = useState('');
+  const { user } = useAuth();
+  const isUsuario = user?.perfil === 'USUARIO';
+  const setorUsuario = user?.setor_id ? String(user.setor_id) : '';
 
   useEffect(() => {
     carregarUsuarios();
@@ -17,13 +23,25 @@ export default function ModalAtribuirResponsavel({
 
   async function carregarUsuarios() {
     const res = await fetch(`${API_URL}/usuarios`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`
-      }
+      headers: authHeaders()
     });
 
     const data = await res.json();
-    setUsuarios(data);
+    const lista = Array.isArray(data) ? data : [];
+    let filtrados = lista;
+
+    if (setorUsuario) {
+      filtrados = filtrados.filter(u => String(u.setor_id) === setorUsuario);
+    }
+
+    if ((isSetorObraSolicitacao || isUsuarioSetorObra) && obraId) {
+      filtrados = filtrados.filter(u =>
+        Array.isArray(u.vinculos) &&
+        u.vinculos.some(v => String(v.obra_id) === String(obraId))
+      );
+    }
+
+    setUsuarios(filtrados);
   }
 
   async function salvar() {
@@ -36,10 +54,7 @@ export default function ModalAtribuirResponsavel({
       `${API_URL}/solicitacoes/${solicitacaoId}/atribuir`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`
-        },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           usuario_responsavel_id: usuarioSelecionado
         })
@@ -72,6 +87,13 @@ export default function ModalAtribuirResponsavel({
             </option>
           ))}
         </select>
+
+        {(isUsuario || isSetorObraSolicitacao || isUsuarioSetorObra) && (
+          <p className="text-xs text-gray-500 mb-3">
+            As atribuicoes devem ser para pessoas do mesmo setor.
+            {(isSetorObraSolicitacao || isUsuarioSetorObra) && obraId && ' Para OBRA, somente usuarios vinculados a mesma obra.'}
+          </p>
+        )}
 
         <div className="flex justify-end gap-3">
 

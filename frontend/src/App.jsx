@@ -16,10 +16,18 @@ import Usuarios from './pages/Usuarios';
 import UsuarioNovo from './pages/UsuarioNovo';
 import NovaSolicitacao from './pages/NovaSolicitacao';
 import UploadComprovantes from './pages/UploadComprovantes';
+import ComprovantesPendentes from './pages/ComprovantesPendentes';
 import Obras from './pages/Obras';
 import Setores from './pages/Setores';
 import TiposSolicitacao from './pages/TiposSolicitacao';
 import Cargo from './pages/Cargos';
+import GestaoContratos from './pages/GestaoContratos';
+import Configuracoes from './pages/Configuracoes';
+import TiposSubContrato from './pages/TiposSubContrato';
+import StatusSetor from './pages/StatusSetor';
+import Perfil from './pages/Perfil';
+import PermissoesSetor from './pages/PermissoesSetor';
+import CoresSistema from './pages/CoresSistema';
 
 export default function App() {
   return (
@@ -52,13 +60,22 @@ export default function App() {
         <Route path="usuarios" element={<Usuarios />} />
         <Route path="usuarios/novo" element={<UsuarioNovo />} />
         <Route path="usuarios/:id" element={<UsuarioNovo />} />
+        <Route path="usuarios/:id/editar" element={<UsuarioNovo />} />
 
         <Route path="obras" element={<Obras />} />
         <Route path="setores" element={<Setores />} />
         <Route path="cargos" element={<Cargo />} />
         <Route path="tipos-solicitacao" element={<TiposSolicitacao />} />
+        <Route path="gestao-contratos" element={<GestaoContratos />} />
+        <Route path="configuracoes" element={<Configuracoes />} />
+        <Route path="tipos-sub-contrato" element={<TiposSubContrato />} />
+        <Route path="status-setor" element={<StatusSetor />} />
+        <Route path="permissoes-setor" element={<PermissoesSetor />} />
+        <Route path="cores-sistema" element={<CoresSistema />} />
 
         <Route path="comprovantes/upload" element={<UploadComprovantes />} />
+        <Route path="comprovantes/pendentes" element={<ComprovantesPendentes />} />
+        <Route path="perfil" element={<Perfil />} />
 
       </Route>
 

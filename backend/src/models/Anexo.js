@@ -12,11 +12,7 @@ module.exports = (sequelize, DataTypes) => {
     },
 
     tipo: {
-      type: DataTypes.ENUM(
-        'SOLICITACAO',
-        'CONTRATO',
-        'COMPROVANTE'
-      ),
+      type: DataTypes.STRING,
       allowNull: false
     },
 

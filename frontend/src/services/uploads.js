@@ -1,4 +1,4 @@
-const API = 'http://localhost:3001';
+import { API_URL, authHeaders } from './api';
 
 export async function uploadArquivos({ files, tipo, solicitacao_id = null }) {
   const formData = new FormData();
@@ -13,8 +13,9 @@ export async function uploadArquivos({ files, tipo, solicitacao_id = null }) {
 
   formData.append('tipo', tipo);
 
-  const res = await fetch(`${API}/uploads`, {
+  const res = await fetch(`${API_URL}/anexos/upload`, {
     method: 'POST',
+    headers: authHeaders(),
     body: formData
   });
 

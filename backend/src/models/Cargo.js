@@ -6,8 +6,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     codigo: {
       type: DataTypes.STRING,
-      allowNull: false,
-      unique: true
+      allowNull: false
     },
     ativo: {
       type: DataTypes.BOOLEAN,

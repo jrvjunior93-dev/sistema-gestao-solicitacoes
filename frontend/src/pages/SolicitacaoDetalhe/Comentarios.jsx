@@ -1,6 +1,5 @@
 import { useState } from 'react';
-
-const API_URL = 'http://localhost:3001';
+import { API_URL, authHeaders } from '../../services/api';
 
 export default function Comentarios({ solicitacaoId, onSucesso }) {
 
@@ -17,10 +16,7 @@ export default function Comentarios({ solicitacaoId, onSucesso }) {
         `${API_URL}/solicitacoes/${solicitacaoId}/comentarios`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${localStorage.getItem('token')}`
-          },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ descricao: texto })
         }
       );

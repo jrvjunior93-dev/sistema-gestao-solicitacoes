@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-
-const API_URL = 'http://localhost:3001';
+import { API_URL } from '../../services/api';
 
 export default function Login() {
 
@@ -35,7 +34,9 @@ export default function Login() {
       // ✅ SALVA PELO CONTEXT
       login(data);
 
-      navigate('/');
+      const perfil = String(data?.user?.perfil || '').trim().toUpperCase();
+      const isAdmin = perfil === 'SUPERADMIN' || perfil.startsWith('ADMIN');
+      navigate(isAdmin ? '/' : '/solicitacoes');
 
     } catch (err) {
       console.error(err);

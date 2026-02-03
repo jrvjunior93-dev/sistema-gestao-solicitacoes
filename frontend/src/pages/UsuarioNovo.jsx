@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-
-const API_URL = 'http://localhost:3001';
+import { useNavigate, useParams } from 'react-router-dom';
+import { API_URL, authHeaders } from '../services/api';
+import { getUsuario, criarUsuario, atualizarUsuario } from '../services/usuarios';
 
 export default function UsuarioNovo() {
-
   const navigate = useNavigate();
+  const { id } = useParams();
+  const editando = Boolean(id);
 
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
@@ -18,130 +19,172 @@ export default function UsuarioNovo() {
   const [listaCargos, setListaCargos] = useState([]);
   const [listaSetores, setListaSetores] = useState([]);
   const [listaObras, setListaObras] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     carregarDados();
-  }, []);
+  }, [id]);
 
   async function carregarDados() {
-    const [cargos, setores, obras] = await Promise.all([
-      fetch(`${API_URL}/cargos`).then(r => r.json()),
-      fetch(`${API_URL}/setores`).then(r => r.json()),
-      fetch(`${API_URL}/obras`).then(r => r.json())
-    ]);
+    try {
+      setLoading(true);
+      const [cargos, setores, obrasLista] = await Promise.all([
+        fetch(`${API_URL}/cargos`, { headers: authHeaders() }).then(r => r.json()),
+        fetch(`${API_URL}/setores`, { headers: authHeaders() }).then(r => r.json()),
+        fetch(`${API_URL}/obras`, { headers: authHeaders() }).then(r => r.json())
+      ]);
 
-    setListaCargos(cargos);
-    setListaSetores(setores);
-    setListaObras(obras);
+      setListaCargos(Array.isArray(cargos) ? cargos : []);
+      setListaSetores(Array.isArray(setores) ? setores : []);
+      setListaObras(Array.isArray(obrasLista) ? obrasLista : []);
+
+      if (editando) {
+        const usuario = await getUsuario(id);
+        setNome(usuario.nome || '');
+        setEmail(usuario.email || '');
+        setPerfil(usuario.perfil || '');
+        setCargoId(usuario.cargo_id ? String(usuario.cargo_id) : '');
+        setSetorId(usuario.setor_id ? String(usuario.setor_id) : '');
+        const vinculos = Array.isArray(usuario.vinculos) ? usuario.vinculos : [];
+        setObras(vinculos.map(v => v.obra_id).filter(Boolean));
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao carregar dados do usuario');
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function toggleObra(id) {
-    if (obras.includes(id)) {
-      setObras(obras.filter(o => o !== id));
+  function toggleObra(idObra) {
+    if (obras.includes(idObra)) {
+      setObras(obras.filter(o => o !== idObra));
     } else {
-      setObras([...obras, id]);
+      setObras([...obras, idObra]);
     }
   }
 
   async function salvar(e) {
     e.preventDefault();
 
-    await fetch(`${API_URL}/usuarios`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${localStorage.getItem('token')}`
-      },
-      body: JSON.stringify({
-        nome,
-        email,
-        senha,
-        perfil,
-        cargo_id: cargoId,
-        setor_id: setorId,
-        obras
-      })
-    });
+    const payload = {
+      nome,
+      email,
+      senha,
+      perfil,
+      cargo_id: cargoId || null,
+      setor_id: setorId || null,
+      obras
+    };
+
+    if (editando && !senha.trim()) {
+      delete payload.senha;
+    }
+
+    if (editando) {
+      await atualizarUsuario(id, payload);
+    } else {
+      await criarUsuario(payload);
+    }
 
     navigate('/usuarios');
   }
 
+  if (loading) {
+    return <p>Carregando usuario...</p>;
+  }
+
   return (
     <div className="max-w-3xl mx-auto">
-
       <h1 className="text-2xl font-semibold mb-6">
-        Novo Usuário
+        {editando ? 'Editar Usuario' : 'Novo Usuario'}
       </h1>
 
       <form
         onSubmit={salvar}
         className="bg-white p-6 rounded-xl shadow space-y-4"
       >
-
         <div className="grid md:grid-cols-2 gap-4">
+          <label className="grid gap-1 text-sm">
+            Nome
+            <input
+              className="input"
+              placeholder="Nome"
+              value={nome}
+              onChange={e => setNome(e.target.value)}
+              required
+            />
+          </label>
 
-          <input
-            className="input"
-            placeholder="Nome"
-            value={nome}
-            onChange={e => setNome(e.target.value)}
-            required
-          />
+          <label className="grid gap-1 text-sm">
+            Email
+            <input
+              className="input"
+              placeholder="Email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+            />
+          </label>
 
-          <input
-            className="input"
-            placeholder="Email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            required
-          />
+          <label className="grid gap-1 text-sm">
+            Senha
+            <input
+              type="password"
+              className="input"
+              placeholder={editando ? 'Deixe em branco para manter a senha' : 'Senha'}
+              value={senha}
+              onChange={e => setSenha(e.target.value)}
+              required={!editando}
+            />
+          </label>
 
-          <input
-            type="password"
-            className="input"
-            placeholder="Senha"
-            value={senha}
-            onChange={e => setSenha(e.target.value)}
-            required
-          />
+          <label className="grid gap-1 text-sm">
+            Perfil
+            <select
+              className="input"
+              value={perfil}
+              onChange={e => setPerfil(e.target.value)}
+              required
+            >
+              <option value="">Selecione</option>
+              <option value="ADMIN">ADMIN</option>
+              <option value="SUPERADMIN">SUPERADMIN</option>
+              <option value="USUARIO">USUARIO</option>
+            </select>
+          </label>
 
-          <select
-            className="input"
-            value={perfil}
-            onChange={e => setPerfil(e.target.value)}
-            required
-          >
-            <option value="">Perfil</option>
-            <option value="ADMIN">ADMIN</option>
-            <option value="USUARIO">USUARIO</option>
-          </select>
+          <label className="grid gap-1 text-sm">
+            Cargo
+            <select
+              className="input"
+              value={cargoId}
+              onChange={e => setCargoId(e.target.value)}
+            >
+              <option value="">Selecione</option>
+              {listaCargos.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <select
-            className="input"
-            value={cargoId}
-            onChange={e => setCargoId(e.target.value)}
-          >
-            <option value="">Cargo</option>
-            {listaCargos.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="input"
-            value={setorId}
-            onChange={e => setSetorId(e.target.value)}
-          >
-            <option value="">Setor</option>
-            {listaSetores.map(s => (
-              <option key={s.id} value={s.id}>
-                {s.nome}
-              </option>
-            ))}
-          </select>
-
+          <label className="grid gap-1 text-sm">
+            Setor
+            <select
+              className="input"
+              value={setorId}
+              onChange={e => setSetorId(e.target.value)}
+            >
+              <option value="">Selecione</option>
+              {listaSetores.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.nome}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         <div>
@@ -155,14 +198,13 @@ export default function UsuarioNovo() {
                   checked={obras.includes(o.id)}
                   onChange={() => toggleObra(o.id)}
                 />
-                {o.nome}
+                {o.codigo ? `${o.codigo} - ${o.nome}` : o.nome}
               </label>
             ))}
           </div>
         </div>
 
         <div className="flex justify-end gap-3 pt-4">
-
           <button
             type="button"
             className="btn-secondary"
@@ -177,11 +219,8 @@ export default function UsuarioNovo() {
           >
             Salvar
           </button>
-
         </div>
-
       </form>
-
     </div>
   );
 }

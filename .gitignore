@@ -3,3 +3,7 @@ node_modules
 dist
 build
 .vscode
+backend/.env
+frontend/.env
+backend/uploads
+backend/public

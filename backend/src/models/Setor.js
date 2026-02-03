@@ -7,11 +7,10 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false
       },
 
-      codigo: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        unique: true
-      },
+    codigo: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
 
       ativo: {
         type: DataTypes.BOOLEAN,

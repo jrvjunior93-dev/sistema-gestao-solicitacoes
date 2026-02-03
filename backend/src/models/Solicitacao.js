@@ -9,10 +9,13 @@ module.exports = (sequelize, DataTypes) => {
       },
       codigo: {
         type: DataTypes.STRING,
-        allowNull: true,
-        unique: true
+        allowNull: true
       },
       codigo_contrato: {
+        type: DataTypes.STRING,
+        allowNull: true
+      },
+      numero_pedido: {
         type: DataTypes.STRING,
         allowNull: true
       },
@@ -25,6 +28,30 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         references: {
           model: 'tipo_solicitacao',
+          key: 'id'
+        }
+      },
+      tipo_macro_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'tipo_solicitacao',
+          key: 'id'
+        }
+      },
+      tipo_sub_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'tipos_sub_contrato',
+          key: 'id'
+        }
+      },
+      contrato_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        references: {
+          model: 'contratos',
           key: 'id'
         }
       },
@@ -48,6 +75,10 @@ module.exports = (sequelize, DataTypes) => {
       criado_por: {
         type: DataTypes.INTEGER,
         allowNull: false
+      },
+      data_vencimento: {
+        type: DataTypes.DATE,
+        allowNull: true
       },
       cancelada: {
         type: DataTypes.BOOLEAN,

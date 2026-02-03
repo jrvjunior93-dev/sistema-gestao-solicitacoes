@@ -38,6 +38,35 @@ module.exports = {
     }
   },
 
+  async update(req, res) {
+    try {
+      const { id } = req.params;
+      const { nome, codigo } = req.body;
+
+      if (!nome && !codigo) {
+        return res.status(400).json({ error: 'Nada para atualizar' });
+      }
+
+      const setor = await Setor.findByPk(id);
+      if (!setor) {
+        return res.status(404).json({ error: 'Setor nao encontrado' });
+      }
+
+      await setor.update({
+        nome: nome || setor.nome,
+        codigo: codigo ? String(codigo).toUpperCase() : setor.codigo
+      });
+
+      return res.json(setor);
+
+    } catch (error) {
+      console.error('Erro ao atualizar setor:', error);
+      return res.status(500).json({
+        error: 'Erro ao atualizar setor'
+      });
+    }
+  },
+
   async ativar(req, res) {
     try {
       const { id } = req.params;

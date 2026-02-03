@@ -52,6 +52,50 @@ module.exports = {
   },
 
   // =====================================================
+  // DETALHE USUÃRIO
+  // =====================================================
+  async show(req, res) {
+    try {
+      const { id } = req.params;
+
+      const usuario = await User.findByPk(id, {
+        attributes: { exclude: ['senha'] },
+        include: [
+          {
+            model: Cargo,
+            as: 'cargoInfo'
+          },
+          {
+            model: Setor,
+            as: 'setor'
+          },
+          {
+            model: UsuarioObra,
+            as: 'vinculos',
+            include: [
+              {
+                model: Obra,
+                as: 'obra'
+              }
+            ]
+          }
+        ]
+      });
+
+      if (!usuario) {
+        return res.status(404).json({ error: 'UsuÃ¡rio nÃ£o encontrado' });
+      }
+
+      return res.json(usuario);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        error: 'Erro ao buscar usuÃ¡rio'
+      });
+    }
+  },
+
+  // =====================================================
   // CRIAR USUÁRIO
   // =====================================================
   async create(req, res) {
@@ -99,7 +143,8 @@ module.exports = {
       for (const obra_id of obras) {
         await UsuarioObra.create({
           user_id: usuario.id,
-          obra_id
+          obra_id,
+          perfil
         });
       }
 
@@ -170,7 +215,8 @@ module.exports = {
       for (const obra_id of obras) {
         await UsuarioObra.create({
           user_id: id,
-          obra_id
+          obra_id,
+          perfil
         });
       }
 
@@ -228,6 +274,51 @@ module.exports = {
       console.error(error);
       return res.status(500).json({
         error: 'Erro ao desativar usuário'
+      });
+    }
+  },
+
+  // =====================================================
+  // ALTERAR SENHA DO USUARIO LOGADO
+  // =====================================================
+  async alterarSenha(req, res) {
+    try {
+      const usuarioId = req.user.id;
+      const { senha_atual, senha_nova } = req.body;
+
+      if (!senha_atual || !senha_nova) {
+        return res.status(400).json({
+          error: 'Senha atual e nova senha sao obrigatorias'
+        });
+      }
+
+      const usuario = await User.findByPk(usuarioId);
+
+      if (!usuario) {
+        return res.status(404).json({
+          error: 'Usuario nao encontrado'
+        });
+      }
+
+      const ok = await bcrypt.compare(
+        String(senha_atual),
+        String(usuario.senha)
+      );
+
+      if (!ok) {
+        return res.status(400).json({
+          error: 'Senha atual incorreta'
+        });
+      }
+
+      const senhaHash = await bcrypt.hash(senha_nova, 10);
+      await usuario.update({ senha: senhaHash });
+
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        error: 'Erro ao alterar senha'
       });
     }
   }
