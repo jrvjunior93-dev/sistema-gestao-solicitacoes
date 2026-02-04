@@ -5,7 +5,7 @@ const {
   User
 } = require('../models');
 const { criarNotificacao } = require('../services/notificacoes');
-const { uploadToS3 } = require('../services/s3');
+const { uploadToS3, getPresignedUrl } = require('../services/s3');
 
 class AnexoController {
 
@@ -120,7 +120,23 @@ class AnexoController {
     }
   }
 
+  async presign(req, res) {
+    try {
+      const { url, key } = req.query;
+      const alvo = url || key;
+
+      if (!alvo) {
+        return res.status(400).json({ error: 'url obrigatoria' });
+      }
+
+      const signedUrl = await getPresignedUrl(alvo);
+      return res.json({ url: signedUrl });
+    } catch (error) {
+      console.error('Erro ao gerar URL assinada:', error);
+      return res.status(500).json({ error: 'Erro ao gerar URL assinada' });
+    }
+  }
+
 }
 
 module.exports = new AnexoController();
-

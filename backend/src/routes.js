@@ -73,6 +73,11 @@ router.post(
 );
 
 router.get(
+  '/anexos/presign',
+  AnexoController.presign
+);
+
+router.get(
   '/solicitacoes/:id/anexos',
   AnexoController.listarPorSolicitacao
 );

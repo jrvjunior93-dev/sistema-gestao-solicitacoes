@@ -1,7 +1,7 @@
 import { fileUrl } from '../../services/api';
 
 export default function PreviewAnexoModal({ anexo, onClose }) {
-  const url = fileUrl(anexo.caminho);
+  const url = anexo.url || fileUrl(anexo.caminho);
 
   function renderPreview() {
     if (anexo.nome.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {

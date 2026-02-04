@@ -1,13 +1,33 @@
 import { useState } from 'react';
 import PreviewAnexoModal from './PreviewAnexoModal';
-import { fileUrl } from '../../services/api';
+import { API_URL, authHeaders, fileUrl } from '../../services/api';
 
 export default function Timeline({ historicos }) {
   const [preview, setPreview] = useState(null);
 
+  async function obterUrlAssinada(caminhoArquivo) {
+    if (!caminhoArquivo) return null;
+    if (!String(caminhoArquivo).startsWith('http')) {
+      return fileUrl(caminhoArquivo);
+    }
+
+    try {
+      const res = await fetch(
+        `${API_URL}/anexos/presign?url=${encodeURIComponent(caminhoArquivo)}`,
+        { headers: authHeaders() }
+      );
+      if (!res.ok) throw new Error('Falha ao assinar URL');
+      const data = await res.json();
+      return data?.url || caminhoArquivo;
+    } catch (error) {
+      console.error(error);
+      return caminhoArquivo;
+    }
+  }
+
   async function baixarArquivo(caminhoArquivo, nomeArquivo) {
     try {
-      const urlArquivo = fileUrl(caminhoArquivo);
+      const urlArquivo = await obterUrlAssinada(caminhoArquivo);
 
       const response = await fetch(urlArquivo);
       if (!response.ok) {
@@ -75,12 +95,14 @@ export default function Timeline({ historicos }) {
                 <div className="flex gap-3 mt-1">
                   <button
                     className="text-blue-600 text-sm"
-                    onClick={() =>
+                    onClick={async () => {
+                      const urlArquivo = await obterUrlAssinada(caminhoArquivo);
                       setPreview({
                         nome: h.descricao,
-                        caminho: caminhoArquivo
-                      })
-                    }
+                        caminho: caminhoArquivo,
+                        url: urlArquivo
+                      });
+                    }}
                   >
                     Visualizar
                   </button>
