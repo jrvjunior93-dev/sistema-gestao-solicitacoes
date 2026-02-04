@@ -58,7 +58,7 @@ export default function Login() {
           <img
             src="/CSC_logo_colorida.png"
             alt="CSC"
-            className="h-20 w-auto object-contain"
+            className="h-28 w-auto object-contain"
           />
         </div>
 
