@@ -5,7 +5,7 @@ import NotificacoesBell from '../components/NotificacoesBell';
 
 export default function Layout() {
   const { user, logout } = useContext(AuthContext);
-  const [menuAberto, setMenuAberto] = useState(true);
+  const [menuAberto, setMenuAberto] = useState(false);
   const isFinanceiro =
     user?.perfil === 'FINANCEIRO' ||
     user?.setor?.codigo === 'FINANCEIRO' ||
@@ -114,8 +114,18 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-screen bg-gray-100 overflow-x-hidden">
+      {!menuAberto && (
+        <div
+          className="fixed left-0 top-0 bottom-0 w-2 z-40"
+          onMouseEnter={() => setMenuAberto(true)}
+          aria-hidden="true"
+        />
+      )}
       {menuAberto && (
-        <aside className="w-64 bg-slate-900 text-white flex flex-col p-5">
+        <aside
+          className="w-64 bg-slate-900 text-white flex flex-col p-5"
+          onMouseLeave={() => setMenuAberto(false)}
+        >
         <div className="flex-1">
           <div className="flex items-center justify-between mb-6">
             <h1 className="text-lg font-semibold">
