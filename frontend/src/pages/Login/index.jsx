@@ -57,7 +57,7 @@ export default function Login() {
 
         <div className="flex justify-center">
           <img
-            src="{logo}"
+            src={logo}
             alt="CSC"
             className="h-20 w-auto object-contain"
           />
