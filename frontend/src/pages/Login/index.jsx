@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { API_URL } from '../../services/api';
-import logo from '../../assets/CSC_logo_colorida.png';
 
 export default function Login() {
 
@@ -57,7 +56,7 @@ export default function Login() {
 
         <div className="flex justify-center">
           <img
-            src={logo}
+            src="/CSC_logo_colorida.png"
             alt="CSC"
             className="h-20 w-auto object-contain"
           />
