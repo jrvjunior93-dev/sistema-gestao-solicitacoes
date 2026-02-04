@@ -123,7 +123,7 @@ export default function Layout() {
       )}
       {menuAberto && (
         <aside
-          className="w-64 bg-slate-900 text-white flex flex-col p-5"
+          className="w-64 bg-slate-900 text-white flex flex-col p-5 overflow-y-auto"
           onMouseLeave={() => setMenuAberto(false)}
         >
         <div className="flex-1">
