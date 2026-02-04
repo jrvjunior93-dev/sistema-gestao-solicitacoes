@@ -1,6 +1,3 @@
-const path = require('path');
-const fs = require('fs');
-
 const {
   Anexo,
   Solicitacao,
@@ -8,6 +5,7 @@ const {
   User
 } = require('../models');
 const { criarNotificacao } = require('../services/notificacoes');
+const { uploadToS3 } = require('../services/s3');
 
 class AnexoController {
 
@@ -18,11 +16,11 @@ class AnexoController {
       const usuario = await User.findByPk(req.user.id);
 
       if (!solicitacao_id) {
-        return res.status(400).json({ error: 'solicitacao_id é obrigatório' });
+        return res.status(400).json({ error: 'solicitacao_id Ã© obrigatÃ³rio' });
       }
 
       if (!tipo) {
-        return res.status(400).json({ error: 'tipo � obrigat�rio' });
+        return res.status(400).json({ error: 'tipo é obrigatório' });
       }
 
       const tiposPermitidos = [
@@ -35,7 +33,7 @@ class AnexoController {
       const tipoNormalizado = String(tipo).toUpperCase();
 
       if (!tiposPermitidos.includes(tipoNormalizado)) {
-        return res.status(400).json({ error: 'tipo inv�lido' });
+        return res.status(400).json({ error: 'tipo inválido' });
       }
 
       if (!req.files || req.files.length === 0) {
@@ -45,49 +43,31 @@ class AnexoController {
       const solicitacao = await Solicitacao.findByPk(solicitacao_id);
 
       if (!solicitacao) {
-        return res.status(404).json({ error: 'Solicitação não encontrada' });
+        return res.status(404).json({ error: 'SolicitaÃ§Ã£o nÃ£o encontrada' });
       }
 
       const codigo = solicitacao.codigo;
 
-      const pastaDestino = path.join(
-        __dirname,
-        '../../uploads/solicitacoes',
-        codigo,
-        tipoNormalizado.toLowerCase()
-      );
-
-      if (!fs.existsSync(pastaDestino)) {
-        fs.mkdirSync(pastaDestino, { recursive: true });
-      }
-
       const registros = [];
 
       for (const file of req.files) {
-
-        const destinoFinal = path.join(
-          pastaDestino,
-          file.originalname
+        const url = await uploadToS3(
+          file,
+          `anexos/${codigo}/${tipoNormalizado.toLowerCase()}`
         );
-
-        fs.renameSync(file.path, destinoFinal);
-
-        const caminhoRelativo = destinoFinal
-          .replace(path.join(__dirname, '../../'), '')
-          .replace(/\\/g, '/');
 
         const anexo = await Anexo.create({
           solicitacao_id,
           tipo: tipoNormalizado,
           nome_original: file.originalname,
-          caminho_arquivo: caminhoRelativo,
+          caminho_arquivo: url,
           uploaded_by: usuario.id,
           area_origem: usuario.setor_id
         });
 
         registros.push(anexo);
 
-        // ✅ HISTÓRICO COM METADATA
+        // ??? HIST??RICO COM METADATA
         await Historico.create({
           solicitacao_id,
           usuario_responsavel_id: usuario.id,
@@ -95,7 +75,7 @@ class AnexoController {
           acao: 'ANEXO_ADICIONADO',
           descricao: file.originalname,
           metadata: JSON.stringify({
-            caminho: caminhoRelativo
+            caminho: url
           })
         });
       }

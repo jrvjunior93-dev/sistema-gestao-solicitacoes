@@ -1,24 +1,6 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 
-const baseDir = path.resolve(__dirname, '../../uploads/comprovantes');
-
-const storage = multer.diskStorage({
-
-  destination: (req, file, cb) => {
-    if (!fs.existsSync(baseDir)) {
-      fs.mkdirSync(baseDir, { recursive: true });
-    }
-    cb(null, baseDir);
-  },
-
-  filename: (req, file, cb) => {
-    const unique = Date.now() + '-' + file.originalname;
-    cb(null, unique);
-  }
-
-});
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
 

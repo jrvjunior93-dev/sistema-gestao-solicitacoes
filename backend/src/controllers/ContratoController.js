@@ -1,6 +1,3 @@
-const path = require('path');
-const fs = require('fs');
-
 const {
   Contrato,
   ContratoAnexo,
@@ -11,6 +8,7 @@ const {
   Comprovante,
   Setor
 } = require('../models');
+const { uploadToS3 } = require('../services/s3');
 
 async function isAdminGEO(req) {
   const perfil = String(req.user?.perfil || '').trim().toUpperCase();
@@ -314,30 +312,19 @@ module.exports = {
       }
 
       const codigo = contrato.codigo || `CONTRATO-${contrato.id}`;
-      const pastaDestino = path.join(
-        __dirname,
-        '../../uploads/contratos',
-        String(codigo)
-      );
-
-      if (!fs.existsSync(pastaDestino)) {
-        fs.mkdirSync(pastaDestino, { recursive: true });
-      }
 
       const registros = [];
 
       for (const file of req.files) {
-        const destinoFinal = path.join(pastaDestino, file.originalname);
-        fs.renameSync(file.path, destinoFinal);
-
-        const caminhoRelativo = destinoFinal
-          .replace(path.join(__dirname, '../../'), '')
-          .replace(/\\/g, '/');
+        const url = await uploadToS3(
+          file,
+          `contratos/${String(codigo)}`
+        );
 
         const anexo = await ContratoAnexo.create({
           contrato_id: contrato.id,
           nome_original: file.originalname,
-          caminho_arquivo: caminhoRelativo,
+          caminho_arquivo: url,
           uploaded_by: req.user.id
         });
         registros.push(anexo);

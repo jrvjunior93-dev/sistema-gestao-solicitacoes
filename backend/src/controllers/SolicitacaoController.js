@@ -17,6 +17,7 @@ const {
 const { Op } = require('sequelize');
 const { criarNotificacao } = require('../services/notificacoes');
 const gerarCodigoSolicitacao = require('../services/solicitacao/gerarCodigo');
+const { uploadToS3 } = require('../services/s3');
 
 /* =====================================================
    FUNCAO AUXILIAR - VISIBILIDADE
@@ -1056,11 +1057,14 @@ module.exports = {
   },
 
   async upload(req, res) {
+    const url = await uploadToS3(req.file, 'solicitacoes');
+    const nomeArquivo = url.split('/').pop();
+
     const anexo = await Anexo.create({
       solicitacao_id: req.params.id,
       nome_original: req.file.originalname,
-      nome_arquivo: req.file.filename,
-      url: `/uploads/${req.file.filename}`
+      nome_arquivo: nomeArquivo,
+      url
     });
 
     return res.json(anexo);
