@@ -7,11 +7,20 @@ const routes = require('./routes');
 const path = require('path');
 const fs = require('fs');
 
+const allowedOrigins = new Set([
+  'https://sistema-gestao-solicitacoes.vercel.app',
+  'https://api.jrfluxy.com.br'
+]);
+
 const corsOptions = {
-  origin: [
-    'https://sistema-gestao-solicitacoes.vercel.app',
-    'https://api.jrfluxy.com.br'
-  ],
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    if (/^https:\/\/sistema-gestao-solicitacoes-.*\.vercel\.app$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
