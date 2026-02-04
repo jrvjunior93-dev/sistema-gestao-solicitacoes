@@ -8,9 +8,13 @@ const path = require('path');
 const fs = require('fs');
 
 const corsOptions = {
-  origin: true,
+  origin: [
+    'https://sistema-gestao-solicitacoes.vercel.app',
+    'https://api.jrfluxy.com.br'
+  ],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 };
 app.use(cors(corsOptions));
 app.use(express.json());
