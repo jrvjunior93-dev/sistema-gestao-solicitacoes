@@ -27,7 +27,7 @@ function getKeyFromUrl(url) {
     const bucket = process.env.AWS_S3_BUCKET;
     const parsed = new URL(url);
     if (!parsed.hostname.startsWith(`${bucket}.s3`)) return null;
-    return parsed.pathname.replace(/^\\//, '');
+    return parsed.pathname.replace(/^\//, '');
   } catch (error) {
     return null;
   }
