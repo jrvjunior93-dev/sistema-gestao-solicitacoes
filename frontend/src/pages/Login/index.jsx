@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { API_URL } from '../../services/api';
+import logo from '../../assets/CSC_logo_colorida.png';
 
 export default function Login() {
 
@@ -54,7 +55,15 @@ export default function Login() {
         className="bg-white p-8 rounded-xl shadow w-full max-w-md space-y-4"
       >
 
-        <h1 className="text-2xl font-semibold text-center">
+        <div className="flex justify-center">
+          <img
+            src="{logo}"
+            alt="CSC"
+            className="h-20 w-auto object-contain"
+          />
+        </div>
+
+<h1 className="text-2xl font-semibold text-center">
           Sistema de Solicitações
         </h1>
 
