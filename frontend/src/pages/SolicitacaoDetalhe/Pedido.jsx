@@ -32,7 +32,7 @@ export default function Pedido({ solicitacaoId, numeroPedido, onSucesso }) {
 
   return (
     <div className="bg-white p-4 rounded-xl shadow space-y-2">
-      <h2 className="font-semibold">Numero da Solicitação</h2>
+      <h2 className="font-semibold">Numero do Pedido</h2>
       <input
         className="input"
         placeholder="Informe o numero do pedido"
