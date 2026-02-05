@@ -114,6 +114,29 @@ async function isUsuarioSetorGeo(req) {
   );
 }
 
+async function isSetorGeo(req) {
+  const areaUsuario = await obterAreaUsuario(req);
+  if (areaUsuario === 'GEO') return true;
+
+  if (!req.user?.setor_id) return false;
+
+  const setor = await Setor.findByPk(req.user.setor_id, {
+    attributes: ['codigo', 'nome']
+  });
+
+  if (!setor) return false;
+
+  const nomeSetor = String(setor.nome || '').toUpperCase();
+  const codigoSetor = String(setor.codigo || '').toUpperCase();
+  const areaToken = String(req.user?.area || '').toUpperCase();
+
+  return (
+    nomeSetor === 'GEO' ||
+    codigoSetor === 'GEO' ||
+    areaToken === 'GEO'
+  );
+}
+
 async function validarAcessoObra(req, solicitacao) {
   const isSetorObra = await isUsuarioSetorObra(req);
   if (!isSetorObra) {
@@ -748,12 +771,11 @@ module.exports = {
     try {
       const { id } = req.params;
       const { numero_pedido } = req.body;
-      const areaUsuario = await obterAreaUsuario(req);
-      const isSetorObra = await isUsuarioSetorObra(req);
+      const isGeo = await isSetorGeo(req);
 
-      if (isSetorObra) {
+      if (!isGeo) {
         return res.status(403).json({
-          error: 'Setor OBRA nao pode atualizar numero do pedido. Para seguir, solicite apoio ao responsavel do setor.'
+          error: 'Apenas o setor GEO pode atualizar numero do pedido.'
         });
       }
 

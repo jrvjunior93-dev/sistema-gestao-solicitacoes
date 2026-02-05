@@ -22,6 +22,7 @@ export default function SolicitacaoDetalhe() {
     String(user?.area || '').toUpperCase()
   ];
   const isSetorObra = setorTokens.includes('OBRA');
+  const isSetorGeo = setorTokens.includes('GEO');
 
   const [solicitacao, setSolicitacao] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -102,7 +103,7 @@ export default function SolicitacaoDetalhe() {
             />
           )}
 
-          {!isSetorObra && (
+          {isSetorGeo && (
             <Pedido
               solicitacaoId={id}
               numeroPedido={solicitacao.numero_pedido}
