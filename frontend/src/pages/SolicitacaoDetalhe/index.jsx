@@ -23,6 +23,11 @@ export default function SolicitacaoDetalhe() {
   ];
   const isSetorObra = setorTokens.includes('OBRA');
   const isSetorGeo = setorTokens.includes('GEO');
+
+  const [solicitacao, setSolicitacao] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [modalStatus, setModalStatus] = useState(false);
+
   const perfil = String(user?.perfil || '').trim().toUpperCase();
   const setorUsuario =
     user?.setor?.codigo ||
@@ -30,13 +35,11 @@ export default function SolicitacaoDetalhe() {
     user?.setor?.nome ||
     '';
   const setorParaStatus =
-    perfil === 'SUPERADMIN' || perfil.startsWith('ADMIN')
-      ? solicitacao?.area_responsavel
-      : setorUsuario;
-
-  const [solicitacao, setSolicitacao] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [modalStatus, setModalStatus] = useState(false);
+    isSetorGeo
+      ? 'GEO'
+      : (perfil === 'SUPERADMIN' || perfil.startsWith('ADMIN'))
+        ? solicitacao?.area_responsavel
+        : setorUsuario;
 
   useEffect(() => {
     carregar();
