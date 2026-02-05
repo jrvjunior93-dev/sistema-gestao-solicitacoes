@@ -34,14 +34,43 @@ export default function CoresSistema() {
     carregarStatus();
   }, [setorSelecionado]);
 
+  useEffect(() => {
+    if (setores.length === 0) return;
+    if (!draft) return;
+
+    const savedKey = localStorage.getItem('cores_setor_selecionado');
+    const normalizedSaved = savedKey ? String(savedKey).toUpperCase() : '';
+    const setoresKeys = setores.map(s => String(s.codigo || s.nome || '').toUpperCase());
+
+    if (setorSelecionado && setoresKeys.includes(String(setorSelecionado).toUpperCase())) {
+      return;
+    }
+
+    if (normalizedSaved && setoresKeys.includes(normalizedSaved)) {
+      const original = setores.find(s =>
+        String(s.codigo || s.nome || '').toUpperCase() === normalizedSaved
+      );
+      setSetorSelecionado(String(original?.codigo || original?.nome || ''));
+      return;
+    }
+
+    const setoresComCor = Object.keys(draft?.status?.setores || {});
+    const encontrado = setores.find(s =>
+      setoresComCor.includes(String(s.codigo || s.nome || '').toUpperCase())
+    );
+    if (encontrado) {
+      setSetorSelecionado(String(encontrado.codigo || encontrado.nome || ''));
+      return;
+    }
+
+    setSetorSelecionado(String(setores[0]?.codigo || setores[0]?.nome || ''));
+  }, [setores, draft, setorSelecionado]);
+
   async function carregarSetores() {
     try {
       const data = await getSetores();
       const lista = Array.isArray(data) ? data : [];
       setSetores(lista);
-      if (lista.length > 0) {
-        setSetorSelecionado(String(lista[0].codigo || lista[0].nome || ''));
-      }
     } catch (error) {
       console.error(error);
     }
@@ -104,6 +133,11 @@ export default function CoresSistema() {
         }
       }
     }));
+  }
+
+  function selecionarSetor(valor) {
+    setSetorSelecionado(valor);
+    localStorage.setItem('cores_setor_selecionado', String(valor || '').toUpperCase());
   }
 
   async function salvar() {
@@ -208,7 +242,7 @@ export default function CoresSistema() {
             <select
               className="ml-2 border rounded p-2"
               value={setorSelecionado}
-              onChange={e => setSetorSelecionado(e.target.value)}
+              onChange={e => selecionarSetor(e.target.value)}
             >
               {setores.map(s => (
                 <option key={s.id} value={s.codigo || s.nome}>
