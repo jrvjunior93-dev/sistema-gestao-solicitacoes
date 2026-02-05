@@ -23,6 +23,16 @@ export default function SolicitacaoDetalhe() {
   ];
   const isSetorObra = setorTokens.includes('OBRA');
   const isSetorGeo = setorTokens.includes('GEO');
+  const perfil = String(user?.perfil || '').trim().toUpperCase();
+  const setorUsuario =
+    user?.setor?.codigo ||
+    user?.area ||
+    user?.setor?.nome ||
+    '';
+  const setorParaStatus =
+    perfil === 'SUPERADMIN' || perfil.startsWith('ADMIN')
+      ? solicitacao?.area_responsavel
+      : setorUsuario;
 
   const [solicitacao, setSolicitacao] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -124,7 +134,7 @@ export default function SolicitacaoDetalhe() {
       {!isSetorObra && (
         <ModalAlterarStatus
           aberto={modalStatus}
-          setor={solicitacao.area_responsavel}
+          setor={setorParaStatus}
           onClose={() => setModalStatus(false)}
           onSalvar={salvarStatus}
         />
