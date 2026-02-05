@@ -28,6 +28,7 @@ import StatusSetor from './pages/StatusSetor';
 import Perfil from './pages/Perfil';
 import PermissoesSetor from './pages/PermissoesSetor';
 import CoresSistema from './pages/CoresSistema';
+import AreasObra from './pages/AreasObra';
 
 export default function App() {
   return (
@@ -72,6 +73,7 @@ export default function App() {
         <Route path="status-setor" element={<StatusSetor />} />
         <Route path="permissoes-setor" element={<PermissoesSetor />} />
         <Route path="cores-sistema" element={<CoresSistema />} />
+        <Route path="areas-obra" element={<AreasObra />} />
 
         <Route path="comprovantes/upload" element={<UploadComprovantes />} />
         <Route path="comprovantes/pendentes" element={<ComprovantesPendentes />} />

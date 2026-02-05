@@ -1,6 +1,16 @@
 const { ConfiguracaoSistema } = require('../models');
 
 const CHAVE_TEMA = 'TEMA_SISTEMA';
+const CHAVE_AREAS_OBRA = 'AREAS_OBRA_VISIVEIS';
+
+function parseJsonOrDefault(value, fallback) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
 
 function getTemaPadrao() {
   return {
@@ -72,6 +82,46 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao salvar configuracao de tema' });
+    }
+  }
+  ,
+
+  async getAreasObra(req, res) {
+    try {
+      const item = await ConfiguracaoSistema.findOne({
+        where: { chave: CHAVE_AREAS_OBRA }
+      });
+
+      if (!item || !item.valor) {
+        return res.json({ areas: [] });
+      }
+
+      const data = parseJsonOrDefault(item.valor, { areas: [] });
+      const areas = Array.isArray(data?.areas) ? data.areas : [];
+      return res.json({ areas });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao buscar configuracao de areas' });
+    }
+  },
+
+  async updateAreasObra(req, res) {
+    try {
+      const raw = Array.isArray(req.body?.areas) ? req.body.areas : [];
+      const areas = [...new Set(raw
+        .map(item => String(item || '').trim().toUpperCase())
+        .filter(Boolean)
+      )];
+
+      await ConfiguracaoSistema.upsert({
+        chave: CHAVE_AREAS_OBRA,
+        valor: JSON.stringify({ areas })
+      });
+
+      return res.json({ ok: true, areas });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao salvar configuracao de areas' });
     }
   }
 };

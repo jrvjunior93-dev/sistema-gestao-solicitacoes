@@ -17,3 +17,21 @@ export async function salvarTemaSistema(data) {
   if (!res.ok) throw new Error('Erro ao salvar tema do sistema');
   return res.json();
 }
+
+export async function getAreasObra() {
+  const res = await fetch(`${API_URL}/configuracoes/areas-obra`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Erro ao buscar configuracao de areas');
+  return res.json();
+}
+
+export async function salvarAreasObra(data) {
+  const res = await fetch(`${API_URL}/configuracoes/areas-obra`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Erro ao salvar configuracao de areas');
+  return res.json();
+}

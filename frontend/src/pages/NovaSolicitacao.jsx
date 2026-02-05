@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getMinhasObras } from '../services/obras';
 import { getTiposSolicitacao } from '../services/tiposSolicitacao';
 import { getSetores } from '../services/setores';
@@ -7,8 +7,11 @@ import { uploadArquivos } from '../services/uploads';
 import { getTiposSubContrato } from '../services/tiposSubContrato';
 import { getContratos } from '../services/contratos';
 import ObraSearchModal from '../components/ObraSearchModal';
+import { getAreasObra } from '../services/configuracoesSistema';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function NovaSolicitacao() {
+  const { user } = useAuth();
   const [obras, setObras] = useState([]);
   const [obraCodigo, setObraCodigo] = useState('');
   const [obraDescricao, setObraDescricao] = useState('');
@@ -16,6 +19,7 @@ export default function NovaSolicitacao() {
   const [listaModal, setListaModal] = useState([]);
   const [tipos, setTipos] = useState([]);
   const [setores, setSetores] = useState([]);
+  const [areasObra, setAreasObra] = useState([]);
   const [tiposSub, setTiposSub] = useState([]);
   const [contratos, setContratos] = useState([]);
   const [arquivos, setArquivos] = useState([]);
@@ -38,6 +42,13 @@ export default function NovaSolicitacao() {
       setObras(await getMinhasObras());
       setTipos(await getTiposSolicitacao());
       setSetores(await getSetores());
+      try {
+        const cfg = await getAreasObra();
+        setAreasObra(Array.isArray(cfg?.areas) ? cfg.areas : []);
+      } catch (error) {
+        console.error(error);
+        setAreasObra([]);
+      }
     }
     load();
   }, []);
@@ -185,6 +196,16 @@ export default function NovaSolicitacao() {
     }
   }
 
+  const isSetorObra =
+    user?.setor?.codigo === 'OBRA' ||
+    user?.area === 'OBRA';
+  const setoresFiltrados = useMemo(() => {
+    if (!isSetorObra) return setores;
+    if (!areasObra || areasObra.length === 0) return setores;
+    const permitidas = new Set(areasObra.map(a => String(a).toUpperCase()));
+    return setores.filter(s => permitidas.has(String(s.codigo || '').toUpperCase()));
+  }, [setores, isSetorObra, areasObra]);
+
   return (
     <div className="max-w-3xl mx-auto">
       <h1 className="text-2xl font-semibold mb-6">Nova Solicitacao</h1>
@@ -250,7 +271,7 @@ export default function NovaSolicitacao() {
               value={form.area_responsavel}
             >
               <option value="">Selecione</option>
-              {setores.map(s => (
+              {setoresFiltrados.map(s => (
                 <option key={s.id} value={s.codigo}>
                   {s.nome}
                 </option>

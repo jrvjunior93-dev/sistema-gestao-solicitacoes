@@ -70,6 +70,11 @@ export default function Configuracoes() {
             description="Defina cores de botoes e status."
             to="/cores-sistema"
           />
+          <ConfigItem
+            title="Areas visiveis para OBRA"
+            description="Controle as areas visiveis na nova solicitacao."
+            to="/areas-obra"
+          />
         </div>
       </section>
     </div>
