@@ -9,7 +9,10 @@ const fs = require('fs');
 
 const allowedOrigins = new Set([
   'https://sistema-gestao-solicitacoes.vercel.app',
-  'https://api.jrfluxy.com.br'
+  'https://api.jrfluxy.com.br',
+  'https://jrfluxy.com.br',
+  'https://www.jrfluxy.com.br',
+  'https://csc.jrfluxy.com.br'
 ]);
 
 const corsOptions = {
