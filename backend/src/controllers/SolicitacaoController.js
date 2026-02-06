@@ -462,7 +462,9 @@ module.exports = {
         area_responsavel,
         codigo_contrato,
         contrato_id,
-        data_vencimento
+        data_vencimento,
+        data_inicio_medicao,
+        data_fim_medicao
       } = req.body;
 
       if (!obra_id || !tipo_solicitacao_id || !descricao || !area_responsavel) {
@@ -473,9 +475,17 @@ module.exports = {
 
       const tipoSelecionado = await TipoSolicitacao.findByPk(tipo_solicitacao_id);
       const nomeTipo = String(tipoSelecionado?.nome || '').trim().toUpperCase();
+      const nomeTipoNormalizado = nomeTipo
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
       if (nomeTipo === 'ADM LOCAL DE OBRA' && !tipo_sub_id) {
         return res.status(400).json({
           error: 'Para continuar, selecione o subtipo para Adm Local de Obra.'
+        });
+      }
+      if (nomeTipoNormalizado === 'MEDICAO' && (!data_inicio_medicao || !data_fim_medicao)) {
+        return res.status(400).json({
+          error: 'Para Medicao, informe data inicial e data final.'
         });
       }
 
@@ -496,6 +506,8 @@ module.exports = {
         codigo_contrato,
         contrato_id: contrato_id || null,
         data_vencimento: data_vencimento || null,
+        data_inicio_medicao: data_inicio_medicao || null,
+        data_fim_medicao: data_fim_medicao || null,
         criado_por: usuarioId,
         status_global: 'PENDENTE'
       });

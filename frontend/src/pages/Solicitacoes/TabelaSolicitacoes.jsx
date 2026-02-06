@@ -15,6 +15,7 @@ export default function TabelaSolicitacoes({
       { id: 'codigo', label: 'Codigo', width: 100, min: 80, weight: 0.9 },
       { id: 'obra', label: 'Obra', width: 140, min: 100, weight: 1.1 },
       { id: 'contrato', label: 'Contrato', width: 120, min: 95, weight: 1 },
+      { id: 'ref_contrato', label: 'Ref. do Contrato', width: 160, min: 120, weight: 1.1 },
       { id: 'descricao', label: 'Descricao', width: 140, min: 100, weight: 1.1 },
       { id: 'tipo', label: 'Tipo de Solicitacao', width: 160, min: 120, weight: 1.2 },
       { id: 'valor', label: 'Valor', width: 110, min: 90, weight: 0.9 },

@@ -18,6 +18,7 @@ export default function Layout() {
   ];
   const isAdminGEO =
     user?.perfil === 'ADMIN' && setorTokens.includes('GEO');
+  const isSetorObra = setorTokens.includes('OBRA');
 
   function renderMenu() {
     switch (user?.perfil) {
@@ -27,6 +28,9 @@ export default function Layout() {
             <MenuItem to="/solicitacoes">Minhas Solicitacoes</MenuItem>
             <MenuItem to="/nova-solicitacao">Nova Solicitacao</MenuItem>
             <MenuItem to="/perfil">Meu Perfil</MenuItem>
+            {isSetorObra && (
+              <MenuItem to="/gestao-contratos">Gestao de Contratos</MenuItem>
+            )}
             {isFinanceiro && (
               <>
                 <MenuItem to="/comprovantes/upload">Upload Comprovantes</MenuItem>
@@ -41,6 +45,9 @@ export default function Layout() {
           <>
             <MenuItem to="/solicitacoes">Solicitacoes do Setor</MenuItem>
             <MenuItem to="/perfil">Meu Perfil</MenuItem>
+            {isSetorObra && (
+              <MenuItem to="/gestao-contratos">Gestao de Contratos</MenuItem>
+            )}
             {isFinanceiro && (
               <>
                 <MenuItem to="/comprovantes/upload">Upload Comprovantes</MenuItem>
@@ -55,6 +62,9 @@ export default function Layout() {
           <>
             <MenuItem to="/solicitacoes">Todas as Solicitacoes</MenuItem>
             <MenuItem to="/perfil">Meu Perfil</MenuItem>
+            {isSetorObra && (
+              <MenuItem to="/gestao-contratos">Gestao de Contratos</MenuItem>
+            )}
             {isFinanceiro && (
               <>
                 <MenuItem to="/comprovantes/upload">Upload Comprovantes</MenuItem>

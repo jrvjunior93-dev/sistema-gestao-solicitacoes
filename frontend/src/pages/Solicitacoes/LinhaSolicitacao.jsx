@@ -106,6 +106,13 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
         </td>
 
         <td
+          className="p-2 whitespace-nowrap truncate"
+          title={solicitacao.contrato?.ref_contrato || ''}
+        >
+          {solicitacao.contrato?.ref_contrato || '-'}
+        </td>
+
+        <td
           className="p-2 max-w-md truncate"
           title={solicitacao.descricao || ''}
         >

@@ -15,7 +15,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: false
       },
-      fornecedor: {
+      ref_contrato: {
         type: DataTypes.STRING,
         allowNull: true
       },

@@ -187,6 +187,37 @@ async function prepararBanco() {
   } catch (error) {
     // ignora se a constraint ja existe
   }
+
+  // Renomear fornecedor para ref_contrato
+  try {
+    const [rows] = await db.sequelize.query(
+      "SHOW COLUMNS FROM contratos LIKE 'fornecedor'"
+    );
+    if (rows.length > 0) {
+      await db.sequelize.query(
+        "ALTER TABLE contratos CHANGE fornecedor ref_contrato VARCHAR(255) NULL"
+      );
+    }
+  } catch (error) {
+    // ignora se a coluna ja foi renomeada
+  }
+
+  // Datas de medicao na solicitacao
+  try {
+    await db.sequelize.query(
+      "ALTER TABLE solicitacoes ADD COLUMN data_inicio_medicao DATE NULL"
+    );
+  } catch (error) {
+    // ignora se a coluna ja existe
+  }
+
+  try {
+    await db.sequelize.query(
+      "ALTER TABLE solicitacoes ADD COLUMN data_fim_medicao DATE NULL"
+    );
+  } catch (error) {
+    // ignora se a coluna ja existe
+  }
 }
 
 prepararBanco()

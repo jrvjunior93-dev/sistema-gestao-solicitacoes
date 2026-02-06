@@ -80,6 +80,14 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DATE,
         allowNull: true
       },
+      data_inicio_medicao: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      data_fim_medicao: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
       cancelada: {
         type: DataTypes.BOOLEAN,
         defaultValue: false

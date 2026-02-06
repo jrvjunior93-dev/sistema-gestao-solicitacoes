@@ -6,6 +6,7 @@ import {
   atualizarContrato,
   criarContrato,
   getContratoAnexos,
+  getContratos,
   getContratosResumo,
   uploadContratoAnexos
 } from '../services/contratos';
@@ -18,7 +19,7 @@ export default function GestaoContratos() {
   const [form, setForm] = useState({
     obra_id: '',
     codigo: '',
-    fornecedor: '',
+    ref_contrato: '',
     descricao: '',
     valor_total: ''
   });
@@ -37,22 +38,27 @@ export default function GestaoContratos() {
   ];
   const isAdminGEO =
     user?.perfil === 'ADMIN' && setorTokens.includes('GEO');
+  const isSetorObra = setorTokens.includes('OBRA');
   const podeAcessar =
-    user?.perfil === 'SUPERADMIN' || isAdminGEO;
+    user?.perfil === 'SUPERADMIN' || isAdminGEO || isSetorObra;
 
   useEffect(() => {
     if (podeAcessar) {
       carregar();
-      carregarCombos();
+      if (!isSetorObra) {
+        carregarCombos();
+      }
     } else {
       setLoading(false);
     }
-  }, [podeAcessar]);
+  }, [podeAcessar, isSetorObra]);
 
   async function carregar() {
     try {
       setLoading(true);
-      const data = await getContratosResumo();
+      const data = isSetorObra
+        ? await getContratos()
+        : await getContratosResumo();
       setContratos(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
@@ -106,7 +112,7 @@ export default function GestaoContratos() {
       const payload = {
         obra_id: Number(form.obra_id),
         codigo: String(form.codigo || '').trim(),
-        fornecedor: String(form.fornecedor || '').trim(),
+        ref_contrato: String(form.ref_contrato || '').trim(),
         descricao: String(form.descricao || '').trim() || null,
         valor_total: valorDisplay ? parseMoeda(valorDisplay) : null,
         tipo_macro_id: null,
@@ -127,7 +133,7 @@ export default function GestaoContratos() {
       setForm({
         obra_id: '',
         codigo: '',
-        fornecedor: '',
+        ref_contrato: '',
         descricao: '',
         valor_total: ''
       });
@@ -203,6 +209,51 @@ export default function GestaoContratos() {
     );
   }
 
+  if (isSetorObra) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-semibold">Gestao de Contratos</h1>
+
+        <div className="bg-white rounded-xl shadow overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="text-left p-3">Contrato</th>
+                <th className="text-left p-3">Obra</th>
+                <th className="text-left p-3">Ref. do Contrato</th>
+                <th className="text-left p-3">Descricao</th>
+                <th className="text-right p-3">Valor Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {contratos.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="p-4 text-center text-gray-500">
+                    Nenhum contrato encontrado.
+                  </td>
+                </tr>
+              )}
+              {contratos.map(c => (
+                <tr key={c.id} className="border-t">
+                  <td className="p-3 font-medium">{c.codigo}</td>
+                  <td className="p-3">{c.obra?.nome || '-'}</td>
+                  <td className="p-3">{c.ref_contrato || '-'}</td>
+                  <td className="p-3">{c.descricao || '-'}</td>
+                  <td className="p-3 text-right">
+                    {Number(c.valor_total || 0).toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL'
+                    })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Gestão de Contratos</h1>
@@ -241,10 +292,10 @@ export default function GestaoContratos() {
           </div>
 
           <div>
-            <label className="text-sm text-gray-600">Fornecedor</label>
+            <label className="text-sm text-gray-600">Ref. do Contrato</label>
             <input
-              name="fornecedor"
-              value={form.fornecedor}
+              name="ref_contrato"
+              value={form.ref_contrato}
               onChange={onChangeForm}
               className="w-full border rounded p-2"
             />
@@ -302,7 +353,7 @@ export default function GestaoContratos() {
             <tr>
               <th className="text-left p-3">Contrato</th>
               <th className="text-left p-3">Obra</th>
-              <th className="text-left p-3">Fornecedor</th>
+              <th className="text-left p-3">Ref. do Contrato</th>
               <th className="text-left p-3">Descricao</th>
               <th className="text-right p-3">Solicitado</th>
               <th className="text-right p-3">Pago</th>
@@ -326,7 +377,7 @@ export default function GestaoContratos() {
               <tr key={c.id} className="border-t">
                 <td className="p-3 font-medium">{c.codigo}</td>
                 <td className="p-3">{c.obra?.nome || '-'}</td>
-                <td className="p-3">{c.fornecedor || '-'}</td>
+                <td className="p-3">{c.ref_contrato || '-'}</td>
                 <td className="p-3">{c.descricao || '-'}</td>
                 <td className="p-3 text-right">
                   {Number(c.total_solicitado || 0).toLocaleString('pt-BR', {

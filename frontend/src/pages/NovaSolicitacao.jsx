@@ -22,6 +22,9 @@ export default function NovaSolicitacao() {
   const [areasObra, setAreasObra] = useState([]);
   const [tiposSub, setTiposSub] = useState([]);
   const [contratos, setContratos] = useState([]);
+  const [contratosRef, setContratosRef] = useState([]);
+  const [refContratoBusca, setRefContratoBusca] = useState('');
+  const [refResultados, setRefResultados] = useState([]);
   const [arquivos, setArquivos] = useState([]);
   const [valorTexto, setValorTexto] = useState('');
   const anexosRef = useRef(null);
@@ -31,10 +34,13 @@ export default function NovaSolicitacao() {
     tipo_solicitacao_id: '',
     tipo_sub_id: '',
     contrato_id: '',
+    codigo_contrato: '',
     area_responsavel: '',
     descricao: '',
     valor: '',
-    data_vencimento: ''
+    data_vencimento: '',
+    data_inicio_medicao: '',
+    data_fim_medicao: ''
   });
 
   useEffect(() => {
@@ -74,12 +80,14 @@ export default function NovaSolicitacao() {
     if (!form.obra_id) {
       setContratos([]);
       setForm(prev => ({ ...prev, contrato_id: '' }));
+      setContratosRef([]);
       return;
     }
 
     async function loadContratos() {
       const data = await getContratos({ obra_id: form.obra_id });
       setContratos(Array.isArray(data) ? data : []);
+      setContratosRef([]);
     }
 
     loadContratos();
@@ -91,7 +99,13 @@ export default function NovaSolicitacao() {
 
   const tipoSelecionado = tipos.find(t => String(t.id) === String(form.tipo_solicitacao_id));
   const nomeTipoSelecionado = String(tipoSelecionado?.nome || '').trim().toUpperCase();
+  const nomeTipoNormalizado = useMemo(() => {
+    return nomeTipoSelecionado
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }, [nomeTipoSelecionado]);
   const subtipoObrigatorio = nomeTipoSelecionado === 'ADM LOCAL DE OBRA';
+  const medicaoObrigatoria = nomeTipoNormalizado === 'MEDICAO';
 
   function formatarMoeda(valor) {
     if (Number.isNaN(valor)) return '';
@@ -133,6 +147,41 @@ export default function NovaSolicitacao() {
     setModalObras(true);
   }
 
+  async function buscarRefContrato() {
+    const termo = refContratoBusca.trim();
+    if (!termo) return;
+    const data = await getContratos({ ref: termo });
+    const lista = Array.isArray(data) ? data : [];
+    if (lista.length === 0) {
+      alert('Nenhuma referencia encontrada');
+      setRefResultados([]);
+      setContratosRef([]);
+      return;
+    }
+    setRefResultados(lista);
+    setContratosRef(lista);
+    if (lista.length === 1) {
+      selecionarContratoRef(lista[0]);
+    }
+  }
+
+  function selecionarContratoRef(contrato) {
+    setForm(prev => ({
+      ...prev,
+      contrato_id: String(contrato.id),
+      codigo_contrato: contrato.codigo || ''
+    }));
+    setRefContratoBusca(contrato.ref_contrato || '');
+    setRefResultados([]);
+  }
+
+  function limparRefContrato() {
+    setRefContratoBusca('');
+    setRefResultados([]);
+    setContratosRef([]);
+    setForm(prev => ({ ...prev, contrato_id: '', codigo_contrato: '' }));
+  }
+
   function selecionarObra(obra) {
     setForm(prev => ({ ...prev, obra_id: String(obra.id) }));
     setObraCodigo(obra.codigo || '');
@@ -153,13 +202,19 @@ export default function NovaSolicitacao() {
       alert('Para continuar, selecione o subtipo para Adm Local de Obra.');
       return;
     }
+    if (medicaoObrigatoria && (!form.data_inicio_medicao || !form.data_fim_medicao)) {
+      alert('Para Medicao, informe data inicial e data final.');
+      return;
+    }
 
     const payload = {
       ...form,
       contrato_id: form.contrato_id || null,
       tipo_sub_id: form.tipo_sub_id || null,
       tipo_macro_id: form.tipo_solicitacao_id || null,
-      data_vencimento: form.data_vencimento || null
+      data_vencimento: form.data_vencimento || null,
+      data_inicio_medicao: form.data_inicio_medicao || null,
+      data_fim_medicao: form.data_fim_medicao || null
     };
 
     const solicitacao = await createSolicitacao(payload);
@@ -178,10 +233,13 @@ export default function NovaSolicitacao() {
       tipo_solicitacao_id: '',
       tipo_sub_id: '',
       contrato_id: '',
+      codigo_contrato: '',
       area_responsavel: '',
       descricao: '',
       valor: '',
-      data_vencimento: ''
+      data_vencimento: '',
+      data_inicio_medicao: '',
+      data_fim_medicao: ''
     });
     setContratos([]);
     setTiposSub([]);
@@ -191,6 +249,9 @@ export default function NovaSolicitacao() {
     setListaModal([]);
     setModalObras(false);
     setValorTexto('');
+    setRefContratoBusca('');
+    setRefResultados([]);
+    setContratosRef([]);
     if (anexosRef.current) {
       anexosRef.current.value = '';
     }
@@ -205,6 +266,7 @@ export default function NovaSolicitacao() {
     const permitidas = new Set(areasObra.map(a => String(a).toUpperCase()));
     return setores.filter(s => permitidas.has(String(s.codigo || '').toUpperCase()));
   }, [setores, isSetorObra, areasObra]);
+  const contratosDisponiveis = contratosRef.length > 0 ? contratosRef : contratos;
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -278,6 +340,38 @@ export default function NovaSolicitacao() {
               ))}
             </select>
           </label>
+
+          <label className="grid gap-1 text-sm md:col-span-2">
+            Ref. do Contrato
+            <div className="flex gap-2">
+              <input
+                className="input"
+                placeholder="Buscar por referencia do contrato"
+                value={refContratoBusca}
+                onChange={e => setRefContratoBusca(e.target.value)}
+              />
+              <button type="button" className="btn btn-outline" onClick={buscarRefContrato}>
+                Buscar
+              </button>
+              <button type="button" className="btn btn-outline" onClick={limparRefContrato}>
+                Limpar
+              </button>
+            </div>
+            {refResultados.length > 1 && (
+              <div className="mt-2 border rounded p-2 max-h-40 overflow-auto">
+                {refResultados.map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => selecionarContratoRef(item)}
+                    className="block w-full text-left text-sm p-2 hover:bg-gray-50 rounded"
+                  >
+                    {item.codigo} - {item.ref_contrato || '-'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </label>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -307,15 +401,23 @@ export default function NovaSolicitacao() {
             Contrato (opcional)
             <select
               name="contrato_id"
-              onChange={handleChange}
+              onChange={e => {
+                const contratoId = e.target.value;
+                const contrato = contratosDisponiveis.find(c => String(c.id) === String(contratoId));
+                setForm(prev => ({
+                  ...prev,
+                  contrato_id: contratoId,
+                  codigo_contrato: contrato?.codigo || ''
+                }));
+              }}
               className="input"
-              disabled={!form.obra_id}
+              disabled={!form.obra_id && contratosDisponiveis.length === 0}
               value={form.contrato_id}
             >
               <option value="">Nao vincular</option>
-              {contratos.map(c => (
+              {contratosDisponiveis.map(c => (
                 <option key={c.id} value={c.id}>
-                  {c.codigo}
+                  {c.codigo} - {c.ref_contrato || '-'}
                 </option>
               ))}
             </select>
@@ -343,6 +445,33 @@ export default function NovaSolicitacao() {
             value={form.data_vencimento}
           />
         </label>
+
+        {medicaoObrigatoria && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="grid gap-1 text-sm">
+              Data inicial (Medição)
+              <input
+                name="data_inicio_medicao"
+                type="date"
+                onChange={handleChange}
+                className="input"
+                value={form.data_inicio_medicao}
+                required
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Data final (Medição)
+              <input
+                name="data_fim_medicao"
+                type="date"
+                onChange={handleChange}
+                className="input"
+                value={form.data_fim_medicao}
+                required
+              />
+            </label>
+          </div>
+        )}
 
         <label className="grid gap-1 text-sm">
           Descricao

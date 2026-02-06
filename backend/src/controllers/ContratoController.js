@@ -1,3 +1,4 @@
+const { Op } = require('sequelize');
 const {
   Contrato,
   ContratoAnexo,
@@ -6,7 +7,8 @@ const {
   TipoSubContrato,
   Solicitacao,
   Comprovante,
-  Setor
+  Setor,
+  UsuarioObra
 } = require('../models');
 const { uploadToS3 } = require('../services/s3');
 
@@ -29,14 +31,56 @@ async function isAdminGEO(req) {
   return nome === 'GEO' || codigo === 'GEO' || areaToken === 'GEO';
 }
 
+async function isSetorObra(req) {
+  if (!req.user?.setor_id && !req.user?.area) return false;
+
+  const areaToken = String(req.user?.area || '').trim().toUpperCase();
+  if (areaToken === 'OBRA') return true;
+
+  if (!req.user?.setor_id) return false;
+
+  const setor = await Setor.findByPk(req.user.setor_id, {
+    attributes: ['nome', 'codigo']
+  });
+  if (!setor) return false;
+
+  const nome = String(setor.nome || '').trim().toUpperCase();
+  const codigo = String(setor.codigo || '').trim().toUpperCase();
+
+  return nome === 'OBRA' || codigo === 'OBRA';
+}
+
 module.exports = {
   async index(req, res) {
     try {
-      const { obra_id } = req.query;
+      const { obra_id, ref } = req.query;
       const where = {};
+      const podeAcessar = await isAdminGEO(req);
+      const acessoObra = await isSetorObra(req);
 
       if (obra_id) {
         where.obra_id = obra_id;
+      }
+
+      if (ref) {
+        where.ref_contrato = { [Op.like]: `%${String(ref).trim()}%` };
+      }
+
+      if (acessoObra && !podeAcessar) {
+        const vinculos = await UsuarioObra.findAll({
+          where: { user_id: req.user.id },
+          attributes: ['obra_id']
+        });
+        const obrasVinculadas = vinculos.map(v => v.obra_id);
+        if (obrasVinculadas.length === 0) {
+          return res.json([]);
+        }
+        if (where.obra_id && !obrasVinculadas.includes(Number(where.obra_id))) {
+          return res.json([]);
+        }
+        where.obra_id = where.obra_id
+          ? where.obra_id
+          : { [Op.in]: obrasVinculadas };
       }
 
       const contratos = await Contrato.findAll({
@@ -66,6 +110,7 @@ module.exports = {
       const {
         obra_id,
         codigo,
+        ref_contrato,
         fornecedor,
         descricao,
         valor_total,
@@ -75,9 +120,10 @@ module.exports = {
         ajuste_pago
       } = req.body;
 
-      if (!obra_id || !codigo || !fornecedor || valor_total === undefined || valor_total === null) {
+      const refContratoFinal = ref_contrato ?? fornecedor;
+      if (!obra_id || !codigo || !refContratoFinal || valor_total === undefined || valor_total === null) {
         return res.status(400).json({
-          error: 'Obra, codigo, fornecedor e valor total sao obrigatorios'
+          error: 'Obra, codigo, ref do contrato e valor total sao obrigatorios'
         });
       }
 
@@ -93,7 +139,7 @@ module.exports = {
       const contrato = await Contrato.create({
         obra_id,
         codigo,
-        fornecedor,
+        ref_contrato: refContratoFinal,
         descricao: descricao || null,
         valor_total,
         ajuste_solicitado: ajuste_solicitado ?? 0,
@@ -220,6 +266,7 @@ module.exports = {
       const { id } = req.params;
       const {
         codigo,
+        ref_contrato,
         fornecedor,
         descricao,
         valor_total,
@@ -237,7 +284,7 @@ module.exports = {
 
       await contrato.update({
         codigo: codigo ?? contrato.codigo,
-        fornecedor: fornecedor ?? contrato.fornecedor,
+        ref_contrato: (ref_contrato ?? fornecedor) ?? contrato.ref_contrato,
         descricao: descricao ?? contrato.descricao,
         valor_total: valor_total ?? contrato.valor_total,
         tipo_macro_id: tipo_macro_id ?? contrato.tipo_macro_id,

@@ -1,7 +1,10 @@
 import { API_URL, authHeaders } from './api';
 
-export async function getContratos({ obra_id } = {}) {
-  const params = obra_id ? `?obra_id=${obra_id}` : '';
+export async function getContratos({ obra_id, ref } = {}) {
+  const search = new URLSearchParams();
+  if (obra_id) search.set('obra_id', obra_id);
+  if (ref) search.set('ref', ref);
+  const params = search.toString() ? `?${search.toString()}` : '';
   const res = await fetch(`${API_URL}/contratos${params}`, {
     headers: authHeaders()
   });
