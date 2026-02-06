@@ -12,8 +12,13 @@ export async function getContratos({ obra_id, ref } = {}) {
   return res.json();
 }
 
-export async function getContratosResumo() {
-  const res = await fetch(`${API_URL}/contratos/resumo`, {
+export async function getContratosResumo({ obra_id, ref, codigo } = {}) {
+  const search = new URLSearchParams();
+  if (obra_id) search.set('obra_id', obra_id);
+  if (ref) search.set('ref', ref);
+  if (codigo) search.set('codigo', codigo);
+  const params = search.toString() ? `?${search.toString()}` : '';
+  const res = await fetch(`${API_URL}/contratos/resumo${params}`, {
     headers: authHeaders()
   });
   if (!res.ok) throw new Error('Erro ao buscar resumo de contratos');

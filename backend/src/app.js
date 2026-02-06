@@ -218,6 +218,15 @@ async function prepararBanco() {
   } catch (error) {
     // ignora se a coluna ja existe
   }
+
+  // Itens de apropriacao no contrato
+  try {
+    await db.sequelize.query(
+      "ALTER TABLE contratos ADD COLUMN itens_apropriacao TEXT NULL"
+    );
+  } catch (error) {
+    // ignora se a coluna ja existe
+  }
 }
 
 prepararBanco()

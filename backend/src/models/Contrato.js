@@ -23,6 +23,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true
       },
+      itens_apropriacao: {
+        type: DataTypes.TEXT,
+        allowNull: true
+      },
       valor_total: {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: true

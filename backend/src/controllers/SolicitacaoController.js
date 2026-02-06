@@ -464,7 +464,8 @@ module.exports = {
         contrato_id,
         data_vencimento,
         data_inicio_medicao,
-        data_fim_medicao
+        data_fim_medicao,
+        itens_apropriacao
       } = req.body;
 
       if (!obra_id || !tipo_solicitacao_id || !descricao || !area_responsavel) {
@@ -486,6 +487,11 @@ module.exports = {
       if (nomeTipoNormalizado === 'MEDICAO' && (!data_inicio_medicao || !data_fim_medicao)) {
         return res.status(400).json({
           error: 'Para Medicao, informe data inicial e data final.'
+        });
+      }
+      if (nomeTipoNormalizado === 'ABERTURA DE CONTRATO' && !itens_apropriacao) {
+        return res.status(400).json({
+          error: 'Para Abertura de Contrato, informe os itens de apropriacao.'
         });
       }
 
@@ -517,7 +523,13 @@ module.exports = {
         usuario_responsavel_id: usuarioId,
         setor: req.user.area,
         acao: 'SOLICITACAO_CRIADA',
-        status_novo: 'PENDENTE'
+        status_novo: 'PENDENTE',
+        descricao: itens_apropriacao
+          ? `Itens de apropriacao: ${String(itens_apropriacao).trim()}`
+          : null,
+        metadata: itens_apropriacao
+          ? JSON.stringify({ itens_apropriacao: String(itens_apropriacao).trim() })
+          : null
       });
 
       await criarNotificacao({

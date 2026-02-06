@@ -53,7 +53,7 @@ async function isSetorObra(req) {
 module.exports = {
   async index(req, res) {
     try {
-      const { obra_id, ref } = req.query;
+      const { obra_id, ref, codigo } = req.query;
       const where = {};
       const podeAcessar = await isAdminGEO(req);
       const acessoObra = await isSetorObra(req);
@@ -64,6 +64,9 @@ module.exports = {
 
       if (ref) {
         where.ref_contrato = { [Op.like]: `%${String(ref).trim()}%` };
+      }
+      if (codigo) {
+        where.codigo = { [Op.like]: `%${String(codigo).trim()}%` };
       }
 
       if (acessoObra && !podeAcessar) {
@@ -113,6 +116,7 @@ module.exports = {
         ref_contrato,
         fornecedor,
         descricao,
+        itens_apropriacao,
         valor_total,
         tipo_macro_id,
         tipo_sub_id,
@@ -141,6 +145,7 @@ module.exports = {
         codigo,
         ref_contrato: refContratoFinal,
         descricao: descricao || null,
+        itens_apropriacao: itens_apropriacao || null,
         valor_total,
         ajuste_solicitado: ajuste_solicitado ?? 0,
         ajuste_pago: ajuste_pago ?? 0,
@@ -166,6 +171,8 @@ module.exports = {
 
       const where = {};
 
+      const { obra_id, ref, codigo } = req.query;
+
       if (acessoObra && !podeAcessar) {
         const vinculos = await UsuarioObra.findAll({
           where: { user_id: req.user.id },
@@ -175,7 +182,20 @@ module.exports = {
         if (obrasVinculadas.length === 0) {
           return res.json([]);
         }
-        where.obra_id = { [Op.in]: obrasVinculadas };
+        if (obra_id && !obrasVinculadas.includes(Number(obra_id))) {
+          return res.json([]);
+        }
+        where.obra_id = obra_id ? obra_id : { [Op.in]: obrasVinculadas };
+      }
+
+      if (obra_id) {
+        where.obra_id = obra_id;
+      }
+      if (ref) {
+        where.ref_contrato = { [Op.like]: `%${String(ref).trim()}%` };
+      }
+      if (codigo) {
+        where.codigo = { [Op.like]: `%${String(codigo).trim()}%` };
       }
 
       const contratos = await Contrato.findAll({
@@ -274,6 +294,7 @@ module.exports = {
         ref_contrato,
         fornecedor,
         descricao,
+        itens_apropriacao,
         valor_total,
         tipo_macro_id,
         tipo_sub_id,
@@ -291,6 +312,7 @@ module.exports = {
         codigo: codigo ?? contrato.codigo,
         ref_contrato: (ref_contrato ?? fornecedor) ?? contrato.ref_contrato,
         descricao: descricao ?? contrato.descricao,
+        itens_apropriacao: itens_apropriacao ?? contrato.itens_apropriacao,
         valor_total: valor_total ?? contrato.valor_total,
         tipo_macro_id: tipo_macro_id ?? contrato.tipo_macro_id,
         tipo_sub_id: tipo_sub_id ?? contrato.tipo_sub_id,

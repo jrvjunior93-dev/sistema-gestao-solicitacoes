@@ -37,6 +37,7 @@ export default function NovaSolicitacao() {
     codigo_contrato: '',
     area_responsavel: '',
     descricao: '',
+    itens_apropriacao: '',
     valor: '',
     data_vencimento: '',
     data_inicio_medicao: '',
@@ -106,6 +107,7 @@ export default function NovaSolicitacao() {
   }, [nomeTipoSelecionado]);
   const subtipoObrigatorio = nomeTipoSelecionado === 'ADM LOCAL DE OBRA';
   const medicaoObrigatoria = nomeTipoNormalizado === 'MEDICAO';
+  const aberturaContratoObrigatoria = nomeTipoNormalizado === 'ABERTURA DE CONTRATO';
 
   function formatarMoeda(valor) {
     if (Number.isNaN(valor)) return '';
@@ -206,6 +208,10 @@ export default function NovaSolicitacao() {
       alert('Para Medicao, informe data inicial e data final.');
       return;
     }
+    if (aberturaContratoObrigatoria && !form.itens_apropriacao) {
+      alert('Para Abertura de Contrato, informe os itens de apropriacao.');
+      return;
+    }
 
     const payload = {
       ...form,
@@ -214,7 +220,8 @@ export default function NovaSolicitacao() {
       tipo_macro_id: form.tipo_solicitacao_id || null,
       data_vencimento: form.data_vencimento || null,
       data_inicio_medicao: form.data_inicio_medicao || null,
-      data_fim_medicao: form.data_fim_medicao || null
+      data_fim_medicao: form.data_fim_medicao || null,
+      itens_apropriacao: form.itens_apropriacao || null
     };
 
     const solicitacao = await createSolicitacao(payload);
@@ -236,6 +243,7 @@ export default function NovaSolicitacao() {
       codigo_contrato: '',
       area_responsavel: '',
       descricao: '',
+      itens_apropriacao: '',
       valor: '',
       data_vencimento: '',
       data_inicio_medicao: '',
@@ -471,6 +479,20 @@ export default function NovaSolicitacao() {
               />
             </label>
           </div>
+        )}
+
+        {aberturaContratoObrigatoria && (
+          <label className="grid gap-1 text-sm">
+            Itens de Apropriacao
+            <textarea
+              name="itens_apropriacao"
+              onChange={handleChange}
+              className="input min-h-[120px]"
+              required
+              value={form.itens_apropriacao}
+              placeholder="Descreva os itens de apropriacao"
+            />
+          </label>
         )}
 
         <label className="grid gap-1 text-sm">
