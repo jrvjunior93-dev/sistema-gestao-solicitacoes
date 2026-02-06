@@ -206,19 +206,8 @@ module.exports = {
           (acc, s) => acc + Number(s.valor || 0),
           0
         );
-        const totalPagoComprovantes = solicitacoes.reduce((acc, s) => {
-          const pagos = (s.comprovantes || []).reduce(
-            (sum, cp) => sum + Number(cp.valor || 0),
-            0
-          );
-          return acc + pagos;
-        }, 0);
         const totalPagoStatus = solicitacoes.reduce((acc, s) => {
           if (String(s.status_global || '').toUpperCase() !== 'PAGA') {
-            return acc;
-          }
-          const comprovantes = s.comprovantes || [];
-          if (comprovantes.length > 0) {
             return acc;
           }
           return acc + Number(s.valor || 0);
@@ -228,7 +217,7 @@ module.exports = {
         const ajustePago = Number(c.ajuste_pago || 0);
         const valorContrato = Number(c.valor_total || 0);
         const totalSolicitadoFinal = totalSolicitado + valorContrato + ajusteSolicitado;
-        const totalPagoFinal = totalPagoComprovantes + totalPagoStatus + ajustePago;
+        const totalPagoFinal = totalPagoStatus + ajustePago;
 
         return {
           ...c.toJSON(),
