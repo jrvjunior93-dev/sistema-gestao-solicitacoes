@@ -57,7 +57,7 @@ export default function GestaoContratos() {
     try {
       setLoading(true);
       const data = isSetorObra
-        ? await getContratos()
+        ? await getContratosResumo()
         : await getContratosResumo();
       setContratos(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -223,12 +223,15 @@ export default function GestaoContratos() {
                 <th className="text-left p-3">Ref. do Contrato</th>
                 <th className="text-left p-3">Descricao</th>
                 <th className="text-right p-3">Valor Total</th>
+                <th className="text-right p-3">Solicitado</th>
+                <th className="text-right p-3">Pago</th>
+                <th className="text-right p-3">A pagar</th>
               </tr>
             </thead>
             <tbody>
               {contratos.length === 0 && (
                 <tr>
-                  <td colSpan="5" className="p-4 text-center text-gray-500">
+                  <td colSpan="8" className="p-4 text-center text-gray-500">
                     Nenhum contrato encontrado.
                   </td>
                 </tr>
@@ -241,6 +244,24 @@ export default function GestaoContratos() {
                   <td className="p-3">{c.descricao || '-'}</td>
                   <td className="p-3 text-right">
                     {Number(c.valor_total || 0).toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL'
+                    })}
+                  </td>
+                  <td className="p-3 text-right">
+                    {Number(c.total_solicitado || 0).toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL'
+                    })}
+                  </td>
+                  <td className="p-3 text-right">
+                    {Number(c.total_pago || 0).toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL'
+                    })}
+                  </td>
+                  <td className="p-3 text-right">
+                    {Number(c.total_a_pagar || 0).toLocaleString('pt-BR', {
                       style: 'currency',
                       currency: 'BRL'
                     })}

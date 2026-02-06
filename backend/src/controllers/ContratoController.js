@@ -158,12 +158,28 @@ module.exports = {
   async resumo(req, res) {
     try {
       const podeAcessar = await isAdminGEO(req);
+      const acessoObra = await isSetorObra(req);
 
-      if (!podeAcessar) {
+      if (!podeAcessar && !acessoObra) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 
+      const where = {};
+
+      if (acessoObra && !podeAcessar) {
+        const vinculos = await UsuarioObra.findAll({
+          where: { user_id: req.user.id },
+          attributes: ['obra_id']
+        });
+        const obrasVinculadas = vinculos.map(v => v.obra_id);
+        if (obrasVinculadas.length === 0) {
+          return res.json([]);
+        }
+        where.obra_id = { [Op.in]: obrasVinculadas };
+      }
+
       const contratos = await Contrato.findAll({
+        where,
         include: [
           { model: Obra, as: 'obra', attributes: ['id', 'nome', 'codigo'] },
           { model: TipoSolicitacao, as: 'tipoMacro', attributes: ['id', 'nome'] },
