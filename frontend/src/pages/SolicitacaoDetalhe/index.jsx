@@ -35,11 +35,13 @@ export default function SolicitacaoDetalhe() {
     user?.setor?.nome ||
     '';
   const setorParaStatus =
-    isSetorGeo
-      ? 'GEO'
-      : (perfil === 'SUPERADMIN' || perfil.startsWith('ADMIN'))
-        ? solicitacao?.area_responsavel
-        : setorUsuario;
+    perfil === 'SUPERADMIN'
+      ? null
+      : isSetorGeo
+        ? 'GEO'
+        : perfil.startsWith('ADMIN')
+          ? solicitacao?.area_responsavel
+          : setorUsuario;
 
   useEffect(() => {
     carregar();

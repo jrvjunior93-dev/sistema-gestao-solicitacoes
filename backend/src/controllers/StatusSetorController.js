@@ -5,8 +5,9 @@ module.exports = {
   async index(req, res) {
     try {
       const { setor } = req.query;
+      const perfil = String(req.user?.perfil || '').trim().toUpperCase();
       const where = {};
-      if (setor) {
+      if (setor && perfil !== 'SUPERADMIN') {
         const setorRow = await Setor.findOne({
           where: {
             [Op.or]: [

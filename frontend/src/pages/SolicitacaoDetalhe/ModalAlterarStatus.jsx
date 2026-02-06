@@ -27,7 +27,13 @@ export default function ModalAlterarStatus({
         setStatus(ativos);
         return;
       }
-      setStatus([]);
+      const data = await getStatusSetor();
+      const ativos = (Array.isArray(data) ? data : [])
+        .filter(s => s.ativo)
+        .map(s => s.nome);
+      const unicos = Array.from(new Set(ativos));
+      unicos.sort((a, b) => a.localeCompare(b));
+      setStatus(unicos);
     } catch (error) {
       console.error(error);
       setStatus([]);

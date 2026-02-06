@@ -654,6 +654,8 @@ module.exports = {
       const { status } = req.body;
       const usuarioId = req.user.id;
       const usuario = await User.findByPk(usuarioId);
+      const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+      const isSuperadmin = perfil === 'SUPERADMIN';
       const areaUsuario = await obterAreaUsuario(req);
       const isSetorObra = await isUsuarioSetorObra(req);
 
@@ -683,62 +685,64 @@ module.exports = {
 
       const setorAtual = solicitacao.area_responsavel;
 
-      let etapas = await EtapaSetor.findAll({
-        where: {
-          setor: setorAtual,
-          ativo: true
-        },
-        attributes: ['nome']
-      });
-
-      if (etapas.length === 0 && setorAtual) {
-        const setorRow = await Setor.findOne({
+      if (!isSuperadmin) {
+        let etapas = await EtapaSetor.findAll({
           where: {
-            [Op.or]: [
-              { codigo: setorAtual },
-              { nome: setorAtual },
-              Sequelize.where(
-                Sequelize.fn('LOWER', Sequelize.col('codigo')),
-                String(setorAtual).toLowerCase()
-              ),
-              Sequelize.where(
-                Sequelize.fn('LOWER', Sequelize.col('nome')),
-                String(setorAtual).toLowerCase()
-              )
-            ]
-          }
+            setor: setorAtual,
+            ativo: true
+          },
+          attributes: ['nome']
         });
 
-        if (setorRow && setorRow.codigo) {
-          etapas = await EtapaSetor.findAll({
+        if (etapas.length === 0 && setorAtual) {
+          const setorRow = await Setor.findOne({
             where: {
-              setor: setorRow.codigo,
-              ativo: true
-            },
-            attributes: ['nome']
+              [Op.or]: [
+                { codigo: setorAtual },
+                { nome: setorAtual },
+                Sequelize.where(
+                  Sequelize.fn('LOWER', Sequelize.col('codigo')),
+                  String(setorAtual).toLowerCase()
+                ),
+                Sequelize.where(
+                  Sequelize.fn('LOWER', Sequelize.col('nome')),
+                  String(setorAtual).toLowerCase()
+                )
+              ]
+            }
           });
-        }
-      }
 
-      if (etapas.length > 0) {
-        const permitidos = etapas.map(e => e.nome);
-        if (!permitidos.includes(status)) {
-          return res.status(400).json({
-            error: 'Status nao permitido para este setor'
-          });
+          if (setorRow && setorRow.codigo) {
+            etapas = await EtapaSetor.findAll({
+              where: {
+                setor: setorRow.codigo,
+                ativo: true
+              },
+              attributes: ['nome']
+            });
+          }
         }
-      } else {
-        const transicoes = {
-          PENDENTE: ['EM_ANALISE'],
-          EM_ANALISE: ['APROVADA', 'AGUARDANDO_AJUSTE', 'REJEITADA'],
-          AGUARDANDO_AJUSTE: ['EM_ANALISE', 'APROVADA', 'REJEITADA'],
-          APROVADA: ['CONCLUIDA']
-        };
 
-        if (!transicoes[statusAnterior]?.includes(status)) {
-          return res.status(400).json({
-            error: `Transicao invalida de ${statusAnterior} para ${status}`
-          });
+        if (etapas.length > 0) {
+          const permitidos = etapas.map(e => e.nome);
+          if (!permitidos.includes(status)) {
+            return res.status(400).json({
+              error: 'Status nao permitido para este setor'
+            });
+          }
+        } else {
+          const transicoes = {
+            PENDENTE: ['EM_ANALISE'],
+            EM_ANALISE: ['APROVADA', 'AGUARDANDO_AJUSTE', 'REJEITADA'],
+            AGUARDANDO_AJUSTE: ['EM_ANALISE', 'APROVADA', 'REJEITADA'],
+            APROVADA: ['CONCLUIDA']
+          };
+
+          if (!transicoes[statusAnterior]?.includes(status)) {
+            return res.status(400).json({
+              error: `Transicao invalida de ${statusAnterior} para ${status}`
+            });
+          }
         }
       }
 
