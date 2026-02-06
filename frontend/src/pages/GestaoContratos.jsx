@@ -222,7 +222,6 @@ export default function GestaoContratos() {
                 <th className="text-left p-3">Obra</th>
                 <th className="text-left p-3">Ref. do Contrato</th>
                 <th className="text-left p-3">Descricao</th>
-                <th className="text-right p-3">Valor Total</th>
                 <th className="text-right p-3">Solicitado</th>
                 <th className="text-right p-3">Pago</th>
                 <th className="text-right p-3">A pagar</th>
@@ -231,7 +230,7 @@ export default function GestaoContratos() {
             <tbody>
               {contratos.length === 0 && (
                 <tr>
-                  <td colSpan="8" className="p-4 text-center text-gray-500">
+                  <td colSpan="7" className="p-4 text-center text-gray-500">
                     Nenhum contrato encontrado.
                   </td>
                 </tr>
@@ -242,12 +241,6 @@ export default function GestaoContratos() {
                   <td className="p-3">{c.obra?.nome || '-'}</td>
                   <td className="p-3">{c.ref_contrato || '-'}</td>
                   <td className="p-3">{c.descricao || '-'}</td>
-                  <td className="p-3 text-right">
-                    {Number(c.valor_total || 0).toLocaleString('pt-BR', {
-                      style: 'currency',
-                      currency: 'BRL'
-                    })}
-                  </td>
                   <td className="p-3 text-right">
                     {Number(c.total_solicitado || 0).toLocaleString('pt-BR', {
                       style: 'currency',
