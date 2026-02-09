@@ -249,7 +249,7 @@ module.exports = {
         perfil.startsWith('ADMIN') &&
         setorTokens.includes('GEO');
 
-      if (isUsuarioGeo) {
+      if (isUsuarioGeo && !adminGEO && perfil !== 'SUPERADMIN') {
         where[Op.and] = where[Op.and] || [];
         where[Op.and].push({
           id: {
@@ -263,7 +263,26 @@ module.exports = {
         });
       }
 
-      // SUPERADMIN e ADMIN GEO veem tudo; demais passam por regra de visibilidade
+      if (perfil !== 'SUPERADMIN' && adminGEO) {
+        // ADMIN GEO ve apenas solicitacoes do GEO ou que ja passaram pelo GEO
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({
+          [Op.or]: [
+            { area_responsavel: 'GEO' },
+            {
+              id: {
+                [Op.in]: Sequelize.literal(`(
+                  SELECT solicitacao_id
+                  FROM historicos
+                  WHERE setor = 'GEO'
+                )`)
+              }
+            }
+          ]
+        });
+      }
+
+      // SUPERADMIN ve tudo; demais passam por regra de visibilidade
       if (perfil !== 'SUPERADMIN' && !adminGEO && !isSetorObra && !isUsuarioGeo) {
         const condicoes = [];
 
