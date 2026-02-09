@@ -68,4 +68,18 @@ export async function updateValorSolicitacao(id, valor) {
   return true;
 }
 
+export async function deleteSolicitacao(id) {
+  const res = await fetch(`${API_URL}/solicitacoes/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+
+  return true;
+}
+
 

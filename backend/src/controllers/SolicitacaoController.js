@@ -1,6 +1,7 @@
 const {
   Solicitacao,
   Historico,
+  StatusArea,
   Obra,
   User,
   TipoSolicitacao,
@@ -8,9 +9,13 @@ const {
   Contrato,
   TipoSubContrato,
   Anexo,
+  MensagemSetor,
   SetorPermissao,
   Setor,
   SolicitacaoVisibilidadeUsuario,
+  Comprovante,
+  Notificacao,
+  NotificacaoDestinatario,
   Sequelize
 } = require('../models');
 
@@ -1169,6 +1174,61 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao ocultar solicitacao' });
+    }
+  },
+
+  // =====================================================
+  // EXCLUIR SOLICITACAO (SUPERADMIN)
+  // =====================================================
+  async excluir(req, res) {
+    try {
+      const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+      if (perfil !== 'SUPERADMIN') {
+        return res.status(403).json({ error: 'Acesso negado' });
+      }
+
+      const { id } = req.params;
+      const solicitacao = await Solicitacao.findByPk(id);
+      if (!solicitacao) {
+        return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+      }
+
+      const transaction = await Solicitacao.sequelize.transaction();
+      try {
+        const notificacoes = await Notificacao.findAll({
+          where: { solicitacao_id: id },
+          attributes: ['id'],
+          transaction
+        });
+        const notificacaoIds = notificacoes.map(n => n.id);
+        if (notificacaoIds.length > 0) {
+          await NotificacaoDestinatario.destroy({
+            where: { notificacao_id: { [Op.in]: notificacaoIds } },
+            transaction
+          });
+        }
+
+        await Promise.all([
+          Notificacao.destroy({ where: { solicitacao_id: id }, transaction }),
+          Historico.destroy({ where: { solicitacao_id: id }, transaction }),
+          Anexo.destroy({ where: { solicitacao_id: id }, transaction }),
+          MensagemSetor.destroy({ where: { solicitacao_id: id }, transaction }),
+          StatusArea.destroy({ where: { solicitacao_id: id }, transaction }),
+          Comprovante.destroy({ where: { solicitacao_id: id }, transaction }),
+          SolicitacaoVisibilidadeUsuario.destroy({ where: { solicitacao_id: id }, transaction })
+        ]);
+
+        await Solicitacao.destroy({ where: { id }, transaction });
+        await transaction.commit();
+      } catch (error) {
+        await transaction.rollback();
+        throw error;
+      }
+
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao excluir solicitacao' });
     }
   },
 

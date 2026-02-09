@@ -5,7 +5,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import ModalAtribuirResponsavel from './ModalAtribuirResponsavel';
 import ModalEnviarSetor from './ModalEnviarSetor';
 import { API_URL, authHeaders } from '../../services/api';
-import { updateValorSolicitacao } from '../../services/solicitacoes';
+import { deleteSolicitacao, updateValorSolicitacao } from '../../services/solicitacoes';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap, permissaoUsuario }) {
@@ -48,7 +48,6 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
       : true);
 
   const navigate = useNavigate();
-  const podeOcultar = ['CONCLUIDA', 'FINALIZADA'].includes(solicitacao.status_global);
   const dataCriacaoRaw =
     solicitacao.createdAt ||
     solicitacao.data_criacao ||
@@ -96,22 +95,14 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
     }
   }
 
-  async function ocultar() {
-    if (!confirm('Ocultar esta solicitação da sua lista?')) return;
-
+  async function excluirSolicitacao() {
+    if (!confirm('Excluir esta solicitacao? Esta acao nao pode ser desfeita.')) return;
     try {
-      await fetch(
-        `${API_URL}/solicitacoes/${solicitacao.id}/ocultar`,
-        {
-          method: 'PATCH',
-          headers: authHeaders()
-        }
-      );
-
+      await deleteSolicitacao(solicitacao.id);
       onAtualizar();
     } catch (err) {
       console.error(err);
-      alert('Erro ao ocultar solicitação');
+      alert('Erro ao excluir solicitacao');
     }
   }
 
@@ -301,14 +292,15 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
             </button>
           )}
 
-          <button
-            className="hover:underline text-xs"
-            style={{ color: acaoCores.ocultar || '#6b7280' }}
-            onClick={ocultar}
-            disabled={!podeOcultar}
-          >
-            Ocultar
-          </button>
+          {isSuperadmin && (
+            <button
+              className="hover:underline text-xs"
+              style={{ color: '#dc2626' }}
+              onClick={excluirSolicitacao}
+            >
+              Excluir
+            </button>
+          )}
 
           </div>
         </td>
