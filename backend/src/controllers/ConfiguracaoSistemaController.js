@@ -52,7 +52,8 @@ module.exports = {
   async getTema(req, res) {
     try {
       const item = await ConfiguracaoSistema.findOne({
-        where: { chave: CHAVE_TEMA }
+        where: { chave: CHAVE_TEMA },
+        order: [['id', 'DESC']]
       });
       if (!item || !item.valor) {
         return res.json(getTemaPadrao());
@@ -73,10 +74,19 @@ module.exports = {
       const tema = req.body || {};
       const valor = JSON.stringify(tema);
 
-      await ConfiguracaoSistema.upsert({
-        chave: CHAVE_TEMA,
-        valor
+      const existente = await ConfiguracaoSistema.findOne({
+        where: { chave: CHAVE_TEMA },
+        order: [['id', 'DESC']]
       });
+
+      if (existente) {
+        await existente.update({ valor });
+      } else {
+        await ConfiguracaoSistema.create({
+          chave: CHAVE_TEMA,
+          valor
+        });
+      }
 
       return res.json({ ok: true });
     } catch (error) {
@@ -89,7 +99,8 @@ module.exports = {
   async getAreasObra(req, res) {
     try {
       const item = await ConfiguracaoSistema.findOne({
-        where: { chave: CHAVE_AREAS_OBRA }
+        where: { chave: CHAVE_AREAS_OBRA },
+        order: [['id', 'DESC']]
       });
 
       if (!item || !item.valor) {
@@ -113,10 +124,19 @@ module.exports = {
         .filter(Boolean)
       )];
 
-      await ConfiguracaoSistema.upsert({
-        chave: CHAVE_AREAS_OBRA,
-        valor: JSON.stringify({ areas })
+      const existente = await ConfiguracaoSistema.findOne({
+        where: { chave: CHAVE_AREAS_OBRA },
+        order: [['id', 'DESC']]
       });
+
+      if (existente) {
+        await existente.update({ valor: JSON.stringify({ areas }) });
+      } else {
+        await ConfiguracaoSistema.create({
+          chave: CHAVE_AREAS_OBRA,
+          valor: JSON.stringify({ areas })
+        });
+      }
 
       return res.json({ ok: true, areas });
     } catch (error) {
