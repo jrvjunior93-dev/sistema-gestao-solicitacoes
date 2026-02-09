@@ -53,4 +53,19 @@ export async function updateStatusSolicitacao(id, status) {
   return true;
 }
 
+export async function updateValorSolicitacao(id, valor) {
+  const res = await fetch(`${API_URL}/solicitacoes/${id}/valor`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ valor })
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+
+  return true;
+}
+
 

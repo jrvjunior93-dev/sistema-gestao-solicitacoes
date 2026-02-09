@@ -867,6 +867,86 @@ module.exports = {
   },
 
   // =====================================================
+  // ATUALIZAR VALOR DA SOLICITACAO (ADMIN GEO / SUPERADMIN)
+  // =====================================================
+  async atualizarValor(req, res) {
+    try {
+      const { id } = req.params;
+      const { valor } = req.body;
+      const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+      const isGeo = await isSetorGeo(req);
+      const podeEditar =
+        perfil === 'SUPERADMIN' ||
+        (perfil.startsWith('ADMIN') && isGeo);
+
+      if (!podeEditar) {
+        return res.status(403).json({
+          error: 'Acesso negado para alterar valor.'
+        });
+      }
+
+      const solicitacao = await Solicitacao.findByPk(id);
+      if (!solicitacao) {
+        return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+      }
+
+      const acessoObra = await validarAcessoObra(req, solicitacao);
+      if (!acessoObra) {
+        return res.status(403).json({
+          error: 'Acesso negado. Vincule o usuario a obra para continuar.'
+        });
+      }
+
+      let novoValor = valor;
+      if (novoValor === '' || novoValor === undefined) {
+        novoValor = null;
+      }
+      if (novoValor !== null) {
+        novoValor = Number(novoValor);
+        if (Number.isNaN(novoValor)) {
+          return res.status(400).json({ error: 'Valor invalido' });
+        }
+      }
+
+      const valorAnterior = solicitacao.valor ?? null;
+
+      await solicitacao.update({
+        valor: novoValor
+      });
+
+      const usuario = await User.findByPk(req.user.id);
+
+      await Historico.create({
+        solicitacao_id: id,
+        usuario_responsavel_id: req.user.id,
+        setor: req.user.area,
+        acao: 'VALOR_ATUALIZADO',
+        descricao: `De ${valorAnterior ?? '-'} para ${novoValor ?? '-'}`,
+        metadata: JSON.stringify({
+          valor_anterior: valorAnterior,
+          valor_novo: novoValor
+        })
+      });
+
+      await criarNotificacao({
+        solicitacao_id: id,
+        tipo: 'VALOR_ATUALIZADO',
+        mensagem: `${usuario?.nome || 'Usuario'} atualizou o valor da solicitacao ${solicitacao.codigo}`,
+        created_by: req.user.id,
+        metadata: {
+          valor_anterior: valorAnterior,
+          valor_novo: novoValor
+        }
+      });
+
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao atualizar valor' });
+    }
+  },
+
+  // =====================================================
   // ATRIBUIR RESPONSAVEL
   // =====================================================
   async atribuirResponsavel(req, res) {

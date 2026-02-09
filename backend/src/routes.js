@@ -47,6 +47,7 @@ router.get('/solicitacoes', SolicitacaoController.index);
 router.get('/solicitacoes/:id', SolicitacaoController.show);
 router.patch('/solicitacoes/:id/status', SolicitacaoController.updateStatus);
 router.patch('/solicitacoes/:id/pedido', SolicitacaoController.atualizarNumeroPedido);
+router.patch('/solicitacoes/:id/valor', SolicitacaoController.atualizarValor);
 router.get('/solicitacoes/resumo', SolicitacaoController.resumo);
 router.post('/solicitacoes/:id/comentarios', SolicitacaoController.adicionarComentario);
 router.post('/solicitacoes/:id/enviar-setor', SolicitacaoController.enviarParaSetor);

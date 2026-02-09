@@ -1,10 +1,11 @@
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import StatusBadge from '../../components/StatusBadge';
 import { useTheme } from '../../contexts/ThemeContext';
 import ModalAtribuirResponsavel from './ModalAtribuirResponsavel';
 import ModalEnviarSetor from './ModalEnviarSetor';
 import { API_URL, authHeaders } from '../../services/api';
+import { updateValorSolicitacao } from '../../services/solicitacoes';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap, permissaoUsuario }) {
@@ -16,6 +17,16 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
   const isSetorObra =
     user?.setor?.codigo === 'OBRA' ||
     user?.area === 'OBRA';
+  const setorTokens = [
+    String(user?.setor?.nome || '').toUpperCase(),
+    String(user?.setor?.codigo || '').toUpperCase(),
+    String(user?.area || '').toUpperCase()
+  ];
+  const isAdminGEO =
+    String(user?.perfil || '').toUpperCase().startsWith('ADMIN') &&
+    setorTokens.includes('GEO');
+  const isSuperadmin = String(user?.perfil || '').toUpperCase() === 'SUPERADMIN';
+  const podeEditarValor = isAdminGEO || isSuperadmin;
   const setorNomeSolicitacao =
     (setoresMap?.[solicitacao.area_responsavel] || solicitacao.area_responsavel || '');
   const isSetorObraSolicitacao =
@@ -51,6 +62,39 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
   const dataCriacaoTitle = dataCriacaoValida
     ? dataCriacao.toLocaleString('pt-BR')
     : '';
+
+  const [editandoValor, setEditandoValor] = useState(false);
+  const [valorEditado, setValorEditado] = useState(
+    solicitacao.valor !== null && solicitacao.valor !== undefined
+      ? String(solicitacao.valor)
+      : ''
+  );
+
+  useEffect(() => {
+    if (!editandoValor) {
+      setValorEditado(
+        solicitacao.valor !== null && solicitacao.valor !== undefined
+          ? String(solicitacao.valor)
+          : ''
+      );
+    }
+  }, [solicitacao.valor, editandoValor]);
+
+  async function salvarValor() {
+    try {
+      const valorNumero = valorEditado === '' ? null : Number(valorEditado);
+      if (valorEditado !== '' && Number.isNaN(valorNumero)) {
+        alert('Valor invalido');
+        return;
+      }
+      await updateValorSolicitacao(solicitacao.id, valorNumero);
+      setEditandoValor(false);
+      onAtualizar();
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao atualizar valor');
+    }
+  }
 
   async function ocultar() {
     if (!confirm('Ocultar esta solicitação da sua lista?')) return;
@@ -130,12 +174,55 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
           className="p-2 whitespace-nowrap"
           title={solicitacao.valor ? String(solicitacao.valor) : ''}
         >
-          {solicitacao.valor
-            ? Number(solicitacao.valor).toLocaleString('pt-BR', {
-                style: 'currency',
-                currency: 'BRL'
-              })
-            : '-'}
+          {editandoValor ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="0.01"
+                className="w-24 border rounded p-1 text-right"
+                value={valorEditado}
+                onChange={e => setValorEditado(e.target.value)}
+              />
+              <button
+                className="text-xs text-green-600 hover:underline"
+                onClick={salvarValor}
+              >
+                Salvar
+              </button>
+              <button
+                className="text-xs text-gray-500 hover:underline"
+                onClick={() => {
+                  setValorEditado(
+                    solicitacao.valor !== null && solicitacao.valor !== undefined
+                      ? String(solicitacao.valor)
+                      : ''
+                  );
+                  setEditandoValor(false);
+                }}
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span>
+                {solicitacao.valor
+                  ? Number(solicitacao.valor).toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL'
+                    })
+                  : '-'}
+              </span>
+              {podeEditarValor && (
+                <button
+                  className="text-xs text-blue-600 hover:underline"
+                  onClick={() => setEditandoValor(true)}
+                >
+                  Editar
+                </button>
+              )}
+            </div>
+          )}
         </td>
 
         <td
