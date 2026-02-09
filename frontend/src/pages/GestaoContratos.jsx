@@ -75,7 +75,25 @@ export default function GestaoContratos() {
       const [obrasData] = await Promise.all([
         isSetorObra ? getMinhasObras() : getObras()
       ]);
-      setObras(Array.isArray(obrasData) ? obrasData : []);
+      const lista = Array.isArray(obrasData) ? obrasData : [];
+      const ordenadas = [...lista].sort((a, b) => {
+        const codigoA = String(a?.codigo ?? '');
+        const codigoB = String(b?.codigo ?? '');
+        const numA = Number.parseInt(codigoA.replace(/\D/g, ''), 10);
+        const numB = Number.parseInt(codigoB.replace(/\D/g, ''), 10);
+        const temNumA = Number.isFinite(numA);
+        const temNumB = Number.isFinite(numB);
+        if (temNumA && temNumB && numA !== numB) {
+          return numA - numB;
+        }
+        if (temNumA !== temNumB) {
+          return temNumA ? -1 : 1;
+        }
+        const nomeA = String(a?.nome ?? '');
+        const nomeB = String(b?.nome ?? '');
+        return nomeA.localeCompare(nomeB, 'pt-BR', { sensitivity: 'base' });
+      });
+      setObras(ordenadas);
     } catch (error) {
       console.error(error);
     }
