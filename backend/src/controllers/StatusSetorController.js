@@ -7,7 +7,7 @@ module.exports = {
       const { setor } = req.query;
       const perfil = String(req.user?.perfil || '').trim().toUpperCase();
       const where = {};
-      if (setor && perfil !== 'SUPERADMIN') {
+      if (setor) {
         const setorRow = await Setor.findOne({
           where: {
             [Op.or]: [

@@ -91,8 +91,7 @@ export default function CoresSistema() {
   }
 
   const statusParaSetor = useMemo(() => {
-    const lista = statusSetor.length > 0 ? statusSetor : STATUS_PADRAO;
-    return Array.from(new Set(lista.map(s => String(s).toUpperCase())));
+    return Array.from(new Set(statusSetor.map(s => String(s).toUpperCase())));
   }, [statusSetor]);
 
   function atualizarCorAcao(chave, cor) {
@@ -253,6 +252,11 @@ export default function CoresSistema() {
           </label>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
+          {statusParaSetor.length === 0 && (
+            <p className="text-sm text-gray-500">
+              Nenhum status cadastrado para este setor.
+            </p>
+          )}
           {statusParaSetor.map(status => (
             <label key={status} className="flex items-center gap-3 text-sm">
               <span className="w-36">{status}</span>
