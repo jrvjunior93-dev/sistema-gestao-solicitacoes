@@ -38,6 +38,7 @@ export default function NovaSolicitacao() {
     area_responsavel: '',
     descricao: '',
     itens_apropriacao: '',
+    ref_contrato_abertura: '',
     valor: '',
     data_vencimento: '',
     data_inicio_medicao: '',
@@ -108,6 +109,26 @@ export default function NovaSolicitacao() {
   const subtipoObrigatorio = nomeTipoSelecionado === 'ADM LOCAL DE OBRA';
   const medicaoObrigatoria = nomeTipoNormalizado === 'MEDICAO';
   const aberturaContratoObrigatoria = nomeTipoNormalizado === 'ABERTURA DE CONTRATO';
+  const solicitacaoCompra = nomeTipoNormalizado === 'SOLICITACAO DE COMPRA';
+  const exibirCamposContrato = medicaoObrigatoria || subtipoObrigatorio;
+
+  useEffect(() => {
+    if (!exibirCamposContrato) {
+      setForm(prev => ({
+        ...prev,
+        tipo_sub_id: '',
+        contrato_id: '',
+        codigo_contrato: ''
+      }));
+      setRefContratoBusca('');
+      setRefResultados([]);
+      setContratosRef([]);
+    }
+    if (solicitacaoCompra) {
+      setForm(prev => ({ ...prev, valor: '' }));
+      setValorTexto('');
+    }
+  }, [exibirCamposContrato, solicitacaoCompra]);
 
   function formatarMoeda(valor) {
     if (Number.isNaN(valor)) return '';
@@ -212,6 +233,10 @@ export default function NovaSolicitacao() {
       alert('Para Abertura de Contrato, informe os itens de apropriacao.');
       return;
     }
+    if (aberturaContratoObrigatoria && !form.ref_contrato_abertura) {
+      alert('Para Abertura de Contrato, informe a ref do contrato.');
+      return;
+    }
 
     const payload = {
       ...form,
@@ -221,7 +246,8 @@ export default function NovaSolicitacao() {
       data_vencimento: form.data_vencimento || null,
       data_inicio_medicao: form.data_inicio_medicao || null,
       data_fim_medicao: form.data_fim_medicao || null,
-      itens_apropriacao: form.itens_apropriacao || null
+      itens_apropriacao: form.itens_apropriacao || null,
+      ref_contrato_abertura: form.ref_contrato_abertura || null
     };
 
     const solicitacao = await createSolicitacao(payload);
@@ -244,6 +270,7 @@ export default function NovaSolicitacao() {
       area_responsavel: '',
       descricao: '',
       itens_apropriacao: '',
+      ref_contrato_abertura: '',
       valor: '',
       data_vencimento: '',
       data_inicio_medicao: '',
@@ -349,102 +376,108 @@ export default function NovaSolicitacao() {
             </select>
           </label>
 
-          <label className="grid gap-1 text-sm md:col-span-2">
-            Ref. do Contrato
-            <div className="flex gap-2">
-              <input
-                className="input"
-                placeholder="Buscar por referencia do contrato"
-                value={refContratoBusca}
-                onChange={e => setRefContratoBusca(e.target.value)}
-              />
-              <button type="button" className="btn btn-outline" onClick={buscarRefContrato}>
-                Buscar
-              </button>
-              <button type="button" className="btn btn-outline" onClick={limparRefContrato}>
-                Limpar
-              </button>
-            </div>
-            {refResultados.length > 1 && (
-              <div className="mt-2 border rounded p-2 max-h-40 overflow-auto">
-                {refResultados.map(item => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => selecionarContratoRef(item)}
-                    className="block w-full text-left text-sm p-2 hover:bg-gray-50 rounded"
-                  >
-                    {item.codigo} - {item.ref_contrato || '-'}
-                  </button>
-                ))}
+          {exibirCamposContrato && (
+            <label className="grid gap-1 text-sm md:col-span-2">
+              Ref. do Contrato
+              <div className="flex gap-2">
+                <input
+                  className="input"
+                  placeholder="Buscar por referencia do contrato"
+                  value={refContratoBusca}
+                  onChange={e => setRefContratoBusca(e.target.value)}
+                />
+                <button type="button" className="btn btn-outline" onClick={buscarRefContrato}>
+                  Buscar
+                </button>
+                <button type="button" className="btn btn-outline" onClick={limparRefContrato}>
+                  Limpar
+                </button>
               </div>
-            )}
-          </label>
+              {refResultados.length > 1 && (
+                <div className="mt-2 border rounded p-2 max-h-40 overflow-auto">
+                  {refResultados.map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => selecionarContratoRef(item)}
+                      className="block w-full text-left text-sm p-2 hover:bg-gray-50 rounded"
+                    >
+                      {item.codigo} - {item.ref_contrato || '-'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </label>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <label className="grid gap-1 text-sm">
-            Subtipo
-            <select
-              name="tipo_sub_id"
-              onChange={handleChange}
-              className="input"
-              required={subtipoObrigatorio}
-              disabled={!form.tipo_solicitacao_id}
-              value={form.tipo_sub_id}
-            >
-              <option value="">Selecione</option>
-              {tiposSub.map(t => (
-                <option key={t.id} value={t.id}>{t.nome}</option>
-              ))}
-            </select>
-            {subtipoObrigatorio && (
-              <span className="text-xs text-gray-500">
-                Obrigatorio para Adm Local de Obra.
-              </span>
-            )}
-          </label>
+        {exibirCamposContrato && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <label className="grid gap-1 text-sm">
+              Subtipo
+              <select
+                name="tipo_sub_id"
+                onChange={handleChange}
+                className="input"
+                required={subtipoObrigatorio}
+                disabled={!form.tipo_solicitacao_id}
+                value={form.tipo_sub_id}
+              >
+                <option value="">Selecione</option>
+                {tiposSub.map(t => (
+                  <option key={t.id} value={t.id}>{t.nome}</option>
+                ))}
+              </select>
+              {subtipoObrigatorio && (
+                <span className="text-xs text-gray-500">
+                  Obrigatorio para Adm Local de Obra.
+                </span>
+              )}
+            </label>
 
+            <label className="grid gap-1 text-sm">
+              Contrato
+              <select
+                name="contrato_id"
+                onChange={e => {
+                  const contratoId = e.target.value;
+                  const contrato = contratosDisponiveis.find(c => String(c.id) === String(contratoId));
+                  setForm(prev => ({
+                    ...prev,
+                    contrato_id: contratoId,
+                    codigo_contrato: contrato?.codigo || ''
+                  }));
+                }}
+                className="input"
+                disabled={!form.obra_id && contratosDisponiveis.length === 0}
+                value={form.contrato_id}
+              >
+                <option value="">Nao vincular</option>
+                {contratosDisponiveis.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.codigo} - {c.ref_contrato || '-'}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+
+        {!solicitacaoCompra && (
           <label className="grid gap-1 text-sm">
-            Contrato (opcional)
-            <select
-              name="contrato_id"
-              onChange={e => {
-                const contratoId = e.target.value;
-                const contrato = contratosDisponiveis.find(c => String(c.id) === String(contratoId));
-                setForm(prev => ({
-                  ...prev,
-                  contrato_id: contratoId,
-                  codigo_contrato: contrato?.codigo || ''
-                }));
-              }}
+            Valor
+            <input
+              type="text"
               className="input"
-              disabled={!form.obra_id && contratosDisponiveis.length === 0}
-              value={form.contrato_id}
-            >
-              <option value="">Nao vincular</option>
-              {contratosDisponiveis.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.codigo} - {c.ref_contrato || '-'}
-                </option>
-              ))}
-            </select>
+              value={valorTexto}
+              onChange={e => atualizarValor(e.target.value)}
+              placeholder="R$ 0,00"
+            />
           </label>
-        </div>
+        )}
 
         <label className="grid gap-1 text-sm">
-          Valor
-          <input
-            type="text"
-            className="input"
-            value={valorTexto}
-            onChange={e => atualizarValor(e.target.value)}
-            placeholder="R$ 0,00"
-          />
-        </label>
-
-        <label className="grid gap-1 text-sm">
-          Data de vencimento (opcional)
+          Data de vencimento
           <input
             name="data_vencimento"
             type="date"
@@ -479,6 +512,20 @@ export default function NovaSolicitacao() {
               />
             </label>
           </div>
+        )}
+
+        {aberturaContratoObrigatoria && (
+          <label className="grid gap-1 text-sm">
+            Ref. do Contrato
+            <input
+              name="ref_contrato_abertura"
+              onChange={handleChange}
+              className="input"
+              required
+              value={form.ref_contrato_abertura}
+              placeholder="Informe a ref do contrato"
+            />
+          </label>
         )}
 
         {aberturaContratoObrigatoria && (

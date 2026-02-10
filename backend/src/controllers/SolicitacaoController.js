@@ -407,7 +407,7 @@ module.exports = {
           {
             model: Contrato,
             as: 'contrato',
-            attributes: ['id', 'codigo']
+            attributes: ['id', 'codigo', 'ref_contrato']
           },
           {
             model: TipoSolicitacao,
@@ -489,7 +489,8 @@ module.exports = {
         data_vencimento,
         data_inicio_medicao,
         data_fim_medicao,
-        itens_apropriacao
+        itens_apropriacao,
+        ref_contrato_abertura
       } = req.body;
 
       if (!obra_id || !tipo_solicitacao_id || !descricao || !area_responsavel) {
@@ -518,6 +519,11 @@ module.exports = {
           error: 'Para Abertura de Contrato, informe os itens de apropriacao.'
         });
       }
+      if (nomeTipoNormalizado === 'ABERTURA DE CONTRATO' && !ref_contrato_abertura) {
+        return res.status(400).json({
+          error: 'Para Abertura de Contrato, informe a ref do contrato.'
+        });
+      }
 
       const usuarioId = req.user.id;
       const usuario = await User.findByPk(usuarioId);
@@ -542,18 +548,29 @@ module.exports = {
         status_global: 'PENDENTE'
       });
 
+      const itensTexto = itens_apropriacao
+        ? `Itens de apropriacao: ${String(itens_apropriacao).trim()}`
+        : null;
+      const refTexto = ref_contrato_abertura
+        ? `Ref. do contrato: ${String(ref_contrato_abertura).trim()}`
+        : null;
+      const descricaoHistorico = [itensTexto, refTexto].filter(Boolean).join(' | ') || null;
+      const metadata = {};
+      if (itens_apropriacao) {
+        metadata.itens_apropriacao = String(itens_apropriacao).trim();
+      }
+      if (ref_contrato_abertura) {
+        metadata.ref_contrato_abertura = String(ref_contrato_abertura).trim();
+      }
+
       await Historico.create({
         solicitacao_id: solicitacao.id,
         usuario_responsavel_id: usuarioId,
         setor: req.user.area,
         acao: 'SOLICITACAO_CRIADA',
         status_novo: 'PENDENTE',
-        descricao: itens_apropriacao
-          ? `Itens de apropriacao: ${String(itens_apropriacao).trim()}`
-          : null,
-        metadata: itens_apropriacao
-          ? JSON.stringify({ itens_apropriacao: String(itens_apropriacao).trim() })
-          : null
+        descricao: descricaoHistorico,
+        metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null
       });
 
       await criarNotificacao({
