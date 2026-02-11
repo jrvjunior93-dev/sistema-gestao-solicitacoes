@@ -66,8 +66,22 @@ export default function Dashboard() {
     );
   }
 
-  const getTotalByStatus = status =>
-    dados.porStatus.find(s => s.status_global === status)?.total || 0;
+  const normalizeStatus = value => {
+    if (!value) return '';
+    return String(value)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '_')
+      .toUpperCase();
+  };
+
+  const getTotalByStatus = status => {
+    const target = normalizeStatus(status);
+    const match = dados.porStatus.find(
+      s => normalizeStatus(s.status_global) === target
+    );
+    return match?.total || 0;
+  };
 
   const titulo = (isSuperadmin || isAdminGEO)
     ? 'Dashboard Executivo'
