@@ -6,6 +6,7 @@ export default function Pedido({ solicitacaoId, numeroPedido, onSucesso }) {
   const [loading, setLoading] = useState(false);
 
   async function salvar() {
+    if (!confirm('Confirmar envio do numero do pedido?')) return;
     try {
       setLoading(true);
       const res = await fetch(
