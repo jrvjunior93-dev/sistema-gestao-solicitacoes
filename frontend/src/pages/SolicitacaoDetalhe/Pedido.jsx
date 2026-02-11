@@ -23,6 +23,7 @@ export default function Pedido({ solicitacaoId, numeroPedido, onSucesso }) {
       }
 
       onSucesso?.();
+      alert('Numero do pedido registrado com sucesso.');
     } catch (error) {
       console.error(error);
       alert('Erro ao salvar numero do pedido');

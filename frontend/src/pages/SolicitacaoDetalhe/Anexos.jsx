@@ -30,7 +30,8 @@ export default function Anexos({ solicitacaoId, onSucesso }) {
       );
 
       if (!res.ok) {
-        throw new Error('Erro no upload');
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || 'Erro no upload');
       }
 
       setArquivos([]);
@@ -38,7 +39,7 @@ export default function Anexos({ solicitacaoId, onSucesso }) {
 
     } catch (err) {
       console.error(err);
-      alert('Erro ao enviar arquivos');
+      alert(err?.message || 'Erro ao enviar arquivos');
     } finally {
       setLoading(false);
     }

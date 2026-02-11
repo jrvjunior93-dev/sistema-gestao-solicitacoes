@@ -19,5 +19,10 @@ export async function uploadArquivos({ files, tipo, solicitacao_id = null }) {
     body: formData
   });
 
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error || 'Erro ao enviar arquivos');
+  }
+
   return res.json();
 }
