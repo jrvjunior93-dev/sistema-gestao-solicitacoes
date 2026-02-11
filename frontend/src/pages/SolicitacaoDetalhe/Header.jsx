@@ -1,5 +1,12 @@
 import StatusBadge from '../../components/StatusBadge';
 
+function formatarData(valor) {
+  if (!valor) return '-';
+  const data = new Date(valor);
+  if (Number.isNaN(data.getTime())) return '-';
+  return data.toLocaleDateString('pt-BR');
+}
+
 export default function Header({ solicitacao, onAlterarStatus, mostrarAlterarStatus = true }) {
 
   return (
@@ -35,7 +42,7 @@ export default function Header({ solicitacao, onAlterarStatus, mostrarAlterarSta
         {solicitacao.descricao}
       </p>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 text-sm">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mt-4 text-sm">
 
         <div>
           <span className="text-gray-500">Obra</span>
@@ -52,6 +59,21 @@ export default function Header({ solicitacao, onAlterarStatus, mostrarAlterarSta
           <p>
             {new Date(solicitacao.createdAt).toLocaleString()}
           </p>
+        </div>
+
+        <div>
+          <span className="text-gray-500">Data de vencimento</span>
+          <p>{formatarData(solicitacao.data_vencimento)}</p>
+        </div>
+
+        <div>
+          <span className="text-gray-500">Inicio da medicao</span>
+          <p>{formatarData(solicitacao.data_inicio_medicao)}</p>
+        </div>
+
+        <div>
+          <span className="text-gray-500">Fim da medicao</span>
+          <p>{formatarData(solicitacao.data_fim_medicao)}</p>
         </div>
 
         <div>
