@@ -557,6 +557,9 @@ export default function NovaSolicitacao() {
             required
             value={form.descricao}
           />
+          <span className="text-xs text-gray-500">
+            Descricao breve, com no maximo 50 caracteres.
+          </span>
         </label>
 
         <label className="grid gap-1 text-sm">
