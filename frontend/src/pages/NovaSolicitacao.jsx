@@ -546,7 +546,13 @@ export default function NovaSolicitacao() {
           Descricao
           <textarea
             name="descricao"
-            onChange={handleChange}
+            onChange={e =>
+              setForm(prev => ({
+                ...prev,
+                descricao: e.target.value.slice(0, 50)
+              }))
+            }
+            maxLength={50}
             className="input min-h-[120px]"
             required
             value={form.descricao}

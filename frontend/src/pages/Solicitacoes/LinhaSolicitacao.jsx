@@ -155,12 +155,19 @@ export default function LinhaSolicitacao({
           </td>
         )}
 
-        <td
-          className="p-2 whitespace-nowrap truncate"
-          title={solicitacao.descricao || ''}
-        >
-          {solicitacao.descricao}
-        </td>
+        {(() => {
+          const descricao = solicitacao.descricao || '';
+          const descricaoCurta =
+            descricao.length > 50 ? `${descricao.slice(0, 50)}...` : descricao;
+          return (
+            <td
+              className="p-2 whitespace-nowrap truncate"
+              title={descricao}
+            >
+              {descricaoCurta}
+            </td>
+          );
+        })()}
 
         <td
           className="p-2 whitespace-nowrap truncate"
