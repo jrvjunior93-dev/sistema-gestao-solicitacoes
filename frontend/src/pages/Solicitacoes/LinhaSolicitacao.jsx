@@ -148,7 +148,7 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
         </td>
 
         <td
-          className="p-2 max-w-md truncate"
+          className="p-2 whitespace-nowrap truncate"
           title={solicitacao.descricao || ''}
         >
           {solicitacao.descricao}

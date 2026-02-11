@@ -15,8 +15,8 @@ export default function TabelaSolicitacoes({
       { id: 'codigo', label: 'Codigo', width: 100, min: 80, weight: 0.9 },
       { id: 'obra', label: 'Obra', width: 140, min: 100, weight: 1.1 },
       { id: 'contrato', label: 'Contrato', width: 120, min: 95, weight: 1 },
-      { id: 'ref_contrato', label: 'Ref. do Contrato', width: 100, min: 100, weight: 0 },
-      { id: 'descricao', label: 'Descricao', width: 110, min: 110, weight: 0 },
+      { id: 'ref_contrato', label: 'Ref. do Contrato', width: 120, min: 120, weight: 0, fixed: true },
+      { id: 'descricao', label: 'Descricao', width: 120, min: 120, weight: 0, fixed: true },
       { id: 'tipo', label: 'Tipo de Solicitacao', width: 150, min: 110, weight: 1 },
       { id: 'valor', label: 'Valor', width: 110, min: 90, weight: 0.9 },
       { id: 'setor', label: 'Setor', width: 110, min: 90, weight: 0.9 },
@@ -33,9 +33,15 @@ export default function TabelaSolicitacoes({
     function ajustarParaTela() {
       const containerWidth = tableWrapRef.current?.clientWidth;
       if (!containerWidth) return;
-      const totalWeight = columns.reduce((acc, col) => acc + col.weight, 0);
+      const fixedTotal = columns.reduce((acc, col) => acc + (col.fixed ? col.width : 0), 0);
+      const flexible = columns.filter(col => !col.fixed);
+      const totalWeight = flexible.reduce((acc, col) => acc + col.weight, 0);
+      const available = Math.max(containerWidth - fixedTotal, 0);
       const nextWidths = columns.map(col => {
-        const target = Math.floor((containerWidth * col.weight) / totalWeight);
+        if (col.fixed) return col.width;
+        const target = totalWeight > 0
+          ? Math.floor((available * col.weight) / totalWeight)
+          : col.width;
         return Math.max(col.min, target);
       });
       setWidths(nextWidths);
