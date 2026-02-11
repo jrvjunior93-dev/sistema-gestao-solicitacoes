@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const multer = require('multer');
 const app = express();
 
 const db = require('./models');
@@ -40,6 +41,21 @@ app.use(
 );
 
 app.use('/api', routes);
+
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'Arquivo excede o limite de 5MB.' });
+    }
+    return res.status(400).json({ error: 'Falha no upload do arquivo.' });
+  }
+
+  if (err && /Tipo de arquivo/i.test(String(err.message || ''))) {
+    return res.status(400).json({ error: 'Tipo de arquivo nao permitido.' });
+  }
+
+  return next(err);
+});
 
 const staticDir = path.resolve(__dirname, '..', 'public');
 const indexFile = path.join(staticDir, 'index.html');
