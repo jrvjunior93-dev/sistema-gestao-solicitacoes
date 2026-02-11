@@ -142,13 +142,100 @@ async function isSetorGeo(req) {
   );
 }
 
+function isBrapeToken(valor) {
+  if (!valor) return false;
+  return String(valor).trim().toUpperCase().startsWith('BRAPE');
+}
+
+async function isSolicitacaoBrape(solicitacao) {
+  if (!solicitacao) return false;
+  const area = String(solicitacao.area_responsavel || '').trim();
+  if (isBrapeToken(area)) return true;
+
+  if (!area) return false;
+
+  const setor = await Setor.findOne({
+    where: {
+      [Op.or]: [
+        { id: area },
+        { codigo: area },
+        { nome: area }
+      ]
+    },
+    attributes: ['codigo', 'nome']
+  });
+
+  if (!setor) return false;
+
+  return (
+    isBrapeToken(setor.codigo) ||
+    isBrapeToken(setor.nome)
+  );
+}
+
+async function isSetorBrape(req) {
+  const areaUsuario = await obterAreaUsuario(req);
+  if (isBrapeToken(areaUsuario)) return true;
+
+  if (!req.user?.setor_id) return false;
+
+  const setor = await Setor.findByPk(req.user.setor_id, {
+    attributes: ['codigo', 'nome']
+  });
+
+  if (!setor) return false;
+
+  const nomeSetor = String(setor.nome || '').toUpperCase();
+  const codigoSetor = String(setor.codigo || '').toUpperCase();
+  const areaToken = String(req.user?.area || '').toUpperCase();
+
+  return (
+    isBrapeToken(nomeSetor) ||
+    isBrapeToken(codigoSetor) ||
+    isBrapeToken(areaToken)
+  );
+}
+
 async function validarAcessoObra(req, solicitacao) {
+  if (!solicitacao) return false;
+
+  const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+  const isSuperadmin = perfil === 'SUPERADMIN';
+  if (isSuperadmin) return true;
+
+  const isBrape = await isSetorBrape(req);
+  const solicitacaoBrape = await isSolicitacaoBrape(solicitacao);
+
+  if (solicitacaoBrape) {
+    if (!isBrape) return false;
+    if (perfil.startsWith('ADMIN')) return true;
+    if (!solicitacao.obra_id) return false;
+    const { UsuarioObra } = require('../models');
+    const vinculos = await UsuarioObra.findAll({
+      where: { user_id: req.user.id },
+      attributes: ['obra_id']
+    });
+    const obrasVinculadas = vinculos.map(v => v.obra_id);
+    return obrasVinculadas.includes(solicitacao.obra_id);
+  }
+
+  if (isBrape) {
+    if (!solicitacao.obra_id) return false;
+    const { UsuarioObra } = require('../models');
+    const vinculos = await UsuarioObra.findAll({
+      where: { user_id: req.user.id },
+      attributes: ['obra_id']
+    });
+    const obrasVinculadas = vinculos.map(v => v.obra_id);
+    return obrasVinculadas.includes(solicitacao.obra_id);
+  }
+
   const isSetorObra = await isUsuarioSetorObra(req);
   if (!isSetorObra) {
     return true;
   }
 
-  if (!solicitacao || !solicitacao.obra_id) {
+  if (!solicitacao.obra_id) {
     return false;
   }
 
@@ -253,8 +340,50 @@ module.exports = {
       const adminGEO =
         perfil.startsWith('ADMIN') &&
         setorTokens.includes('GEO');
+      const isSetorBrape = setorTokens.some(token => isBrapeToken(token));
+      const usuarioBrape = perfil === 'USUARIO' && isSetorBrape;
+      const adminBrape = perfil.startsWith('ADMIN') && isSetorBrape;
+      const brapeTokens = Array.from(new Set(setorTokens.filter(isBrapeToken)));
+      const brapeSetoresDb = await Setor.findAll({
+        where: {
+          [Op.or]: [
+            { codigo: { [Op.like]: 'BRAPE%' } },
+            { nome: { [Op.like]: 'BRAPE%' } }
+          ]
+        },
+        attributes: ['id', 'codigo', 'nome']
+      });
+      const brapeTokensDb = brapeSetoresDb
+        .flatMap(item => [item.id, item.codigo, item.nome])
+        .filter(Boolean)
+        .map(value => String(value).trim().toUpperCase());
+      const brapeTokensTodos = Array.from(new Set([
+        ...brapeTokens,
+        ...brapeTokensDb
+      ]));
 
-      if (isUsuarioGeo && !adminGEO && perfil !== 'SUPERADMIN') {
+      if (isSetorBrape) {
+        if (usuarioBrape) {
+          if (obrasVinculadas.length === 0) {
+            return res.json([]);
+          }
+          where.obra_id = { [Op.in]: obrasVinculadas };
+        } else if (adminBrape) {
+          const condicoesBrape = [];
+          if (brapeTokens.length > 0) {
+            condicoesBrape.push({ area_responsavel: { [Op.in]: brapeTokens } });
+          }
+          if (obrasVinculadas.length > 0) {
+            condicoesBrape.push({ obra_id: { [Op.in]: obrasVinculadas } });
+          }
+          if (condicoesBrape.length > 0) {
+            where[Op.and] = where[Op.and] || [];
+            where[Op.and].push({ [Op.or]: condicoesBrape });
+          }
+        }
+      }
+
+      if (!isSetorBrape && isUsuarioGeo && !adminGEO && perfil !== 'SUPERADMIN') {
         where[Op.and] = where[Op.and] || [];
         where[Op.and].push({
           id: {
@@ -285,10 +414,22 @@ module.exports = {
             }
           ]
         });
+        if (brapeTokensTodos.length > 0) {
+          where[Op.and].push({ area_responsavel: { [Op.notIn]: brapeTokensTodos } });
+        }
+        where[Op.and].push({ area_responsavel: { [Op.notLike]: 'BRAPE%' } });
+      }
+
+      if (!isSetorBrape && perfil !== 'SUPERADMIN' && !adminGEO) {
+        where[Op.and] = where[Op.and] || [];
+        if (brapeTokensTodos.length > 0) {
+          where[Op.and].push({ area_responsavel: { [Op.notIn]: brapeTokensTodos } });
+        }
+        where[Op.and].push({ area_responsavel: { [Op.notLike]: 'BRAPE%' } });
       }
 
       // SUPERADMIN ve tudo; demais passam por regra de visibilidade
-      if (perfil !== 'SUPERADMIN' && !adminGEO && !isSetorObra && !isUsuarioGeo) {
+      if (perfil !== 'SUPERADMIN' && !adminGEO && !isSetorObra && !isUsuarioGeo && !isSetorBrape) {
         const condicoes = [];
 
         // Criador ve
@@ -343,10 +484,14 @@ module.exports = {
       =============================== */
 
       if (area) {
+        const areaFiltro = String(area).trim();
+        const areaFiltroUpper = areaFiltro.toUpperCase();
         if (perfil === 'SUPERADMIN') {
-          where.area_responsavel = area;
-        } else if (areaUsuario && area === areaUsuario) {
-          where.area_responsavel = area;
+          where.area_responsavel = areaFiltro;
+        } else if (areaUsuario && areaFiltroUpper === String(areaUsuario).toUpperCase()) {
+          where.area_responsavel = areaFiltro;
+        } else if (areaFiltroUpper === 'BRAPE') {
+          where.id = -1;
         }
       }
       if (status) where.status_global = status;
@@ -992,6 +1137,13 @@ module.exports = {
 
       if (!solicitacao) {
         return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+      }
+
+      const solicitacaoBrape = await isSolicitacaoBrape(solicitacao);
+      if (solicitacaoBrape) {
+        return res.status(403).json({
+          error: 'Solicitacoes do setor BRAPE nao podem ser enviadas para outros setores.'
+        });
       }
 
       const acessoObra = await validarAcessoObra(req, solicitacao);
