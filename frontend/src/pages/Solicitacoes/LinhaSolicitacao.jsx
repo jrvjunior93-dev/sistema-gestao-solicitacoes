@@ -158,7 +158,7 @@ export default function LinhaSolicitacao({
         {(() => {
           const descricao = solicitacao.descricao || '';
           const descricaoCurta =
-            descricao.length > 50 ? `${descricao.slice(0, 50)}...` : descricao;
+            descricao.length > 30 ? `${descricao.slice(0, 30)}...` : descricao;
           return (
             <td
               className="p-2 whitespace-nowrap truncate"
