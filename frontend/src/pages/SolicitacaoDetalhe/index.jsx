@@ -111,12 +111,10 @@ export default function SolicitacaoDetalhe() {
         <div className="space-y-6">
 
           {/* CAMPO COMENTÁRIO */}
-          {!isSetorObra && (
-            <Comentarios
-              solicitacaoId={id}
-              onSucesso={carregar}
-            />
-          )}
+          <Comentarios
+            solicitacaoId={id}
+            onSucesso={carregar}
+          />
 
           {isSetorGeo && (
             <Pedido
