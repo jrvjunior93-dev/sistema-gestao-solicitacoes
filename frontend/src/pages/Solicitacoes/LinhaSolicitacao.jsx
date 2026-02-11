@@ -241,7 +241,7 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
         </td>
 
         <td className="p-2 whitespace-nowrap">
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-nowrap">
 
           <button
             className="hover:underline text-xs"
