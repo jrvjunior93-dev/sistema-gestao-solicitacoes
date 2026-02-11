@@ -19,6 +19,9 @@ const corsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     if (allowedOrigins.has(origin)) return callback(null, true);
+    if (/^https:\/\/([a-z0-9-]+\.)*jrfluxy\.com\.br$/.test(origin)) {
+      return callback(null, true);
+    }
     if (/^https:\/\/sistema-gestao-solicitacoes-.*\.vercel\.app$/.test(origin)) {
       return callback(null, true);
     }
