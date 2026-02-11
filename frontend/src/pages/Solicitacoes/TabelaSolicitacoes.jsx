@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import LinhaSolicitacao from './LinhaSolicitacao';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function TabelaSolicitacoes({
   solicitacoes,
@@ -8,14 +9,20 @@ export default function TabelaSolicitacoes({
   permissaoUsuario
 }) {
   const tableWrapRef = useRef(null);
+  const { user } = useAuth();
+  const setorTokens = [
+    String(user?.setor?.codigo || '').toUpperCase(),
+    String(user?.setor?.nome || '').toUpperCase(),
+    String(user?.area || '').toUpperCase()
+  ];
+  const isSetorObra = setorTokens.includes('OBRA');
 
-  const columns = useMemo(
-    () => ([
+  const columns = useMemo(() => {
+    const base = [
       { id: 'data', label: 'Data', width: 110, min: 90, weight: 0.9 },
       { id: 'codigo', label: 'Codigo', width: 100, min: 80, weight: 0.9 },
       { id: 'obra', label: 'Obra', width: 140, min: 100, weight: 1.1 },
       { id: 'contrato', label: 'Contrato', width: 120, min: 95, weight: 1 },
-      { id: 'ref_contrato', label: 'Ref. do Contrato', width: 110, min: 110, weight: 0, fixed: true },
       { id: 'descricao', label: 'Descricao', width: 110, min: 110, weight: 0, fixed: true },
       { id: 'tipo', label: 'Tipo de Solicitacao', width: 150, min: 110, weight: 1 },
       { id: 'valor', label: 'Valor', width: 110, min: 90, weight: 0.9 },
@@ -23,11 +30,18 @@ export default function TabelaSolicitacoes({
       { id: 'responsavel', label: 'Responsavel', width: 130, min: 100, weight: 1.1 },
       { id: 'status', label: 'Status', width: 110, min: 90, weight: 0.9 },
       { id: 'acoes', label: 'Acoes', width: 190, min: 150, weight: 1.3 }
-    ]),
-    []
-  );
+    ];
+    if (isSetorObra) {
+      base.splice(4, 0, { id: 'ref_contrato', label: 'Ref. do Contrato', width: 110, min: 110, weight: 0, fixed: true });
+    }
+    return base;
+  }, [isSetorObra]);
 
   const [widths, setWidths] = useState(() => columns.map(col => col.width));
+
+  useEffect(() => {
+    setWidths(columns.map(col => col.width));
+  }, [columns]);
 
   useEffect(() => {
     function ajustarParaTela() {
@@ -87,6 +101,7 @@ export default function TabelaSolicitacoes({
               onAtualizar={onAtualizar}
               setoresMap={setoresMap}
               permissaoUsuario={permissaoUsuario}
+              mostrarRefContrato={isSetorObra}
             />
           ))}
         </tbody>

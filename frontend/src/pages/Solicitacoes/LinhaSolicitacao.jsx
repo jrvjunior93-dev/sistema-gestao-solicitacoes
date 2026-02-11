@@ -8,7 +8,13 @@ import { API_URL, authHeaders } from '../../services/api';
 import { deleteSolicitacao, updateValorSolicitacao } from '../../services/solicitacoes';
 import { useAuth } from '../../contexts/AuthContext';
 
-export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap, permissaoUsuario }) {
+export default function LinhaSolicitacao({
+  solicitacao,
+  onAtualizar,
+  setoresMap,
+  permissaoUsuario,
+  mostrarRefContrato = false
+}) {
 
   const [modalAtribuir, setModalAtribuir] = useState(false);
   const [modalEnviar, setModalEnviar] = useState(false);
@@ -140,12 +146,14 @@ export default function LinhaSolicitacao({ solicitacao, onAtualizar, setoresMap,
           {solicitacao.contrato?.codigo || solicitacao.codigo_contrato || '-'}
         </td>
 
-        <td
-          className="p-2 whitespace-nowrap truncate"
-          title={solicitacao.contrato?.ref_contrato || ''}
-        >
-          {solicitacao.contrato?.ref_contrato || '-'}
-        </td>
+        {mostrarRefContrato && (
+          <td
+            className="p-2 whitespace-nowrap truncate"
+            title={solicitacao.contrato?.ref_contrato || ''}
+          >
+            {solicitacao.contrato?.ref_contrato || '-'}
+          </td>
+        )}
 
         <td
           className="p-2 whitespace-nowrap truncate"
