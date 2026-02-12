@@ -3,6 +3,7 @@ export default function Filtros({
   setFiltros,
   onBuscarObraDescricao,
   tiposSolicitacao = [],
+  statusOptions = [],
   mostrarSomaValor = false,
   somaValorFiltrado = 0
 }) {
@@ -62,10 +63,11 @@ export default function Filtros({
 
       <select name="status" onChange={handleChange} className="input" value={filtros.status || ''}>
         <option value="">Status</option>
-        <option value="PENDENTE">Pendente</option>
-        <option value="EM_ANALISE">Em analise</option>
-        <option value="APROVADA">Aprovada</option>
-        <option value="CONCLUIDA">Concluida</option>
+        {statusOptions.map(item => (
+          <option key={item.value} value={item.value}>
+            {item.label}
+          </option>
+        ))}
       </select>
 
       <input

@@ -6,6 +6,7 @@ import { getSetores } from '../../services/setores';
 import { getTiposSolicitacao } from '../../services/tiposSolicitacao';
 import { getMinhasObras } from '../../services/obras';
 import { getSetorPermissoes } from '../../services/setorPermissoes';
+import { getStatusSetor } from '../../services/statusSetor';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function Solicitacoes() {
@@ -14,6 +15,7 @@ export default function Solicitacoes() {
   const [loading, setLoading] = useState(true);
   const [setoresMap, setSetoresMap] = useState({});
   const [tiposSolicitacao, setTiposSolicitacao] = useState([]);
+  const [statusOptions, setStatusOptions] = useState([]);
   const [permissaoUsuario, setPermissaoUsuario] = useState(null);
   const { user } = useAuth();
 
@@ -37,6 +39,7 @@ export default function Solicitacoes() {
   useEffect(() => {
     carregarSetores();
     carregarTiposSolicitacao();
+    carregarStatusOptions();
     carregarPermissoes();
   }, []);
 
@@ -59,6 +62,36 @@ export default function Solicitacoes() {
       setSetoresMap(map);
     } catch (error) {
       console.error(error);
+    }
+  }
+
+  function normalizarStatus(status) {
+    return String(status || '')
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '_');
+  }
+
+  async function carregarStatusOptions() {
+    try {
+      const data = await getStatusSetor();
+      const lista = Array.isArray(data) ? data : [];
+      const map = new Map();
+      lista.forEach(item => {
+        if (!item?.ativo) return;
+        const nome = String(item.nome || '').trim();
+        if (!nome) return;
+        const key = normalizarStatus(nome);
+        if (!map.has(key)) {
+          map.set(key, nome);
+        }
+      });
+      setStatusOptions(Array.from(map.entries()).map(([value, label]) => ({ value, label })));
+    } catch (error) {
+      console.error(error);
+      setStatusOptions([]);
     }
   }
 
@@ -155,6 +188,7 @@ export default function Solicitacoes() {
         setFiltros={setFiltros}
         onBuscarObraDescricao={buscarObraDescricao}
         tiposSolicitacao={tiposSolicitacao}
+        statusOptions={statusOptions}
         mostrarSomaValor={mostrarSomaValor}
         somaValorFiltrado={somaValorFiltrado}
       />

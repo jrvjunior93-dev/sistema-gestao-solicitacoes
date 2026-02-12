@@ -556,7 +556,15 @@ module.exports = {
           where.id = -1;
         }
       }
-      if (status) where.status_global = status;
+      if (status) {
+        const statusNormalizado = String(status)
+          .trim()
+          .toUpperCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/\s+/g, '_');
+        where.status_global = statusNormalizado;
+      }
       if (obra_id) {
         const idNum = Number(obra_id);
         if (!Number.isNaN(idNum) && idNum > 0) {
