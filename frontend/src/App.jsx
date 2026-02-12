@@ -31,6 +31,7 @@ import CoresSistema from './pages/CoresSistema';
 import AreasObra from './pages/AreasObra';
 import AreasPorSetorOrigem from './pages/AreasPorSetorOrigem';
 import SetoresVisiveisUsuario from './pages/SetoresVisiveisUsuario';
+import ComportamentoRecebimentoSetor from './pages/ComportamentoRecebimentoSetor';
 
 export default function App() {
   return (
@@ -78,6 +79,7 @@ export default function App() {
         <Route path="areas-obra" element={<AreasObra />} />
         <Route path="areas-por-setor-origem" element={<AreasPorSetorOrigem />} />
         <Route path="setores-visiveis-usuario" element={<SetoresVisiveisUsuario />} />
+        <Route path="comportamento-recebimento-setor" element={<ComportamentoRecebimentoSetor />} />
 
         <Route path="comprovantes/upload" element={<UploadComprovantes />} />
         <Route path="comprovantes/pendentes" element={<ComprovantesPendentes />} />

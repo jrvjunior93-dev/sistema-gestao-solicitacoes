@@ -13,6 +13,12 @@ module.exports = (sequelize, DataTypes) => {
     usuario_pode_atribuir: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
+    },
+
+    modo_recebimento: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'TODOS_VISIVEIS'
     }
 
   }, {

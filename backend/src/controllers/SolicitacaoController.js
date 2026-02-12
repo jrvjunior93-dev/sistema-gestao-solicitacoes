@@ -118,6 +118,28 @@ async function obterSetoresVisiveisPorUsuario() {
   return regras;
 }
 
+async function obterModoRecebimentoSetor(tokensSetor = []) {
+  if (!Array.isArray(tokensSetor) || tokensSetor.length === 0) {
+    return 'TODOS_VISIVEIS';
+  }
+
+  const permissoes = await SetorPermissao.findAll({
+    where: {
+      setor: { [Op.in]: tokensSetor }
+    },
+    attributes: ['setor', 'modo_recebimento']
+  });
+
+  for (const token of tokensSetor) {
+    const item = permissoes.find(p => String(p.setor || '').toUpperCase() === String(token).toUpperCase());
+    if (item?.modo_recebimento) {
+      return String(item.modo_recebimento).toUpperCase();
+    }
+  }
+
+  return 'TODOS_VISIVEIS';
+}
+
 async function isUsuarioSetorObra(req) {
   const perfil = String(req.user?.perfil || '').trim().toUpperCase();
   if (perfil !== 'USUARIO') return false;
@@ -395,6 +417,8 @@ module.exports = {
         ...setorTokens,
         ...setoresExtrasUsuario
       ]));
+      const modoRecebimentoSetorUsuario = await obterModoRecebimentoSetor(setorTokens);
+      const setorTodosVisiveis = modoRecebimentoSetorUsuario === 'TODOS_VISIVEIS';
       const brapeTokens = Array.from(new Set(setorTokens.filter(isBrapeToken)));
       const brapeSetoresDb = await Setor.findAll({
         where: {
@@ -495,7 +519,7 @@ module.exports = {
         if (setorAtual?.id) setoresPermitidos.push(String(setorAtual.id));
         if (req.user.setor_id) setoresPermitidos.push(String(req.user.setor_id));
         const setoresUnicos = Array.from(new Set(setoresPermitidos.filter(Boolean)));
-        if (setoresUnicos.length > 0) {
+        if (setoresUnicos.length > 0 && setorTodosVisiveis) {
           condicoes.push({ area_responsavel: { [Op.in]: setoresUnicos } });
         }
 
@@ -1249,6 +1273,13 @@ module.exports = {
 
       // REGRA PARA USUARIO
       if (perfil === 'USUARIO') {
+        const modoRecebimento = await obterModoRecebimentoSetor(tokensSetor);
+        if (modoRecebimento !== 'TODOS_VISIVEIS') {
+          return res.status(403).json({
+            error: 'Seu setor esta configurado para recebimento via ADMIN primeiro.'
+          });
+        }
+
         let regra = null;
         if (tokensSetor.length > 0) {
           regra = await SetorPermissao.findOne({
@@ -1651,6 +1682,13 @@ module.exports = {
 
       // REGRA PARA USUARIO
       if (perfil === 'USUARIO') {
+        const modoRecebimento = await obterModoRecebimentoSetor(tokensSetor);
+        if (modoRecebimento !== 'TODOS_VISIVEIS') {
+          return res.status(403).json({
+            error: 'Seu setor esta configurado para recebimento via ADMIN primeiro.'
+          });
+        }
+
         let regra = null;
         if (tokensSetor.length > 0) {
           regra = await SetorPermissao.findOne({

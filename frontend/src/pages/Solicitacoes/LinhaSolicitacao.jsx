@@ -44,11 +44,13 @@ export default function LinhaSolicitacao({
   const isUsuario = user?.perfil === 'USUARIO';
   const podeAssumir =
     !isSetorObra &&
+    String(permissaoUsuario?.modo_recebimento || 'TODOS_VISIVEIS').toUpperCase() === 'TODOS_VISIVEIS' &&
     (isUsuario
       ? (!!permissaoUsuario?.usuario_pode_assumir || isFinanceiro)
       : true);
   const podeAtribuir =
     !isSetorObra &&
+    String(permissaoUsuario?.modo_recebimento || 'TODOS_VISIVEIS').toUpperCase() === 'TODOS_VISIVEIS' &&
     (isUsuario
       ? (!!permissaoUsuario?.usuario_pode_atribuir || isFinanceiro)
       : true);

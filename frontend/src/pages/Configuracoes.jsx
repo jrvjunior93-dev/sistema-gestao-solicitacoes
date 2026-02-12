@@ -85,6 +85,11 @@ export default function Configuracoes() {
             description="Defina setores extras que cada usuario pode visualizar quando atribuido."
             to="/setores-visiveis-usuario"
           />
+          <ConfigItem
+            title="Recebimento por Setor"
+            description="Defina se as solicitacoes chegam primeiro ao admin ou se ficam visiveis para todos."
+            to="/comportamento-recebimento-setor"
+          />
         </div>
       </section>
     </div>

@@ -1,4 +1,5 @@
 const { Setor, SetorPermissao } = require('../models');
+const { Op } = require('sequelize');
 
 module.exports = {
   async index(req, res) {
@@ -45,7 +46,8 @@ module.exports = {
           codigo: s.codigo,
           nome: s.nome,
           usuario_pode_assumir: perm?.usuario_pode_assumir || false,
-          usuario_pode_atribuir: perm?.usuario_pode_atribuir || false
+          usuario_pode_atribuir: perm?.usuario_pode_atribuir || false,
+          modo_recebimento: perm?.modo_recebimento || 'TODOS_VISIVEIS'
         };
       });
 
@@ -58,7 +60,7 @@ module.exports = {
 
   async upsert(req, res) {
     try {
-      const { setor_id, setor, usuario_pode_assumir, usuario_pode_atribuir } = req.body;
+      const { setor_id, setor, usuario_pode_assumir, usuario_pode_atribuir, modo_recebimento } = req.body;
       let setorRow = null;
 
       if (setor_id) {
@@ -87,10 +89,25 @@ module.exports = {
         return res.status(400).json({ error: 'Setor invalido' });
       }
 
+      const modosValidos = new Set(['ADMIN_PRIMEIRO', 'TODOS_VISIVEIS']);
+      let modoRecebimento = null;
+      if (modo_recebimento !== undefined && modo_recebimento !== null && String(modo_recebimento).trim() !== '') {
+        const modoNormalizado = String(modo_recebimento).toUpperCase();
+        modoRecebimento = modosValidos.has(modoNormalizado) ? modoNormalizado : 'TODOS_VISIVEIS';
+      }
+
+      const existente = await SetorPermissao.findOne({
+        where: { setor: setorKey }
+      });
+      if (!modoRecebimento) {
+        modoRecebimento = existente?.modo_recebimento || 'TODOS_VISIVEIS';
+      }
+
       const [registro] = await SetorPermissao.upsert({
         setor: setorKey,
         usuario_pode_assumir: !!usuario_pode_assumir,
-        usuario_pode_atribuir: !!usuario_pode_atribuir
+        usuario_pode_atribuir: !!usuario_pode_atribuir,
+        modo_recebimento: modoRecebimento
       });
 
       return res.json({
@@ -98,7 +115,8 @@ module.exports = {
         codigo: setorRow.codigo,
         nome: setorRow.nome,
         usuario_pode_assumir: registro?.usuario_pode_assumir ?? !!usuario_pode_assumir,
-        usuario_pode_atribuir: registro?.usuario_pode_atribuir ?? !!usuario_pode_atribuir
+        usuario_pode_atribuir: registro?.usuario_pode_atribuir ?? !!usuario_pode_atribuir,
+        modo_recebimento: registro?.modo_recebimento || modoRecebimento
       });
     } catch (error) {
       console.error(error);
