@@ -309,6 +309,7 @@ module.exports = {
         obra_id,
         obra_ids,
         codigo_contrato,
+        valor_min,
         tipo_macro_id,
         tipo_solicitacao_id
       } = req.query;
@@ -592,6 +593,12 @@ module.exports = {
       if (tipo_macro_id) where.tipo_macro_id = tipo_macro_id;
       if (tipo_solicitacao_id) where.tipo_solicitacao_id = tipo_solicitacao_id;
       if (codigo_contrato) where.codigo_contrato = codigo_contrato;
+      if (valor_min !== undefined && valor_min !== null && String(valor_min).trim() !== '') {
+        const min = Number(valor_min);
+        if (!Number.isNaN(min)) {
+          where.valor = { [Op.gte]: min };
+        }
+      }
 
       /* ===============================
         5) CONSULTA

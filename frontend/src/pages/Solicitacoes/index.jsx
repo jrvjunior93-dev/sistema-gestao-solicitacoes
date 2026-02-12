@@ -22,7 +22,8 @@ export default function Solicitacoes() {
     obra_ids: '',
     tipo_solicitacao_id: '',
     status: '',
-    codigo_contrato: ''
+    codigo_contrato: '',
+    valor_min: ''
   });
 
   /* ===============================
@@ -82,7 +83,14 @@ export default function Solicitacoes() {
     try {
       setLoading(true);
 
-      const params = new URLSearchParams(filtros).toString();
+      const paramsObj = {};
+      Object.entries(filtros).forEach(([chave, valor]) => {
+        if (valor !== undefined && valor !== null && String(valor).trim() !== '') {
+          paramsObj[chave] = String(valor).trim();
+        }
+      });
+
+      const params = new URLSearchParams(paramsObj).toString();
 
       const res = await fetch(
         `${API_URL}/solicitacoes?${params}`,
@@ -108,7 +116,10 @@ export default function Solicitacoes() {
 
   async function buscarObraDescricao() {
     const descricao = (filtros.obra_descricao || '').trim();
-    if (!descricao) return;
+    if (!descricao) {
+      setFiltros(prev => ({ ...prev, obra_ids: '' }));
+      return;
+    }
     const data = await getMinhasObras({ descricao });
     const lista = Array.isArray(data) ? data : [];
     if (lista.length === 0) {
@@ -118,6 +129,13 @@ export default function Solicitacoes() {
     const ids = lista.map(o => o.id).join(',');
     setFiltros(prev => ({ ...prev, obra_ids: ids }));
   }
+
+  const perfilUpper = String(user?.perfil || '').toUpperCase();
+  const mostrarSomaValor = perfilUpper.startsWith('ADMIN');
+  const somaValorFiltrado = solicitacoes.reduce((total, item) => {
+    const valor = Number(item?.valor || 0);
+    return total + (Number.isNaN(valor) ? 0 : valor);
+  }, 0);
 
   /* ===============================
      RENDER
@@ -137,6 +155,8 @@ export default function Solicitacoes() {
         setFiltros={setFiltros}
         onBuscarObraDescricao={buscarObraDescricao}
         tiposSolicitacao={tiposSolicitacao}
+        mostrarSomaValor={mostrarSomaValor}
+        somaValorFiltrado={somaValorFiltrado}
       />
 
       {loading && (
