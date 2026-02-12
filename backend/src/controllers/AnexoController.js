@@ -75,6 +75,7 @@ class AnexoController {
           acao: 'ANEXO_ADICIONADO',
           descricao: file.originalname,
           metadata: JSON.stringify({
+            anexo_id: anexo.id,
             caminho: url
           })
         });
@@ -134,6 +135,71 @@ class AnexoController {
     } catch (error) {
       console.error('Erro ao gerar URL assinada:', error);
       return res.status(500).json({ error: 'Erro ao gerar URL assinada' });
+    }
+  }
+
+  async remover(req, res) {
+    try {
+      const { historicoId } = req.params;
+      const usuario = await User.findByPk(req.user.id);
+      const setorUsuario = String(req.user.area || '').toUpperCase();
+
+      if (setorUsuario !== 'COMPRAS') {
+        return res.status(403).json({ error: 'Apenas usuarios do setor COMPRAS podem remover anexo.' });
+      }
+
+      const historico = await Historico.findByPk(historicoId);
+      if (!historico) {
+        return res.status(404).json({ error: 'Historico nao encontrado.' });
+      }
+
+      if (historico.acao !== 'ANEXO_ADICIONADO') {
+        return res.status(400).json({ error: 'Somente anexos do historico podem ser removidos.' });
+      }
+
+      let metadata = {};
+      try {
+        metadata = historico.metadata ? JSON.parse(historico.metadata) : {};
+      } catch {
+        metadata = {};
+      }
+
+      const anexoId = metadata?.anexo_id;
+      const caminho = metadata?.caminho;
+
+      let anexo = null;
+      if (anexoId) {
+        anexo = await Anexo.findByPk(anexoId);
+      }
+
+      if (!anexo && caminho) {
+        anexo = await Anexo.findOne({
+          where: {
+            solicitacao_id: historico.solicitacao_id,
+            caminho_arquivo: caminho
+          }
+        });
+      }
+
+      if (anexo) {
+        await anexo.destroy();
+      }
+
+      await historico.destroy();
+
+      await Historico.create({
+        solicitacao_id: historico.solicitacao_id,
+        usuario_responsavel_id: usuario.id,
+        setor: usuario.setor_id,
+        acao: 'ANEXO_REMOVIDO',
+        descricao: anexo?.nome_original || historico.descricao || 'Anexo removido',
+        metadata: JSON.stringify({ caminho: caminho || null })
+      });
+
+      return res.json({ ok: true });
+    } catch (error) {
+      console.error('Erro remover anexo:', error);
+      return res.status(500).json({ error: 'Erro ao remover anexo.' });
     }
   }
 

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { API_URL, authHeaders } from '../../services/api';
 
 export default function Anexos({ solicitacaoId, onSucesso }) {
 
   const [arquivos, setArquivos] = useState([]);
   const [loading, setLoading] = useState(false);
+  const inputRef = useRef(null);
 
   async function enviar() {
     if (arquivos.length === 0) return;
@@ -35,6 +36,9 @@ export default function Anexos({ solicitacaoId, onSucesso }) {
       }
 
       setArquivos([]);
+      if (inputRef.current) {
+        inputRef.current.value = '';
+      }
       onSucesso();
 
     } catch (err) {
@@ -43,6 +47,10 @@ export default function Anexos({ solicitacaoId, onSucesso }) {
     } finally {
       setLoading(false);
     }
+  }
+
+  function removerArquivo(index) {
+    setArquivos(prev => prev.filter((_, i) => i !== index));
   }
 
   return (
@@ -55,14 +63,30 @@ export default function Anexos({ solicitacaoId, onSucesso }) {
       <input
         type="file"
         multiple
+        ref={inputRef}
         className="block w-full mb-2 text-sm"
         onChange={e => setArquivos(Array.from(e.target.files))}
       />
 
       {arquivos.length > 0 && (
-        <p className="text-sm text-gray-600 mb-2">
-          {arquivos.length} arquivo(s) selecionado(s)
-        </p>
+        <div className="space-y-1 mb-2">
+          {arquivos.map((arquivo, index) => (
+            <div
+              key={`${arquivo.name}-${index}`}
+              className="flex items-center justify-between text-sm bg-gray-50 border rounded px-2 py-1"
+            >
+              <span className="truncate">{arquivo.name}</span>
+              <button
+                type="button"
+                className="text-red-600 font-bold px-2"
+                onClick={() => removerArquivo(index)}
+                aria-label={`Remover ${arquivo.name}`}
+              >
+                X
+              </button>
+            </div>
+          ))}
+        </div>
       )}
 
       <button

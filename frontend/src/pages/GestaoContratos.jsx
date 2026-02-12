@@ -237,6 +237,14 @@ export default function GestaoContratos() {
     }
   }
 
+  function removerArquivoNovoContrato(index) {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function removerArquivoModal(index) {
+    setUploadAnexos(prev => prev.filter((_, i) => i !== index));
+  }
+
   function renderFiltros() {
     return (
       <form
@@ -461,6 +469,26 @@ export default function GestaoContratos() {
             onChange={e => setFiles(Array.from(e.target.files || []))}
             className="block mt-1"
           />
+          {files.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {files.map((arquivo, index) => (
+                <div
+                  key={`${arquivo.name}-${index}`}
+                  className="flex items-center justify-between text-sm bg-gray-50 border rounded px-2 py-1"
+                >
+                  <span className="truncate">{arquivo.name}</span>
+                  <button
+                    type="button"
+                    className="text-red-600 font-bold px-2"
+                    onClick={() => removerArquivoNovoContrato(index)}
+                    aria-label={`Remover ${arquivo.name}`}
+                  >
+                    X
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <button
@@ -604,6 +632,26 @@ export default function GestaoContratos() {
                 onChange={e => setUploadAnexos(Array.from(e.target.files || []))}
                 className="block mt-1"
               />
+              {uploadAnexos.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {uploadAnexos.map((arquivo, index) => (
+                    <div
+                      key={`${arquivo.name}-${index}`}
+                      className="flex items-center justify-between text-sm bg-gray-50 border rounded px-2 py-1"
+                    >
+                      <span className="truncate">{arquivo.name}</span>
+                      <button
+                        type="button"
+                        className="text-red-600 font-bold px-2"
+                        onClick={() => removerArquivoModal(index)}
+                        aria-label={`Remover ${arquivo.name}`}
+                      >
+                        X
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <button

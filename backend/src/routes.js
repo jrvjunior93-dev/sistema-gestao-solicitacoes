@@ -79,6 +79,11 @@ router.get(
   AnexoController.presign
 );
 
+router.delete(
+  '/anexos/historico/:historicoId',
+  AnexoController.remover
+);
+
 router.get(
   '/solicitacoes/:id/anexos',
   AnexoController.listarPorSolicitacao

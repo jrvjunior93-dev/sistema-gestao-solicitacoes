@@ -23,6 +23,7 @@ export default function SolicitacaoDetalhe() {
   ];
   const isSetorObra = setorTokens.includes('OBRA');
   const isSetorGeo = setorTokens.includes('GEO');
+  const isSetorCompras = setorTokens.includes('COMPRAS');
 
   const [solicitacao, setSolicitacao] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -105,7 +106,11 @@ export default function SolicitacaoDetalhe() {
       <div className="grid md:grid-cols-2 gap-6">
 
         {/* TIMELINE */}
-        <Timeline historicos={solicitacao.historicos} />
+        <Timeline
+          historicos={solicitacao.historicos}
+          canRemoveAnexo={isSetorCompras}
+          onAnexoRemovido={carregar}
+        />
 
         {/* LADO DIREITO */}
         <div className="space-y-6">

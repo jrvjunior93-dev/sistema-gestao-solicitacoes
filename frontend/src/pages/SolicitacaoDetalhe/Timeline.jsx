@@ -2,7 +2,7 @@ import { useState } from 'react';
 import PreviewAnexoModal from './PreviewAnexoModal';
 import { API_URL, authHeaders, fileUrl } from '../../services/api';
 
-export default function Timeline({ historicos }) {
+export default function Timeline({ historicos, canRemoveAnexo = false, onAnexoRemovido }) {
   const [preview, setPreview] = useState(null);
 
   async function obterUrlAssinada(caminhoArquivo) {
@@ -46,6 +46,33 @@ export default function Timeline({ historicos }) {
     } catch (error) {
       console.error(error);
       alert('Erro ao baixar arquivo');
+    }
+  }
+
+  async function removerAnexo(historicoId) {
+    const confirmar = window.confirm('Deseja remover este anexo do historico?');
+    if (!confirmar) return;
+
+    try {
+      const res = await fetch(
+        `${API_URL}/anexos/historico/${historicoId}`,
+        {
+          method: 'DELETE',
+          headers: authHeaders()
+        }
+      );
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || 'Erro ao remover anexo');
+      }
+
+      if (typeof onAnexoRemovido === 'function') {
+        onAnexoRemovido();
+      }
+    } catch (error) {
+      console.error(error);
+      alert(error?.message || 'Erro ao remover anexo');
     }
   }
 
@@ -118,6 +145,16 @@ export default function Timeline({ historicos }) {
                   >
                     Download
                   </button>
+
+                  {canRemoveAnexo && (
+                    <button
+                      type="button"
+                      className="text-red-600 text-sm"
+                      onClick={() => removerAnexo(h.id)}
+                    >
+                      Remover
+                    </button>
+                  )}
                 </div>
               )}
 

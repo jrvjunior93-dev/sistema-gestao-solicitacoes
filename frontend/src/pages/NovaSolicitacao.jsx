@@ -215,6 +215,10 @@ export default function NovaSolicitacao() {
     setForm(prev => ({ ...prev, contrato_id: '', codigo_contrato: '' }));
   }
 
+  function removerArquivo(index) {
+    setArquivos(prev => prev.filter((_, i) => i !== index));
+  }
+
   function selecionarObra(obra) {
     setForm(prev => ({ ...prev, obra_id: String(obra.id) }));
     setObraCodigo(obra.codigo || '');
@@ -616,6 +620,26 @@ export default function NovaSolicitacao() {
             ref={anexosRef}
             onChange={e => setArquivos([...e.target.files])}
           />
+          {arquivos.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {arquivos.map((arquivo, index) => (
+                <div
+                  key={`${arquivo.name}-${index}`}
+                  className="flex items-center justify-between text-sm bg-gray-50 border rounded px-2 py-1"
+                >
+                  <span className="truncate">{arquivo.name}</span>
+                  <button
+                    type="button"
+                    className="text-red-600 font-bold px-2"
+                    onClick={() => removerArquivo(index)}
+                    aria-label={`Remover ${arquivo.name}`}
+                  >
+                    X
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </label>
 
         <div className="flex justify-end">
