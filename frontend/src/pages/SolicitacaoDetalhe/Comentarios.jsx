@@ -12,7 +12,7 @@ export default function Comentarios({ solicitacaoId, onSucesso }) {
     try {
       setLoading(true);
 
-      await fetch(
+      const res = await fetch(
         `${API_URL}/solicitacoes/${solicitacaoId}/comentarios`,
         {
           method: 'POST',
@@ -21,11 +21,17 @@ export default function Comentarios({ solicitacaoId, onSucesso }) {
         }
       );
 
-      setTexto('');
-      onSucesso(); // recarrega solicitacao
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || 'Erro ao enviar comentario');
+      }
 
-    } catch {
-      alert('Erro ao enviar comentário');
+      setTexto('');
+      onSucesso();
+      alert('Comentario enviado com sucesso.');
+
+    } catch (error) {
+      alert(error?.message || 'Erro ao enviar comentario');
     } finally {
       setLoading(false);
     }
@@ -35,7 +41,7 @@ export default function Comentarios({ solicitacaoId, onSucesso }) {
     <div className="bg-white p-4 rounded-xl shadow">
 
       <h2 className="font-semibold mb-2">
-        Novo comentário
+        Novo comentario
       </h2>
 
       <textarea
@@ -43,7 +49,7 @@ export default function Comentarios({ solicitacaoId, onSucesso }) {
         onChange={e => setTexto(e.target.value)}
         rows={3}
         className="w-full border rounded p-2 mb-2"
-        placeholder="Escreva um comentário..."
+        placeholder="Escreva um comentario..."
       />
 
       <button

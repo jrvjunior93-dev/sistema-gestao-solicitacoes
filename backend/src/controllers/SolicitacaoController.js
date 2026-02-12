@@ -1336,14 +1336,6 @@ module.exports = {
       const { id } = req.params;
       const { descricao } = req.body;
       const usuario = await User.findByPk(req.user.id);
-      const areaUsuario = await obterAreaUsuario(req);
-      const isSetorObra = await isUsuarioSetorObra(req);
-
-      if (isSetorObra) {
-        return res.status(403).json({
-          error: 'Setor OBRA nao pode comentar. Para seguir, solicite apoio ao responsavel do setor.'
-        });
-      }
 
       if (!descricao?.trim()) {
         return res.status(400).json({ error: 'Comentario vazio' });
