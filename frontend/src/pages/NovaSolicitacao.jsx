@@ -631,7 +631,15 @@ export default function NovaSolicitacao() {
                   <button
                     type="button"
                     className="text-red-600 font-bold px-2"
-                    onClick={() => removerArquivo(index)}
+                    onClick={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      removerArquivo(index);
+                    }}
+                    onMouseDown={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
                     aria-label={`Remover ${arquivo.name}`}
                   >
                     X
