@@ -220,6 +220,10 @@ router.patch('/setor-permissoes', permit(['SUPERADMIN']), SetorPermissaoControll
 router.patch('/configuracoes/tema', permit(['SUPERADMIN']), ConfiguracaoSistemaController.updateTema);
 router.get('/configuracoes/areas-obra', ConfiguracaoSistemaController.getAreasObra);
 router.patch('/configuracoes/areas-obra', permit(['SUPERADMIN']), ConfiguracaoSistemaController.updateAreasObra);
+router.get('/configuracoes/areas-por-setor-origem', ConfiguracaoSistemaController.getAreasPorSetorOrigem);
+router.patch('/configuracoes/areas-por-setor-origem', permit(['SUPERADMIN']), ConfiguracaoSistemaController.updateAreasPorSetorOrigem);
+router.get('/configuracoes/setores-visiveis-usuario', permit(['SUPERADMIN']), ConfiguracaoSistemaController.getSetoresVisiveisPorUsuario);
+router.patch('/configuracoes/setores-visiveis-usuario', permit(['SUPERADMIN']), ConfiguracaoSistemaController.updateSetoresVisiveisPorUsuario);
 
 // -------------------------------------------------------------------
 // CONTRATOS

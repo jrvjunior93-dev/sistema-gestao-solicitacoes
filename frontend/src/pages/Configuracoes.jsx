@@ -75,6 +75,16 @@ export default function Configuracoes() {
             description="Controle as areas visiveis na nova solicitacao."
             to="/areas-obra"
           />
+          <ConfigItem
+            title="Areas por Setor de Origem"
+            description="Defina quais setores cada setor pode selecionar na nova solicitacao."
+            to="/areas-por-setor-origem"
+          />
+          <ConfigItem
+            title="Setores visiveis por Usuario"
+            description="Defina setores extras que cada usuario pode visualizar quando atribuido."
+            to="/setores-visiveis-usuario"
+          />
         </div>
       </section>
     </div>

@@ -7,7 +7,7 @@ import { uploadArquivos } from '../services/uploads';
 import { getTiposSubContrato } from '../services/tiposSubContrato';
 import { getContratos } from '../services/contratos';
 import ObraSearchModal from '../components/ObraSearchModal';
-import { getAreasObra } from '../services/configuracoesSistema';
+import { getAreasObra, getAreasPorSetorOrigem } from '../services/configuracoesSistema';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function NovaSolicitacao() {
@@ -20,6 +20,7 @@ export default function NovaSolicitacao() {
   const [tipos, setTipos] = useState([]);
   const [setores, setSetores] = useState([]);
   const [areasObra, setAreasObra] = useState([]);
+  const [areasPorSetorOrigem, setAreasPorSetorOrigem] = useState({});
   const [tiposSub, setTiposSub] = useState([]);
   const [contratos, setContratos] = useState([]);
   const [contratosRef, setContratosRef] = useState([]);
@@ -51,11 +52,20 @@ export default function NovaSolicitacao() {
       setTipos(await getTiposSolicitacao());
       setSetores(await getSetores());
       try {
-        const cfg = await getAreasObra();
+        const [cfg, cfgSetorOrigem] = await Promise.all([
+          getAreasObra(),
+          getAreasPorSetorOrigem()
+        ]);
         setAreasObra(Array.isArray(cfg?.areas) ? cfg.areas : []);
+        setAreasPorSetorOrigem(
+          cfgSetorOrigem?.regras && typeof cfgSetorOrigem.regras === 'object'
+            ? cfgSetorOrigem.regras
+            : {}
+        );
       } catch (error) {
         console.error(error);
         setAreasObra([]);
+        setAreasPorSetorOrigem({});
       }
     }
     load();
@@ -295,13 +305,49 @@ export default function NovaSolicitacao() {
   const isSetorObra =
     user?.setor?.codigo === 'OBRA' ||
     user?.area === 'OBRA';
+  const tokensSetorUsuario = useMemo(() => {
+    return Array.from(new Set([
+      String(user?.setor?.codigo || '').toUpperCase(),
+      String(user?.setor?.nome || '').toUpperCase(),
+      String(user?.area || '').toUpperCase(),
+      String(user?.setor_id || '').toUpperCase()
+    ].filter(Boolean)));
+  }, [user]);
+  const destinosPermitidosPorSetorOrigem = useMemo(() => {
+    const destinos = new Set();
+    tokensSetorUsuario.forEach(token => {
+      const lista = areasPorSetorOrigem?.[token];
+      if (Array.isArray(lista)) {
+        lista.forEach(item => destinos.add(String(item || '').toUpperCase()));
+      }
+    });
+    return destinos;
+  }, [tokensSetorUsuario, areasPorSetorOrigem]);
   const setoresFiltrados = useMemo(() => {
-    if (!isSetorObra) return setores;
-    if (!areasObra || areasObra.length === 0) return setores;
-    const permitidas = new Set(areasObra.map(a => String(a).toUpperCase()));
-    return setores.filter(s => permitidas.has(String(s.codigo || '').toUpperCase()));
-  }, [setores, isSetorObra, areasObra]);
+    let lista = [...setores];
+
+    if (destinosPermitidosPorSetorOrigem.size > 0) {
+      lista = lista.filter(s => destinosPermitidosPorSetorOrigem.has(String(s.codigo || '').toUpperCase()));
+    }
+
+    if (isSetorObra && areasObra && areasObra.length > 0) {
+      const permitidasObra = new Set(areasObra.map(a => String(a).toUpperCase()));
+      lista = lista.filter(s => permitidasObra.has(String(s.codigo || '').toUpperCase()));
+    }
+
+    return lista;
+  }, [setores, isSetorObra, areasObra, destinosPermitidosPorSetorOrigem]);
   const contratosDisponiveis = contratosRef.length > 0 ? contratosRef : contratos;
+
+  useEffect(() => {
+    if (!form.area_responsavel) return;
+    const existe = setoresFiltrados.some(
+      setor => String(setor.codigo || '').toUpperCase() === String(form.area_responsavel || '').toUpperCase()
+    );
+    if (!existe) {
+      setForm(prev => ({ ...prev, area_responsavel: '' }));
+    }
+  }, [setoresFiltrados, form.area_responsavel]);
 
   return (
     <div className="max-w-3xl mx-auto">

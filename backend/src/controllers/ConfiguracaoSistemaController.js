@@ -2,6 +2,8 @@ const { ConfiguracaoSistema } = require('../models');
 
 const CHAVE_TEMA = 'TEMA_SISTEMA';
 const CHAVE_AREAS_OBRA = 'AREAS_OBRA_VISIVEIS';
+const CHAVE_AREAS_POR_SETOR_ORIGEM = 'AREAS_POR_SETOR_ORIGEM';
+const CHAVE_SETORES_VISIVEIS_POR_USUARIO = 'SETORES_VISIVEIS_POR_USUARIO';
 
 function parseJsonOrDefault(value, fallback) {
   if (!value) return fallback;
@@ -46,6 +48,15 @@ function getTemaPadrao() {
       setores: {}
     }
   };
+}
+
+function normalizarListaSetores(lista) {
+  if (!Array.isArray(lista)) return [];
+  return [...new Set(
+    lista
+      .map(item => String(item || '').trim().toUpperCase())
+      .filter(Boolean)
+  )];
 }
 
 module.exports = {
@@ -142,6 +153,117 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao salvar configuracao de areas' });
+    }
+  }
+  ,
+
+  async getAreasPorSetorOrigem(req, res) {
+    try {
+      const item = await ConfiguracaoSistema.findOne({
+        where: { chave: CHAVE_AREAS_POR_SETOR_ORIGEM },
+        order: [['id', 'DESC']]
+      });
+
+      if (!item || !item.valor) {
+        return res.json({ regras: {} });
+      }
+
+      const data = parseJsonOrDefault(item.valor, { regras: {} });
+      const regras = data?.regras && typeof data.regras === 'object' ? data.regras : {};
+      return res.json({ regras });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao buscar configuracao de areas por setor' });
+    }
+  },
+
+  async updateAreasPorSetorOrigem(req, res) {
+    try {
+      const input = req.body?.regras && typeof req.body.regras === 'object'
+        ? req.body.regras
+        : {};
+
+      const regras = {};
+      Object.entries(input).forEach(([origem, destinos]) => {
+        const key = String(origem || '').trim().toUpperCase();
+        if (!key) return;
+        regras[key] = normalizarListaSetores(destinos);
+      });
+
+      const existente = await ConfiguracaoSistema.findOne({
+        where: { chave: CHAVE_AREAS_POR_SETOR_ORIGEM },
+        order: [['id', 'DESC']]
+      });
+
+      const valor = JSON.stringify({ regras });
+      if (existente) {
+        await existente.update({ valor });
+      } else {
+        await ConfiguracaoSistema.create({
+          chave: CHAVE_AREAS_POR_SETOR_ORIGEM,
+          valor
+        });
+      }
+
+      return res.json({ ok: true, regras });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao salvar configuracao de areas por setor' });
+    }
+  },
+
+  async getSetoresVisiveisPorUsuario(req, res) {
+    try {
+      const item = await ConfiguracaoSistema.findOne({
+        where: { chave: CHAVE_SETORES_VISIVEIS_POR_USUARIO },
+        order: [['id', 'DESC']]
+      });
+
+      if (!item || !item.valor) {
+        return res.json({ regras: {} });
+      }
+
+      const data = parseJsonOrDefault(item.valor, { regras: {} });
+      const regras = data?.regras && typeof data.regras === 'object' ? data.regras : {};
+      return res.json({ regras });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao buscar configuracao de visibilidade por usuario' });
+    }
+  },
+
+  async updateSetoresVisiveisPorUsuario(req, res) {
+    try {
+      const input = req.body?.regras && typeof req.body.regras === 'object'
+        ? req.body.regras
+        : {};
+
+      const regras = {};
+      Object.entries(input).forEach(([usuarioId, setores]) => {
+        const key = String(usuarioId || '').trim();
+        if (!key) return;
+        regras[key] = normalizarListaSetores(setores);
+      });
+
+      const existente = await ConfiguracaoSistema.findOne({
+        where: { chave: CHAVE_SETORES_VISIVEIS_POR_USUARIO },
+        order: [['id', 'DESC']]
+      });
+
+      const valor = JSON.stringify({ regras });
+      if (existente) {
+        await existente.update({ valor });
+      } else {
+        await ConfiguracaoSistema.create({
+          chave: CHAVE_SETORES_VISIVEIS_POR_USUARIO,
+          valor
+        });
+      }
+
+      return res.json({ ok: true, regras });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao salvar configuracao de visibilidade por usuario' });
     }
   }
 };

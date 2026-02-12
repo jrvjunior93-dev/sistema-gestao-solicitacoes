@@ -12,6 +12,7 @@ const {
   MensagemSetor,
   SetorPermissao,
   Setor,
+  ConfiguracaoSistema,
   SolicitacaoVisibilidadeUsuario,
   Comprovante,
   Notificacao,
@@ -23,6 +24,9 @@ const { Op } = require('sequelize');
 const { criarNotificacao } = require('../services/notificacoes');
 const gerarCodigoSolicitacao = require('../services/solicitacao/gerarCodigo');
 const { uploadToS3 } = require('../services/s3');
+
+const CHAVE_AREAS_POR_SETOR_ORIGEM = 'AREAS_POR_SETOR_ORIGEM';
+const CHAVE_SETORES_VISIVEIS_POR_USUARIO = 'SETORES_VISIVEIS_POR_USUARIO';
 
 /* =====================================================
    FUNCAO AUXILIAR - VISIBILIDADE
@@ -71,6 +75,47 @@ async function obterTokensSetorUsuario(req, areaUsuario) {
     if (setor?.nome) tokens.push(String(setor.nome).toUpperCase());
   }
   return Array.from(new Set(tokens.filter(Boolean)));
+}
+
+async function lerConfiguracaoJson(chave, fallback) {
+  const item = await ConfiguracaoSistema.findOne({
+    where: { chave },
+    order: [['id', 'DESC']]
+  });
+  if (!item?.valor) return fallback;
+  try {
+    return JSON.parse(item.valor);
+  } catch {
+    return fallback;
+  }
+}
+
+async function obterRegrasAreasPorSetorOrigem() {
+  const data = await lerConfiguracaoJson(CHAVE_AREAS_POR_SETOR_ORIGEM, { regras: {} });
+  const regrasRaw = data?.regras && typeof data.regras === 'object' ? data.regras : {};
+  const regras = {};
+  Object.entries(regrasRaw).forEach(([origem, destinos]) => {
+    const key = String(origem || '').trim().toUpperCase();
+    if (!key) return;
+    regras[key] = Array.isArray(destinos)
+      ? [...new Set(destinos.map(v => String(v || '').trim().toUpperCase()).filter(Boolean))]
+      : [];
+  });
+  return regras;
+}
+
+async function obterSetoresVisiveisPorUsuario() {
+  const data = await lerConfiguracaoJson(CHAVE_SETORES_VISIVEIS_POR_USUARIO, { regras: {} });
+  const regrasRaw = data?.regras && typeof data.regras === 'object' ? data.regras : {};
+  const regras = {};
+  Object.entries(regrasRaw).forEach(([usuarioId, setores]) => {
+    const key = String(usuarioId || '').trim();
+    if (!key) return;
+    regras[key] = Array.isArray(setores)
+      ? [...new Set(setores.map(v => String(v || '').trim().toUpperCase()).filter(Boolean))]
+      : [];
+  });
+  return regras;
 }
 
 async function isUsuarioSetorObra(req) {
@@ -343,6 +388,12 @@ module.exports = {
       const isSetorBrape = setorTokens.some(token => isBrapeToken(token));
       const usuarioBrape = perfil === 'USUARIO' && isSetorBrape;
       const adminBrape = perfil.startsWith('ADMIN') && isSetorBrape;
+      const regrasSetoresPorUsuario = await obterSetoresVisiveisPorUsuario();
+      const setoresExtrasUsuario = regrasSetoresPorUsuario[String(usuarioId)] || [];
+      const setoresVisiveisAoAtribuir = Array.from(new Set([
+        ...setorTokens,
+        ...setoresExtrasUsuario
+      ]));
       const brapeTokens = Array.from(new Set(setorTokens.filter(isBrapeToken)));
       const brapeSetoresDb = await Setor.findAll({
         where: {
@@ -447,27 +498,37 @@ module.exports = {
           condicoes.push({ area_responsavel: { [Op.in]: setoresUnicos } });
         }
 
-        // Responsavel ve
+        // Responsavel ve (respeita setores configurados para o usuario)
         condicoes.push({
-          id: {
-            [Op.in]: Sequelize.literal(`(
-              SELECT solicitacao_id
-              FROM historicos
-              WHERE usuario_responsavel_id = ${usuarioId}
-                AND acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
-            )`)
-          }
+          [Op.and]: [
+            { area_responsavel: { [Op.in]: setoresVisiveisAoAtribuir } },
+            {
+              id: {
+                [Op.in]: Sequelize.literal(`(
+                  SELECT solicitacao_id
+                  FROM historicos
+                  WHERE usuario_responsavel_id = ${usuarioId}
+                    AND acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
+                )`)
+              }
+            }
+          ]
         });
 
-        // Qualquer interacao do usuario no historico
+        // Qualquer interacao do usuario no historico (respeita setores configurados)
         condicoes.push({
-          id: {
-            [Op.in]: Sequelize.literal(`(
-              SELECT solicitacao_id
-              FROM historicos
-              WHERE usuario_responsavel_id = ${usuarioId}
-            )`)
-          }
+          [Op.and]: [
+            { area_responsavel: { [Op.in]: setoresVisiveisAoAtribuir } },
+            {
+              id: {
+                [Op.in]: Sequelize.literal(`(
+                  SELECT solicitacao_id
+                  FROM historicos
+                  WHERE usuario_responsavel_id = ${usuarioId}
+                )`)
+              }
+            }
+          ]
         });
 
         // Vinculo com obra ve
@@ -642,6 +703,24 @@ module.exports = {
         return res.status(400).json({
           error: 'Campos obrigatorios nao informados'
         });
+      }
+
+      const regrasAreasPorSetor = await obterRegrasAreasPorSetorOrigem();
+      const areaUsuario = await obterAreaUsuario(req);
+      const tokensSetorUsuario = await obterTokensSetorUsuario(req, areaUsuario);
+      const destinosPermitidos = new Set();
+      tokensSetorUsuario.forEach(token => {
+        const lista = regrasAreasPorSetor[String(token || '').toUpperCase()] || [];
+        lista.forEach(item => destinosPermitidos.add(String(item || '').toUpperCase()));
+      });
+
+      if (destinosPermitidos.size > 0) {
+        const destino = String(area_responsavel || '').trim().toUpperCase();
+        if (!destinosPermitidos.has(destino)) {
+          return res.status(403).json({
+            error: 'Area responsavel nao permitida para o seu setor.'
+          });
+        }
       }
 
       const tipoSelecionado = await TipoSolicitacao.findByPk(tipo_solicitacao_id);
@@ -866,6 +945,13 @@ module.exports = {
       const solicitacao = await Solicitacao.findByPk(id);
       if (!solicitacao) {
         return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+      }
+
+      const solicitacaoBrape = await isSolicitacaoBrape(solicitacao);
+      if (solicitacaoBrape) {
+        return res.status(403).json({
+          error: 'Solicitacoes do setor BRAPE nao podem ser enviadas para outros setores.'
+        });
       }
 
       const acessoObra = await validarAcessoObra(req, solicitacao);
@@ -1137,13 +1223,6 @@ module.exports = {
 
       if (!solicitacao) {
         return res.status(404).json({ error: 'Solicitacao nao encontrada' });
-      }
-
-      const solicitacaoBrape = await isSolicitacaoBrape(solicitacao);
-      if (solicitacaoBrape) {
-        return res.status(403).json({
-          error: 'Solicitacoes do setor BRAPE nao podem ser enviadas para outros setores.'
-        });
       }
 
       const acessoObra = await validarAcessoObra(req, solicitacao);
