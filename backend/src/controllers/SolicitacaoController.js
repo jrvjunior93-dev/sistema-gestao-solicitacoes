@@ -697,42 +697,6 @@ module.exports = {
           where.valor = { [Op.gte]: min };
         }
       }
-      if (data_inicio || data_fim) {
-        const faixaData = {};
-        if (data_inicio) {
-          const inicio = new Date(`${String(data_inicio).trim()}T00:00:00.000Z`);
-          if (!Number.isNaN(inicio.getTime())) {
-            faixaData[Op.gte] = inicio;
-          }
-        }
-        if (data_fim) {
-          const fim = new Date(`${String(data_fim).trim()}T23:59:59.999Z`);
-          if (!Number.isNaN(fim.getTime())) {
-            faixaData[Op.lte] = fim;
-          }
-        }
-        if (Object.keys(faixaData).length > 0) {
-          where.createdAt = faixaData;
-        }
-      }
-      if (responsavel) {
-        const responsavelFiltro = String(responsavel).trim();
-        if (responsavelFiltro) {
-          const responsavelEscapado = responsavelFiltro.replace(/'/g, "''");
-          where[Op.and] = where[Op.and] || [];
-          where[Op.and].push(
-            Sequelize.literal(`EXISTS (
-              SELECT 1
-              FROM historicos h
-              INNER JOIN users u ON u.id = h.usuario_responsavel_id
-              WHERE h.solicitacao_id = Solicitacao.id
-                AND h.acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
-                AND UPPER(u.nome) LIKE UPPER('%${responsavelEscapado}%')
-            )`)
-          );
-        }
-      }
-
       /* ===============================
         5) CONSULTA
       =============================== */
@@ -805,9 +769,35 @@ module.exports = {
         };
       });
 
-      const resultado = isSetorObra
+      let resultado = isSetorObra
         ? resultadoBase.filter(r => obrasVinculadas.includes(r.obra_id))
         : resultadoBase;
+
+      if (data_inicio || data_fim) {
+        const inicio = data_inicio
+          ? new Date(`${String(data_inicio).trim()}T00:00:00`)
+          : null;
+        const fim = data_fim
+          ? new Date(`${String(data_fim).trim()}T23:59:59.999`)
+          : null;
+
+        resultado = resultado.filter(item => {
+          const dataItem = new Date(item.createdAt);
+          if (Number.isNaN(dataItem.getTime())) return false;
+          if (inicio && !Number.isNaN(inicio.getTime()) && dataItem < inicio) return false;
+          if (fim && !Number.isNaN(fim.getTime()) && dataItem > fim) return false;
+          return true;
+        });
+      }
+
+      if (responsavel) {
+        const filtroResponsavel = String(responsavel).trim().toUpperCase();
+        if (filtroResponsavel) {
+          resultado = resultado.filter(item =>
+            String(item?.responsavel || '').toUpperCase().includes(filtroResponsavel)
+          );
+        }
+      }
 
       return res.json(resultado);
 
