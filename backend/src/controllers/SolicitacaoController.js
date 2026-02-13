@@ -604,13 +604,36 @@ module.exports = {
         }
       }
       if (status) {
-        const statusNormalizado = String(status)
-          .trim()
+        const statusFiltro = String(status).trim();
+        const statusSemAcento = statusFiltro
           .toUpperCase()
           .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .replace(/\s+/g, '_');
-        where.status_global = statusNormalizado;
+          .replace(/[\u0300-\u036f]/g, '');
+        const statusComUnderscore = statusSemAcento.replace(/\s+/g, '_');
+        const statusComEspaco = statusSemAcento.replace(/_/g, ' ');
+        const statusSemSeparador = statusSemAcento.replace(/[\s_]+/g, '');
+
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({
+          [Op.or]: [
+            { status_global: statusComUnderscore },
+            { status_global: statusComEspaco },
+            Sequelize.where(
+              Sequelize.fn(
+                'REPLACE',
+                Sequelize.fn(
+                  'REPLACE',
+                  Sequelize.fn('UPPER', Sequelize.col('status_global')),
+                  '_',
+                  ''
+                ),
+                ' ',
+                ''
+              ),
+              statusSemSeparador
+            )
+          ]
+        });
       }
       if (obra_id) {
         const idNum = Number(obra_id);
@@ -645,9 +668,26 @@ module.exports = {
           where.obra_id = { [Op.in]: obrasVinculadas };
         }
       }
-      if (tipo_macro_id) where.tipo_macro_id = tipo_macro_id;
-      if (tipo_solicitacao_id) where.tipo_solicitacao_id = tipo_solicitacao_id;
-      if (codigo_contrato) where.codigo_contrato = codigo_contrato;
+      if (tipo_macro_id) {
+        const tipoMacroNum = Number(tipo_macro_id);
+        if (!Number.isNaN(tipoMacroNum) && tipoMacroNum > 0) {
+          where.tipo_macro_id = tipoMacroNum;
+        }
+      }
+      if (tipo_solicitacao_id) {
+        const tipoSolicitacaoNum = Number(tipo_solicitacao_id);
+        if (!Number.isNaN(tipoSolicitacaoNum) && tipoSolicitacaoNum > 0) {
+          where.tipo_solicitacao_id = tipoSolicitacaoNum;
+        }
+      }
+      if (codigo_contrato) {
+        const codigoContratoFiltro = String(codigo_contrato).trim();
+        if (codigoContratoFiltro) {
+          where.codigo_contrato = {
+            [Op.like]: `%${codigoContratoFiltro}%`
+          };
+        }
+      }
       if (valor_min !== undefined && valor_min !== null && String(valor_min).trim() !== '') {
         const min = Number(valor_min);
         if (!Number.isNaN(min)) {
