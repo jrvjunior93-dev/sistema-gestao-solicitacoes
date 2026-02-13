@@ -31,12 +31,15 @@ export default function Filtros({
       tipo_solicitacao_id: '',
       status: '',
       codigo_contrato: '',
-      valor_min: ''
+      valor_min: '',
+      data_inicio: '',
+      data_fim: '',
+      responsavel: ''
     });
   }
 
   return (
-    <div className="bg-white p-4 rounded-xl shadow mb-6 grid grid-cols-1 md:grid-cols-6 gap-4">
+    <div className="bg-white p-4 rounded-xl shadow mb-6 grid grid-cols-1 md:grid-cols-3 xl:grid-cols-8 gap-4">
 
       <div className="flex gap-2">
         <input
@@ -89,6 +92,32 @@ export default function Filtros({
         min="0"
       />
 
+      <input
+        name="data_inicio"
+        placeholder="Data inicial"
+        className="input"
+        value={filtros.data_inicio || ''}
+        onChange={handleChange}
+        type="date"
+      />
+
+      <input
+        name="data_fim"
+        placeholder="Data final"
+        className="input"
+        value={filtros.data_fim || ''}
+        onChange={handleChange}
+        type="date"
+      />
+
+      <input
+        name="responsavel"
+        placeholder="Responsavel"
+        className="input"
+        value={filtros.responsavel || ''}
+        onChange={handleChange}
+      />
+
       <div className="flex gap-2">
         <button className="btn btn-outline" type="button" onClick={onBuscarObraDescricao}>
           Buscar
@@ -99,7 +128,7 @@ export default function Filtros({
       </div>
 
       {mostrarSomaValor && (
-        <div className="md:col-span-2">
+        <div className="md:col-span-2 xl:col-span-2">
           <label className="text-sm text-gray-600">Soma do valor filtrado</label>
           <input
             className="input mt-1"

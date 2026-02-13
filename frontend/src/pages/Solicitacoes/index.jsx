@@ -25,7 +25,10 @@ export default function Solicitacoes() {
     tipo_solicitacao_id: '',
     status: '',
     codigo_contrato: '',
-    valor_min: ''
+    valor_min: '',
+    data_inicio: '',
+    data_fim: '',
+    responsavel: ''
   });
 
   /* ===============================
