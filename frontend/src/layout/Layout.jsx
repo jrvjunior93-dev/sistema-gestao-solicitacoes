@@ -6,10 +6,15 @@ import NotificacoesBell from '../components/NotificacoesBell';
 export default function Layout() {
   const { user, logout } = useContext(AuthContext);
   const [menuAberto, setMenuAberto] = useState(false);
+  const perfilUpper = String(user?.perfil || '').toUpperCase();
+  const areaUpper = String(user?.area || '').toUpperCase();
+  const setorCodigoUpper = String(user?.setor?.codigo || '').toUpperCase();
+  const setorNomeUpper = String(user?.setor?.nome || '').toUpperCase();
   const isFinanceiro =
-    user?.perfil === 'FINANCEIRO' ||
-    user?.setor?.codigo === 'FINANCEIRO' ||
-    user?.area === 'FINANCEIRO' ||
+    perfilUpper === 'FINANCEIRO' ||
+    setorCodigoUpper === 'FINANCEIRO' ||
+    setorNomeUpper === 'FINANCEIRO' ||
+    areaUpper === 'FINANCEIRO' ||
     user?.setor_id === 4;
   const setorTokens = [
     String(user?.setor?.nome || '').toUpperCase(),
@@ -90,6 +95,12 @@ export default function Layout() {
             <MenuItem to="/">Dashboard</MenuItem>
             <MenuItem to="/nova-solicitacao">Nova Solicitacao</MenuItem>
             <MenuItem to="/solicitacoes">Solicitacoes</MenuItem>
+            {isFinanceiro && (
+              <>
+                <MenuItem to="/comprovantes/upload">Upload Comprovantes</MenuItem>
+                <MenuItem to="/comprovantes/pendentes">Comprovantes Pendentes</MenuItem>
+              </>
+            )}
             <MenuItem to="/usuarios">Usuarios</MenuItem>
             {isAdminGEO && (
               <MenuItem to="/gestao-contratos">Gestao de Contratos</MenuItem>

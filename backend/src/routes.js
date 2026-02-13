@@ -93,12 +93,21 @@ router.get(
 // COMPROVANTES
 // -------------------------------------------------------------------
 const allowComprovantes = (req, res, next) => {
-  const { perfil, area, setor_id } = req.user;
-  if (
-    perfil === 'SUPERADMIN' ||
+  const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+  const area = String(req.user?.area || '').trim().toUpperCase();
+  const setorCodigo = String(req.user?.setor?.codigo || '').trim().toUpperCase();
+  const setorNome = String(req.user?.setor?.nome || '').trim().toUpperCase();
+  const setorId = Number(req.user?.setor_id);
+  const isFinanceiro =
     perfil === 'FINANCEIRO' ||
     area === 'FINANCEIRO' ||
-    setor_id === 4
+    setorCodigo === 'FINANCEIRO' ||
+    setorNome === 'FINANCEIRO' ||
+    setorId === 4;
+
+  if (
+    perfil === 'SUPERADMIN' ||
+    isFinanceiro
   ) {
     return next();
   }
