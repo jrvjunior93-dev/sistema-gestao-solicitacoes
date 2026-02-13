@@ -698,69 +698,45 @@ module.exports = {
         }
       }
       if (data_inicio || data_fim) {
-        where[Op.and] = where[Op.and] || [];
+        const intervaloData = {};
         if (data_inicio) {
           const dataInicioStr = String(data_inicio).trim();
           if (/^\d{4}-\d{2}-\d{2}$/.test(dataInicioStr)) {
-            where[Op.and].push(
-              Sequelize.where(
-                Sequelize.fn('DATE', Sequelize.col('createdAt')),
-                '>=',
-                dataInicioStr
-              )
-            );
+            intervaloData[Op.gte] = new Date(`${dataInicioStr}T00:00:00`);
           }
         }
         if (data_fim) {
           const dataFimStr = String(data_fim).trim();
           if (/^\d{4}-\d{2}-\d{2}$/.test(dataFimStr)) {
-            where[Op.and].push(
-              Sequelize.where(
-                Sequelize.fn('DATE', Sequelize.col('createdAt')),
-                '<=',
-                dataFimStr
-              )
-            );
+            intervaloData[Op.lte] = new Date(`${dataFimStr}T23:59:59.999`);
           }
+        }
+        if (Object.keys(intervaloData).length > 0) {
+          where.createdAt = intervaloData;
         }
       }
 
       if (responsavel) {
         const responsavelFiltro = String(responsavel).trim();
         if (responsavelFiltro) {
-          const historicosResponsavel = await Historico.findAll({
-            where: {
-              acao: {
-                [Op.in]: ['RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU']
-              }
-            },
-            include: [
-              {
-                model: User,
-                as: 'usuario',
-                required: true,
-                attributes: [],
-                where: {
-                  nome: {
-                    [Op.like]: `%${responsavelFiltro}%`
-                  }
-                }
-              }
-            ],
-            attributes: ['solicitacao_id'],
-            group: ['solicitacao_id']
-          });
-
-          const idsSolicitacoes = historicosResponsavel
-            .map(item => Number(item.solicitacao_id))
-            .filter(id => !Number.isNaN(id) && id > 0);
-
+          const filtroEscapado = responsavelFiltro.replace(/'/g, "''");
           where[Op.and] = where[Op.and] || [];
-          where[Op.and].push({
-            id: {
-              [Op.in]: idsSolicitacoes.length > 0 ? idsSolicitacoes : [-1]
-            }
-          });
+          where[Op.and].push(
+            Sequelize.literal(`EXISTS (
+              SELECT 1
+              FROM historicos h
+              INNER JOIN users u ON u.id = h.usuario_responsavel_id
+              WHERE h.solicitacao_id = Solicitacao.id
+                AND h.acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
+                AND h.createdAt = (
+                  SELECT MAX(h2.createdAt)
+                  FROM historicos h2
+                  WHERE h2.solicitacao_id = Solicitacao.id
+                    AND h2.acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
+                )
+                AND UPPER(u.nome) LIKE UPPER('%${filtroEscapado}%')
+            )`)
+          );
         }
       }
       /* ===============================

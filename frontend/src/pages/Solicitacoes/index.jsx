@@ -140,7 +140,7 @@ export default function Solicitacoes() {
       }
 
       const data = await res.json();
-      setSolicitacoes(data);
+      setSolicitacoes(Array.isArray(data) ? data : []);
 
     } catch (error) {
       console.error(error);
