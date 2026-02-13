@@ -697,6 +697,72 @@ module.exports = {
           where.valor = { [Op.gte]: min };
         }
       }
+      if (data_inicio || data_fim) {
+        where[Op.and] = where[Op.and] || [];
+        if (data_inicio) {
+          const dataInicioStr = String(data_inicio).trim();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(dataInicioStr)) {
+            where[Op.and].push(
+              Sequelize.where(
+                Sequelize.fn('DATE', Sequelize.col('createdAt')),
+                '>=',
+                dataInicioStr
+              )
+            );
+          }
+        }
+        if (data_fim) {
+          const dataFimStr = String(data_fim).trim();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(dataFimStr)) {
+            where[Op.and].push(
+              Sequelize.where(
+                Sequelize.fn('DATE', Sequelize.col('createdAt')),
+                '<=',
+                dataFimStr
+              )
+            );
+          }
+        }
+      }
+
+      if (responsavel) {
+        const responsavelFiltro = String(responsavel).trim();
+        if (responsavelFiltro) {
+          const historicosResponsavel = await Historico.findAll({
+            where: {
+              acao: {
+                [Op.in]: ['RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU']
+              }
+            },
+            include: [
+              {
+                model: User,
+                as: 'usuario',
+                required: true,
+                attributes: [],
+                where: {
+                  nome: {
+                    [Op.like]: `%${responsavelFiltro}%`
+                  }
+                }
+              }
+            ],
+            attributes: ['solicitacao_id'],
+            group: ['solicitacao_id']
+          });
+
+          const idsSolicitacoes = historicosResponsavel
+            .map(item => Number(item.solicitacao_id))
+            .filter(id => !Number.isNaN(id) && id > 0);
+
+          where[Op.and] = where[Op.and] || [];
+          where[Op.and].push({
+            id: {
+              [Op.in]: idsSolicitacoes.length > 0 ? idsSolicitacoes : [-1]
+            }
+          });
+        }
+      }
       /* ===============================
         5) CONSULTA
       =============================== */
@@ -769,35 +835,9 @@ module.exports = {
         };
       });
 
-      let resultado = isSetorObra
+      const resultado = isSetorObra
         ? resultadoBase.filter(r => obrasVinculadas.includes(r.obra_id))
         : resultadoBase;
-
-      if (data_inicio || data_fim) {
-        const inicio = data_inicio
-          ? new Date(`${String(data_inicio).trim()}T00:00:00`)
-          : null;
-        const fim = data_fim
-          ? new Date(`${String(data_fim).trim()}T23:59:59.999`)
-          : null;
-
-        resultado = resultado.filter(item => {
-          const dataItem = new Date(item.createdAt);
-          if (Number.isNaN(dataItem.getTime())) return false;
-          if (inicio && !Number.isNaN(inicio.getTime()) && dataItem < inicio) return false;
-          if (fim && !Number.isNaN(fim.getTime()) && dataItem > fim) return false;
-          return true;
-        });
-      }
-
-      if (responsavel) {
-        const filtroResponsavel = String(responsavel).trim().toUpperCase();
-        if (filtroResponsavel) {
-          resultado = resultado.filter(item =>
-            String(item?.responsavel || '').toUpperCase().includes(filtroResponsavel)
-          );
-        }
-      }
 
       return res.json(resultado);
 
