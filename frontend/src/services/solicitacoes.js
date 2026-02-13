@@ -68,6 +68,21 @@ export async function updateValorSolicitacao(id, valor) {
   return true;
 }
 
+export async function updateRefContratoSolicitacao(id, contrato_id) {
+  const res = await fetch(`${API_URL}/solicitacoes/${id}/ref-contrato`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ contrato_id })
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+
+  return true;
+}
+
 export async function deleteSolicitacao(id) {
   const res = await fetch(`${API_URL}/solicitacoes/${id}`, {
     method: 'DELETE',
