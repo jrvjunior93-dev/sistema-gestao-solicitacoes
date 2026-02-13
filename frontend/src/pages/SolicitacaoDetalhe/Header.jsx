@@ -7,6 +7,13 @@ function formatarData(valor) {
   return data.toLocaleDateString('pt-BR');
 }
 
+function formatarValor(valor) {
+  if (valor === null || valor === undefined || valor === '') return '-';
+  const numero = Number(valor);
+  if (Number.isNaN(numero)) return '-';
+  return numero.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 export default function Header({ solicitacao, onAlterarStatus, mostrarAlterarStatus = true }) {
 
   return (
@@ -42,7 +49,7 @@ export default function Header({ solicitacao, onAlterarStatus, mostrarAlterarSta
         {solicitacao.descricao}
       </p>
 
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mt-4 text-sm">
+      <div className="grid grid-cols-2 md:grid-cols-7 gap-4 mt-4 text-sm">
 
         <div>
           <span className="text-gray-500">Obra</span>
@@ -52,6 +59,11 @@ export default function Header({ solicitacao, onAlterarStatus, mostrarAlterarSta
         <div>
           <span className="text-gray-500">Setor</span>
           <p>{solicitacao.area_responsavel}</p>
+        </div>
+
+        <div>
+          <span className="text-gray-500">Valor</span>
+          <p>{formatarValor(solicitacao.valor)}</p>
         </div>
 
         <div>

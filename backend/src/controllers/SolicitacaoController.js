@@ -738,7 +738,7 @@ module.exports = {
         ref_contrato_abertura
       } = req.body;
 
-      if (!obra_id || !tipo_solicitacao_id || !descricao || !area_responsavel) {
+      if (!obra_id || !tipo_solicitacao_id || !area_responsavel) {
         return res.status(400).json({
           error: 'Campos obrigatorios nao informados'
         });
@@ -767,6 +767,25 @@ module.exports = {
       const nomeTipoNormalizado = nomeTipo
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '');
+
+      const tiposSemValor = new Set([
+        'SOLICITACAO DE COMPRA',
+        'OUTROS ASSUNTOS',
+        'PEDIDO DE CONTRATACAO'
+      ]);
+
+      if (!tiposSemValor.has(nomeTipoNormalizado) && (valor === '' || valor === null || valor === undefined)) {
+        return res.status(400).json({
+          error: 'Para continuar, informe o valor da solicitacao.'
+        });
+      }
+
+      if (nomeTipoNormalizado !== 'MEDICAO' && !descricao) {
+        return res.status(400).json({
+          error: 'Campos obrigatorios nao informados'
+        });
+      }
+
       if (nomeTipo === 'ADM LOCAL DE OBRA' && !tipo_sub_id) {
         return res.status(400).json({
           error: 'Para continuar, selecione o subtipo para Adm Local de Obra.'
@@ -775,6 +794,16 @@ module.exports = {
       if (nomeTipoNormalizado === 'MEDICAO' && (!data_inicio_medicao || !data_fim_medicao)) {
         return res.status(400).json({
           error: 'Para Medicao, informe data inicial e data final.'
+        });
+      }
+      if (nomeTipoNormalizado === 'MEDICAO' && !data_vencimento) {
+        return res.status(400).json({
+          error: 'Para Medicao, informe a data de vencimento.'
+        });
+      }
+      if (nomeTipoNormalizado === 'MEDICAO' && !contrato_id) {
+        return res.status(400).json({
+          error: 'Para Medicao, selecione um contrato.'
         });
       }
       if (nomeTipoNormalizado === 'ABERTURA DE CONTRATO' && !itens_apropriacao) {
@@ -790,6 +819,9 @@ module.exports = {
 
       const usuarioId = req.user.id;
       const usuario = await User.findByPk(usuarioId);
+      const valorPersistido = tiposSemValor.has(nomeTipoNormalizado)
+        ? null
+        : (valor === '' || valor === undefined ? null : valor);
 
       const codigo = await gerarCodigoSolicitacao();
 
@@ -800,7 +832,7 @@ module.exports = {
         tipo_macro_id: tipo_macro_id || null,
         tipo_sub_id: tipo_sub_id || null,
         descricao,
-        valor,
+        valor: valorPersistido,
         area_responsavel,
         codigo_contrato,
         contrato_id: contrato_id || null,

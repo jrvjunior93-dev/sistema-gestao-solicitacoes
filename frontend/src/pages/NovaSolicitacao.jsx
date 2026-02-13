@@ -120,6 +120,9 @@ export default function NovaSolicitacao() {
   const medicaoObrigatoria = nomeTipoNormalizado === 'MEDICAO';
   const aberturaContratoObrigatoria = nomeTipoNormalizado === 'ABERTURA DE CONTRATO';
   const solicitacaoCompra = nomeTipoNormalizado === 'SOLICITACAO DE COMPRA';
+  const outrosAssuntos = nomeTipoNormalizado === 'OUTROS ASSUNTOS';
+  const pedidoContratacao = nomeTipoNormalizado === 'PEDIDO DE CONTRATACAO';
+  const tipoSemValor = solicitacaoCompra || outrosAssuntos || pedidoContratacao;
   const exibirCamposContrato = medicaoObrigatoria || subtipoObrigatorio;
 
   useEffect(() => {
@@ -134,11 +137,11 @@ export default function NovaSolicitacao() {
       setRefResultados([]);
       setContratosRef([]);
     }
-    if (solicitacaoCompra) {
+    if (tipoSemValor) {
       setForm(prev => ({ ...prev, valor: '' }));
       setValorTexto('');
     }
-  }, [exibirCamposContrato, solicitacaoCompra]);
+  }, [exibirCamposContrato, tipoSemValor]);
 
   function formatarMoeda(valor) {
     if (Number.isNaN(valor)) return '';
@@ -239,8 +242,24 @@ export default function NovaSolicitacao() {
       alert('Para continuar, selecione o subtipo para Adm Local de Obra.');
       return;
     }
+    if (!tipoSemValor && (form.valor === '' || form.valor === null || form.valor === undefined)) {
+      alert('Informe o valor da solicitacao.');
+      return;
+    }
     if (medicaoObrigatoria && (!form.data_inicio_medicao || !form.data_fim_medicao)) {
       alert('Para Medicao, informe data inicial e data final.');
+      return;
+    }
+    if (medicaoObrigatoria && !form.data_vencimento) {
+      alert('Para Medicao, informe a data de vencimento.');
+      return;
+    }
+    if (medicaoObrigatoria && !form.contrato_id) {
+      alert('Para Medicao, selecione um contrato.');
+      return;
+    }
+    if (medicaoObrigatoria && !refContratoBusca.trim()) {
+      alert('Para Medicao, informe a ref do contrato.');
       return;
     }
     if (aberturaContratoObrigatoria && !form.itens_apropriacao) {
@@ -435,6 +454,7 @@ export default function NovaSolicitacao() {
                   placeholder="Buscar por referencia do contrato"
                   value={refContratoBusca}
                   onChange={e => setRefContratoBusca(e.target.value)}
+                  required={medicaoObrigatoria}
                 />
                 <button type="button" className="btn btn-outline" onClick={buscarRefContrato}>
                   Buscar
@@ -501,6 +521,7 @@ export default function NovaSolicitacao() {
                 className="input"
                 disabled={!form.obra_id && contratosDisponiveis.length === 0}
                 value={form.contrato_id}
+                required={medicaoObrigatoria}
               >
                 <option value="">Nao vincular</option>
                 {contratosDisponiveis.map(c => (
@@ -513,7 +534,7 @@ export default function NovaSolicitacao() {
           </div>
         )}
 
-        {!solicitacaoCompra && (
+        {!tipoSemValor && (
           <label className="grid gap-1 text-sm">
             Valor
             <input
@@ -522,6 +543,7 @@ export default function NovaSolicitacao() {
               value={valorTexto}
               onChange={e => atualizarValor(e.target.value)}
               placeholder="R$ 0,00"
+              required
             />
           </label>
         )}
@@ -534,6 +556,7 @@ export default function NovaSolicitacao() {
             onChange={handleChange}
             className="input"
             value={form.data_vencimento}
+            required={medicaoObrigatoria}
           />
         </label>
 
@@ -604,7 +627,7 @@ export default function NovaSolicitacao() {
             }
             maxLength={50}
             className="input min-h-[120px]"
-            required
+            required={!medicaoObrigatoria}
             value={form.descricao}
           />
           <span className="text-xs text-gray-500">
