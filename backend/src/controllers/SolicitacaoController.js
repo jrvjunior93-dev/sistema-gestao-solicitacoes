@@ -209,6 +209,29 @@ async function isSetorGeo(req) {
   );
 }
 
+async function isSetorObraGeral(req) {
+  const areaUsuario = await obterAreaUsuario(req);
+  if (areaUsuario === 'OBRA') return true;
+
+  if (!req.user?.setor_id) return false;
+
+  const setor = await Setor.findByPk(req.user.setor_id, {
+    attributes: ['codigo', 'nome']
+  });
+
+  if (!setor) return false;
+
+  const nomeSetor = String(setor.nome || '').toUpperCase();
+  const codigoSetor = String(setor.codigo || '').toUpperCase();
+  const areaToken = String(req.user?.area || '').toUpperCase();
+
+  return (
+    nomeSetor === 'OBRA' ||
+    codigoSetor === 'OBRA' ||
+    areaToken === 'OBRA'
+  );
+}
+
 function isBrapeToken(valor) {
   if (!valor) return false;
   return String(valor).trim().toUpperCase().startsWith('BRAPE');
@@ -1187,6 +1210,77 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao atualizar numero do pedido' });
+    }
+  },
+
+  // =====================================================
+  // ATUALIZAR REF. DO CONTRATO (SETOR OBRA)
+  // =====================================================
+  async atualizarRefContrato(req, res) {
+    try {
+      const { id } = req.params;
+      const { contrato_id } = req.body;
+
+      const setorObra = await isSetorObraGeral(req);
+      if (!setorObra) {
+        return res.status(403).json({
+          error: 'Apenas usuarios do setor OBRA podem atualizar a ref. do contrato.'
+        });
+      }
+
+      const solicitacao = await Solicitacao.findByPk(id);
+      if (!solicitacao) {
+        return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+      }
+
+      const acessoObra = await validarAcessoObra(req, solicitacao);
+      if (!acessoObra) {
+        return res.status(403).json({
+          error: 'Acesso negado. Vincule o usuario a obra para continuar.'
+        });
+      }
+
+      const contratoIdNum = Number(contrato_id);
+      if (Number.isNaN(contratoIdNum) || contratoIdNum <= 0) {
+        return res.status(400).json({ error: 'Contrato invalido.' });
+      }
+
+      const contrato = await Contrato.findByPk(contratoIdNum, {
+        attributes: ['id', 'codigo', 'ref_contrato', 'obra_id']
+      });
+
+      if (!contrato) {
+        return res.status(404).json({ error: 'Contrato nao encontrado.' });
+      }
+
+      if (Number(contrato.obra_id) !== Number(solicitacao.obra_id)) {
+        return res.status(400).json({
+          error: 'Selecione um contrato da mesma obra da solicitacao.'
+        });
+      }
+
+      await solicitacao.update({
+        contrato_id: contrato.id,
+        codigo_contrato: contrato.codigo || null
+      });
+
+      await Historico.create({
+        solicitacao_id: id,
+        usuario_responsavel_id: req.user.id,
+        setor: req.user.area,
+        acao: 'REF_CONTRATO_ATUALIZADA',
+        descricao: `Ref. do contrato atualizada para ${contrato.ref_contrato || '-'} (${contrato.codigo || '-'})`,
+        metadata: JSON.stringify({
+          contrato_id: contrato.id,
+          contrato_codigo: contrato.codigo || null,
+          ref_contrato: contrato.ref_contrato || null
+        })
+      });
+
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao atualizar ref. do contrato' });
     }
   },
 
