@@ -3,6 +3,9 @@ const jwt = require('jsonwebtoken');
 const JWT_SECRET = 'segredo_super_secreto';
 
 module.exports = (req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
 
   const authHeader = req.headers.authorization;
 
