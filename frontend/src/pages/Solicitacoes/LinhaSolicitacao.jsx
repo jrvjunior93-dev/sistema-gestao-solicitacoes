@@ -118,7 +118,7 @@ export default function LinhaSolicitacao({
 
   return (
     <>
-      <tr className="border-b odd:bg-white even:bg-gray-50/50 hover:bg-blue-50/40">
+      <tr className="border-b border-gray-200 dark:border-slate-700 odd:bg-white even:bg-gray-50/50 dark:odd:bg-slate-900 dark:even:bg-slate-800/90 hover:bg-blue-50/40 dark:hover:bg-slate-700 text-gray-900 dark:text-slate-100">
 
         <td
           className="p-2 whitespace-nowrap"
