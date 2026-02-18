@@ -72,7 +72,7 @@ export default function TabelaSolicitacoes({
       className="bg-white dark:bg-slate-900 rounded-xl shadow overflow-x-auto overflow-y-auto ring-1 ring-gray-200 dark:ring-slate-700 max-h-[70vh]"
     >
 
-      <table className="min-w-full text-sm table-fixed">
+      <table className="min-w-full text-sm table-fixed solicitacoes-table">
         <colgroup>
           {widths.map((width, index) => (
             <col key={columns[index].id} style={{ width: `${width}px` }} />

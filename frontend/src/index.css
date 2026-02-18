@@ -596,6 +596,28 @@ a {
 .dark table td {
   color: var(--c-text);
 }
+
+/* Tabela de Solicitações no tema escuro */
+.dark .solicitacoes-table tbody tr:nth-child(odd) {
+  background: #0f172a !important;
+}
+
+.dark .solicitacoes-table tbody tr:nth-child(even) {
+  background: #1f2937 !important;
+}
+
+.dark .solicitacoes-table tbody tr:hover {
+  background: #334155 !important;
+}
+
+.dark .solicitacoes-table tbody td {
+  color: #e5e7eb !important;
+}
+
+.dark .solicitacoes-table tbody td span,
+.dark .solicitacoes-table tbody td p {
+  color: #e5e7eb !important;
+}
 .dark table td {
   color: var(--c-text);
 }
