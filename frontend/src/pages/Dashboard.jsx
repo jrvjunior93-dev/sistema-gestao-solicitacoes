@@ -134,7 +134,7 @@ export default function Dashboard() {
                   <span>{dados.total}</span>
                 </div>
                 <div className="flex-1">
-                  <p className="text-xs uppercase tracking-wide text-slate-600">Solicitacoes</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-600">Solicitações</p>
                   <h3 className="text-lg font-semibold text-slate-900">Volume total</h3>
                   <p className="text-sm text-slate-600">
                     Pendentes: <strong>{getTotalByStatus('PENDENTE')}</strong> · Em analise:{' '}
@@ -146,8 +146,8 @@ export default function Dashboard() {
               <div className="glass metric-grid">
                 {[
                   { label: 'Pendentes', value: getTotalByStatus('PENDENTE'), color: cores[0] },
-                  { label: 'Em Analise', value: getTotalByStatus('EM_ANALISE'), color: cores[1] },
-                  { label: 'Concluidas', value: getTotalByStatus('CONCLUIDA'), color: cores[2] },
+                  { label: 'Em Análise', value: getTotalByStatus('EM_ANALISE'), color: cores[1] },
+                  { label: 'Concluídas', value: getTotalByStatus('CONCLUIDA'), color: cores[2] },
                   { label: 'Valor Total', value: valorTotal, color: cores[3], isMoney: true }
                 ].map(item => (
                   <div key={item.label} className="value-block">
@@ -169,7 +169,7 @@ export default function Dashboard() {
           <section className="two-col">
             <div className="glass">
               <div className="value-block mb-3">
-                <h3 className="font-semibold text-slate-900">Solicitacoes por Status</h3>
+                <h3 className="font-semibold text-slate-900">Solicitações por Status</h3>
                 <span className="pill">Equilibrio</span>
               </div>
               {dados.porStatus.length === 0 ? (
@@ -203,7 +203,7 @@ export default function Dashboard() {
 
             <div className="glass">
               <div className="value-block mb-3">
-                <h3 className="font-semibold text-slate-900">Solicitacoes por Area</h3>
+                <h3 className="font-semibold text-slate-900">Solicitações por Área</h3>
                 <span className="pill">Mapa de carga</span>
               </div>
               {dados.porArea.length === 0 ? (
@@ -274,7 +274,7 @@ export default function Dashboard() {
 
             <div className="glass">
               <div className="value-block mb-3">
-                <h3 className="font-semibold text-slate-900">SLA Medio</h3>
+                <h3 className="font-semibold text-slate-900">SLA Médio</h3>
                 <span className="pill">Tempo</span>
               </div>
               {dados.slaMedio.length === 0 ? (

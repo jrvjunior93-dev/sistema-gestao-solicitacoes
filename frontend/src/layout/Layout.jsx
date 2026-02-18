@@ -63,10 +63,10 @@ export default function Layout() {
 
     switch (user?.perfil) {
       case 'USUARIO':
-        add('/solicitacoes', 'Minhas Solicitacoes', HiOutlineClipboardDocumentList);
-        add('/nova-solicitacao', 'Nova Solicitacao', HiOutlinePlusCircle);
+        add('/solicitacoes', 'Minhas Solicitações', HiOutlineClipboardDocumentList);
+        add('/nova-solicitacao', 'Nova Solicitação', HiOutlinePlusCircle);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
-        if (isSetorObra) add('/gestao-contratos', 'Gestao de Contratos', HiOutlineBanknotes);
+        if (isSetorObra) add('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes);
         if (isFinanceiro) {
           add('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp);
           add('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund);
@@ -74,9 +74,9 @@ export default function Layout() {
         break;
 
       case 'SETOR':
-        add('/solicitacoes', 'Solicitacoes do Setor', HiOutlineClipboardDocumentList);
+        add('/solicitacoes', 'Solicitações do Setor', HiOutlineClipboardDocumentList);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
-        if (isSetorObra) add('/gestao-contratos', 'Gestao de Contratos', HiOutlineBanknotes);
+        if (isSetorObra) add('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes);
         if (isFinanceiro) {
           add('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp);
           add('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund);
@@ -84,9 +84,9 @@ export default function Layout() {
         break;
 
       case 'GESTOR':
-        add('/solicitacoes', 'Todas as Solicitacoes', HiOutlineClipboardDocumentList);
+        add('/solicitacoes', 'Todas as Solicitações', HiOutlineClipboardDocumentList);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
-        if (isSetorObra) add('/gestao-contratos', 'Gestao de Contratos', HiOutlineBanknotes);
+        if (isSetorObra) add('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes);
         if (isFinanceiro) {
           add('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp);
           add('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund);
@@ -94,7 +94,7 @@ export default function Layout() {
         break;
 
       case 'FINANCEIRO':
-        add('/solicitacoes', 'Solicitacoes do Setor', HiOutlineClipboardDocumentList);
+        add('/solicitacoes', 'Solicitações do Setor', HiOutlineClipboardDocumentList);
         add('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp);
         add('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
@@ -102,30 +102,30 @@ export default function Layout() {
 
       case 'ADMIN':
         add('/', 'Dashboard', HiOutlineSquares2X2);
-        add('/nova-solicitacao', 'Nova Solicitacao', HiOutlinePlusCircle);
-        add('/solicitacoes', 'Solicitacoes', HiOutlineClipboardDocumentList);
+        add('/nova-solicitacao', 'Nova Solicitação', HiOutlinePlusCircle);
+        add('/solicitacoes', 'Solicitações', HiOutlineClipboardDocumentList);
         if (isFinanceiro) {
           add('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp);
           add('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund);
         }
-        add('/usuarios', 'Usuarios', HiOutlineUsers);
-        if (isAdminGEO) add('/gestao-contratos', 'Gestao de Contratos', HiOutlineBanknotes);
+        add('/usuarios', 'Usuários', HiOutlineUsers);
+        if (isAdminGEO) add('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
         break;
 
       case 'SUPERADMIN':
         add('/', 'Dashboard', HiOutlineSquares2X2);
-        add('/nova-solicitacao', 'Nova Solicitacao', HiOutlinePlusCircle);
-        add('/solicitacoes', 'Solicitacoes', HiOutlineClipboardDocumentList);
+        add('/nova-solicitacao', 'Nova Solicitação', HiOutlinePlusCircle);
+        add('/solicitacoes', 'Solicitações', HiOutlineClipboardDocumentList);
         add('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp);
         add('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund);
-        add('/usuarios', 'Usuarios', HiOutlineUsers);
+        add('/usuarios', 'Usuários', HiOutlineUsers);
         add('/obras', 'Obras', HiOutlineBuildingOffice2);
         add('/setores', 'Setores', HiOutlineAdjustmentsHorizontal);
         add('/cargos', 'Cargos', HiOutlineFolderOpen);
-        add('/tipos-solicitacao', 'Tipos de Solicitacao', HiOutlineClipboardDocumentList);
-        add('/gestao-contratos', 'Gestao de Contratos', HiOutlineBanknotes);
-        add('/configuracoes', 'Configuracoes', HiOutlineCog6Tooth);
+        add('/tipos-solicitacao', 'Tipos de Solicitação', HiOutlineClipboardDocumentList);
+        add('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes);
+        add('/configuracoes', 'Configurações', HiOutlineCog6Tooth);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
         break;
 
@@ -162,7 +162,7 @@ export default function Layout() {
               <div className="flex items-center gap-2 brand-text">
                 <div className="leading-tight">
                   <p className="text-sm font-semibold" style={{ color: 'var(--nav-text)' }}>
-                    Sistema de Solicitacoes
+                    Sistema de Solicitações
                   </p>
                 </div>
               </div>

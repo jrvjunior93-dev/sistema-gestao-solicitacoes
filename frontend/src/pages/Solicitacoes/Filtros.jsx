@@ -58,7 +58,7 @@ export default function Filtros({
         value={filtros.tipo_solicitacao_id || ''}
         onChange={handleChange}
       >
-        <option value="">Tipo de Solicitacao</option>
+        <option value="">Tipo de Solicitação</option>
         {tiposSolicitacao.map(t => (
           <option key={t.id} value={t.id}>{t.nome}</option>
         ))}
@@ -112,7 +112,7 @@ export default function Filtros({
 
       <input
         name="responsavel"
-        placeholder="Responsavel"
+        placeholder="Responsável"
         className="input"
         value={filtros.responsavel || ''}
         onChange={handleChange}

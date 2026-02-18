@@ -269,7 +269,7 @@ export default function GestaoContratos() {
         </label>
 
         <label className="text-sm text-gray-600 grid gap-1">
-          Codigo do contrato
+          Código do contrato
           <input
             name="codigo"
             value={filtros.codigo}
@@ -315,7 +315,7 @@ export default function GestaoContratos() {
   if (isSetorObra) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold">Gestao de Contratos</h1>
+        <h1 className="text-2xl font-semibold">Gestão de Contratos</h1>
 
         {renderFiltros()}
 
@@ -326,8 +326,8 @@ export default function GestaoContratos() {
                 <th className="text-left p-3">Contrato</th>
                 <th className="text-left p-3">Obra</th>
                 <th className="text-left p-3">Ref. do Contrato</th>
-                <th className="text-left p-3">Descricao</th>
-                <th className="text-left p-3">Itens de Apropriacao</th>
+                <th className="text-left p-3">Descrição</th>
+                <th className="text-left p-3">Itens de Apropriação</th>
                 <th className="text-right p-3">Solicitado</th>
                 <th className="text-right p-3">Pago</th>
                 <th className="text-right p-3">A pagar</th>
@@ -402,7 +402,7 @@ export default function GestaoContratos() {
           </div>
 
           <div>
-            <label className="text-sm text-gray-600">Codigo</label>
+            <label className="text-sm text-gray-600">Código</label>
             <input
               name="codigo"
               value={form.codigo}
@@ -439,7 +439,7 @@ export default function GestaoContratos() {
         </div>
 
         <div>
-          <label className="text-sm text-gray-600">Descricao</label>
+          <label className="text-sm text-gray-600">Descrição</label>
           <textarea
             name="descricao"
             value={form.descricao}
@@ -450,14 +450,14 @@ export default function GestaoContratos() {
         </div>
 
         <div>
-          <label className="text-sm text-gray-600">Itens de Apropriacao</label>
+          <label className="text-sm text-gray-600">Itens de Apropriação</label>
           <textarea
             name="itens_apropriacao"
             value={form.itens_apropriacao}
             onChange={onChangeForm}
             className="w-full border rounded p-2"
             rows="3"
-            placeholder="Descreva os itens de apropriacao do contrato"
+            placeholder="Descreva os itens de apropriação do contrato"
           />
         </div>
 
@@ -509,16 +509,16 @@ export default function GestaoContratos() {
               <th className="text-left p-3">Contrato</th>
               <th className="text-left p-3">Obra</th>
               <th className="text-left p-3">Ref. do Contrato</th>
-              <th className="text-left p-3">Descricao</th>
-              <th className="text-left p-3">Itens de Apropriacao</th>
+              <th className="text-left p-3">Descrição</th>
+              <th className="text-left p-3">Itens de Apropriação</th>
               <th className="text-right p-3">Solicitado</th>
               <th className="text-right p-3">Pago</th>
               <th className="text-right p-3">A pagar</th>
               <th className="text-right p-3">Ajuste Solicitado</th>
               <th className="text-right p-3">Ajuste Pago</th>
-              <th className="text-right p-3">Qtd. SolicitaÃ§Ãµes</th>
+              <th className="text-right p-3">Qtd. Solicitações</th>
               <th className="text-left p-3">Anexos</th>
-              <th className="text-left p-3">Acoes</th>
+              <th className="text-left p-3">Ações</th>
             </tr>
           </thead>
           <tbody>

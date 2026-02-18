@@ -20,16 +20,16 @@ export default function TabelaSolicitacoes({
   const columns = useMemo(() => {
     const base = [
       { id: 'data', label: 'Data', width: 110, min: 90, weight: 0.9 },
-      { id: 'codigo', label: 'Codigo', width: 100, min: 80, weight: 0.9 },
+      { id: 'codigo', label: 'Código', width: 100, min: 80, weight: 0.9 },
       { id: 'obra', label: 'Obra', width: 140, min: 100, weight: 1.1 },
       { id: 'contrato', label: 'Contrato', width: 120, min: 95, weight: 1 },
-      { id: 'descricao', label: 'Descricao', width: 110, min: 110, weight: 0, fixed: true },
-      { id: 'tipo', label: 'Tipo de Solicitacao', width: 150, min: 110, weight: 1 },
+      { id: 'descricao', label: 'Descrição', width: 110, min: 110, weight: 0, fixed: true },
+      { id: 'tipo', label: 'Tipo de Solicitação', width: 150, min: 110, weight: 1 },
       { id: 'valor', label: 'Valor', width: 110, min: 90, weight: 0.9 },
       { id: 'setor', label: 'Setor', width: 110, min: 90, weight: 0.9 },
-      { id: 'responsavel', label: 'Responsavel', width: 130, min: 100, weight: 1.1 },
+      { id: 'responsavel', label: 'Responsável', width: 130, min: 100, weight: 1.1 },
       { id: 'status', label: 'Status', width: 110, min: 90, weight: 0.9 },
-      { id: 'acoes', label: 'Acoes', width: 190, min: 150, weight: 1.3 }
+      { id: 'acoes', label: 'Ações', width: 190, min: 150, weight: 1.3 }
     ];
     if (isSetorObra) {
       base.splice(4, 0, { id: 'ref_contrato', label: 'Ref. do Contrato', width: 110, min: 110, weight: 0, fixed: true });
