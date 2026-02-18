@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { getMinhasObras } from '../services/obras';
 import { getTiposSolicitacao } from '../services/tiposSolicitacao';
 import { getSetores } from '../services/setores';
@@ -374,7 +374,7 @@ export default function NovaSolicitacao() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-6">Nova Solicitacao</h1>
+      <h1 className="text-2xl font-semibold mb-6">Nova Solicitação</h1>
 
       <form
         onSubmit={handleSubmit}
@@ -382,7 +382,7 @@ export default function NovaSolicitacao() {
       >
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <label className="grid gap-1 text-sm">
-            Codigo da obra
+            Código da obra
             <div className="flex gap-2">
               <input
                 className="input"
@@ -397,11 +397,11 @@ export default function NovaSolicitacao() {
           </label>
 
           <label className="grid gap-1 text-sm">
-            Descricao da obra
+            Descrição da obra
             <div className="flex gap-2">
               <input
                 className="input"
-                placeholder="Buscar por descricao"
+                placeholder="Buscar por descrição"
                 value={obraDescricao}
                 onChange={e => setObraDescricao(e.target.value)}
               />
@@ -412,7 +412,7 @@ export default function NovaSolicitacao() {
           </label>
 
           <label className="grid gap-1 text-sm">
-            Tipo de Solicitacao
+            Tipo de Solicitação
             <select
               name="tipo_solicitacao_id"
               onChange={handleChange}
@@ -428,7 +428,7 @@ export default function NovaSolicitacao() {
           </label>
 
           <label className="grid gap-1 text-sm">
-            Area Responsavel
+            Área Responsável
             <select
               name="area_responsavel"
               onChange={handleChange}
@@ -451,7 +451,7 @@ export default function NovaSolicitacao() {
               <div className="flex gap-2">
                 <input
                   className="input"
-                  placeholder="Buscar por referencia do contrato"
+                  placeholder="Buscar por referência do contrato"
                   value={refContratoBusca}
                   onChange={e => setRefContratoBusca(e.target.value)}
                   required={medicaoObrigatoria}
@@ -500,7 +500,7 @@ export default function NovaSolicitacao() {
               </select>
               {subtipoObrigatorio && (
                 <span className="text-xs text-gray-500">
-                  Obrigatorio para Adm Local de Obra.
+                  Obrigatório para Adm Local de Obra.
                 </span>
               )}
             </label>
@@ -523,7 +523,7 @@ export default function NovaSolicitacao() {
                 value={form.contrato_id}
                 required={medicaoObrigatoria}
               >
-                <option value="">Nao vincular</option>
+                <option value="">Não vincular</option>
                 {contratosDisponiveis.map(c => (
                   <option key={c.id} value={c.id}>
                     {c.codigo} - {c.ref_contrato || '-'}
@@ -603,20 +603,20 @@ export default function NovaSolicitacao() {
 
         {aberturaContratoObrigatoria && (
           <label className="grid gap-1 text-sm">
-            Itens de Apropriacao
+            Itens de Apropriação
             <textarea
               name="itens_apropriacao"
               onChange={handleChange}
               className="input min-h-[120px]"
               required
               value={form.itens_apropriacao}
-              placeholder="Descreva os itens de apropriacao"
+              placeholder="Descreva os itens de apropriação"
             />
           </label>
         )}
 
         <label className="grid gap-1 text-sm">
-          Descricao
+          Descrição
           <textarea
             name="descricao"
             onChange={e =>
@@ -631,7 +631,7 @@ export default function NovaSolicitacao() {
             value={form.descricao}
           />
           <span className="text-xs text-gray-500">
-            Descricao breve, com no maximo 50 caracteres.
+            Descrição breve, com no máximo 50 caracteres.
           </span>
         </label>
 
@@ -675,7 +675,7 @@ export default function NovaSolicitacao() {
 
         <div className="flex justify-end">
           <button className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">
-            Criar Solicitacao
+            Criar Solicitação
           </button>
         </div>
       </form>
@@ -689,3 +689,4 @@ export default function NovaSolicitacao() {
     </div>
   );
 }
+
