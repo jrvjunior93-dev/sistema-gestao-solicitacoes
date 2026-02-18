@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import StatsCard from '../components/StatsCard';
+import { useEffect, useState, useMemo } from 'react';
 import { API_URL, authHeaders } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -53,19 +52,6 @@ export default function Dashboard() {
     carregarDashboard();
   }, []);
 
-  if (loading) {
-    return <p>Carregando dashboard executivo...</p>;
-  }
-
-  if (erro) {
-    return (
-      <div className="page">
-        <h1 className="page-title">Dashboard</h1>
-        <p className="text-sm text-gray-600">{erro}</p>
-      </div>
-    );
-  }
-
   const normalizeStatus = value => {
     if (!value) return '';
     return String(value)
@@ -83,6 +69,30 @@ export default function Dashboard() {
     return match?.total || 0;
   };
 
+  const valorTotal = useMemo(
+    () => dados.valoresPorStatus.reduce(
+      (acc, item) => acc + Number(item.valor_total || 0),
+      0
+    ),
+    [dados.valoresPorStatus]
+  );
+
+  const maiorStatus = useMemo(() => {
+    return dados.porStatus.reduce(
+      (max, item) => Math.max(max, Number(item.total || 0)),
+      0
+    );
+  }, [dados.porStatus]);
+
+  const maiorArea = useMemo(() => {
+    return dados.porArea.reduce(
+      (max, item) => Math.max(max, Number(item.total || 0)),
+      0
+    );
+  }, [dados.porArea]);
+
+  const cores = ['#6366f1', '#14b8a6', '#f59e0b', '#f472b6', '#0ea5e9'];
+
   const titulo = (isSuperadmin || isAdminGEO)
     ? 'Dashboard Executivo'
     : 'Dashboard do Setor';
@@ -91,97 +101,217 @@ export default function Dashboard() {
     : 'Visao do seu setor.';
 
   return (
-    <div className="page">
-      <div>
-        <h1 className="page-title">{titulo}</h1>
-        <p className="page-subtitle">
-          {subtitulo}
-        </p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatsCard title="Total de Solicitacoes" value={dados.total} />
-        <StatsCard title="Pendentes" value={getTotalByStatus('PENDENTE')} />
-        <StatsCard title="Em Analise" value={getTotalByStatus('EM_ANALISE')} />
-        <StatsCard title="Concluidas" value={getTotalByStatus('CONCLUIDA')} />
-      </div>
-
-      <div className="card">
-        <h3 className="font-semibold mb-3">Solicitacoes por Status</h3>
-        {dados.porStatus.length === 0 ? (
-          <p className="text-sm text-gray-500">Nenhum dado disponivel</p>
-        ) : (
-          <div className="grid gap-2 md:grid-cols-2">
-            {dados.porStatus.map(item => (
-              <div key={item.status_global} className="flex justify-between text-sm">
-                <span className="text-gray-600">{item.status_global}</span>
-                <span className="font-medium">{item.total}</span>
+    <div className="page dashboard">
+      {loading ? (
+        <p className="text-sm text-gray-600">Carregando dashboard executivo...</p>
+      ) : erro ? (
+        <div className="card">
+          <h1 className="page-title">Dashboard</h1>
+          <p className="text-sm text-gray-600">{erro}</p>
+        </div>
+      ) : (
+        <>
+          <section className="dash-hero">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 relative z-10">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-300">
+                  {isSuperadmin || isAdminGEO ? 'Visao Global' : 'Visao Setor'}
+                </p>
+                <h1 className="text-2xl font-bold text-white leading-tight">
+                  {titulo}
+                </h1>
+                <p className="text-sm text-slate-200/80">{subtitulo}</p>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="card">
-        <h3 className="font-semibold mb-3">Solicitacoes por Area</h3>
-        {dados.porArea.length === 0 ? (
-          <p className="text-sm text-gray-500">Nenhum dado disponivel</p>
-        ) : (
-          <div className="grid gap-2 md:grid-cols-2">
-            {dados.porArea.map(item => (
-              <div key={item.area_responsavel} className="flex justify-between text-sm">
-                <span className="text-gray-600">{item.area_responsavel}</span>
-                <span className="font-medium">{item.total}</span>
+              <div className="chip">
+                <span className="chip-dot" style={{ background: '#22c55e' }} />
+                Dados em tempo real
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
 
-      <div className="card">
-        <h3 className="font-semibold mb-3">Valores por Status</h3>
-        {dados.valoresPorStatus.length === 0 ? (
-          <p className="text-sm text-gray-500">Nenhum valor registrado</p>
-        ) : (
-          <div className="grid gap-2 md:grid-cols-2">
-            {dados.valoresPorStatus.map(item => (
-              <div key={item.status_global} className="flex justify-between text-sm">
-                <span className="text-gray-600">{item.status_global}</span>
-                <span className="font-medium">
-                  {Number(item.valor_total || 0).toLocaleString('pt-BR', {
-                    style: 'currency',
-                    currency: 'BRL'
+            <div className="dash-hero-grid relative z-10">
+              <div className="glass flex items-center gap-4">
+                <div className="stat-ring">
+                  <span>{dados.total}</span>
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs uppercase tracking-wide text-slate-600">Solicitacoes</p>
+                  <h3 className="text-lg font-semibold text-slate-900">Volume total</h3>
+                  <p className="text-sm text-slate-600">
+                    Pendentes: <strong>{getTotalByStatus('PENDENTE')}</strong> · Em analise:{' '}
+                    <strong>{getTotalByStatus('EM_ANALISE')}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <div className="glass metric-grid">
+                {[
+                  { label: 'Pendentes', value: getTotalByStatus('PENDENTE'), color: cores[0] },
+                  { label: 'Em Analise', value: getTotalByStatus('EM_ANALISE'), color: cores[1] },
+                  { label: 'Concluidas', value: getTotalByStatus('CONCLUIDA'), color: cores[2] },
+                  { label: 'Valor Total', value: valorTotal, color: cores[3], isMoney: true }
+                ].map(item => (
+                  <div key={item.label} className="value-block">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-500">{item.label}</p>
+                      <strong className="text-slate-900">
+                        {item.isMoney
+                          ? item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                          : item.value}
+                      </strong>
+                    </div>
+                    <span className="chip-dot" style={{ background: item.color }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="two-col">
+            <div className="glass">
+              <div className="value-block mb-3">
+                <h3 className="font-semibold text-slate-900">Solicitacoes por Status</h3>
+                <span className="pill">Equilibrio</span>
+              </div>
+              {dados.porStatus.length === 0 ? (
+                <p className="text-sm text-slate-500">Nenhum dado disponivel</p>
+              ) : (
+                <div className="space-y-3">
+                  {dados.porStatus.map((item, idx) => {
+                    const total = Number(item.total || 0);
+                    const perc = maiorStatus ? (total / maiorStatus) * 100 : 0;
+                    return (
+                      <div key={item.status_global} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-600">{item.status_global}</span>
+                          <span className="font-semibold text-slate-900">{total}</span>
+                        </div>
+                        <div className="progress-track">
+                          <div
+                            className="progress-fill"
+                            style={{
+                              width: `${perc}%`,
+                              background: `linear-gradient(90deg, ${cores[idx % cores.length]}, ${cores[(idx + 1) % cores.length]})`
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
                   })}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                </div>
+              )}
+            </div>
 
-      <div className="card">
-        <h3 className="font-semibold mb-3">SLA Medio (horas)</h3>
-        {dados.slaMedio.length === 0 ? (
-          <p className="text-sm text-gray-500">SLA ainda nao calculado</p>
-        ) : (
-          <div className="grid gap-2 md:grid-cols-2">
-            {dados.slaMedio.map(item => (
-              <div key={item.status_global} className="flex justify-between text-sm">
-                <span className="text-gray-600">{item.status_global}</span>
-                <span className="font-medium">
-                  {(() => {
+            <div className="glass">
+              <div className="value-block mb-3">
+                <h3 className="font-semibold text-slate-900">Solicitacoes por Area</h3>
+                <span className="pill">Mapa de carga</span>
+              </div>
+              {dados.porArea.length === 0 ? (
+                <p className="text-sm text-slate-500">Nenhum dado disponivel</p>
+              ) : (
+                <div className="space-y-3">
+                  {dados.porArea.map((item, idx) => {
+                    const total = Number(item.total || 0);
+                    const perc = maiorArea ? (total / maiorArea) * 100 : 0;
+                    return (
+                      <div key={item.area_responsavel} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-600">{item.area_responsavel}</span>
+                          <span className="font-semibold text-slate-900">{total}</span>
+                        </div>
+                        <div className="progress-track">
+                          <div
+                            className="progress-fill"
+                            style={{
+                              width: `${perc}%`,
+                              background: `linear-gradient(90deg, ${cores[(idx + 1) % cores.length]}, ${cores[(idx + 2) % cores.length]})`
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="two-col">
+            <div className="glass">
+              <div className="value-block mb-3">
+                <h3 className="font-semibold text-slate-900">Valores por Status</h3>
+                <span className="pill">Financeiro</span>
+              </div>
+              {dados.valoresPorStatus.length === 0 ? (
+                <p className="text-sm text-slate-500">Nenhum valor registrado</p>
+              ) : (
+                <div className="space-y-3">
+                  {dados.valoresPorStatus.map((item, idx) => (
+                    <div key={item.status_global} className="space-y-1">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600">{item.status_global}</span>
+                        <span className="font-semibold text-slate-900">
+                          {Number(item.valor_total || 0).toLocaleString('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL'
+                          })}
+                        </span>
+                      </div>
+                      <div className="progress-track">
+                        <div
+                          className="progress-fill"
+                          style={{
+                            width: '100%',
+                            background: `linear-gradient(90deg, ${cores[idx % cores.length]}, ${cores[(idx + 2) % cores.length]})`
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="glass">
+              <div className="value-block mb-3">
+                <h3 className="font-semibold text-slate-900">SLA Medio</h3>
+                <span className="pill">Tempo</span>
+              </div>
+              {dados.slaMedio.length === 0 ? (
+                <p className="text-sm text-slate-500">SLA ainda nao calculado</p>
+              ) : (
+                <div className="space-y-3">
+                  {dados.slaMedio.map((item, idx) => {
                     const totalMinutos = Number(item.sla_minutos || 0);
                     const horas = Math.floor(totalMinutos / 60);
                     const minutos = Math.round(totalMinutos % 60);
                     const mm = String(minutos).padStart(2, '0');
-                    return `${horas}h ${mm}m`;
-                  })()}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                    return (
+                      <div key={item.status_global} className="space-y-1">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-600">{item.status_global}</span>
+                          <span className="font-semibold text-slate-900">
+                            {horas}h {mm}m
+                          </span>
+                        </div>
+                        <div className="progress-track">
+                          <div
+                            className="progress-fill"
+                            style={{
+                              width: `${Math.min(100, (totalMinutos / 60) || 0)}%`,
+                              background: `linear-gradient(90deg, ${cores[(idx + 3) % cores.length]}, ${cores[idx % cores.length]})`
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

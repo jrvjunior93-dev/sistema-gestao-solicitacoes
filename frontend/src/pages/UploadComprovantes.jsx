@@ -26,7 +26,6 @@ export default function UploadComprovantes() {
 
       const result = await uploadComprovantes(files);
 
-      // Backend pode retornar message OU error (status 200)
       if (result.message) {
         setMessage(result.message);
       } else if (result.error) {
@@ -37,7 +36,6 @@ export default function UploadComprovantes() {
 
       setFiles([]);
       e.target.reset();
-
     } catch (err) {
       setError(err.message || 'Erro ao enviar comprovantes');
     } finally {
@@ -46,35 +44,55 @@ export default function UploadComprovantes() {
   }
 
   return (
-    <div>
-      <h1>Upload de Comprovantes (Em Massa)</h1>
+    <div className="card space-y-4 max-w-3xl">
+      <div>
+        <p className="text-xs uppercase tracking-[0.18em] text-muted">Upload de Comprovantes</p>
+        <h1 className="page-title mt-1" style={{ color: 'var(--c-text)' }}>
+          Envio em massa
+        </h1>
+        <p className="page-subtitle">
+          Anexe PDFs ou imagens. O nome do arquivo deve conter o código da solicitação.
+        </p>
+      </div>
 
-      <form onSubmit={handleUpload}>
-        <label className="grid gap-1 text-sm">
+      <form onSubmit={handleUpload} className="space-y-4">
+        <label className="grid gap-1 text-sm" style={{ color: 'var(--c-text)' }}>
           Arquivos
           <input
             type="file"
             multiple
             accept=".pdf,.jpg,.jpeg,.png,.html"
             onChange={handleFileChange}
+            className="input"
           />
         </label>
 
-        <br />
-
-        <button type="submit" className="btn btn-primary" disabled={loading}>
-          {loading ? 'Enviando...' : 'Enviar arquivos'}
-        </button>
+        <div className="flex gap-3">
+          <button type="submit" className="btn btn-primary" disabled={loading}>
+            {loading ? 'Enviando...' : 'Enviar arquivos'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => {
+              setFiles([]);
+              setMessage(null);
+              setError(null);
+            }}
+          >
+            Limpar
+          </button>
+        </div>
       </form>
 
-      {message && <p style={{ color: 'green' }}>{message}</p>}
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {message && <p className="text-sm" style={{ color: '#22c55e' }}>{message}</p>}
+      {error && <p className="text-sm" style={{ color: '#ef4444' }}>{error}</p>}
 
-      <hr />
+      <div style={{ borderTop: `1px solid var(--c-border)` }} />
 
-      <p>
+      <p className="text-sm" style={{ color: 'var(--c-text)' }}>
         <strong>Regra:</strong> o nome do arquivo deve conter o código da solicitação.<br />
-        Exemplo: <code>SOL-12.pdf</code>
+        Exemplo: <code className="px-2 py-1 rounded bg-[var(--c-border)]/40 text-[var(--c-text)]">SOL-12.pdf</code>
       </p>
     </div>
   );

@@ -94,13 +94,17 @@ export default function ComprovantesPendentes() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">Comprovantes Pendentes</h1>
+    <div className="space-y-6 text-[var(--c-text)]">
+      <div className="card">
+        <h1 className="page-title">Comprovantes Pendentes</h1>
+      </div>
 
-      <div className="bg-white p-4 rounded-xl shadow space-y-3">
+      <div className="card space-y-3">
         <div className="grid gap-3 md:grid-cols-[1fr_auto] items-end">
           <label className="grid gap-1 text-sm">
-            Buscar solicitacao (codigo ou descricao)
+            <span className="font-semibold" style={{ color: 'var(--c-text)' }}>
+              Buscar solicitacao (codigo ou descricao)
+            </span>
             <input
               className="input"
               placeholder="Ex: SOL-000123 ou Combustivel"
@@ -119,46 +123,46 @@ export default function ComprovantesPendentes() {
         </div>
 
         {solicitacoes.length > 0 && (
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-muted">
             {solicitacoes.length} solicitacao(oes) encontradas.
           </p>
         )}
       </div>
 
-      <div className="bg-white rounded-xl shadow overflow-x-auto">
+      <div className="card overflow-x-auto p-0">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-100">
+          <thead className="bg-gray-100 dark:bg-[rgba(255,255,255,0.04)]">
             <tr>
-              <th className="text-left p-3">Visualizacao</th>
-              <th className="text-left p-3">Obra</th>
-              <th className="text-right p-3">Valor</th>
-              <th className="text-left p-3">Vincular a solicitacao</th>
-              <th className="text-left p-3">Arquivo</th>
-              <th className="text-right p-3">Acoes</th>
+              <th className="text-left p-3 text-[var(--c-text)]">Visualizacao</th>
+              <th className="text-left p-3 text-[var(--c-text)]">Obra</th>
+              <th className="text-right p-3 text-[var(--c-text)]">Valor</th>
+              <th className="text-left p-3 text-[var(--c-text)]">Vincular a solicitacao</th>
+              <th className="text-left p-3 text-[var(--c-text)]">Arquivo</th>
+              <th className="text-right p-3 text-[var(--c-text)]">Acoes</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
               <tr>
-                <td colSpan="6" className="p-4 text-center text-gray-500">
+                <td colSpan="6" className="p-4 text-center text-muted">
                   Carregando...
                 </td>
               </tr>
             )}
             {!loading && pendentes.length === 0 && (
               <tr>
-                <td colSpan="6" className="p-4 text-center text-gray-500">
+                <td colSpan="6" className="p-4 text-center text-muted">
                   Nenhum comprovante pendente.
                 </td>
               </tr>
             )}
             {!loading && pendentes.map(item => (
-              <tr key={item.id} className="border-t">
-                <td className="p-3">{item.nome_original}</td>
-                <td className="p-3">
+              <tr key={item.id} className="border-t border-[var(--c-border)]">
+                <td className="p-3 text-[var(--c-text)]">{item.nome_original}</td>
+                <td className="p-3 text-[var(--c-text)]">
                   {item.obra?.codigo ? `${item.obra.codigo} - ${item.obra.nome}` : item.obra?.nome || '-'}
                 </td>
-                <td className="p-3 text-right">
+                <td className="p-3 text-right text-[var(--c-text)]">
                   {item.valor
                     ? Number(item.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
                     : '-'}
