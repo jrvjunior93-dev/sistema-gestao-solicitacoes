@@ -142,9 +142,9 @@ class AnexoController {
     try {
       const { historicoId } = req.params;
       const usuario = await User.findByPk(req.user.id);
-      const perfil = String(req.user?.perfil || '').toUpperCase();
-      const setorUsuario = String(req.user.area || '').toUpperCase();
-      const isSuperadmin = perfil === 'SUPERADMIN';
+      const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+      const setorUsuario = String(req.user?.area || req.user?.setor?.codigo || '').trim().toUpperCase();
+      const isSuperadmin = perfil === 'SUPERADMIN' || perfil.includes('SUPERADMIN');
 
       if (!isSuperadmin && setorUsuario !== 'COMPRAS') {
         return res.status(403).json({ error: 'Apenas SUPERADMIN ou usuarios do setor COMPRAS podem remover anexo.' });
