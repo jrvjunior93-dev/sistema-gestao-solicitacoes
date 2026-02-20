@@ -25,6 +25,7 @@ export default function SolicitacaoDetalhe() {
   const isSetorObra = setorTokens.includes('OBRA');
   const isSetorGeo = setorTokens.includes('GEO');
   const isSetorCompras = setorTokens.includes('COMPRAS');
+  const isSuperadmin = String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN';
 
   const [solicitacao, setSolicitacao] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -143,7 +144,7 @@ export default function SolicitacaoDetalhe() {
         {/* TIMELINE */}
         <Timeline
           historicos={solicitacao.historicos}
-          canRemoveAnexo={isSetorCompras}
+          canRemoveAnexo={isSetorCompras || isSuperadmin}
           onAnexoRemovido={carregar}
         />
 

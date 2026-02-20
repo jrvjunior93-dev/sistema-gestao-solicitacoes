@@ -309,7 +309,7 @@ export default function LinhaSolicitacao({
             </button>
           )}
 
-          {isSuperadmin && (
+          {(isSuperadmin || isAdminGEO) && (
             <button
               className="hover:underline text-xs"
               style={{ color: '#dc2626' }}

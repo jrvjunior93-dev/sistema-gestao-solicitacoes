@@ -32,6 +32,7 @@ db.SetorPermissao = require('./SetorPermissao')(sequelize, Sequelize);
 db.Notificacao = require('./Notificacao')(sequelize, Sequelize);
 db.NotificacaoDestinatario = require('./NotificacaoDestinatario')(sequelize, Sequelize);
 db.ConfiguracaoSistema = require('./ConfiguracaoSistema')(sequelize, Sequelize);
+db.LogExclusao = require('./LogExclusao')(sequelize, Sequelize);
 
   
 

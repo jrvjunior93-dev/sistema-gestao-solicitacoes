@@ -17,6 +17,7 @@ const {
   Comprovante,
   Notificacao,
   NotificacaoDestinatario,
+  LogExclusao,
   Sequelize
 } = require('../models');
 
@@ -1674,12 +1675,16 @@ module.exports = {
   },
 
   // =====================================================
-  // EXCLUIR SOLICITACAO (SUPERADMIN)
+  // EXCLUIR SOLICITACAO (SUPERADMIN / ADMIN GEO)
   // =====================================================
   async excluir(req, res) {
     try {
       const perfil = String(req.user?.perfil || '').trim().toUpperCase();
-      if (perfil !== 'SUPERADMIN') {
+      const isSuperadmin = perfil === 'SUPERADMIN';
+      const isGeo = await isSetorGeo(req);
+      const isAdminGeo = perfil.startsWith('ADMIN') && isGeo;
+
+      if (!isSuperadmin && !isAdminGeo) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 
@@ -1713,6 +1718,23 @@ module.exports = {
           Comprovante.destroy({ where: { solicitacao_id: id }, transaction }),
           SolicitacaoVisibilidadeUsuario.destroy({ where: { solicitacao_id: id }, transaction })
         ]);
+
+        await LogExclusao.create({
+          entidade: 'SOLICITACAO',
+          entidade_id: Number(id),
+          solicitacao_id: Number(id),
+          usuario_id: req.user.id,
+          perfil,
+          setor: req.user.area || null,
+          motivo: isSuperadmin ? 'Exclusao realizada por SUPERADMIN' : 'Exclusao realizada por ADMIN GEO',
+          payload_json: JSON.stringify({
+            codigo: solicitacao.codigo,
+            obra_id: solicitacao.obra_id,
+            area_responsavel: solicitacao.area_responsavel,
+            valor: solicitacao.valor,
+            status_global: solicitacao.status_global
+          })
+        }, { transaction });
 
         await Solicitacao.destroy({ where: { id }, transaction });
         await transaction.commit();
