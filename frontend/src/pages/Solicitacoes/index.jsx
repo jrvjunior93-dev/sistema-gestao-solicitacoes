@@ -26,8 +26,8 @@ export default function Solicitacoes() {
     status: '',
     codigo_contrato: '',
     valor_min: '',
-    data_inicio: '',
-    data_fim: '',
+    data_registro: '',
+    data_vencimento: '',
     responsavel: ''
   });
 

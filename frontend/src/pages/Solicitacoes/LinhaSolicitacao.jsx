@@ -69,6 +69,15 @@ export default function LinhaSolicitacao({
   const dataCriacaoTitle = dataCriacaoValida
     ? dataCriacao.toLocaleString('pt-BR')
     : '';
+  const dataVencimentoRaw = solicitacao.data_vencimento || null;
+  const dataVencimento = dataVencimentoRaw ? new Date(dataVencimentoRaw) : null;
+  const dataVencimentoValida = dataVencimento && !Number.isNaN(dataVencimento.getTime());
+  const dataVencimentoLabel = dataVencimentoValida
+    ? dataVencimento.toLocaleDateString('pt-BR')
+    : '-';
+  const dataVencimentoTitle = dataVencimentoValida
+    ? dataVencimento.toLocaleString('pt-BR')
+    : '';
 
   const [editandoValor, setEditandoValor] = useState(false);
   const [valorEditado, setValorEditado] = useState(
@@ -263,6 +272,13 @@ export default function LinhaSolicitacao({
             status={solicitacao.status_global}
             setor={solicitacao.setor_status_atual || solicitacao.area_responsavel}
           />
+        </td>
+
+        <td
+          className="p-2 whitespace-nowrap"
+          title={dataVencimentoTitle}
+        >
+          {dataVencimentoLabel}
         </td>
 
         <td className="p-2 whitespace-nowrap">

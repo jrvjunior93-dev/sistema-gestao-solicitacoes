@@ -32,14 +32,14 @@ export default function Filtros({
       status: '',
       codigo_contrato: '',
       valor_min: '',
-      data_inicio: '',
-      data_fim: '',
+      data_registro: '',
+      data_vencimento: '',
       responsavel: ''
     });
   }
 
   return (
-    <div className="bg-white p-4 rounded-xl shadow mb-6 grid grid-cols-1 md:grid-cols-3 xl:grid-cols-8 gap-4">
+    <div className="bg-white p-4 rounded-xl shadow mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
 
       <div className="flex gap-2">
         <input
@@ -92,23 +92,27 @@ export default function Filtros({
         min="0"
       />
 
-      <input
-        name="data_inicio"
-        placeholder="Data inicial"
-        className="input"
-        value={filtros.data_inicio || ''}
-        onChange={handleChange}
-        type="date"
-      />
+      <div>
+        <label className="text-sm text-gray-600 block mb-1">Data de registro</label>
+        <input
+          name="data_registro"
+          className="input"
+          value={filtros.data_registro || ''}
+          onChange={handleChange}
+          type="date"
+        />
+      </div>
 
-      <input
-        name="data_fim"
-        placeholder="Data final"
-        className="input"
-        value={filtros.data_fim || ''}
-        onChange={handleChange}
-        type="date"
-      />
+      <div>
+        <label className="text-sm text-gray-600 block mb-1">Data de vencimento</label>
+        <input
+          name="data_vencimento"
+          className="input"
+          value={filtros.data_vencimento || ''}
+          onChange={handleChange}
+          type="date"
+        />
+      </div>
 
       <input
         name="responsavel"
@@ -118,7 +122,7 @@ export default function Filtros({
         onChange={handleChange}
       />
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-end">
         <button className="btn btn-outline" type="button" onClick={onBuscarObraDescricao}>
           Buscar
         </button>

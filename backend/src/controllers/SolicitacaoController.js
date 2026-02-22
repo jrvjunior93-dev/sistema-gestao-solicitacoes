@@ -356,6 +356,8 @@ module.exports = {
         obra_ids,
         codigo_contrato,
         responsavel,
+        data_registro,
+        data_vencimento,
         data_inicio,
         data_fim,
         valor_min,
@@ -698,7 +700,15 @@ module.exports = {
           where.valor = { [Op.gte]: min };
         }
       }
-      if (data_inicio || data_fim) {
+      if (data_registro) {
+        const dataRegistroStr = String(data_registro).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dataRegistroStr)) {
+          where.createdAt = {
+            [Op.gte]: new Date(`${dataRegistroStr}T00:00:00`),
+            [Op.lte]: new Date(`${dataRegistroStr}T23:59:59.999`)
+          };
+        }
+      } else if (data_inicio || data_fim) {
         const intervaloData = {};
         if (data_inicio) {
           const dataInicioStr = String(data_inicio).trim();
@@ -714,6 +724,19 @@ module.exports = {
         }
         if (Object.keys(intervaloData).length > 0) {
           where.createdAt = intervaloData;
+        }
+      }
+
+      if (data_vencimento) {
+        const dataVencimentoStr = String(data_vencimento).trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dataVencimentoStr)) {
+          where[Op.and] = where[Op.and] || [];
+          where[Op.and].push(
+            Sequelize.where(
+              Sequelize.fn('DATE', Sequelize.col('Solicitacao.data_vencimento')),
+              dataVencimentoStr
+            )
+          );
         }
       }
 
