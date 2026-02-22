@@ -361,6 +361,7 @@ export default function NovaSolicitacao() {
     return lista;
   }, [setores, isSetorObra, areasObra, destinosPermitidosPorSetorOrigem]);
   const contratosDisponiveis = contratosRef.length > 0 ? contratosRef : contratos;
+  const hojeInput = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
     if (!form.area_responsavel) return;
@@ -556,6 +557,7 @@ export default function NovaSolicitacao() {
             onChange={handleChange}
             className="input"
             value={form.data_vencimento}
+            min={hojeInput}
             required={medicaoObrigatoria}
           />
         </label>

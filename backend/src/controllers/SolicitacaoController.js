@@ -934,6 +934,19 @@ module.exports = {
           error: 'Para Medicao, informe a data de vencimento.'
         });
       }
+      if (data_vencimento) {
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        const vencimento = new Date(data_vencimento);
+        if (!Number.isNaN(vencimento.getTime())) {
+          vencimento.setHours(0, 0, 0, 0);
+          if (vencimento < hoje) {
+            return res.status(400).json({
+              error: 'A data de vencimento nao pode ser menor que a data atual.'
+            });
+          }
+        }
+      }
       if (nomeTipoNormalizado === 'MEDICAO' && !contrato_id) {
         return res.status(400).json({
           error: 'Para Medicao, selecione um contrato.'
