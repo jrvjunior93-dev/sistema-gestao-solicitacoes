@@ -8,7 +8,8 @@ export default function TabelaSolicitacoes({
   solicitacoes,
   onAtualizar,
   setoresMap,
-  permissaoUsuario
+  permissaoUsuario,
+  mostrarArquivadas = false
 }) {
   const tableWrapRef = useRef(null);
   const { user } = useAuth();
@@ -183,6 +184,7 @@ export default function TabelaSolicitacoes({
               setoresMap={setoresMap}
               permissaoUsuario={permissaoUsuario}
               mostrarRefContrato={isSetorObra}
+              mostrarArquivadas={mostrarArquivadas}
             />
           ))}
         </tbody>

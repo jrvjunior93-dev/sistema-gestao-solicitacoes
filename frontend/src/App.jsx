@@ -12,6 +12,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Solicitacoes from './pages/Solicitacoes';
 import SolicitacaoDetalhe from './pages/SolicitacaoDetalhe';
+import SolicitacoesArquivadas from './pages/SolicitacoesArquivadas';
 import Usuarios from './pages/Usuarios';
 import UsuarioNovo from './pages/UsuarioNovo';
 import NovaSolicitacao from './pages/NovaSolicitacao';
@@ -78,6 +79,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
 
         <Route path="solicitacoes" element={<Solicitacoes />} />
+        <Route path="solicitacoes-arquivadas" element={<SolicitacoesArquivadas />} />
         <Route path="solicitacoes/:id" element={<SolicitacaoDetalhe />} />
 
         <Route path="nova-solicitacao" element={<NovaSolicitacao />} />

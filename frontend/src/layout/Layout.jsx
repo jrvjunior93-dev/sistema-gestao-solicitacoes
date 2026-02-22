@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+﻿import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import NotificacoesBell from '../components/NotificacoesBell';
@@ -108,7 +108,7 @@ export default function Layout() {
           add('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp);
           add('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund);
         }
-        if (isAdminGEO) add('/usuarios', 'Usu�rios', HiOutlineUsers);
+        if (isAdminGEO) add('/usuarios', 'Usu�rios', HiOutlineUsers);
         if (isAdminGEO) add('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
         break;

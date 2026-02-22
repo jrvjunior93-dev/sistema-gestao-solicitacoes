@@ -9,8 +9,7 @@ import { getSetorPermissoes } from '../../services/setorPermissoes';
 import { getStatusSetor } from '../../services/statusSetor';
 import { useAuth } from '../../contexts/AuthContext';
 
-export default function Solicitacoes() {
-
+export default function Solicitacoes({ arquivadas = false }) {
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [setoresMap, setSetoresMap] = useState({});
@@ -31,13 +30,9 @@ export default function Solicitacoes() {
     responsavel: ''
   });
 
-  /* ===============================
-     CARREGAR DADOS
-  =============================== */
-
   useEffect(() => {
     carregar();
-  }, [filtros]);
+  }, [filtros, arquivadas]);
 
   useEffect(() => {
     carregarSetores();
@@ -125,15 +120,15 @@ export default function Solicitacoes() {
           paramsObj[chave] = String(valor).trim();
         }
       });
+      if (arquivadas) {
+        paramsObj.arquivadas = '1';
+      }
 
       const params = new URLSearchParams(paramsObj).toString();
 
-      const res = await fetch(
-        `${API_URL}/solicitacoes?${params}`,
-        {
-          headers: authHeaders()
-        }
-      );
+      const res = await fetch(`${API_URL}/solicitacoes?${params}`, {
+        headers: authHeaders()
+      });
 
       if (!res.ok) {
         throw new Error('Erro ao buscar solicitações');
@@ -141,7 +136,6 @@ export default function Solicitacoes() {
 
       const data = await res.json();
       setSolicitacoes(Array.isArray(data) ? data : []);
-
     } catch (error) {
       console.error(error);
       alert('Erro ao carregar solicitações');
@@ -173,16 +167,11 @@ export default function Solicitacoes() {
     return total + (Number.isNaN(valor) ? 0 : valor);
   }, 0);
 
-  /* ===============================
-     RENDER
-  =============================== */
-
   return (
     <div className="p-6">
-
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-semibold">
-          Solicitações
+          {arquivadas ? 'Solicitações Arquivadas' : 'Solicitações'}
         </h1>
       </div>
 
@@ -196,12 +185,12 @@ export default function Solicitacoes() {
         somaValorFiltrado={somaValorFiltrado}
       />
 
-      {loading && (
-        <p className="mt-6">Carregando...</p>
-      )}
+      {loading && <p className="mt-6">Carregando...</p>}
 
       {!loading && solicitacoes.length === 0 && (
-        <p className="mt-6">Nenhuma solicitação encontrada.</p>
+        <p className="mt-6">
+          {arquivadas ? 'Nenhuma solicitação arquivada.' : 'Nenhuma solicitação encontrada.'}
+        </p>
       )}
 
       {!loading && solicitacoes.length > 0 && (
@@ -210,10 +199,9 @@ export default function Solicitacoes() {
           onAtualizar={carregar}
           setoresMap={setoresMap}
           permissaoUsuario={permissaoUsuario}
+          mostrarArquivadas={arquivadas}
         />
       )}
-
-
     </div>
   );
 }

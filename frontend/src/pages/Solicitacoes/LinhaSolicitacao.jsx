@@ -5,7 +5,12 @@ import { useTheme } from '../../contexts/ThemeContext';
 import ModalAtribuirResponsavel from './ModalAtribuirResponsavel';
 import ModalEnviarSetor from './ModalEnviarSetor';
 import { API_URL, authHeaders } from '../../services/api';
-import { deleteSolicitacao, updateValorSolicitacao } from '../../services/solicitacoes';
+import {
+  arquivarSolicitacao,
+  deleteSolicitacao,
+  desarquivarSolicitacao,
+  updateValorSolicitacao
+} from '../../services/solicitacoes';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function LinhaSolicitacao({
@@ -13,7 +18,8 @@ export default function LinhaSolicitacao({
   onAtualizar,
   setoresMap,
   permissaoUsuario,
-  mostrarRefContrato = false
+  mostrarRefContrato = false,
+  mostrarArquivadas = false
 }) {
 
   const [modalAtribuir, setModalAtribuir] = useState(false);
@@ -120,6 +126,27 @@ export default function LinhaSolicitacao({
     } catch (err) {
       console.error(err);
       alert('Erro ao excluir solicitacao');
+    }
+  }
+
+  async function arquivarItem() {
+    if (!confirm('Arquivar esta solicitação somente para sua visualização?')) return;
+    try {
+      await arquivarSolicitacao(solicitacao.id);
+      onAtualizar();
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao arquivar solicitação');
+    }
+  }
+
+  async function desarquivarItem() {
+    try {
+      await desarquivarSolicitacao(solicitacao.id);
+      onAtualizar();
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao desarquivar solicitação');
     }
   }
 
@@ -340,6 +367,24 @@ export default function LinhaSolicitacao({
               onClick={excluirSolicitacao}
             >
               Excluir
+            </button>
+          )}
+
+          {!mostrarArquivadas ? (
+            <button
+              className="hover:underline text-xs"
+              style={{ color: acaoCores.ocultar || '#6b7280' }}
+              onClick={arquivarItem}
+            >
+              Arquivar
+            </button>
+          ) : (
+            <button
+              className="hover:underline text-xs"
+              style={{ color: acaoCores.ocultar || '#6b7280' }}
+              onClick={desarquivarItem}
+            >
+              Desarquivar
             </button>
           )}
 

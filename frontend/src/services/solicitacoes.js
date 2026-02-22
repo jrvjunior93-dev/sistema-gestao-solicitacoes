@@ -97,4 +97,32 @@ export async function deleteSolicitacao(id) {
   return true;
 }
 
+export async function arquivarSolicitacao(id) {
+  const res = await fetch(`${API_URL}/solicitacoes/${id}/arquivar`, {
+    method: 'PATCH',
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+
+  return true;
+}
+
+export async function desarquivarSolicitacao(id) {
+  const res = await fetch(`${API_URL}/solicitacoes/${id}/desarquivar`, {
+    method: 'PATCH',
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+
+  return true;
+}
+
 

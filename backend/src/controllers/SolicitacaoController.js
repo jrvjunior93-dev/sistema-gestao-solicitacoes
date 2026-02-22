@@ -402,6 +402,7 @@ module.exports = {
       const {
         area,
         status,
+        arquivadas,
         obra_id,
         obra_ids,
         codigo_contrato,
@@ -418,6 +419,10 @@ module.exports = {
       /* ===============================
         1) BUSCAR SOLICITACOES OCULTADAS
       =============================== */
+      const listarArquivadas = ['1', 'true', 'sim'].includes(
+        String(arquivadas || '').trim().toLowerCase()
+      );
+
       const ocultadas = await SolicitacaoVisibilidadeUsuario.findAll({
         where: {
           usuario_id: usuarioId,
@@ -435,8 +440,15 @@ module.exports = {
         cancelada: false
       };
 
-      if (idsOcultos.length > 0) {
-        where.id = { [Op.notIn]: idsOcultos };
+      if (listarArquivadas) {
+        if (idsOcultos.length === 0) {
+          return res.json([]);
+        }
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({ id: { [Op.in]: idsOcultos } });
+      } else if (idsOcultos.length > 0) {
+        where[Op.and] = where[Op.and] || [];
+        where[Op.and].push({ id: { [Op.notIn]: idsOcultos } });
       }
 
       /* ===============================
@@ -1800,7 +1812,7 @@ module.exports = {
   },
 
   // =====================================================
-  // OCULTAR DA MINHA LISTA
+  // ARQUIVAR DA MINHA LISTA
   // =====================================================
   async ocultarDaMinhaLista(req, res) {
     try {
@@ -1819,13 +1831,6 @@ module.exports = {
         });
       }
 
-      const statusPermitidos = ['CONCLUIDA', 'FINALIZADA'];
-      if (!statusPermitidos.includes(solicitacao.status_global)) {
-        return res.status(400).json({
-          error: 'So e possivel ocultar solicitacoes concluidas ou finalizadas'
-        });
-      }
-
       await SolicitacaoVisibilidadeUsuario.upsert({
         solicitacao_id: id,
         usuario_id: usuarioId,
@@ -1837,6 +1842,36 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao ocultar solicitacao' });
+    }
+  },
+
+  async desarquivarDaMinhaLista(req, res) {
+    try {
+      const { id } = req.params;
+      const usuarioId = req.user.id;
+
+      const solicitacao = await Solicitacao.findByPk(id);
+      if (!solicitacao) {
+        return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+      }
+
+      const acessoObra = await validarAcessoObra(req, solicitacao);
+      if (!acessoObra) {
+        return res.status(403).json({
+          error: 'Acesso negado. Vincule o usuario a obra para continuar.'
+        });
+      }
+
+      await SolicitacaoVisibilidadeUsuario.upsert({
+        solicitacao_id: id,
+        usuario_id: usuarioId,
+        oculto: false
+      });
+
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao desarquivar solicitacao' });
     }
   },
 

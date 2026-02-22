@@ -92,6 +92,8 @@ router.post('/solicitacoes/:id/comentarios', SolicitacaoController.adicionarCome
 router.post('/solicitacoes/:id/enviar-setor', SolicitacaoController.enviarParaSetor);
 router.post('/solicitacoes/:id/assumir', SolicitacaoController.assumirSolicitacao);
 router.patch('/solicitacoes/:id/ocultar', SolicitacaoController.ocultarDaMinhaLista);
+router.patch('/solicitacoes/:id/arquivar', SolicitacaoController.ocultarDaMinhaLista);
+router.patch('/solicitacoes/:id/desarquivar', SolicitacaoController.desarquivarDaMinhaLista);
 router.delete('/solicitacoes/:id', SolicitacaoController.excluir);
 
 // -------------------------------------------------------------------
