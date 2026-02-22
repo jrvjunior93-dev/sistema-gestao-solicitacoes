@@ -7,7 +7,7 @@ import { uploadArquivos } from '../services/uploads';
 import { getTiposSubContrato } from '../services/tiposSubContrato';
 import { getContratos } from '../services/contratos';
 import ObraSearchModal from '../components/ObraSearchModal';
-import { getAreasObra, getAreasPorSetorOrigem } from '../services/configuracoesSistema';
+import { getAreasObra, getAreasPorSetorOrigem, getTiposSolicitacaoPorSetor } from '../services/configuracoesSistema';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function NovaSolicitacao() {
@@ -21,6 +21,7 @@ export default function NovaSolicitacao() {
   const [setores, setSetores] = useState([]);
   const [areasObra, setAreasObra] = useState([]);
   const [areasPorSetorOrigem, setAreasPorSetorOrigem] = useState({});
+  const [tiposPorSetorConfig, setTiposPorSetorConfig] = useState({});
   const [tiposSub, setTiposSub] = useState([]);
   const [contratos, setContratos] = useState([]);
   const [contratosRef, setContratosRef] = useState([]);
@@ -52,9 +53,10 @@ export default function NovaSolicitacao() {
       setTipos(await getTiposSolicitacao());
       setSetores(await getSetores());
       try {
-        const [cfg, cfgSetorOrigem] = await Promise.all([
+        const [cfg, cfgSetorOrigem, cfgTiposPorSetor] = await Promise.all([
           getAreasObra(),
-          getAreasPorSetorOrigem()
+          getAreasPorSetorOrigem(),
+          getTiposSolicitacaoPorSetor()
         ]);
         setAreasObra(Array.isArray(cfg?.areas) ? cfg.areas : []);
         setAreasPorSetorOrigem(
@@ -62,10 +64,16 @@ export default function NovaSolicitacao() {
             ? cfgSetorOrigem.regras
             : {}
         );
+        setTiposPorSetorConfig(
+          cfgTiposPorSetor?.regras && typeof cfgTiposPorSetor.regras === 'object'
+            ? cfgTiposPorSetor.regras
+            : {}
+        );
       } catch (error) {
         console.error(error);
         setAreasObra([]);
         setAreasPorSetorOrigem({});
+        setTiposPorSetorConfig({});
       }
     }
     load();
@@ -362,6 +370,22 @@ export default function NovaSolicitacao() {
   }, [setores, isSetorObra, areasObra, destinosPermitidosPorSetorOrigem]);
   const contratosDisponiveis = contratosRef.length > 0 ? contratosRef : contratos;
   const hojeInput = new Date().toISOString().slice(0, 10);
+  const tiposFiltradosPorSetor = useMemo(() => {
+    const setorKey = String(form.area_responsavel || '').trim().toUpperCase();
+    if (!setorKey) return [];
+
+    const regra = tiposPorSetorConfig?.[setorKey];
+    const tiposPermitidos = Array.isArray(regra?.tipos)
+      ? regra.tipos.map(Number).filter(Number.isFinite)
+      : [];
+
+    if (tiposPermitidos.length === 0) {
+      return tipos;
+    }
+
+    const idsPermitidos = new Set(tiposPermitidos);
+    return tipos.filter(tipo => idsPermitidos.has(Number(tipo.id)));
+  }, [tipos, tiposPorSetorConfig, form.area_responsavel]);
 
   useEffect(() => {
     if (!form.area_responsavel) return;
@@ -372,6 +396,22 @@ export default function NovaSolicitacao() {
       setForm(prev => ({ ...prev, area_responsavel: '' }));
     }
   }, [setoresFiltrados, form.area_responsavel]);
+
+  useEffect(() => {
+    if (!form.area_responsavel) {
+      if (form.tipo_solicitacao_id) {
+        setForm(prev => ({ ...prev, tipo_solicitacao_id: '', tipo_sub_id: '' }));
+      }
+      return;
+    }
+    if (!form.tipo_solicitacao_id) return;
+    const existe = tiposFiltradosPorSetor.some(
+      tipo => String(tipo.id) === String(form.tipo_solicitacao_id)
+    );
+    if (!existe) {
+      setForm(prev => ({ ...prev, tipo_solicitacao_id: '', tipo_sub_id: '' }));
+    }
+  }, [form.area_responsavel, form.tipo_solicitacao_id, tiposFiltradosPorSetor]);
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -413,22 +453,6 @@ export default function NovaSolicitacao() {
           </label>
 
           <label className="grid gap-1 text-sm">
-            Tipo de Solicitação
-            <select
-              name="tipo_solicitacao_id"
-              onChange={handleChange}
-              className="input"
-              required
-              value={form.tipo_solicitacao_id}
-            >
-              <option value="">Selecione</option>
-              {tipos.map(t => (
-                <option key={t.id} value={t.id}>{t.nome}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="grid gap-1 text-sm">
             Área Responsável
             <select
               name="area_responsavel"
@@ -442,6 +466,23 @@ export default function NovaSolicitacao() {
                 <option key={s.id} value={s.codigo}>
                   {s.nome}
                 </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            Tipo de Solicitação
+            <select
+              name="tipo_solicitacao_id"
+              onChange={handleChange}
+              className="input"
+              required
+              value={form.tipo_solicitacao_id}
+              disabled={!form.area_responsavel}
+            >
+              <option value="">{form.area_responsavel ? 'Selecione' : 'Selecione o setor primeiro'}</option>
+              {tiposFiltradosPorSetor.map(t => (
+                <option key={t.id} value={t.id}>{t.nome}</option>
               ))}
             </select>
           </label>

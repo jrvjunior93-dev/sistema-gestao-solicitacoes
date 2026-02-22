@@ -5,6 +5,7 @@ const CHAVE_AREAS_OBRA = 'AREAS_OBRA_VISIVEIS';
 const CHAVE_AREAS_POR_SETOR_ORIGEM = 'AREAS_POR_SETOR_ORIGEM';
 const CHAVE_SETORES_VISIVEIS_POR_USUARIO = 'SETORES_VISIVEIS_POR_USUARIO';
 const CHAVE_TIMEOUT_INATIVIDADE = 'TIMEOUT_INATIVIDADE_MINUTOS';
+const CHAVE_TIPOS_SOLICITACAO_POR_SETOR = 'TIPOS_SOLICITACAO_POR_SETOR';
 const TIMEOUT_INATIVIDADE_PADRAO_MINUTOS = 20;
 
 function parseJsonOrDefault(value, fallback) {
@@ -58,6 +59,15 @@ function normalizarListaSetores(lista) {
     lista
       .map(item => String(item || '').trim().toUpperCase())
       .filter(Boolean)
+  )];
+}
+
+function normalizarIdList(lista) {
+  if (!Array.isArray(lista)) return [];
+  return [...new Set(
+    lista
+      .map(item => Number(item))
+      .filter(item => Number.isInteger(item) && item > 0)
   )];
 }
 
@@ -314,6 +324,88 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao salvar configuracao de visibilidade por usuario' });
+    }
+  },
+
+  async getTiposSolicitacaoPorSetor(req, res) {
+    try {
+      const item = await ConfiguracaoSistema.findOne({
+        where: { chave: CHAVE_TIPOS_SOLICITACAO_POR_SETOR },
+        order: [['id', 'DESC']]
+      });
+
+      if (!item || !item.valor) {
+        return res.json({ regras: {} });
+      }
+
+      const data = parseJsonOrDefault(item.valor, { regras: {} });
+      const raw = data?.regras && typeof data.regras === 'object' ? data.regras : {};
+      const regras = {};
+
+      Object.entries(raw).forEach(([setor, config]) => {
+        const key = String(setor || '').trim().toUpperCase();
+        if (!key) return;
+
+        const tipos = normalizarIdList(config?.tipos);
+        const modosRaw = config?.modos && typeof config.modos === 'object' ? config.modos : {};
+        const modos = {};
+
+        Object.entries(modosRaw).forEach(([tipoId, modo]) => {
+          const id = Number(tipoId);
+          if (!Number.isInteger(id) || id <= 0) return;
+          const modoNorm = String(modo || '').trim().toUpperCase();
+          modos[String(id)] = modoNorm === 'ADMIN_PRIMEIRO' ? 'ADMIN_PRIMEIRO' : 'TODOS_VISIVEIS';
+        });
+
+        regras[key] = { tipos, modos };
+      });
+
+      return res.json({ regras });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao buscar configuracao de tipos por setor' });
+    }
+  },
+
+  async updateTiposSolicitacaoPorSetor(req, res) {
+    try {
+      const input = req.body?.regras && typeof req.body.regras === 'object'
+        ? req.body.regras
+        : {};
+
+      const regras = {};
+      Object.entries(input).forEach(([setor, config]) => {
+        const key = String(setor || '').trim().toUpperCase();
+        if (!key) return;
+
+        const tipos = normalizarIdList(config?.tipos);
+        const modosRaw = config?.modos && typeof config.modos === 'object' ? config.modos : {};
+        const modos = {};
+
+        tipos.forEach(tipoId => {
+          const modoNorm = String(modosRaw?.[tipoId] || '').trim().toUpperCase();
+          modos[String(tipoId)] = modoNorm === 'ADMIN_PRIMEIRO' ? 'ADMIN_PRIMEIRO' : 'TODOS_VISIVEIS';
+        });
+
+        regras[key] = { tipos, modos };
+      });
+
+      const existente = await ConfiguracaoSistema.findOne({
+        where: { chave: CHAVE_TIPOS_SOLICITACAO_POR_SETOR },
+        order: [['id', 'DESC']]
+      });
+
+      const valor = JSON.stringify({ regras });
+      if (existente) {
+        await existente.update({ valor });
+      } else {
+        await ConfiguracaoSistema.create({ chave: CHAVE_TIPOS_SOLICITACAO_POR_SETOR, valor });
+      }
+
+      return res.json({ ok: true, regras });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao salvar configuracao de tipos por setor' });
     }
   }
 };

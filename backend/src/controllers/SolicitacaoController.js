@@ -28,6 +28,7 @@ const { uploadToS3 } = require('../services/s3');
 
 const CHAVE_AREAS_POR_SETOR_ORIGEM = 'AREAS_POR_SETOR_ORIGEM';
 const CHAVE_SETORES_VISIVEIS_POR_USUARIO = 'SETORES_VISIVEIS_POR_USUARIO';
+const CHAVE_TIPOS_SOLICITACAO_POR_SETOR = 'TIPOS_SOLICITACAO_POR_SETOR';
 
 /* =====================================================
    FUNCAO AUXILIAR - VISIBILIDADE
@@ -117,6 +118,55 @@ async function obterSetoresVisiveisPorUsuario() {
       : [];
   });
   return regras;
+}
+
+async function obterTiposSolicitacaoPorSetorConfig() {
+  const data = await lerConfiguracaoJson(CHAVE_TIPOS_SOLICITACAO_POR_SETOR, { regras: {} });
+  const regrasRaw = data?.regras && typeof data.regras === 'object' ? data.regras : {};
+  const regras = {};
+
+  Object.entries(regrasRaw).forEach(([setor, config]) => {
+    const key = String(setor || '').trim().toUpperCase();
+    if (!key) return;
+
+    const tipos = Array.isArray(config?.tipos)
+      ? [...new Set(config.tipos.map(v => Number(v)).filter(v => Number.isInteger(v) && v > 0))]
+      : [];
+
+    const modosRaw = config?.modos && typeof config.modos === 'object' ? config.modos : {};
+    const modos = {};
+    Object.entries(modosRaw).forEach(([tipoId, modo]) => {
+      const id = Number(tipoId);
+      if (!Number.isInteger(id) || id <= 0) return;
+      const modoNorm = String(modo || '').trim().toUpperCase();
+      modos[String(id)] = modoNorm === 'ADMIN_PRIMEIRO' ? 'ADMIN_PRIMEIRO' : 'TODOS_VISIVEIS';
+    });
+
+    regras[key] = { tipos, modos };
+  });
+
+  return regras;
+}
+
+function obterRegrasTipoPorTokensSetor(regrasConfig = {}, tokensSetor = []) {
+  if (!Array.isArray(tokensSetor) || tokensSetor.length === 0) return null;
+  for (const token of tokensSetor) {
+    const key = String(token || '').trim().toUpperCase();
+    if (regrasConfig[key]) return regrasConfig[key];
+  }
+  return null;
+}
+
+async function obterModoRecebimentoPorSetorETipo(tokensSetor = [], tipoSolicitacaoId = null) {
+  const tipoId = Number(tipoSolicitacaoId);
+  if (Number.isInteger(tipoId) && tipoId > 0) {
+    const regrasTipos = await obterTiposSolicitacaoPorSetorConfig();
+    const regraSetor = obterRegrasTipoPorTokensSetor(regrasTipos, tokensSetor);
+    if (regraSetor?.modos && regraSetor.modos[String(tipoId)]) {
+      return regraSetor.modos[String(tipoId)];
+    }
+  }
+  return obterModoRecebimentoSetor(tokensSetor);
 }
 
 async function obterModoRecebimentoSetor(tokensSetor = []) {
@@ -548,7 +598,7 @@ module.exports = {
         if (setorAtual?.id) setoresPermitidos.push(String(setorAtual.id));
         if (req.user.setor_id) setoresPermitidos.push(String(req.user.setor_id));
         const setoresUnicos = Array.from(new Set(setoresPermitidos.filter(Boolean)));
-        if (setoresUnicos.length > 0 && setorTodosVisiveis) {
+        if (setoresUnicos.length > 0) {
           condicoes.push({ area_responsavel: { [Op.in]: setoresUnicos } });
         }
 
@@ -835,9 +885,54 @@ module.exports = {
         };
       });
 
-      const resultado = isSetorObra
+      let resultado = isSetorObra
         ? resultadoBase.filter(r => obrasVinculadas.includes(r.obra_id))
         : resultadoBase;
+
+      const usuarioComRegraMistaPorTipo =
+        perfil === 'USUARIO' &&
+        !adminGEO &&
+        !isSetorObra &&
+        !isUsuarioGeo &&
+        !isSetorBrape;
+
+      if (usuarioComRegraMistaPorTipo && resultado.length > 0) {
+        const idsResultado = resultado.map(item => item.id);
+        const historicosUsuario = await Historico.findAll({
+          where: {
+            solicitacao_id: { [Op.in]: idsResultado },
+            usuario_responsavel_id: usuarioId,
+            acao: { [Op.in]: ['RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU'] }
+          },
+          attributes: ['solicitacao_id']
+        });
+        const idsComInteracaoUsuario = new Set(
+          historicosUsuario.map(h => Number(h.solicitacao_id))
+        );
+
+        const regrasTiposPorSetor = await obterTiposSolicitacaoPorSetorConfig();
+        const setoresUsuarioUpper = new Set(setorTokens.map(t => String(t || '').toUpperCase()));
+
+        resultado = resultado.filter(item => {
+          const areaItem = String(item.area_responsavel || '').trim().toUpperCase();
+          const tipoId = Number(item.tipo_solicitacao_id);
+          const itemEhDoSetorUsuario = setoresUsuarioUpper.has(areaItem);
+          const itemCriadoPeloUsuario = Number(item.criado_por) === Number(usuarioId);
+          const itemComInteracaoUsuario = idsComInteracaoUsuario.has(Number(item.id));
+
+          if (!itemEhDoSetorUsuario) return true;
+          if (itemCriadoPeloUsuario || itemComInteracaoUsuario) return true;
+
+          const regraTipo = obterRegrasTipoPorTokensSetor(regrasTiposPorSetor, [areaItem]);
+          let modoPorTipo = null;
+          if (regraTipo?.modos && Number.isInteger(tipoId) && tipoId > 0) {
+            modoPorTipo = regraTipo.modos[String(tipoId)] || null;
+          }
+
+          const modoEfetivo = String(modoPorTipo || (setorTodosVisiveis ? 'TODOS_VISIVEIS' : 'ADMIN_PRIMEIRO')).toUpperCase();
+          return modoEfetivo === 'TODOS_VISIVEIS';
+        });
+      }
 
       if (resultado.length > 0) {
         const idsSolicitacoes = resultado.map(item => item.id);
@@ -919,6 +1014,19 @@ module.exports = {
       }
 
       const tipoSelecionado = await TipoSolicitacao.findByPk(tipo_solicitacao_id);
+      const tiposPorSetorConfig = await obterTiposSolicitacaoPorSetorConfig();
+      const regraTiposSetorDestino = obterRegrasTipoPorTokensSetor(
+        tiposPorSetorConfig,
+        [area_responsavel]
+      );
+      if (regraTiposSetorDestino && Array.isArray(regraTiposSetorDestino.tipos) && regraTiposSetorDestino.tipos.length > 0) {
+        const tipoIdNum = Number(tipo_solicitacao_id);
+        if (!regraTiposSetorDestino.tipos.includes(tipoIdNum)) {
+          return res.status(403).json({
+            error: 'Tipo de solicitacao nao permitido para o setor selecionado.'
+          });
+        }
+      }
       const nomeTipo = String(tipoSelecionado?.nome || '').trim().toUpperCase();
       const nomeTipoNormalizado = nomeTipo
         .normalize('NFD')
@@ -1539,7 +1647,10 @@ module.exports = {
 
       // REGRA PARA USUARIO
       if (perfil === 'USUARIO') {
-        const modoRecebimento = await obterModoRecebimentoSetor(tokensSetor);
+        const modoRecebimento = await obterModoRecebimentoPorSetorETipo(
+          tokensSetor,
+          solicitacao.tipo_solicitacao_id
+        );
         if (modoRecebimento !== 'TODOS_VISIVEIS') {
           return res.status(403).json({
             error: 'Seu setor esta configurado para recebimento via ADMIN primeiro.'
@@ -1969,7 +2080,10 @@ module.exports = {
 
       // REGRA PARA USUARIO
       if (perfil === 'USUARIO') {
-        const modoRecebimento = await obterModoRecebimentoSetor(tokensSetor);
+        const modoRecebimento = await obterModoRecebimentoPorSetorETipo(
+          tokensSetor,
+          solicitacao.tipo_solicitacao_id
+        );
         if (modoRecebimento !== 'TODOS_VISIVEIS') {
           return res.status(403).json({
             error: 'Seu setor esta configurado para recebimento via ADMIN primeiro.'

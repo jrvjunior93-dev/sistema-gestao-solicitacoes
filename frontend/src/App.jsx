@@ -33,6 +33,7 @@ import AreasPorSetorOrigem from './pages/AreasPorSetorOrigem';
 import SetoresVisiveisUsuario from './pages/SetoresVisiveisUsuario';
 import ComportamentoRecebimentoSetor from './pages/ComportamentoRecebimentoSetor';
 import TimeoutInatividade from './pages/TimeoutInatividade';
+import TiposSolicitacaoPorSetor from './pages/TiposSolicitacaoPorSetor';
 
 export default function App() {
   return (
@@ -82,6 +83,7 @@ export default function App() {
         <Route path="setores-visiveis-usuario" element={<SetoresVisiveisUsuario />} />
         <Route path="comportamento-recebimento-setor" element={<ComportamentoRecebimentoSetor />} />
         <Route path="timeout-inatividade" element={<TimeoutInatividade />} />
+        <Route path="tipos-solicitacao-por-setor" element={<TiposSolicitacaoPorSetor />} />
 
         <Route path="comprovantes/upload" element={<UploadComprovantes />} />
         <Route path="comprovantes/pendentes" element={<ComprovantesPendentes />} />

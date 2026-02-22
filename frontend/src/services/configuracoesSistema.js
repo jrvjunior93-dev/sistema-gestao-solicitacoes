@@ -92,3 +92,21 @@ export async function salvarSetoresVisiveisPorUsuario(data) {
   if (!res.ok) throw new Error('Erro ao salvar configuracao por usuario');
   return res.json();
 }
+
+export async function getTiposSolicitacaoPorSetor() {
+  const res = await fetch(`${API_URL}/configuracoes/tipos-solicitacao-por-setor`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Erro ao buscar configuracao de tipos por setor');
+  return res.json();
+}
+
+export async function salvarTiposSolicitacaoPorSetor(data) {
+  const res = await fetch(`${API_URL}/configuracoes/tipos-solicitacao-por-setor`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('Erro ao salvar configuracao de tipos por setor');
+  return res.json();
+}

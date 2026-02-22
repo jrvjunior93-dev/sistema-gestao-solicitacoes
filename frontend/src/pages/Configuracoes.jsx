@@ -91,6 +91,11 @@ export default function Configuracoes() {
             to="/comportamento-recebimento-setor"
           />
           <ConfigItem
+            title="Tipos por Setor (Recebimento)"
+            description="Defina quais tipos cada setor pode usar e se cada tipo cai no admin primeiro ou para todos."
+            to="/tipos-solicitacao-por-setor"
+          />
+          <ConfigItem
             title="Tempo de Inatividade"
             description="Define o tempo para logout automatico por inatividade."
             to="/timeout-inatividade"
