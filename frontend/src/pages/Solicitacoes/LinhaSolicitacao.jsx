@@ -149,12 +149,20 @@ export default function LinhaSolicitacao({
         </td>
 
         {mostrarRefContrato && (
-          <td
-            className="p-2 whitespace-nowrap truncate"
-            title={solicitacao.contrato?.ref_contrato || ''}
-          >
-            {solicitacao.contrato?.ref_contrato || '-'}
-          </td>
+          (() => {
+            const refContrato = solicitacao.contrato?.ref_contrato || '';
+            const refContratoCurta =
+              refContrato.length > 30 ? `${refContrato.slice(0, 30)}...` : refContrato;
+
+            return (
+              <td
+                className="p-2 whitespace-nowrap truncate"
+                title={refContrato}
+              >
+                {refContratoCurta || '-'}
+              </td>
+            );
+          })()
         )}
 
         {(() => {
