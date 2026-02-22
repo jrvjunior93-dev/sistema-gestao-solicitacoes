@@ -816,6 +816,31 @@ module.exports = {
         ? resultadoBase.filter(r => obrasVinculadas.includes(r.obra_id))
         : resultadoBase;
 
+      if (resultado.length > 0) {
+        const idsSolicitacoes = resultado.map(item => item.id);
+        const historicosStatus = await Historico.findAll({
+          where: {
+            solicitacao_id: { [Op.in]: idsSolicitacoes },
+            acao: 'STATUS_ALTERADO'
+          },
+          attributes: ['solicitacao_id', 'setor', 'createdAt'],
+          order: [['createdAt', 'DESC']]
+        });
+
+        const setorStatusPorSolicitacao = new Map();
+        historicosStatus.forEach(item => {
+          const solicitacaoId = Number(item.solicitacao_id);
+          if (!setorStatusPorSolicitacao.has(solicitacaoId)) {
+            setorStatusPorSolicitacao.set(solicitacaoId, item.setor || null);
+          }
+        });
+
+        resultado.forEach(item => {
+          item.setor_status_atual =
+            setorStatusPorSolicitacao.get(Number(item.id)) || item.area_responsavel || null;
+        });
+      }
+
       return res.json(resultado);
 
     } catch (error) {

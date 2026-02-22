@@ -261,7 +261,7 @@ export default function LinhaSolicitacao({
         >
           <StatusBadge
             status={solicitacao.status_global}
-            setor={solicitacao.area_responsavel}
+            setor={solicitacao.setor_status_atual || solicitacao.area_responsavel}
           />
         </td>
 

@@ -64,6 +64,12 @@ export default function Header({
     }
   }
 
+  const historicos = Array.isArray(solicitacao?.historicos) ? solicitacao.historicos : [];
+  const ultimoHistoricoStatus = [...historicos]
+    .filter(item => item?.acao === 'STATUS_ALTERADO')
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+  const setorStatusAtual = ultimoHistoricoStatus?.setor || solicitacao?.area_responsavel || null;
+
   return (
     <div className="bg-white p-6 rounded-xl shadow">
 
@@ -80,7 +86,7 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-3">
-          <StatusBadge status={solicitacao.status_global} />
+          <StatusBadge status={solicitacao.status_global} setor={setorStatusAtual} />
           {mostrarAlterarStatus && (
             <button
               onClick={onAlterarStatus}
