@@ -1300,20 +1300,20 @@ module.exports = {
         usuario_responsavel_id: req.user.id,
         setor: req.user.area,
         acao: 'NUMERO_PEDIDO_ATUALIZADO',
-        descricao: numero_pedido || null
+        descricao: numero_pedido ? `Nº no SIENGE: ${numero_pedido}` : 'Nº no SIENGE removido'
       });
 
       await criarNotificacao({
         solicitacao_id: id,
         tipo: 'NUMERO_PEDIDO_ATUALIZADO',
-        mensagem: `${usuario?.nome || 'Usuario'} atualizou o numero do pedido da solicitacao ${solicitacao.codigo}`,
+        mensagem: `${usuario?.nome || 'Usuario'} atualizou o Nº no SIENGE da solicitacao ${solicitacao.codigo}`,
         created_by: req.user.id
       });
 
       return res.sendStatus(204);
     } catch (error) {
       console.error(error);
-      return res.status(500).json({ error: 'Erro ao atualizar numero do pedido' });
+      return res.status(500).json({ error: 'Erro ao atualizar Nº no SIENGE' });
     }
   },
 
