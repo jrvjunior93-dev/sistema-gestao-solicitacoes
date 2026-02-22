@@ -19,7 +19,10 @@ export default function LinhaSolicitacao({
   setoresMap,
   permissaoUsuario,
   mostrarRefContrato = false,
-  mostrarArquivadas = false
+  mostrarArquivadas = false,
+  selecaoHabilitada = false,
+  selecionada = false,
+  onToggleSelecionada
 }) {
 
   const [modalAtribuir, setModalAtribuir] = useState(false);
@@ -155,6 +158,17 @@ export default function LinhaSolicitacao({
   return (
     <>
       <tr className="border-b border-gray-200 dark:border-slate-700 odd:bg-white even:bg-gray-50/50 dark:odd:bg-slate-900 dark:even:bg-slate-800/90 hover:bg-blue-50/40 dark:hover:bg-slate-700 text-gray-900 dark:text-slate-100">
+
+        {selecaoHabilitada && (
+          <td className="p-2 whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={!!selecionada}
+              onChange={() => onToggleSelecionada?.(solicitacao.id)}
+              aria-label={`Selecionar ${solicitacao.codigo || solicitacao.id}`}
+            />
+          </td>
+        )}
 
         <td
           className="p-2 whitespace-nowrap"

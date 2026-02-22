@@ -43,6 +43,66 @@ async function garantirVisibilidade(solicitacaoId, usuarioId) {
   });
 }
 
+async function enviarSolicitacaoParaSetorInterno({
+  req,
+  solicitacao,
+  setorDestino,
+  usuarioId
+}) {
+  const acessoObra = await validarAcessoObra(req, solicitacao);
+  if (!acessoObra) {
+    return { ok: false, status: 403, error: 'Acesso negado. Vincule o usuario a obra para continuar.' };
+  }
+
+  const setorOrigem = solicitacao.area_responsavel;
+  const setorOrigemRow = await Setor.findOne({
+    where: {
+      [Op.or]: [
+        { codigo: setorOrigem },
+        { nome: setorOrigem }
+      ]
+    },
+    attributes: ['nome', 'codigo']
+  });
+  const setorDestinoRow = await Setor.findOne({
+    where: {
+      [Op.or]: [
+        { codigo: setorDestino },
+        { nome: setorDestino }
+      ]
+    },
+    attributes: ['nome', 'codigo']
+  });
+
+  const nomeOrigem = setorOrigemRow?.nome || setorOrigem;
+  const nomeDestino = setorDestinoRow?.nome || setorDestino;
+
+  await solicitacao.update({
+    area_responsavel: setorDestino
+  });
+
+  await Historico.create({
+    solicitacao_id: solicitacao.id,
+    usuario_responsavel_id: usuarioId,
+    setor: setorDestino,
+    acao: 'ENVIADA_SETOR',
+    observacao: `De ${setorOrigem} para ${setorDestino}`
+  });
+
+  await criarNotificacao({
+    solicitacao_id: solicitacao.id,
+    tipo: 'ENVIADA_SETOR',
+    mensagem: `${req.user?.nome || 'Usuario'} enviou a solicitacao ${solicitacao.codigo} do setor ${nomeOrigem} para o setor ${nomeDestino}`,
+    created_by: usuarioId,
+    metadata: {
+      setor_origem: setorOrigem,
+      setor_destino: setorDestino
+    }
+  });
+
+  return { ok: true };
+}
+
 async function obterAreaUsuario(req) {
   let areaUsuario = req.user?.area || null;
 
@@ -1845,6 +1905,108 @@ module.exports = {
     }
   },
 
+  async arquivarEmMassa(req, res) {
+    try {
+      const usuarioId = req.user.id;
+      const ids = Array.isArray(req.body?.solicitacao_ids)
+        ? req.body.solicitacao_ids.map(Number).filter(id => Number.isInteger(id) && id > 0)
+        : [];
+
+      const idsUnicos = [...new Set(ids)];
+      if (idsUnicos.length === 0) {
+        return res.status(400).json({ error: 'Informe ao menos uma solicitacao.' });
+      }
+
+      const solicitacoes = await Solicitacao.findAll({
+        where: { id: { [Op.in]: idsUnicos } }
+      });
+
+      const map = new Map(solicitacoes.map(s => [Number(s.id), s]));
+      const resultado = { total: idsUnicos.length, sucesso: 0, erros: [] };
+
+      for (const id of idsUnicos) {
+        const solicitacao = map.get(Number(id));
+        if (!solicitacao) {
+          resultado.erros.push({ id, error: 'Solicitacao nao encontrada' });
+          continue;
+        }
+
+        const acessoObra = await validarAcessoObra(req, solicitacao);
+        if (!acessoObra) {
+          resultado.erros.push({ id, error: 'Acesso negado a obra da solicitacao' });
+          continue;
+        }
+
+        await SolicitacaoVisibilidadeUsuario.upsert({
+          solicitacao_id: id,
+          usuario_id: usuarioId,
+          oculto: true
+        });
+        resultado.sucesso += 1;
+      }
+
+      return res.json(resultado);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao arquivar solicitacoes em massa' });
+    }
+  },
+
+  async enviarParaSetorEmMassa(req, res) {
+    try {
+      const ids = Array.isArray(req.body?.solicitacao_ids)
+        ? req.body.solicitacao_ids.map(Number).filter(id => Number.isInteger(id) && id > 0)
+        : [];
+      const idsUnicos = [...new Set(ids)];
+      const setorDestino = String(req.body?.setor_destino || '').trim();
+      const usuarioId = req.user.id;
+      const isSetorObra = await isUsuarioSetorObra(req);
+
+      if (isSetorObra) {
+        return res.status(403).json({
+          error: 'Setor OBRA nao pode enviar solicitacoes para outro setor. Para seguir, solicite apoio ao responsavel do setor.'
+        });
+      }
+      if (!setorDestino) {
+        return res.status(400).json({ error: 'Selecione um setor de destino.' });
+      }
+      if (idsUnicos.length === 0) {
+        return res.status(400).json({ error: 'Informe ao menos uma solicitacao.' });
+      }
+
+      const solicitacoes = await Solicitacao.findAll({
+        where: { id: { [Op.in]: idsUnicos } }
+      });
+      const map = new Map(solicitacoes.map(s => [Number(s.id), s]));
+      const resultado = { total: idsUnicos.length, sucesso: 0, erros: [] };
+
+      for (const id of idsUnicos) {
+        const solicitacao = map.get(Number(id));
+        if (!solicitacao) {
+          resultado.erros.push({ id, error: 'Solicitacao nao encontrada' });
+          continue;
+        }
+
+        const envio = await enviarSolicitacaoParaSetorInterno({
+          req,
+          solicitacao,
+          setorDestino,
+          usuarioId
+        });
+        if (!envio.ok) {
+          resultado.erros.push({ id, error: envio.error || 'Erro ao enviar' });
+          continue;
+        }
+        resultado.sucesso += 1;
+      }
+
+      return res.json(resultado);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao enviar solicitacoes em massa' });
+    }
+  },
+
   async desarquivarDaMinhaLista(req, res) {
     try {
       const { id } = req.params;
@@ -2016,64 +2178,19 @@ module.exports = {
       }
 
       const solicitacao = await Solicitacao.findByPk(id);
-
       if (!solicitacao) {
         return res.status(404).json({ error: 'Solicitacao nao encontrada' });
       }
 
-      const acessoObra = await validarAcessoObra(req, solicitacao);
-      if (!acessoObra) {
-        return res.status(403).json({
-          error: 'Acesso negado. Vincule o usuario a obra para continuar.'
-        });
+      const envio = await enviarSolicitacaoParaSetorInterno({
+        req,
+        solicitacao,
+        setorDestino: setor_destino,
+        usuarioId
+      });
+      if (!envio.ok) {
+        return res.status(envio.status || 400).json({ error: envio.error || 'Erro ao enviar para setor' });
       }
-
-      const setorOrigem = solicitacao.area_responsavel;
-      const setorOrigemRow = await Setor.findOne({
-        where: {
-          [Op.or]: [
-            { codigo: setorOrigem },
-            { nome: setorOrigem }
-          ]
-        },
-        attributes: ['nome', 'codigo']
-      });
-      const setorDestinoRow = await Setor.findOne({
-        where: {
-          [Op.or]: [
-            { codigo: setor_destino },
-            { nome: setor_destino }
-          ]
-        },
-        attributes: ['nome', 'codigo']
-      });
-      const nomeOrigem = setorOrigemRow?.nome || setorOrigem;
-      const nomeDestino = setorDestinoRow?.nome || setor_destino;
-
-      // Atualiza setor responsavel
-      await solicitacao.update({
-        area_responsavel: setor_destino
-      });
-
-      // Historico
-      await Historico.create({
-        solicitacao_id: id,
-        usuario_responsavel_id: usuarioId,
-        setor: setor_destino,
-        acao: 'ENVIADA_SETOR',
-        observacao: `De ${setorOrigem} para ${setor_destino}`
-      });
-
-      await criarNotificacao({
-        solicitacao_id: id,
-        tipo: 'ENVIADA_SETOR',
-        mensagem: `${req.user?.nome || 'Usuario'} enviou a solicitacao ${solicitacao.codigo} do setor ${nomeOrigem} para o setor ${nomeDestino}`,
-        created_by: usuarioId,
-        metadata: {
-          setor_origem: setorOrigem,
-          setor_destino
-        }
-      });
 
       return res.sendStatus(204);
 

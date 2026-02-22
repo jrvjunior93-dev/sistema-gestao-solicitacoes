@@ -125,4 +125,34 @@ export async function desarquivarSolicitacao(id) {
   return true;
 }
 
+export async function arquivarSolicitacoesEmMassa(solicitacao_ids = []) {
+  const res = await fetch(`${API_URL}/solicitacoes/arquivar-massa`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ solicitacao_ids })
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+
+  return res.json();
+}
+
+export async function enviarSolicitacoesParaSetorEmMassa({ solicitacao_ids, setor_destino }) {
+  const res = await fetch(`${API_URL}/solicitacoes/enviar-setor-massa`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ solicitacao_ids, setor_destino })
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text);
+  }
+
+  return res.json();
+}
+
 

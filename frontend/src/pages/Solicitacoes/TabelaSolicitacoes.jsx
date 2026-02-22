@@ -9,7 +9,10 @@ export default function TabelaSolicitacoes({
   onAtualizar,
   setoresMap,
   permissaoUsuario,
-  mostrarArquivadas = false
+  mostrarArquivadas = false,
+  selecionadasIds = [],
+  onToggleSelecionada,
+  onToggleSelecionarTodas
 }) {
   const tableWrapRef = useRef(null);
   const { user } = useAuth();
@@ -19,9 +22,16 @@ export default function TabelaSolicitacoes({
     String(user?.area || '').toUpperCase()
   ];
   const isSetorObra = setorTokens.includes('OBRA');
+  const selecaoHabilitada = !mostrarArquivadas && typeof onToggleSelecionada === 'function';
+  const idsSet = useMemo(() => new Set((selecionadasIds || []).map(Number)), [selecionadasIds]);
+  const todasSelecionadas = selecaoHabilitada && solicitacoes.length > 0 &&
+    solicitacoes.every(item => idsSet.has(Number(item.id)));
+  const algumaSelecionada = selecaoHabilitada &&
+    solicitacoes.some(item => idsSet.has(Number(item.id)));
 
   const columns = useMemo(() => {
     const base = [
+      ...(selecaoHabilitada ? [{ id: 'selecionar', label: '', width: 42, min: 42, weight: 0, fixed: true }] : []),
       { id: 'data', label: 'Data', width: 110, min: 90, weight: 0.9 },
       { id: 'codigo', label: 'Código', width: 100, min: 80, weight: 0.9 },
       { id: 'obra', label: 'Obra', width: 140, min: 100, weight: 1.1 },
@@ -48,7 +58,7 @@ export default function TabelaSolicitacoes({
     }
 
     return base;
-  }, [isSetorObra]);
+  }, [isSetorObra, selecaoHabilitada]);
 
   const [widths, setWidths] = useState(() => columns.map(col => col.width));
   const [ordenacao, setOrdenacao] = useState({ campo: 'data', direcao: 'desc' });
@@ -160,15 +170,27 @@ export default function TabelaSolicitacoes({
                   className="p-3 text-left relative select-none whitespace-nowrap text-xs uppercase tracking-wide text-gray-600 dark:text-slate-200 border-b border-gray-200 dark:border-slate-700 sticky top-0 z-10 bg-gray-50 dark:bg-slate-800"
                   style={{ width: `${widths[index]}px` }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => alternarOrdenacao(col.id)}
-                    disabled={!sortable}
-                    className={sortable ? 'hover:underline' : 'cursor-default'}
-                    title={sortable ? 'Clique para ordenar' : undefined}
-                  >
-                    {col.label}{indicadorOrdenacao(col.id)}
-                  </button>
+                  {col.id === 'selecionar' ? (
+                    <input
+                      type="checkbox"
+                      checked={todasSelecionadas}
+                      ref={el => {
+                        if (el) el.indeterminate = !todasSelecionadas && algumaSelecionada;
+                      }}
+                      onChange={() => onToggleSelecionarTodas?.()}
+                      aria-label="Selecionar todas"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => alternarOrdenacao(col.id)}
+                      disabled={!sortable}
+                      className={sortable ? 'hover:underline' : 'cursor-default'}
+                      title={sortable ? 'Clique para ordenar' : undefined}
+                    >
+                      {col.label}{indicadorOrdenacao(col.id)}
+                    </button>
+                  )}
                 </th>
               );
             })}
@@ -185,6 +207,9 @@ export default function TabelaSolicitacoes({
               permissaoUsuario={permissaoUsuario}
               mostrarRefContrato={isSetorObra}
               mostrarArquivadas={mostrarArquivadas}
+              selecaoHabilitada={selecaoHabilitada}
+              selecionada={idsSet.has(Number(s.id))}
+              onToggleSelecionada={onToggleSelecionada}
             />
           ))}
         </tbody>

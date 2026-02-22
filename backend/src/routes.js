@@ -87,6 +87,8 @@ router.patch('/solicitacoes/:id/status', SolicitacaoController.updateStatus);
 router.patch('/solicitacoes/:id/pedido', SolicitacaoController.atualizarNumeroPedido);
 router.patch('/solicitacoes/:id/ref-contrato', SolicitacaoController.atualizarRefContrato);
 router.patch('/solicitacoes/:id/valor', SolicitacaoController.atualizarValor);
+router.patch('/solicitacoes/arquivar-massa', SolicitacaoController.arquivarEmMassa);
+router.post('/solicitacoes/enviar-setor-massa', SolicitacaoController.enviarParaSetorEmMassa);
 router.get('/solicitacoes/resumo', SolicitacaoController.resumo);
 router.post('/solicitacoes/:id/comentarios', SolicitacaoController.adicionarComentario);
 router.post('/solicitacoes/:id/enviar-setor', SolicitacaoController.enviarParaSetor);
