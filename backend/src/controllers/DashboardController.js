@@ -33,41 +33,32 @@ module.exports = {
 
       const isAdmin = perfil === 'ADMIN';
       const isSuperadmin = perfil === 'SUPERADMIN';
-      const nomeSetor = String(setorAtual?.nome || '').toUpperCase();
-      const codigoSetor = String(setorAtual?.codigo || '').toUpperCase();
-      const isAdminGEO =
-        isAdmin &&
-        (areaUsuario === 'GEO' || nomeSetor === 'GEO' || codigoSetor === 'GEO');
 
       if (!isSuperadmin && !isAdmin) {
         return res.status(403).json({ error: 'Acesso negado' });
       }
 
       const whereBase = { cancelada: false };
-      if (isAdmin && !isAdminGEO) {
+
+      // ADMIN sempre enxerga apenas o proprio setor.
+      // SUPERADMIN enxerga a empresa toda.
+      if (isAdmin) {
         if (!areaUsuario) {
           return res.status(403).json({ error: 'Acesso negado' });
         }
+
         const setoresPermitidos = [];
         if (areaUsuario) setoresPermitidos.push(areaUsuario);
         if (setorAtual?.codigo) setoresPermitidos.push(setorAtual.codigo);
         if (setorAtual?.nome) setoresPermitidos.push(setorAtual.nome);
         if (setorAtual?.id) setoresPermitidos.push(String(setorAtual.id));
+
         const setoresUnicos = Array.from(new Set(setoresPermitidos.filter(Boolean)));
         whereBase.area_responsavel = { [Op.in]: setoresUnicos };
       }
 
+      const total = await Solicitacao.count({ where: whereBase });
 
-      /**
-       * 🔹 TOTAL GERAL
-       */
-      const total = await Solicitacao.count({
-        where: whereBase
-      });
-
-      /**
-       * 🔹 POR STATUS
-       */
       const porStatus = await Solicitacao.findAll({
         attributes: [
           'status_global',
@@ -77,9 +68,6 @@ module.exports = {
         group: ['status_global']
       });
 
-      /**
-       * 🔹 POR ÁREA
-       */
       const porAreaRaw = await Solicitacao.findAll({
         attributes: [
           'area_responsavel',
@@ -88,18 +76,17 @@ module.exports = {
         where: whereBase,
         group: ['area_responsavel']
       });
+
       const setores = await Setor.findAll({
         attributes: ['codigo', 'nome']
       });
+
       const mapaSetores = new Map();
       setores.forEach(s => {
-        if (s.codigo) {
-          mapaSetores.set(String(s.codigo).toUpperCase(), s.nome);
-        }
-        if (s.nome) {
-          mapaSetores.set(String(s.nome).toUpperCase(), s.nome);
-        }
+        if (s.codigo) mapaSetores.set(String(s.codigo).toUpperCase(), s.nome);
+        if (s.nome) mapaSetores.set(String(s.nome).toUpperCase(), s.nome);
       });
+
       const porArea = porAreaRaw.map(item => {
         const area = String(item.area_responsavel || '').toUpperCase();
         const nome = mapaSetores.get(area) || item.area_responsavel;
@@ -109,9 +96,6 @@ module.exports = {
         };
       });
 
-      /**
-       * 🔹 VALOR TOTAL POR STATUS
-       */
       const valoresPorStatus = await Solicitacao.findAll({
         attributes: [
           'status_global',
@@ -124,33 +108,12 @@ module.exports = {
         group: ['status_global']
       });
 
-      /**
-       * 🔹 SLA MÉDIO (em dias)
-       * Diferença entre createdAt e updatedAt
-       */
-      const slaMedio = await Solicitacao.findAll({
-        attributes: [
-          'status_global',
-          [
-            Sequelize.fn(
-              'AVG',
-              Sequelize.literal('TIMESTAMPDIFF(MINUTE, createdAt, updatedAt)')
-            ),
-            'sla_minutos'
-          ]
-        ],
-        where: whereBase,
-        group: ['status_global']
-      });
-
       return res.json({
         total,
         porStatus,
         porArea,
-        valoresPorStatus,
-        slaMedio
+        valoresPorStatus
       });
-
     } catch (error) {
       console.error(error);
       return res.status(500).json({
