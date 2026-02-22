@@ -222,10 +222,6 @@ module.exports = {
 
       const resultado = contratos.map(c => {
         const solicitacoes = c.solicitacoes || [];
-        const totalSolicitado = solicitacoes.reduce(
-          (acc, s) => acc + Number(s.valor || 0),
-          0
-        );
         const totalPagoStatus = solicitacoes.reduce((acc, s) => {
           if (String(s.status_global || '').toUpperCase() !== 'PAGA') {
             return acc;
@@ -236,7 +232,9 @@ module.exports = {
         const ajusteSolicitado = Number(c.ajuste_solicitado || 0);
         const ajustePago = Number(c.ajuste_pago || 0);
         const valorContrato = Number(c.valor_total || 0);
-        const totalSolicitadoFinal = totalSolicitado + valorContrato + ajusteSolicitado;
+        // "Solicitado" do contrato deve refletir apenas o valor do contrato e ajustes manuais,
+        // sem somar automaticamente os valores das solicitacoes vinculadas.
+        const totalSolicitadoFinal = valorContrato + ajusteSolicitado;
         const totalPagoFinal = totalPagoStatus + ajustePago;
 
         return {
