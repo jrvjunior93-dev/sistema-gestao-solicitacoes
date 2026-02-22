@@ -26,6 +26,7 @@ const AnexoController = require('./controllers/AnexoController');
 const NotificacaoController = require('./controllers/NotificacaoController');
 const SetorPermissaoController = require('./controllers/SetorPermissaoController');
 const ConfiguracaoSistemaController = require('./controllers/ConfiguracaoSistemaController');
+const { Setor } = require('./models');
 //console.log('AnexoController =>', AnexoController);
 
 
@@ -36,6 +37,43 @@ router.post('/login', AuthController.login);
 router.get('/configuracoes/tema', ConfiguracaoSistemaController.getTema);
 const auth = require('./middlewares/auth');
 router.use(auth);
+
+const allowGestaoUsuarios = async (req, res, next) => {
+  try {
+    const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+    if (perfil === 'SUPERADMIN') {
+      return next();
+    }
+
+    if (perfil !== 'ADMIN') {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+
+    const tokens = new Set([
+      String(req.user?.area || '').trim().toUpperCase(),
+      String(req.user?.setor?.codigo || '').trim().toUpperCase(),
+      String(req.user?.setor?.nome || '').trim().toUpperCase(),
+      String(req.user?.setor_id || '').trim().toUpperCase()
+    ].filter(Boolean));
+
+    if (!tokens.has('GEO') && req.user?.setor_id) {
+      const setor = await Setor.findByPk(req.user.setor_id, {
+        attributes: ['codigo', 'nome']
+      });
+      if (setor?.codigo) tokens.add(String(setor.codigo).trim().toUpperCase());
+      if (setor?.nome) tokens.add(String(setor.nome).trim().toUpperCase());
+    }
+
+    if (tokens.has('GEO')) {
+      return next();
+    }
+
+    return res.status(403).json({ error: 'Acesso negado' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Erro ao validar permissao de usuarios' });
+  }
+};
 
 
 // -------------------------------------------------------------------
@@ -142,13 +180,13 @@ router.post(
 // USUÁRIOS
 // -------------------------------------------------------------------
 
-router.get('/usuarios', UsuarioController.index);
-router.get('/usuarios/:id', UsuarioController.show);
-router.post('/usuarios', UsuarioController.create);
-router.put('/usuarios/:id', UsuarioController.update);
+router.get('/usuarios', allowGestaoUsuarios, UsuarioController.index);
+router.get('/usuarios/:id', allowGestaoUsuarios, UsuarioController.show);
+router.post('/usuarios', allowGestaoUsuarios, UsuarioController.create);
+router.put('/usuarios/:id', allowGestaoUsuarios, UsuarioController.update);
 router.patch('/usuarios/me/senha', UsuarioController.alterarSenha);
-router.patch('/usuarios/:id/ativar', UsuarioController.ativar);
-router.patch('/usuarios/:id/desativar', UsuarioController.desativar);
+router.patch('/usuarios/:id/ativar', allowGestaoUsuarios, UsuarioController.ativar);
+router.patch('/usuarios/:id/desativar', allowGestaoUsuarios, UsuarioController.desativar);
 router.post('/solicitacoes/:id/atribuir', SolicitacaoController.atribuirResponsavel);
 
 

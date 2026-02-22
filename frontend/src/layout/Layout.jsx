@@ -108,7 +108,7 @@ export default function Layout() {
           add('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp);
           add('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund);
         }
-        add('/usuarios', 'Usuários', HiOutlineUsers);
+        if (isAdminGEO) add('/usuarios', 'Usu�rios', HiOutlineUsers);
         if (isAdminGEO) add('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
         break;
@@ -288,3 +288,4 @@ function MenuItem({ to, label, icon: Icon, active, onSelect, collapsed }) {
     </li>
   );
 }
+

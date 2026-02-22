@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 
 import PrivateRoute from './components/PrivateRoute';
 
@@ -34,6 +34,25 @@ import SetoresVisiveisUsuario from './pages/SetoresVisiveisUsuario';
 import ComportamentoRecebimentoSetor from './pages/ComportamentoRecebimentoSetor';
 import TimeoutInatividade from './pages/TimeoutInatividade';
 import TiposSolicitacaoPorSetor from './pages/TiposSolicitacaoPorSetor';
+import { useAuth } from './contexts/AuthContext';
+
+function GestaoUsuariosRoute({ children }) {
+  const { user } = useAuth();
+  const perfil = String(user?.perfil || '').toUpperCase();
+  const tokens = [
+    String(user?.setor?.codigo || '').toUpperCase(),
+    String(user?.setor?.nome || '').toUpperCase(),
+    String(user?.area || '').toUpperCase()
+  ];
+  const isAdminGEO = perfil === 'ADMIN' && tokens.includes('GEO');
+  const permitido = perfil === 'SUPERADMIN' || isAdminGEO;
+
+  if (!permitido) {
+    return <Navigate to="/" replace />;
+  }
+
+  return children;
+}
 
 export default function App() {
   return (
@@ -63,10 +82,10 @@ export default function App() {
 
         <Route path="nova-solicitacao" element={<NovaSolicitacao />} />
 
-        <Route path="usuarios" element={<Usuarios />} />
-        <Route path="usuarios/novo" element={<UsuarioNovo />} />
-        <Route path="usuarios/:id" element={<UsuarioNovo />} />
-        <Route path="usuarios/:id/editar" element={<UsuarioNovo />} />
+        <Route path="usuarios" element={<GestaoUsuariosRoute><Usuarios /></GestaoUsuariosRoute>} />
+        <Route path="usuarios/novo" element={<GestaoUsuariosRoute><UsuarioNovo /></GestaoUsuariosRoute>} />
+        <Route path="usuarios/:id" element={<GestaoUsuariosRoute><UsuarioNovo /></GestaoUsuariosRoute>} />
+        <Route path="usuarios/:id/editar" element={<GestaoUsuariosRoute><UsuarioNovo /></GestaoUsuariosRoute>} />
 
         <Route path="obras" element={<Obras />} />
         <Route path="setores" element={<Setores />} />
