@@ -83,6 +83,7 @@ export default function Timeline({ historicos, canRemoveAnexo = false, onAnexoRe
       <div className="space-y-4 max-h-[70vh] overflow-y-auto">
         {historicos.map(h => {
           const meta = h.metadata ? JSON.parse(h.metadata) : null;
+          const acaoLabel = h.acao === 'NUMERO_PEDIDO_ATUALIZADO' ? 'Nº no SIENGE Atualizado' : h.acao;
           const atorNome = meta?.ator_nome || null;
           const responsavelNome = meta?.responsavel_nome || h.usuario?.nome || null;
           const caminhoArquivo = meta?.caminho || null;
@@ -93,7 +94,7 @@ export default function Timeline({ historicos, canRemoveAnexo = false, onAnexoRe
               key={h.id}
               className="border-l-4 border-blue-500 pl-3"
             >
-              <p className="text-sm font-medium">{h.acao}</p>
+              <p className="text-sm font-medium">{acaoLabel}</p>
 
               {(h.status_anterior || h.status_novo) && (
                 <p className="text-sm text-gray-700">
