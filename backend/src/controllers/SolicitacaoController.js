@@ -1115,12 +1115,6 @@ module.exports = {
       const areaUsuario = await obterAreaUsuario(req);
       const isSetorObra = await isUsuarioSetorObra(req);
 
-      if (isSetorObra) {
-        return res.status(403).json({
-          error: 'Setor OBRA nao pode alterar status. Para seguir, solicite apoio ao responsavel do setor.'
-        });
-      }
-
       const solicitacao = await Solicitacao.findByPk(id);
       if (!solicitacao) {
         return res.status(404).json({ error: 'Solicitacao nao encontrada' });

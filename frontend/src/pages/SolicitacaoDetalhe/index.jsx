@@ -8,9 +8,8 @@ import Comentarios from './Comentarios';
 import Anexos from './Anexos';
 import Pedido from './Pedido';
 import ModalAlterarStatus from './ModalAlterarStatus';
-import { updateRefContratoSolicitacao, updateStatusSolicitacao } from '../../services/solicitacoes';
+import { updateStatusSolicitacao } from '../../services/solicitacoes';
 import { API_URL, authHeaders } from '../../services/api';
-import { getContratos } from '../../services/contratos';
 
 export default function SolicitacaoDetalhe() {
 
@@ -30,7 +29,6 @@ export default function SolicitacaoDetalhe() {
   const [solicitacao, setSolicitacao] = useState(null);
   const [loading, setLoading] = useState(true);
   const [modalStatus, setModalStatus] = useState(false);
-  const [contratosObra, setContratosObra] = useState([]);
 
   const perfil = String(user?.perfil || '').trim().toUpperCase();
   const setorUsuario =
@@ -50,25 +48,6 @@ export default function SolicitacaoDetalhe() {
   useEffect(() => {
     carregar();
   }, [id]);
-
-  useEffect(() => {
-    async function carregarContratosObra() {
-      if (!isSetorObra || !solicitacao?.obra_id) {
-        setContratosObra([]);
-        return;
-      }
-
-      try {
-        const contratos = await getContratos({ obra_id: solicitacao.obra_id });
-        setContratosObra(Array.isArray(contratos) ? contratos : []);
-      } catch (error) {
-        console.error(error);
-        setContratosObra([]);
-      }
-    }
-
-    carregarContratosObra();
-  }, [isSetorObra, solicitacao?.obra_id]);
 
   async function carregar() {
     try {
@@ -106,17 +85,6 @@ export default function SolicitacaoDetalhe() {
     }
   }
 
-  async function salvarRefContrato(contratoId) {
-    try {
-      await updateRefContratoSolicitacao(solicitacao.id, contratoId);
-      await carregar();
-      alert('Ref. do contrato atualizada com sucesso.');
-    } catch (error) {
-      console.error(error);
-      alert(error?.message || 'Erro ao atualizar ref. do contrato');
-    }
-  }
-
   return (
     <div className="max-w-6xl mx-auto space-y-6">
 
@@ -132,10 +100,7 @@ export default function SolicitacaoDetalhe() {
       <Header
         solicitacao={solicitacao}
         onAlterarStatus={() => setModalStatus(true)}
-        mostrarAlterarStatus={!isSetorObra}
-        podeEditarRefContrato={isSetorObra}
-        contratosObra={contratosObra}
-        onSalvarRefContrato={salvarRefContrato}
+        mostrarAlterarStatus
       />
 
       {/* CONTEÚDO */}
@@ -175,14 +140,12 @@ export default function SolicitacaoDetalhe() {
 
       </div>
 
-      {!isSetorObra && (
-        <ModalAlterarStatus
-          aberto={modalStatus}
-          setor={setorParaStatus}
-          onClose={() => setModalStatus(false)}
-          onSalvar={salvarStatus}
-        />
-      )}
+      <ModalAlterarStatus
+        aberto={modalStatus}
+        setor={setorParaStatus}
+        onClose={() => setModalStatus(false)}
+        onSalvar={salvarStatus}
+      />
 
     </div>
   );
