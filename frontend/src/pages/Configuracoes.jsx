@@ -90,6 +90,11 @@ export default function Configuracoes() {
             description="Defina se as solicitacoes chegam primeiro ao admin ou se ficam visiveis para todos."
             to="/comportamento-recebimento-setor"
           />
+          <ConfigItem
+            title="Tempo de Inatividade"
+            description="Define o tempo para logout automatico por inatividade."
+            to="/timeout-inatividade"
+          />
         </div>
       </section>
     </div>

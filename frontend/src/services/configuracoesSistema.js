@@ -18,6 +18,27 @@ export async function salvarTemaSistema(data) {
   return res.json();
 }
 
+export async function getTimeoutInatividade() {
+  const res = await fetch(`${API_URL}/configuracoes/timeout-inatividade`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Erro ao buscar timeout de inatividade');
+  return res.json();
+}
+
+export async function salvarTimeoutInatividade(data) {
+  const res = await fetch(`${API_URL}/configuracoes/timeout-inatividade`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(txt || 'Erro ao salvar timeout de inatividade');
+  }
+  return res.json();
+}
+
 export async function getAreasObra() {
   const res = await fetch(`${API_URL}/configuracoes/areas-obra`, {
     headers: authHeaders()

@@ -233,6 +233,8 @@ router.patch('/setor-permissoes', permit(['SUPERADMIN']), SetorPermissaoControll
 // -------------------------------------------------------------------
 
 router.patch('/configuracoes/tema', permit(['SUPERADMIN']), ConfiguracaoSistemaController.updateTema);
+router.get('/configuracoes/timeout-inatividade', ConfiguracaoSistemaController.getTimeoutInatividade);
+router.patch('/configuracoes/timeout-inatividade', permit(['SUPERADMIN']), ConfiguracaoSistemaController.updateTimeoutInatividade);
 router.get('/configuracoes/areas-obra', ConfiguracaoSistemaController.getAreasObra);
 router.patch('/configuracoes/areas-obra', permit(['SUPERADMIN']), ConfiguracaoSistemaController.updateAreasObra);
 router.get('/configuracoes/areas-por-setor-origem', ConfiguracaoSistemaController.getAreasPorSetorOrigem);

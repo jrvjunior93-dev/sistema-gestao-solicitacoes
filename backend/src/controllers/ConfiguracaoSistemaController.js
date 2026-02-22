@@ -4,6 +4,8 @@ const CHAVE_TEMA = 'TEMA_SISTEMA';
 const CHAVE_AREAS_OBRA = 'AREAS_OBRA_VISIVEIS';
 const CHAVE_AREAS_POR_SETOR_ORIGEM = 'AREAS_POR_SETOR_ORIGEM';
 const CHAVE_SETORES_VISIVEIS_POR_USUARIO = 'SETORES_VISIVEIS_POR_USUARIO';
+const CHAVE_TIMEOUT_INATIVIDADE = 'TIMEOUT_INATIVIDADE_MINUTOS';
+const TIMEOUT_INATIVIDADE_PADRAO_MINUTOS = 20;
 
 function parseJsonOrDefault(value, fallback) {
   if (!value) return fallback;
@@ -60,6 +62,54 @@ function normalizarListaSetores(lista) {
 }
 
 module.exports = {
+  async getTimeoutInatividade(req, res) {
+    try {
+      const item = await ConfiguracaoSistema.findOne({
+        where: { chave: CHAVE_TIMEOUT_INATIVIDADE },
+        order: [['id', 'DESC']]
+      });
+
+      const minutos = Number(item?.valor);
+      if (Number.isNaN(minutos) || minutos <= 0) {
+        return res.json({ minutos: TIMEOUT_INATIVIDADE_PADRAO_MINUTOS });
+      }
+
+      return res.json({ minutos });
+    } catch (error) {
+      console.error(error);
+      return res.json({ minutos: TIMEOUT_INATIVIDADE_PADRAO_MINUTOS });
+    }
+  },
+
+  async updateTimeoutInatividade(req, res) {
+    try {
+      const minutos = Number(req.body?.minutos);
+      if (Number.isNaN(minutos) || minutos < 1 || minutos > 480) {
+        return res.status(400).json({ error: 'Informe um tempo entre 1 e 480 minutos.' });
+      }
+
+      const valor = String(Math.floor(minutos));
+      const existente = await ConfiguracaoSistema.findOne({
+        where: { chave: CHAVE_TIMEOUT_INATIVIDADE },
+        order: [['id', 'DESC']]
+      });
+
+      if (existente) {
+        await existente.update({ valor });
+      } else {
+        await ConfiguracaoSistema.create({
+          chave: CHAVE_TIMEOUT_INATIVIDADE,
+          valor
+        });
+      }
+
+      return res.json({ ok: true, minutos: Number(valor) });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao salvar timeout de inatividade' });
+    }
+  },
+
   async getTema(req, res) {
     try {
       const item = await ConfiguracaoSistema.findOne({
