@@ -192,10 +192,29 @@ export default function NovaSolicitacao() {
   }
 
   async function buscarRefContrato() {
+    if (!form.obra_id) {
+      alert('Selecione uma obra antes de buscar a ref. do contrato.');
+      setRefResultados([]);
+      setContratosRef([]);
+      return;
+    }
+
     const termo = refContratoBusca.trim();
     if (!termo) return;
-    const data = await getContratos({ ref: termo });
-    const lista = Array.isArray(data) ? data : [];
+    const listaBase = Array.isArray(contratos) ? contratos : [];
+    const termoNormalizado = termo
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase();
+    const lista = listaBase.filter(item => {
+      const ref = String(item?.ref_contrato || '');
+      const refNormalizada = ref
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase();
+      return refNormalizada.includes(termoNormalizado);
+    });
+
     if (lista.length === 0) {
       alert('Nenhuma referencia encontrada');
       setRefResultados([]);
@@ -497,6 +516,7 @@ export default function NovaSolicitacao() {
                   value={refContratoBusca}
                   onChange={e => setRefContratoBusca(e.target.value)}
                   required={medicaoObrigatoria}
+                  disabled={!form.obra_id}
                 />
                 <button type="button" className="btn btn-outline" onClick={buscarRefContrato}>
                   Buscar
@@ -505,6 +525,11 @@ export default function NovaSolicitacao() {
                   Limpar
                 </button>
               </div>
+              {!form.obra_id && (
+                <span className="text-xs text-gray-500">
+                  Selecione a obra para habilitar a busca de referências de contrato.
+                </span>
+              )}
               {refResultados.length > 1 && (
                 <div className="mt-2 border rounded p-2 max-h-40 overflow-auto">
                   {refResultados.map(item => (
