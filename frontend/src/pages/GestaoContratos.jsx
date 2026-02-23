@@ -612,15 +612,31 @@ export default function GestaoContratos() {
                 </p>
               )}
               {anexos.map(anexo => (
-                <a
+                <div
                   key={anexo.id}
-                  href={fileUrl(anexo.caminho_arquivo)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block text-blue-600 text-sm"
+                  className="flex items-center justify-between gap-3 text-sm border rounded px-3 py-2"
                 >
-                  {anexo.nome_original}
-                </a>
+                  <span className="truncate flex-1" title={anexo.nome_original}>
+                    {anexo.nome_original}
+                  </span>
+                  <div className="flex items-center gap-3 whitespace-nowrap">
+                    <a
+                      href={fileUrl(anexo.caminho_arquivo)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      Visualizar
+                    </a>
+                    <a
+                      href={fileUrl(anexo.caminho_arquivo)}
+                      download={anexo.nome_original || true}
+                      className="text-green-600 hover:underline"
+                    >
+                      Baixar
+                    </a>
+                  </div>
+                </div>
               ))}
             </div>
 
