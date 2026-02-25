@@ -449,6 +449,44 @@ async function validarAcessoObra(req, solicitacao) {
   return obrasVinculadas.includes(solicitacao.obra_id);
 }
 
+function montarLiteralHistoricoSetoresEnvolvidos(tokens = []) {
+  const tokensValidos = Array.from(
+    new Set(
+      (Array.isArray(tokens) ? tokens : [])
+        .map(v => String(v || '').trim().toUpperCase())
+        .filter(Boolean)
+    )
+  );
+
+  if (tokensValidos.length === 0) return null;
+
+  const inList = tokensValidos.map(v => `'${v.replace(/'/g, "''")}'`).join(', ');
+
+  const likes = tokensValidos
+    .map(token => {
+      const seguro = token.replace(/'/g, "''");
+      return [
+        `UPPER(COALESCE(h.observacao, '')) LIKE 'DE ${seguro} PARA %'`,
+        `UPPER(COALESCE(h.observacao, '')) LIKE '% PARA ${seguro}'`
+      ];
+    })
+    .flat()
+    .join(' OR ');
+
+  return Sequelize.literal(`(
+    SELECT DISTINCT h.solicitacao_id
+    FROM historicos h
+    WHERE h.solicitacao_id = Solicitacao.id
+      AND (
+        UPPER(CAST(h.setor AS CHAR)) IN (${inList})
+        OR (
+          h.acao = 'ENVIADA_SETOR'
+          AND (${likes})
+        )
+      )
+  )`);
+}
+
 module.exports = {
 
   // =====================================================
@@ -560,6 +598,7 @@ module.exports = {
       const adminGEO =
         perfil.startsWith('ADMIN') &&
         setorTokens.includes('GEO');
+      const literalHistoricoSetorUsuario = montarLiteralHistoricoSetoresEnvolvidos(setorTokens);
       const isSetorBrape = setorTokens.some(token => isBrapeToken(token));
       const usuarioBrape = perfil === 'USUARIO' && isSetorBrape;
       const adminBrape = perfil.startsWith('ADMIN') && isSetorBrape;
@@ -613,16 +652,33 @@ module.exports = {
 
       if (!isSetorBrape && isUsuarioGeo && !adminGEO && perfil !== 'SUPERADMIN') {
         where[Op.and] = where[Op.and] || [];
-        where[Op.and].push({
-          id: {
-            [Op.in]: Sequelize.literal(`(
-              SELECT solicitacao_id
-              FROM historicos
-              WHERE usuario_responsavel_id = ${usuarioId}
-                AND acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
-            )`)
+        const condicoesUsuarioGeo = [
+          {
+            id: {
+              [Op.in]: Sequelize.literal(`(
+                SELECT solicitacao_id
+                FROM historicos
+                WHERE usuario_responsavel_id = ${usuarioId}
+                  AND acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
+              )`)
+            }
+          },
+          {
+            id: {
+              [Op.in]: Sequelize.literal(`(
+                SELECT solicitacao_id
+                FROM historicos
+                WHERE usuario_responsavel_id = ${usuarioId}
+              )`)
+            }
           }
-        });
+        ];
+        if (literalHistoricoSetorUsuario) {
+          condicoesUsuarioGeo.push({
+            id: { [Op.in]: literalHistoricoSetorUsuario }
+          });
+        }
+        where[Op.and].push({ [Op.or]: condicoesUsuarioGeo });
       }
 
       if (perfil !== 'SUPERADMIN' && adminGEO) {
@@ -636,7 +692,11 @@ module.exports = {
                 [Op.in]: Sequelize.literal(`(
                   SELECT solicitacao_id
                   FROM historicos
-                  WHERE setor = 'GEO'
+                  WHERE UPPER(CAST(setor AS CHAR)) = 'GEO'
+                     OR (acao = 'ENVIADA_SETOR' AND (
+                       UPPER(COALESCE(observacao, '')) LIKE 'DE GEO PARA %'
+                       OR UPPER(COALESCE(observacao, '')) LIKE '% PARA GEO'
+                     ))
                 )`)
               }
             }
@@ -711,6 +771,13 @@ module.exports = {
         // Vinculo com obra ve
         if (obrasVinculadas.length > 0) {
           condicoes.push({ obra_id: { [Op.in]: obrasVinculadas } });
+        }
+
+        // Mantem visibilidade de solicitacoes que ja passaram pelo setor do usuario
+        if (literalHistoricoSetorUsuario) {
+          condicoes.push({
+            id: { [Op.in]: literalHistoricoSetorUsuario }
+          });
         }
 
         where[Op.and] = where[Op.and] || [];
