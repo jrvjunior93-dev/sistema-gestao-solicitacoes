@@ -298,17 +298,9 @@ export default function NovaSolicitacao() {
       return;
     }
 
-    const datasParaValidar = [
-      { valor: form.data_vencimento, label: 'Data de vencimento' },
-      { valor: form.data_inicio_medicao, label: 'Data inicial da medição' },
-      { valor: form.data_fim_medicao, label: 'Data final da medição' }
-    ];
-    for (const item of datasParaValidar) {
-      if (!item.valor) continue;
-      if (String(item.valor) < String(hojeInput)) {
-        alert(`${item.label} não pode ser menor que a data atual.`);
-        return;
-      }
+    if (form.data_vencimento && String(form.data_vencimento) < String(hojeInput)) {
+      alert('Data de vencimento não pode ser menor que a data atual.');
+      return;
     }
 
     const payload = {
@@ -660,7 +652,6 @@ export default function NovaSolicitacao() {
                 onChange={handleChange}
                 className="input"
                 value={form.data_inicio_medicao}
-                min={hojeInput}
                 required
               />
             </label>
@@ -672,7 +663,6 @@ export default function NovaSolicitacao() {
                 onChange={handleChange}
                 className="input"
                 value={form.data_fim_medicao}
-                min={hojeInput}
                 required
               />
             </label>

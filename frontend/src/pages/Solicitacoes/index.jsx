@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { HiDocumentArrowDown } from 'react-icons/hi2';
 import Filtros from './Filtros';
 import TabelaSolicitacoes from './TabelaSolicitacoes';
 import { API_URL, authHeaders } from '../../services/api';
@@ -224,6 +225,80 @@ export default function Solicitacoes({ arquivadas = false }) {
     }
   }
 
+  function formatarDataExportacao(valor) {
+    if (!valor) return '';
+    const data = new Date(valor);
+    if (Number.isNaN(data.getTime())) return String(valor);
+    return data.toLocaleDateString('pt-BR');
+  }
+
+  function formatarValorExportacao(valor) {
+    const n = Number(valor);
+    if (Number.isNaN(n)) return '';
+    return n.toFixed(2).replace('.', ',');
+  }
+
+  function exportarSelecionadasExcel() {
+    if (selecionadasIds.length === 0) {
+      alert('Selecione ao menos uma solicitação.');
+      return;
+    }
+
+    const selecionadas = solicitacoes.filter(item => selecionadasIds.includes(Number(item.id)));
+    if (selecionadas.length === 0) {
+      alert('Nenhuma solicitação selecionada para exportar.');
+      return;
+    }
+
+    const linhas = [
+      [
+        'Código',
+        'Obra',
+        'Contrato',
+        'Ref. do Contrato',
+        'Descrição',
+        'Tipo de Solicitação',
+        'Valor',
+        'Setor',
+        'Responsável',
+        'Status',
+        'Data Registro',
+        'Data Vencimento'
+      ],
+      ...selecionadas.map(item => [
+        item.codigo || '',
+        item.obra?.nome || '',
+        item.contrato?.codigo || item.codigo_contrato || '',
+        item.contrato?.ref_contrato || item.ref_contrato || '',
+        item.descricao || '',
+        item.tipo?.nome || '',
+        formatarValorExportacao(item.valor),
+        item.area_responsavel || '',
+        item.responsavel || '',
+        item.status_global || '',
+        formatarDataExportacao(item.createdAt),
+        formatarDataExportacao(item.data_vencimento)
+      ])
+    ];
+
+    const csv = linhas
+      .map(colunas => colunas
+        .map(valor => `"${String(valor ?? '').replace(/"/g, '""')}"`)
+        .join(';'))
+      .join('\r\n');
+
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const dataRef = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `solicitacoes-selecionadas-${dataRef}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }
+
   async function confirmarEnvioMassa() {
     if (isSetorObra) {
       alert('Setor OBRA não pode enviar solicitações para outro setor.');
@@ -283,6 +358,16 @@ export default function Solicitacoes({ arquivadas = false }) {
             Selecionadas: <strong>{selecionadasIds.length}</strong>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn btn-outline px-3"
+              onClick={exportarSelecionadasExcel}
+              disabled={processandoMassa || selecionadasIds.length === 0}
+              title="Exportar selecionadas para Excel (.csv)"
+              aria-label="Exportar selecionadas para Excel"
+            >
+              <HiDocumentArrowDown className="w-4 h-4" />
+            </button>
             <button
               type="button"
               className="btn btn-outline"

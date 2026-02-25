@@ -1179,23 +1179,6 @@ module.exports = {
           }
         }
       }
-      const datasMedicao = [
-        { valor: data_inicio_medicao, label: 'data inicial da medicao' },
-        { valor: data_fim_medicao, label: 'data final da medicao' }
-      ];
-      for (const item of datasMedicao) {
-        if (!item.valor) continue;
-        const dataItem = new Date(item.valor);
-        if (Number.isNaN(dataItem.getTime())) continue;
-        const hoje = new Date();
-        hoje.setHours(0, 0, 0, 0);
-        dataItem.setHours(0, 0, 0, 0);
-        if (dataItem < hoje) {
-          return res.status(400).json({
-            error: `A ${item.label} nao pode ser menor que a data atual.`
-          });
-        }
-      }
       if (nomeTipoNormalizado === 'MEDICAO' && !contrato_id) {
         return res.status(400).json({
           error: 'Para Medicao, selecione um contrato.'
