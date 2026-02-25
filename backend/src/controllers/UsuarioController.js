@@ -8,6 +8,13 @@ const {
   UsuarioObra
 } = require('../models');
 
+function podeDefinirPerfilSuperadmin(req, perfilDestino) {
+  const perfilSolicitante = String(req.user?.perfil || '').trim().toUpperCase();
+  const perfilNormalizado = String(perfilDestino || '').trim().toUpperCase();
+  if (perfilNormalizado !== 'SUPERADMIN') return true;
+  return perfilSolicitante === 'SUPERADMIN';
+}
+
 module.exports = {
 
   // =====================================================
@@ -117,7 +124,12 @@ module.exports = {
         });
       }
 
-      // 🔎 Verifica email duplicado
+      if (!podeDefinirPerfilSuperadmin(req, perfil)) {
+        return res.status(403).json({
+          error: 'Apenas SUPERADMIN pode criar usuario com perfil SUPERADMIN'
+        });
+      }
+      // Verifica email duplicado
       const existe = await User.findOne({ where: { email } });
 
       if (existe) {
@@ -188,6 +200,12 @@ module.exports = {
       if (!usuario) {
         return res.status(404).json({
           error: 'Usuário não encontrado'
+        });
+      }
+
+      if (!podeDefinirPerfilSuperadmin(req, perfil)) {
+        return res.status(403).json({
+          error: 'Apenas SUPERADMIN pode definir perfil SUPERADMIN'
         });
       }
 
