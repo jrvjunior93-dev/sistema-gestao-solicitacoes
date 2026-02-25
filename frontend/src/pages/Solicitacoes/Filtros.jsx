@@ -2,12 +2,12 @@ export default function Filtros({
   filtros,
   setFiltros,
   onBuscarObraDescricao,
+  setores = [],
   tiposSolicitacao = [],
   statusOptions = [],
   mostrarSomaValor = false,
   somaValorFiltrado = 0
 }) {
-
   function handleChange(e) {
     const { name, value } = e.target;
     setFiltros(prev => ({
@@ -28,29 +28,42 @@ export default function Filtros({
     setFiltros({
       obra_descricao: '',
       obra_ids: '',
+      area: '',
       tipo_solicitacao_id: '',
       status: '',
-      codigo_contrato: '',
       valor_min: '',
+      valor_max: '',
       data_registro: '',
-      data_vencimento: '',
-      responsavel: ''
+      data_vencimento: ''
     });
   }
 
   return (
-    <div className="bg-white p-4 rounded-xl shadow mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-
+    <div className="bg-white p-4 rounded-xl shadow mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4">
       <div className="flex gap-2">
         <input
           name="obra_descricao"
-          placeholder="Obra (descricao)"
+          placeholder="Obra (descrição)"
           className="input"
           value={filtros.obra_descricao || ''}
           onChange={handleChange}
           onKeyDown={onKeyBuscar}
         />
       </div>
+
+      <select
+        name="area"
+        className="input"
+        value={filtros.area || ''}
+        onChange={handleChange}
+      >
+        <option value="">Setor</option>
+        {setores.map(s => (
+          <option key={s.id || s.codigo || s.nome} value={s.codigo || s.nome}>
+            {s.nome || s.codigo}
+          </option>
+        ))}
+      </select>
 
       <select
         name="tipo_solicitacao_id"
@@ -64,7 +77,12 @@ export default function Filtros({
         ))}
       </select>
 
-      <select name="status" onChange={handleChange} className="input" value={filtros.status || ''}>
+      <select
+        name="status"
+        onChange={handleChange}
+        className="input"
+        value={filtros.status || ''}
+      >
         <option value="">Status</option>
         {statusOptions.map(item => (
           <option key={item.value} value={item.value}>
@@ -74,18 +92,21 @@ export default function Filtros({
       </select>
 
       <input
-        name="codigo_contrato"
-        placeholder="Contrato"
+        name="valor_min"
+        placeholder="Valor mínimo"
         className="input"
-        value={filtros.codigo_contrato || ''}
+        value={filtros.valor_min || ''}
         onChange={handleChange}
+        type="number"
+        step="0.01"
+        min="0"
       />
 
       <input
-        name="valor_min"
-        placeholder="Valor minimo"
+        name="valor_max"
+        placeholder="Valor máximo"
         className="input"
-        value={filtros.valor_min || ''}
+        value={filtros.valor_max || ''}
         onChange={handleChange}
         type="number"
         step="0.01"
@@ -114,15 +135,7 @@ export default function Filtros({
         />
       </div>
 
-      <input
-        name="responsavel"
-        placeholder="Responsável"
-        className="input"
-        value={filtros.responsavel || ''}
-        onChange={handleChange}
-      />
-
-      <div className="flex gap-2 items-end">
+      <div className="flex gap-2 items-end md:col-span-2 xl:col-span-2">
         <button className="btn btn-outline" type="button" onClick={onBuscarObraDescricao}>
           Buscar
         </button>
@@ -144,7 +157,6 @@ export default function Filtros({
           />
         </div>
       )}
-
     </div>
   );
 }

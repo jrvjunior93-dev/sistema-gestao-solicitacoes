@@ -30,13 +30,13 @@ export default function Solicitacoes({ arquivadas = false }) {
   const [filtros, setFiltros] = useState({
     obra_descricao: '',
     obra_ids: '',
+    area: '',
     tipo_solicitacao_id: '',
     status: '',
-    codigo_contrato: '',
     valor_min: '',
+    valor_max: '',
     data_registro: '',
-    data_vencimento: '',
-    responsavel: ''
+    data_vencimento: ''
   });
 
   useEffect(() => {
@@ -270,6 +270,7 @@ export default function Solicitacoes({ arquivadas = false }) {
         filtros={filtros}
         setFiltros={setFiltros}
         onBuscarObraDescricao={buscarObraDescricao}
+        setores={setoresLista}
         tiposSolicitacao={tiposSolicitacao}
         statusOptions={statusOptions}
         mostrarSomaValor={mostrarSomaValor}

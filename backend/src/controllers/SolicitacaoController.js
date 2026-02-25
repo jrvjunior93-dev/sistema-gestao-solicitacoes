@@ -472,6 +472,7 @@ module.exports = {
         data_inicio,
         data_fim,
         valor_min,
+        valor_max,
         tipo_macro_id,
         tipo_solicitacao_id
       } = req.query;
@@ -819,7 +820,13 @@ module.exports = {
       if (valor_min !== undefined && valor_min !== null && String(valor_min).trim() !== '') {
         const min = Number(valor_min);
         if (!Number.isNaN(min)) {
-          where.valor = { [Op.gte]: min };
+          where.valor = { ...(where.valor || {}), [Op.gte]: min };
+        }
+      }
+      if (valor_max !== undefined && valor_max !== null && String(valor_max).trim() !== '') {
+        const max = Number(valor_max);
+        if (!Number.isNaN(max)) {
+          where.valor = { ...(where.valor || {}), [Op.lte]: max };
         }
       }
       if (data_registro) {
