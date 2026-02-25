@@ -724,12 +724,34 @@ module.exports = {
       if (area) {
         const areaFiltro = String(area).trim();
         const areaFiltroUpper = areaFiltro.toUpperCase();
-        if (perfil === 'SUPERADMIN') {
-          where.area_responsavel = areaFiltro;
-        } else if (areaUsuario && areaFiltroUpper === String(areaUsuario).toUpperCase()) {
-          where.area_responsavel = areaFiltro;
+        const setorFiltroRow = await Setor.findOne({
+          where: {
+            [Op.or]: [
+              { codigo: areaFiltro },
+              { nome: areaFiltro },
+              { id: Number.isNaN(Number(areaFiltro)) ? -1 : Number(areaFiltro) }
+            ]
+          },
+          attributes: ['id', 'codigo', 'nome']
+        });
+
+        const valoresFiltroSetor = Array.from(new Set(
+          [
+            areaFiltro,
+            setorFiltroRow?.codigo,
+            setorFiltroRow?.nome,
+            setorFiltroRow?.id != null ? String(setorFiltroRow.id) : null
+          ]
+            .filter(Boolean)
+            .map(v => String(v).trim())
+        ));
+
+        if (valoresFiltroSetor.length > 0) {
+          where.area_responsavel = { [Op.in]: valoresFiltroSetor };
         } else if (areaFiltroUpper === 'BRAPE') {
           where.id = -1;
+        } else {
+          where.area_responsavel = areaFiltro;
         }
       }
       if (status) {
