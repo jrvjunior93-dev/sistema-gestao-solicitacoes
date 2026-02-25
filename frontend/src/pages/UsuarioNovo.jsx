@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { API_URL, authHeaders } from '../services/api';
 import { getUsuario, criarUsuario, atualizarUsuario } from '../services/usuarios';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function UsuarioNovo() {
+  const { user } = useAuth();
   const navigate = useNavigate();
   const { id } = useParams();
   const editando = Boolean(id);
@@ -20,6 +22,7 @@ export default function UsuarioNovo() {
   const [listaSetores, setListaSetores] = useState([]);
   const [listaObras, setListaObras] = useState([]);
   const [loading, setLoading] = useState(true);
+  const isSuperadminLogado = String(user?.perfil || '').toUpperCase() === 'SUPERADMIN';
 
   useEffect(() => {
     carregarDados();
@@ -149,7 +152,7 @@ export default function UsuarioNovo() {
             >
               <option value="">Selecione</option>
               <option value="ADMIN">ADMIN</option>
-              <option value="SUPERADMIN">SUPERADMIN</option>
+              {isSuperadminLogado && <option value="SUPERADMIN">SUPERADMIN</option>}
               <option value="USUARIO">USUARIO</option>
             </select>
           </label>
