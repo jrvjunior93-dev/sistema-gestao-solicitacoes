@@ -44,6 +44,9 @@ export default function Solicitacoes({ arquivadas = false }) {
   const [processandoMassa, setProcessandoMassa] = useState(false);
   const [mostrarSeletorColunas, setMostrarSeletorColunas] = useState(false);
   const [colunasVisiveis, setColunasVisiveis] = useState(DEFAULT_VISIBLE_COLUMNS);
+  const [colunasStoragePronto, setColunasStoragePronto] = useState(false);
+  const [seletorColunasLeft, setSeletorColunasLeft] = useState(0);
+  const [seletorColunasTop, setSeletorColunasTop] = useState(0);
   const seletorColunasRef = useRef(null);
   const botaoColunasRef = useRef(null);
   const { user } = useAuth();
@@ -207,6 +210,10 @@ export default function Solicitacoes({ arquivadas = false }) {
   ];
   const isSetorObra = setorTokens.includes('OBRA');
   const isSetorFinanceiro = setorTokens.includes('FINANCEIRO');
+  const colunasStorageKey = useMemo(() => {
+    const identificador = user?.id || user?.email || user?.nome || user?.perfil || 'anon';
+    return `solicitacoes:colunas:${identificador}`;
+  }, [user?.id, user?.email, user?.nome, user?.perfil]);
   const opcoesColunas = useMemo(() => [
     { id: 'data', label: 'Data' },
     { id: 'codigo', label: 'Código' },
@@ -225,6 +232,22 @@ export default function Solicitacoes({ arquivadas = false }) {
   ], [isSetorObra]);
 
   useEffect(() => {
+    try {
+      const salvo = localStorage.getItem(colunasStorageKey);
+      if (salvo) {
+        const parsed = JSON.parse(salvo);
+        if (Array.isArray(parsed)) {
+          setColunasVisiveis(parsed);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar preferencia de colunas', error);
+    } finally {
+      setColunasStoragePronto(true);
+    }
+  }, [colunasStorageKey]);
+
+  useEffect(() => {
     setColunasVisiveis(prev => {
       const validas = opcoesColunas.map(c => c.id);
       const filtradas = prev.filter(id => validas.includes(id));
@@ -237,6 +260,15 @@ export default function Solicitacoes({ arquivadas = false }) {
       return filtradas.length > 0 ? filtradas : validas;
     });
   }, [isSetorObra]);
+
+  useEffect(() => {
+    if (!colunasStoragePronto) return;
+    try {
+      localStorage.setItem(colunasStorageKey, JSON.stringify(colunasVisiveis));
+    } catch (error) {
+      console.error('Erro ao salvar preferencia de colunas', error);
+    }
+  }, [colunasVisiveis, colunasStorageKey, colunasStoragePronto]);
 
   useEffect(() => {
     function fecharAoClicarFora(event) {
@@ -387,6 +419,20 @@ export default function Solicitacoes({ arquivadas = false }) {
     ));
   }
 
+  function alternarSeletorColunas() {
+    if (!mostrarSeletorColunas && botaoColunasRef.current) {
+      const btnRect = botaoColunasRef.current.getBoundingClientRect();
+      const containerRect = botaoColunasRef.current
+        ?.closest('.acoes-massa-solicitacoes')
+        ?.getBoundingClientRect();
+      const left = Math.max(0, Math.round(btnRect.left - (containerRect?.left || 0)));
+      const top = Math.max(0, Math.round(btnRect.bottom - (containerRect?.top || 0) + 8));
+      setSeletorColunasLeft(left);
+      setSeletorColunasTop(top);
+    }
+    setMostrarSeletorColunas(prev => !prev);
+  }
+
   async function confirmarEnvioMassa() {
     if (isSetorObra) {
       alert('Setor OBRA não pode enviar solicitações para outro setor.');
@@ -442,7 +488,7 @@ export default function Solicitacoes({ arquivadas = false }) {
       />
 
       {!arquivadas && (
-        <div className="relative bg-white dark:bg-slate-900 p-3 md:p-4 rounded-xl shadow ring-1 ring-gray-200 dark:ring-slate-700 mb-4 flex flex-col xl:flex-row xl:items-center gap-3">
+        <div className="acoes-massa-solicitacoes relative bg-white dark:bg-slate-900 p-3 md:p-4 rounded-xl shadow ring-1 ring-gray-200 dark:ring-slate-700 mb-4 flex flex-col xl:flex-row xl:items-center gap-3">
           <div className="text-sm text-gray-600 dark:text-slate-300">
             Selecionadas: <strong>{selecionadasIds.length}</strong>
           </div>
@@ -461,7 +507,7 @@ export default function Solicitacoes({ arquivadas = false }) {
               ref={botaoColunasRef}
               type="button"
               className="btn btn-outline px-3 min-w-[44px]"
-              onClick={() => setMostrarSeletorColunas(prev => !prev)}
+              onClick={alternarSeletorColunas}
               title="Selecionar colunas"
               aria-label="Selecionar colunas"
             >
@@ -493,7 +539,8 @@ export default function Solicitacoes({ arquivadas = false }) {
           {mostrarSeletorColunas && (
             <div
               ref={seletorColunasRef}
-              className="absolute z-20 top-full mt-2 left-0 md:left-4 w-[320px] max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg p-3"
+              className="absolute z-20 w-[320px] max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg p-3"
+              style={{ left: `${seletorColunasLeft}px`, top: `${seletorColunasTop}px` }}
             >
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-medium">Colunas visíveis</p>
