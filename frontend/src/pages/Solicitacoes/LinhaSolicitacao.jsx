@@ -28,6 +28,10 @@ export default function LinhaSolicitacao({
 
   const [modalAtribuir, setModalAtribuir] = useState(false);
   const [modalEnviar, setModalEnviar] = useState(false);
+  const visibleSet = Array.isArray(visibleColumns) && visibleColumns.length > 0
+    ? new Set(visibleColumns)
+    : null;
+  const mostrarColuna = (id) => !visibleSet || visibleSet.has(id);
   const { user } = useAuth();
   const { tema } = useTheme();
   const isSetorObra =
@@ -463,7 +467,3 @@ export default function LinhaSolicitacao({
     </>
   );
 }
-  const visibleSet = Array.isArray(visibleColumns) && visibleColumns.length > 0
-    ? new Set(visibleColumns)
-    : null;
-  const mostrarColuna = (id) => !visibleSet || visibleSet.has(id);
