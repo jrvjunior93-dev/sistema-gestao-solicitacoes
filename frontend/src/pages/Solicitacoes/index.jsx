@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { HiDocumentArrowDown, HiViewColumns } from 'react-icons/hi2';
 import Filtros from './Filtros';
 import TabelaSolicitacoes from './TabelaSolicitacoes';
@@ -44,6 +44,8 @@ export default function Solicitacoes({ arquivadas = false }) {
   const [processandoMassa, setProcessandoMassa] = useState(false);
   const [mostrarSeletorColunas, setMostrarSeletorColunas] = useState(false);
   const [colunasVisiveis, setColunasVisiveis] = useState(DEFAULT_VISIBLE_COLUMNS);
+  const seletorColunasRef = useRef(null);
+  const botaoColunasRef = useRef(null);
   const { user } = useAuth();
 
   const [filtros, setFiltros] = useState({
@@ -235,6 +237,19 @@ export default function Solicitacoes({ arquivadas = false }) {
       return filtradas.length > 0 ? filtradas : validas;
     });
   }, [isSetorObra]);
+
+  useEffect(() => {
+    function fecharAoClicarFora(event) {
+      if (!mostrarSeletorColunas) return;
+      const alvo = event.target;
+      if (seletorColunasRef.current?.contains(alvo)) return;
+      if (botaoColunasRef.current?.contains(alvo)) return;
+      setMostrarSeletorColunas(false);
+    }
+
+    document.addEventListener('mousedown', fecharAoClicarFora);
+    return () => document.removeEventListener('mousedown', fecharAoClicarFora);
+  }, [mostrarSeletorColunas]);
 
   function toggleSelecionada(id) {
     const idNum = Number(id);
@@ -432,6 +447,7 @@ export default function Solicitacoes({ arquivadas = false }) {
               <HiDocumentArrowDown className="w-4 h-4" />
             </button>
             <button
+              ref={botaoColunasRef}
               type="button"
               className="btn btn-outline px-3"
               onClick={() => setMostrarSeletorColunas(prev => !prev)}
@@ -464,7 +480,10 @@ export default function Solicitacoes({ arquivadas = false }) {
           )}
 
           {mostrarSeletorColunas && (
-            <div className="absolute z-20 top-full mt-2 left-4 md:left-auto md:right-4 w-[320px] max-w-[calc(100vw-3rem)] bg-white border border-gray-200 rounded-xl shadow-lg p-3">
+            <div
+              ref={seletorColunasRef}
+              className="absolute z-20 top-full mt-2 left-4 w-[320px] max-w-[calc(100vw-3rem)] bg-white border border-gray-200 rounded-xl shadow-lg p-3"
+            >
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-medium">Colunas visíveis</p>
                 <button
