@@ -18,6 +18,7 @@ export default function TabelaSolicitacoes({
   const tableWrapRef = useRef(null);
   const bottomScrollRef = useRef(null);
   const syncingScrollRef = useRef(false);
+  const [bottomScrollContentWidth, setBottomScrollContentWidth] = useState(0);
   const { user } = useAuth();
 
   const setorTokens = [
@@ -191,6 +192,25 @@ export default function TabelaSolicitacoes({
     };
   }, [totalTableWidth, columns.length]);
 
+  useEffect(() => {
+    function atualizarLarguraScrollReal() {
+      const topEl = tableWrapRef.current;
+      if (!topEl) return;
+
+      const atualizar = () => {
+        const scrollWidth = Math.ceil(topEl.scrollWidth || 0);
+        setBottomScrollContentWidth(scrollWidth);
+      };
+
+      requestAnimationFrame(atualizar);
+    }
+
+    atualizarLarguraScrollReal();
+    window.addEventListener('resize', atualizarLarguraScrollReal);
+
+    return () => window.removeEventListener('resize', atualizarLarguraScrollReal);
+  }, [solicitacoesOrdenadas.length, totalTableWidth, columns.length, visibleColumns]);
+
   return (
     <div className="bg-white dark:bg-slate-900 rounded-xl shadow ring-1 ring-gray-200 dark:ring-slate-700">
       <div
@@ -267,11 +287,16 @@ export default function TabelaSolicitacoes({
 
       <div
         ref={bottomScrollRef}
-        className="overflow-x-scroll overflow-y-hidden border-t border-gray-200 dark:border-slate-700 h-5 scrollbar-thin"
+        className="w-full overflow-x-scroll overflow-y-hidden border-t border-gray-200 dark:border-slate-700 h-6 scrollbar-thin"
         style={{ scrollbarGutter: 'stable both-edges' }}
         aria-label="Rolagem horizontal da tabela"
       >
-        <div style={{ width: `${totalTableWidth}px`, height: '14px' }} />
+        <div
+          style={{
+            width: `${Math.max(bottomScrollContentWidth, totalTableWidth)}px`,
+            height: '16px'
+          }}
+        />
       </div>
     </div>
   );
