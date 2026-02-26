@@ -28,6 +28,11 @@ export default function LinhaSolicitacao({
 
   const [modalAtribuir, setModalAtribuir] = useState(false);
   const [modalEnviar, setModalEnviar] = useState(false);
+  const limitarTexto = (valor, limite = 15) => {
+    const texto = String(valor || '');
+    if (!texto) return '';
+    return texto.length > limite ? `${texto.slice(0, limite)}...` : texto;
+  };
   const visibleSet = Array.isArray(visibleColumns) && visibleColumns.length > 0
     ? new Set(visibleColumns)
     : null;
@@ -198,7 +203,7 @@ export default function LinhaSolicitacao({
             className="p-2 whitespace-nowrap truncate"
             title={solicitacao.numero_pedido || ''}
           >
-            {solicitacao.numero_pedido || '-'}
+            {limitarTexto(solicitacao.numero_pedido, 15) || '-'}
           </td>
         )}
 
@@ -207,7 +212,7 @@ export default function LinhaSolicitacao({
             className="p-2 whitespace-nowrap truncate"
             title={solicitacao.obra?.nome || ''}
           >
-            {solicitacao.obra?.nome || '-'}
+            {limitarTexto(solicitacao.obra?.nome, 15) || '-'}
           </td>
         )}
 
@@ -216,7 +221,7 @@ export default function LinhaSolicitacao({
             className="p-2 whitespace-nowrap truncate"
             title={solicitacao.contrato?.codigo || solicitacao.codigo_contrato || ''}
           >
-            {solicitacao.contrato?.codigo || solicitacao.codigo_contrato || '-'}
+            {limitarTexto(solicitacao.contrato?.codigo || solicitacao.codigo_contrato, 15) || '-'}
           </td>
         )}
 
@@ -240,7 +245,7 @@ export default function LinhaSolicitacao({
         {mostrarColuna('descricao') && (() => {
           const descricao = solicitacao.descricao || '';
           const descricaoCurta =
-            descricao.length > 30 ? `${descricao.slice(0, 30)}...` : descricao;
+            descricao.length > 15 ? `${descricao.slice(0, 15)}...` : descricao;
           return (
             <td
               className="p-2 whitespace-nowrap truncate"
