@@ -323,7 +323,9 @@ export default function Solicitacoes({ arquivadas = false }) {
       const resultado = await arquivarSolicitacoesEmMassa(selecionadasIds);
       await carregar();
       if (resultado?.erros?.length > 0) {
-        alert(`Arquivadas: ${resultado.sucesso}. Falhas: ${resultado.erros.length}.`);
+        alert(`Arquivamento em massa concluído. Arquivadas: ${resultado.sucesso}. Falhas: ${resultado.erros.length}.`);
+      } else {
+        alert('Solicitações arquivadas em massa com sucesso.');
       }
     } catch (error) {
       console.error(error);
@@ -457,7 +459,9 @@ export default function Solicitacoes({ arquivadas = false }) {
       setSetorEnvioMassa('');
       await carregar();
       if (resultado?.erros?.length > 0) {
-        alert(`Enviadas: ${resultado.sucesso}. Falhas: ${resultado.erros.length}.`);
+        alert(`Envio em massa concluído. Enviadas: ${resultado.sucesso}. Falhas: ${resultado.erros.length}.`);
+      } else {
+        alert('Solicitações enviadas em massa com sucesso.');
       }
     } catch (error) {
       console.error(error);

@@ -81,7 +81,8 @@ export default function SolicitacaoDetalhe() {
     try {
       await updateStatusSolicitacao(solicitacao.id, novoStatus);
       setModalStatus(false);
-      carregar();
+      await carregar();
+      alert('Status alterado com sucesso.');
     } catch (error) {
       console.error(error);
       alert(error?.message || 'Erro ao atualizar status');

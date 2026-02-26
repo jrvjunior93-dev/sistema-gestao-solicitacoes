@@ -55,7 +55,7 @@ export default function ModalAtribuirResponsavel({
       return;
     }
 
-    await fetch(
+    const res = await fetch(
       `${API_URL}/solicitacoes/${solicitacaoId}/atribuir`,
       {
         method: 'POST',
@@ -66,6 +66,17 @@ export default function ModalAtribuirResponsavel({
       }
     );
 
+    if (!res.ok) {
+      let mensagem = 'Erro ao atribuir responsável';
+      try {
+        const data = await res.json();
+        mensagem = data?.error || mensagem;
+      } catch (_) {}
+      alert(mensagem);
+      return;
+    }
+
+    alert('Responsável atribuído com sucesso.');
     onSucesso();
     onClose();
   }

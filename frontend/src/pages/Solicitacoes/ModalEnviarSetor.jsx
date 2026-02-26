@@ -38,7 +38,7 @@ export default function ModalEnviarSetor({
       return;
     }
 
-    await fetch(
+    const res = await fetch(
       `${API_URL}/solicitacoes/${solicitacaoId}/enviar-setor`,
       {
         method: 'POST',
@@ -49,6 +49,17 @@ export default function ModalEnviarSetor({
       }
     );
 
+    if (!res.ok) {
+      let mensagem = 'Erro ao enviar solicitação para outro setor';
+      try {
+        const data = await res.json();
+        mensagem = data?.error || mensagem;
+      } catch (_) {}
+      alert(mensagem);
+      return;
+    }
+
+    alert('Solicitação enviada para outro setor com sucesso.');
     onSucesso();
     onClose();
   }

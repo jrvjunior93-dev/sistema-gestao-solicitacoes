@@ -385,7 +385,7 @@ export default function LinhaSolicitacao({
               className="text-xs hover:underline"
               style={{ color: acaoCores.assumir || '#16a34a' }}
               onClick={async () => {
-                await fetch(
+                const res = await fetch(
                   `${API_URL}/solicitacoes/${solicitacao.id}/assumir`,
                   {
                     method: 'POST',
@@ -393,6 +393,17 @@ export default function LinhaSolicitacao({
                   }
                 );
 
+                if (!res.ok) {
+                  let mensagem = 'Erro ao assumir solicitação';
+                  try {
+                    const data = await res.json();
+                    mensagem = data?.error || mensagem;
+                  } catch (_) {}
+                  alert(mensagem);
+                  return;
+                }
+
+                alert('Solicitação assumida com sucesso.');
                 onAtualizar();
               }}
             >
