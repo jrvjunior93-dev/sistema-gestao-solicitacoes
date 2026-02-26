@@ -487,6 +487,25 @@ function montarLiteralHistoricoSetoresEnvolvidos(tokens = []) {
   )`);
 }
 
+function normalizarTokenComparacao(valor) {
+  return String(valor || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s-]+/g, '_');
+}
+
+function parseObservacaoEnvioSetor(observacao) {
+  const texto = String(observacao || '').trim();
+  const match = texto.match(/^De\s+(.+?)\s+para\s+(.+)$/i);
+  if (!match) return null;
+  return {
+    origem: String(match[1] || '').trim(),
+    destino: String(match[2] || '').trim()
+  };
+}
+
 module.exports = {
 
   // =====================================================
@@ -1458,7 +1477,7 @@ module.exports = {
       const perfil = String(req.user?.perfil || '').trim().toUpperCase();
       const isSuperadmin = perfil === 'SUPERADMIN';
       const areaUsuario = await obterAreaUsuario(req);
-      const isSetorObra = await isUsuarioSetorObra(req);
+      const isSetorObra = await isSetorObraGeral(req);
 
       const solicitacao = await Solicitacao.findByPk(id);
       if (!solicitacao) {
@@ -1569,6 +1588,70 @@ module.exports = {
           status_novo: status
         }
       });
+
+      if (isSetorObra) {
+        const statusAnteriorNorm = normalizarTokenComparacao(statusAnterior);
+        const statusNovoNorm = normalizarTokenComparacao(status);
+
+        // Quando OBRA atende um ajuste, retorna automaticamente para o setor
+        // que enviou a solicitacao para OBRA (ultimo envio para OBRA).
+        const statusAjustePend = new Set(['PENDENTE_DE_AJUSTE', 'AGUARDANDO_AJUSTE']);
+        if (statusAjustePend.has(statusAnteriorNorm) && statusNovoNorm === 'ATENDIDO') {
+          const envios = await Historico.findAll({
+            where: {
+              solicitacao_id: id,
+              acao: 'ENVIADA_SETOR'
+            },
+            attributes: ['observacao', 'createdAt'],
+            order: [['createdAt', 'DESC']]
+          });
+
+          const setorAtualNorm = normalizarTokenComparacao(setorAtual);
+          let setorRetorno = null;
+
+          for (const envio of envios) {
+            const parsed = parseObservacaoEnvioSetor(envio.observacao);
+            if (!parsed) continue;
+            const destinoNorm = normalizarTokenComparacao(parsed.destino);
+            if (destinoNorm !== setorAtualNorm && destinoNorm !== 'OBRA') continue;
+            const origemNorm = normalizarTokenComparacao(parsed.origem);
+            if (!origemNorm || origemNorm === setorAtualNorm || origemNorm === 'OBRA') continue;
+            setorRetorno = parsed.origem;
+            break;
+          }
+
+          if (setorRetorno) {
+            const envioAuto = await enviarSolicitacaoParaSetorInterno({
+              req,
+              solicitacao,
+              setorDestino: setorRetorno,
+              usuarioId
+            });
+
+            if (!envioAuto.ok) {
+              return res.status(envioAuto.status || 400).json({
+                error: envioAuto.error || 'Erro ao retornar solicitacao para o setor anterior'
+              });
+            }
+          }
+        }
+
+        // Quando OBRA marca "Mercadoria Entregue", envia automaticamente para FINANCEIRO.
+        if (statusNovoNorm === 'MERCADORIA_ENTREGUE') {
+          const envioFinanceiro = await enviarSolicitacaoParaSetorInterno({
+            req,
+            solicitacao,
+            setorDestino: 'FINANCEIRO',
+            usuarioId
+          });
+
+          if (!envioFinanceiro.ok) {
+            return res.status(envioFinanceiro.status || 400).json({
+              error: envioFinanceiro.error || 'Erro ao enviar solicitacao automaticamente para FINANCEIRO'
+            });
+          }
+        }
+      }
 
       return res.sendStatus(204);
 

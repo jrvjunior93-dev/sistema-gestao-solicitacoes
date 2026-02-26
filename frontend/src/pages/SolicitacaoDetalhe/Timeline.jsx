@@ -126,6 +126,12 @@ export default function Timeline({ historicos, canRemoveAnexo = false, onAnexoRe
                 </p>
               )}
 
+              {h.acao === 'ENVIADA_SETOR' && h.observacao && (
+                <p className="text-sm text-gray-700">
+                  {h.observacao}
+                </p>
+              )}
+
               {h.descricao && (
                 <p className="text-sm text-gray-700">{h.descricao}</p>
               )}
