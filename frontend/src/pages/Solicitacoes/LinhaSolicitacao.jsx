@@ -19,6 +19,7 @@ export default function LinhaSolicitacao({
   setoresMap,
   permissaoUsuario,
   mostrarRefContrato = false,
+  visibleColumns = null,
   mostrarArquivadas = false,
   selecaoHabilitada = false,
   selecionada = false,
@@ -170,35 +171,52 @@ export default function LinhaSolicitacao({
           </td>
         )}
 
-        <td
-          className="p-2 whitespace-nowrap"
-          title={dataCriacaoTitle}
-        >
-          {dataCriacaoLabel}
-        </td>
+        {mostrarColuna('data') && (
+          <td
+            className="p-2 whitespace-nowrap"
+            title={dataCriacaoTitle}
+          >
+            {dataCriacaoLabel}
+          </td>
+        )}
 
-        <td
-          className="p-2 font-medium whitespace-nowrap truncate"
-          title={solicitacao.codigo || ''}
-        >
-          {solicitacao.codigo}
-        </td>
+        {mostrarColuna('codigo') && (
+          <td
+            className="p-2 font-medium whitespace-nowrap truncate"
+            title={solicitacao.codigo || ''}
+          >
+            {solicitacao.codigo}
+          </td>
+        )}
 
-        <td
-          className="p-2 whitespace-nowrap truncate"
-          title={solicitacao.obra?.nome || ''}
-        >
-          {solicitacao.obra?.nome || '-'}
-        </td>
+        {mostrarColuna('numero_sienge') && (
+          <td
+            className="p-2 whitespace-nowrap truncate"
+            title={solicitacao.numero_pedido || ''}
+          >
+            {solicitacao.numero_pedido || '-'}
+          </td>
+        )}
 
-        <td
-          className="p-2 whitespace-nowrap truncate"
-          title={solicitacao.contrato?.codigo || solicitacao.codigo_contrato || ''}
-        >
-          {solicitacao.contrato?.codigo || solicitacao.codigo_contrato || '-'}
-        </td>
+        {mostrarColuna('obra') && (
+          <td
+            className="p-2 whitespace-nowrap truncate"
+            title={solicitacao.obra?.nome || ''}
+          >
+            {solicitacao.obra?.nome || '-'}
+          </td>
+        )}
 
-        {mostrarRefContrato && (
+        {mostrarColuna('contrato') && (
+          <td
+            className="p-2 whitespace-nowrap truncate"
+            title={solicitacao.contrato?.codigo || solicitacao.codigo_contrato || ''}
+          >
+            {solicitacao.contrato?.codigo || solicitacao.codigo_contrato || '-'}
+          </td>
+        )}
+
+        {mostrarRefContrato && mostrarColuna('ref_contrato') && (
           (() => {
             const refContrato = solicitacao.contrato?.ref_contrato || '';
             const refContratoCurta =
@@ -215,7 +233,7 @@ export default function LinhaSolicitacao({
           })()
         )}
 
-        {(() => {
+        {mostrarColuna('descricao') && (() => {
           const descricao = solicitacao.descricao || '';
           const descricaoCurta =
             descricao.length > 30 ? `${descricao.slice(0, 30)}...` : descricao;
@@ -229,13 +247,16 @@ export default function LinhaSolicitacao({
           );
         })()}
 
-        <td
-          className="p-2 whitespace-nowrap truncate"
-          title={solicitacao.tipo?.nome || solicitacao.tipoMacroSolicitacao?.nome || ''}
-        >
-          {solicitacao.tipo?.nome || solicitacao.tipoMacroSolicitacao?.nome || '-'}
-        </td>
+        {mostrarColuna('tipo') && (
+          <td
+            className="p-2 whitespace-nowrap truncate"
+            title={solicitacao.tipo?.nome || solicitacao.tipoMacroSolicitacao?.nome || ''}
+          >
+            {solicitacao.tipo?.nome || solicitacao.tipoMacroSolicitacao?.nome || '-'}
+          </td>
+        )}
 
+        {mostrarColuna('valor') && (
         <td
           className="p-2 whitespace-nowrap"
           title={solicitacao.valor ? String(solicitacao.valor) : ''}
@@ -290,38 +311,48 @@ export default function LinhaSolicitacao({
             </div>
           )}
         </td>
+        )}
 
-        <td
-          className="p-2 whitespace-nowrap truncate"
-          title={setoresMap?.[solicitacao.area_responsavel] || solicitacao.area_responsavel || ''}
-        >
-          {setoresMap?.[solicitacao.area_responsavel] || solicitacao.area_responsavel}
-        </td>
+        {mostrarColuna('setor') && (
+          <td
+            className="p-2 whitespace-nowrap truncate"
+            title={setoresMap?.[solicitacao.area_responsavel] || solicitacao.area_responsavel || ''}
+          >
+            {setoresMap?.[solicitacao.area_responsavel] || solicitacao.area_responsavel}
+          </td>
+        )}
 
-        <td
-          className="p-2 whitespace-nowrap truncate"
-          title={solicitacao.responsavel || ''}
-        >
-          {solicitacao.responsavel || '-'}
-        </td>
+        {mostrarColuna('responsavel') && (
+          <td
+            className="p-2 whitespace-nowrap truncate"
+            title={solicitacao.responsavel || ''}
+          >
+            {solicitacao.responsavel || '-'}
+          </td>
+        )}
 
-        <td
-          className="p-2 whitespace-nowrap"
-          title={solicitacao.status_global || ''}
-        >
-          <StatusBadge
-            status={solicitacao.status_global}
-            setor={solicitacao.setor_status_atual || solicitacao.area_responsavel}
-          />
-        </td>
+        {mostrarColuna('status') && (
+          <td
+            className="p-2 whitespace-nowrap"
+            title={solicitacao.status_global || ''}
+          >
+            <StatusBadge
+              status={solicitacao.status_global}
+              setor={solicitacao.setor_status_atual || solicitacao.area_responsavel}
+            />
+          </td>
+        )}
 
-        <td
-          className="p-2 whitespace-nowrap"
-          title={dataVencimentoTitle}
-        >
-          {dataVencimentoLabel}
-        </td>
+        {mostrarColuna('vencimento') && (
+          <td
+            className="p-2 whitespace-nowrap"
+            title={dataVencimentoTitle}
+          >
+            {dataVencimentoLabel}
+          </td>
+        )}
 
+        {mostrarColuna('acoes') && (
         <td className="p-2 whitespace-nowrap">
           <div className="flex gap-2 flex-nowrap">
 
@@ -404,6 +435,7 @@ export default function LinhaSolicitacao({
 
           </div>
         </td>
+        )}
 
       </tr>
 
@@ -431,3 +463,7 @@ export default function LinhaSolicitacao({
     </>
   );
 }
+  const visibleSet = Array.isArray(visibleColumns) && visibleColumns.length > 0
+    ? new Set(visibleColumns)
+    : null;
+  const mostrarColuna = (id) => !visibleSet || visibleSet.has(id);

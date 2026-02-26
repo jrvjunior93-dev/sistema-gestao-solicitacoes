@@ -12,16 +12,19 @@ export default function TabelaSolicitacoes({
   mostrarArquivadas = false,
   selecionadasIds = [],
   onToggleSelecionada,
-  onToggleSelecionarTodas
+  onToggleSelecionarTodas,
+  visibleColumns = null
 }) {
   const tableWrapRef = useRef(null);
   const { user } = useAuth();
+
   const setorTokens = [
     String(user?.setor?.codigo || '').toUpperCase(),
     String(user?.setor?.nome || '').toUpperCase(),
     String(user?.area || '').toUpperCase()
   ];
   const isSetorObra = setorTokens.includes('OBRA');
+
   const selecaoHabilitada = !mostrarArquivadas && typeof onToggleSelecionada === 'function';
   const idsSet = useMemo(() => new Set((selecionadasIds || []).map(Number)), [selecionadasIds]);
   const todasSelecionadas = selecaoHabilitada && solicitacoes.length > 0 &&
@@ -29,25 +32,26 @@ export default function TabelaSolicitacoes({
   const algumaSelecionada = selecaoHabilitada &&
     solicitacoes.some(item => idsSet.has(Number(item.id)));
 
-  const columns = useMemo(() => {
+  const columnsBase = useMemo(() => {
     const base = [
       ...(selecaoHabilitada ? [{ id: 'selecionar', label: '', width: 42, min: 42, weight: 0, fixed: true }] : []),
       { id: 'data', label: 'Data', width: 110, min: 90, weight: 0.9 },
       { id: 'codigo', label: 'Código', width: 100, min: 80, weight: 0.9 },
-      { id: 'obra', label: 'Obra', width: 140, min: 100, weight: 1.1 },
+      { id: 'numero_sienge', label: 'Nº SIENGE', width: 120, min: 100, weight: 0.9 },
+      { id: 'obra', label: 'Obra', width: 170, min: 120, weight: 1.2 },
       { id: 'contrato', label: 'Contrato', width: 120, min: 95, weight: 1 },
       { id: 'descricao', label: 'Descrição', width: 110, min: 110, weight: 0, fixed: true },
-      { id: 'tipo', label: 'Tipo de Solicitação', width: 150, min: 110, weight: 1 },
+      { id: 'tipo', label: 'Tipo de Solicitação', width: 170, min: 120, weight: 1.1 },
       { id: 'valor', label: 'Valor', width: 110, min: 90, weight: 0.9 },
       { id: 'setor', label: 'Setor', width: 110, min: 90, weight: 0.9 },
       { id: 'responsavel', label: 'Responsável', width: 130, min: 100, weight: 1.1 },
-      { id: 'status', label: 'Status', width: 110, min: 90, weight: 0.9 },
+      { id: 'status', label: 'Status', width: 140, min: 110, weight: 1 },
       { id: 'vencimento', label: 'Vencimento', width: 120, min: 100, weight: 0.9 },
-      { id: 'acoes', label: 'Ações', width: 190, min: 150, weight: 1.3 }
+      { id: 'acoes', label: 'Ações', width: 220, min: 190, weight: 1.4 }
     ];
 
     if (isSetorObra) {
-      base.splice(4, 0, {
+      base.splice(6, 0, {
         id: 'ref_contrato',
         label: 'Ref. do Contrato',
         width: 110,
@@ -60,12 +64,18 @@ export default function TabelaSolicitacoes({
     return base;
   }, [isSetorObra, selecaoHabilitada]);
 
+  const visibleSet = useMemo(() => {
+    if (!Array.isArray(visibleColumns) || visibleColumns.length === 0) return null;
+    return new Set(visibleColumns);
+  }, [visibleColumns]);
+
+  const columns = useMemo(() => {
+    if (!visibleSet) return columnsBase;
+    return columnsBase.filter(col => col.id === 'selecionar' || visibleSet.has(col.id));
+  }, [columnsBase, visibleSet]);
+
   const [widths, setWidths] = useState(() => columns.map(col => col.width));
   const [ordenacao, setOrdenacao] = useState({ campo: 'data', direcao: 'desc' });
-  const totalTableWidth = useMemo(
-    () => widths.reduce((acc, w) => acc + Number(w || 0), 0),
-    [widths]
-  );
 
   useEffect(() => {
     setWidths(columns.map(col => col.width));
@@ -86,8 +96,6 @@ export default function TabelaSolicitacoes({
         const target = totalWeight > 0
           ? Math.floor((available * col.weight) / totalWeight)
           : col.width;
-        // Mantem largura base das colunas para permitir rolagem horizontal real
-        // quando a tela for menor que a tabela.
         return Math.max(col.width, target);
       });
 
@@ -98,6 +106,11 @@ export default function TabelaSolicitacoes({
     window.addEventListener('resize', ajustarParaTela);
     return () => window.removeEventListener('resize', ajustarParaTela);
   }, [columns]);
+
+  const totalTableWidth = useMemo(
+    () => widths.reduce((acc, w) => acc + Number(w || 0), 0),
+    [widths]
+  );
 
   const solicitacoesOrdenadas = useMemo(() => {
     const { campo, direcao } = ordenacao || {};
@@ -125,7 +138,6 @@ export default function TabelaSolicitacoes({
     return [...solicitacoes].sort((a, b) => {
       const va = getter(a);
       const vb = getter(b);
-
       if (va == null && vb == null) return 0;
       if (va == null) return 1;
       if (vb == null) return -1;
@@ -139,13 +151,8 @@ export default function TabelaSolicitacoes({
     if (!SORTABLE_COLUMNS.has(colId)) return;
 
     setOrdenacao(prev => {
-      if (prev?.campo !== colId) {
-        return { campo: colId, direcao: 'asc' };
-      }
-      return {
-        campo: colId,
-        direcao: prev.direcao === 'asc' ? 'desc' : 'asc'
-      };
+      if (prev?.campo !== colId) return { campo: colId, direcao: 'asc' };
+      return { campo: colId, direcao: prev.direcao === 'asc' ? 'desc' : 'asc' };
     });
   }
 
@@ -157,11 +164,11 @@ export default function TabelaSolicitacoes({
   return (
     <div
       ref={tableWrapRef}
-      className="bg-white dark:bg-slate-900 rounded-xl shadow overflow-x-scroll overflow-y-auto ring-1 ring-gray-200 dark:ring-slate-700 max-h-[70vh] scrollbar-thin"
+      className="bg-white dark:bg-slate-900 rounded-xl shadow overflow-x-auto overflow-y-auto ring-1 ring-gray-200 dark:ring-slate-700 max-h-[70vh] scrollbar-thin"
       style={{ scrollbarGutter: 'stable both-edges' }}
     >
       <table
-        className="min-w-full text-sm table-fixed solicitacoes-table"
+        className="text-sm table-fixed solicitacoes-table"
         style={{ minWidth: `${totalTableWidth}px` }}
       >
         <colgroup>
@@ -216,6 +223,7 @@ export default function TabelaSolicitacoes({
               setoresMap={setoresMap}
               permissaoUsuario={permissaoUsuario}
               mostrarRefContrato={isSetorObra}
+              visibleColumns={visibleSet ? Array.from(visibleSet) : null}
               mostrarArquivadas={mostrarArquivadas}
               selecaoHabilitada={selecaoHabilitada}
               selecionada={idsSet.has(Number(s.id))}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { HiDocumentArrowDown } from 'react-icons/hi2';
+import { HiDocumentArrowDown, HiViewColumns } from 'react-icons/hi2';
 import Filtros from './Filtros';
 import TabelaSolicitacoes from './TabelaSolicitacoes';
 import { API_URL, authHeaders } from '../../services/api';
@@ -15,6 +15,22 @@ import {
 } from '../../services/solicitacoes';
 
 export default function Solicitacoes({ arquivadas = false }) {
+  const DEFAULT_VISIBLE_COLUMNS = [
+    'data',
+    'codigo',
+    'numero_sienge',
+    'obra',
+    'contrato',
+    'ref_contrato',
+    'descricao',
+    'tipo',
+    'valor',
+    'setor',
+    'responsavel',
+    'status',
+    'vencimento',
+    'acoes'
+  ];
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [setoresMap, setSetoresMap] = useState({});
@@ -26,6 +42,8 @@ export default function Solicitacoes({ arquivadas = false }) {
   const [modalEnvioMassa, setModalEnvioMassa] = useState(false);
   const [setorEnvioMassa, setSetorEnvioMassa] = useState('');
   const [processandoMassa, setProcessandoMassa] = useState(false);
+  const [mostrarSeletorColunas, setMostrarSeletorColunas] = useState(false);
+  const [colunasVisiveis, setColunasVisiveis] = useState(DEFAULT_VISIBLE_COLUMNS);
   const { user } = useAuth();
 
   const [filtros, setFiltros] = useState({
@@ -187,6 +205,36 @@ export default function Solicitacoes({ arquivadas = false }) {
   ];
   const isSetorObra = setorTokens.includes('OBRA');
   const isSetorFinanceiro = setorTokens.includes('FINANCEIRO');
+  const opcoesColunas = [
+    { id: 'data', label: 'Data' },
+    { id: 'codigo', label: 'Código' },
+    { id: 'numero_sienge', label: 'Nº SIENGE' },
+    { id: 'obra', label: 'Obra' },
+    { id: 'contrato', label: 'Contrato' },
+    ...(isSetorObra ? [{ id: 'ref_contrato', label: 'Ref. do Contrato' }] : []),
+    { id: 'descricao', label: 'Descrição' },
+    { id: 'tipo', label: 'Tipo de Solicitação' },
+    { id: 'valor', label: 'Valor' },
+    { id: 'setor', label: 'Setor' },
+    { id: 'responsavel', label: 'Responsável' },
+    { id: 'status', label: 'Status' },
+    { id: 'vencimento', label: 'Vencimento' },
+    { id: 'acoes', label: 'Ações' }
+  ];
+
+  useEffect(() => {
+    setColunasVisiveis(prev => {
+      const validas = opcoesColunas.map(c => c.id);
+      const filtradas = prev.filter(id => validas.includes(id));
+      const obrigatorias = ['codigo', 'status', 'acoes'];
+      for (const obrigatoria of obrigatorias) {
+        if (!filtradas.includes(obrigatoria) && validas.includes(obrigatoria)) {
+          filtradas.push(obrigatoria);
+        }
+      }
+      return filtradas.length > 0 ? filtradas : validas;
+    });
+  }, [isSetorObra]);
 
   function toggleSelecionada(id) {
     const idNum = Number(id);
@@ -255,6 +303,7 @@ export default function Solicitacoes({ arquivadas = false }) {
     const linhas = [
       [
         'Código',
+        'Nº SIENGE',
         'Obra',
         'Contrato',
         'Ref. do Contrato',
@@ -269,6 +318,7 @@ export default function Solicitacoes({ arquivadas = false }) {
       ],
       ...selecionadas.map(item => [
         item.codigo || '',
+        item.numero_pedido || '',
         item.obra?.nome || '',
         item.contrato?.codigo || item.codigo_contrato || '',
         item.contrato?.ref_contrato || item.ref_contrato || '',
@@ -299,6 +349,16 @@ export default function Solicitacoes({ arquivadas = false }) {
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
+  }
+
+  function toggleColuna(id) {
+    const obrigatorias = new Set(['codigo', 'status', 'acoes']);
+    if (obrigatorias.has(id)) return;
+    setColunasVisiveis(prev => (
+      prev.includes(id)
+        ? prev.filter(col => col !== id)
+        : [...prev, id]
+    ));
   }
 
   async function confirmarEnvioMassa() {
@@ -356,7 +416,7 @@ export default function Solicitacoes({ arquivadas = false }) {
       />
 
       {!arquivadas && (
-        <div className="bg-white p-4 rounded-xl shadow mb-4 flex flex-col md:flex-row md:items-center gap-3">
+        <div className="relative bg-white p-4 rounded-xl shadow mb-4 flex flex-col md:flex-row md:items-center gap-3">
           <div className="text-sm text-gray-600">
             Selecionadas: <strong>{selecionadasIds.length}</strong>
           </div>
@@ -370,6 +430,15 @@ export default function Solicitacoes({ arquivadas = false }) {
               aria-label="Exportar selecionadas para Excel"
             >
               <HiDocumentArrowDown className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline px-3"
+              onClick={() => setMostrarSeletorColunas(prev => !prev)}
+              title="Selecionar colunas"
+              aria-label="Selecionar colunas"
+            >
+              <HiViewColumns className="w-4 h-4" />
             </button>
             <button
               type="button"
@@ -393,6 +462,38 @@ export default function Solicitacoes({ arquivadas = false }) {
               Setor OBRA não pode enviar solicitações para outro setor.
             </span>
           )}
+
+          {mostrarSeletorColunas && (
+            <div className="absolute z-20 top-full mt-2 left-4 md:left-auto md:right-4 w-[320px] max-w-[calc(100vw-3rem)] bg-white border border-gray-200 rounded-xl shadow-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium">Colunas visíveis</p>
+                <button
+                  type="button"
+                  className="text-xs text-blue-600 hover:underline"
+                  onClick={() => setColunasVisiveis(opcoesColunas.map(c => c.id))}
+                >
+                  Mostrar todas
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+                {opcoesColunas.map(col => {
+                  const obrigatoria = ['codigo', 'status', 'acoes'].includes(col.id);
+                  const marcada = colunasVisiveis.includes(col.id);
+                  return (
+                    <label key={col.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={marcada}
+                        disabled={obrigatoria}
+                        onChange={() => toggleColuna(col.id)}
+                      />
+                      <span className={obrigatoria ? 'text-gray-500' : ''}>{col.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -411,6 +512,7 @@ export default function Solicitacoes({ arquivadas = false }) {
           setoresMap={setoresMap}
           permissaoUsuario={permissaoUsuario}
           mostrarArquivadas={arquivadas}
+          visibleColumns={colunasVisiveis}
           selecionadasIds={selecionadasIds}
           onToggleSelecionada={toggleSelecionada}
           onToggleSelecionarTodas={toggleSelecionarTodas}
