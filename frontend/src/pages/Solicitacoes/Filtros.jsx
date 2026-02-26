@@ -5,6 +5,7 @@ export default function Filtros({
   setores = [],
   tiposSolicitacao = [],
   statusOptions = [],
+  mostrarFiltroResponsavel = false,
   mostrarSomaValor = false,
   somaValorFiltrado = 0
 }) {
@@ -34,7 +35,8 @@ export default function Filtros({
       valor_min: '',
       valor_max: '',
       data_registro: '',
-      data_vencimento: ''
+      data_vencimento: '',
+      responsavel: ''
     });
   }
 
@@ -134,6 +136,16 @@ export default function Filtros({
           type="date"
         />
       </div>
+
+      {mostrarFiltroResponsavel && (
+        <input
+          name="responsavel"
+          placeholder="Responsável"
+          className="input"
+          value={filtros.responsavel || ''}
+          onChange={handleChange}
+        />
+      )}
 
       <div className="flex gap-2 items-end md:col-span-2 xl:col-span-2">
         <button className="btn btn-outline" type="button" onClick={onBuscarObraDescricao}>

@@ -37,7 +37,8 @@ export default function Solicitacoes({ arquivadas = false }) {
     valor_min: '',
     valor_max: '',
     data_registro: '',
-    data_vencimento: ''
+    data_vencimento: '',
+    responsavel: ''
   });
 
   useEffect(() => {
@@ -185,6 +186,7 @@ export default function Solicitacoes({ arquivadas = false }) {
     String(user?.area || '').toUpperCase()
   ];
   const isSetorObra = setorTokens.includes('OBRA');
+  const isSetorFinanceiro = setorTokens.includes('FINANCEIRO');
 
   function toggleSelecionada(id) {
     const idNum = Number(id);
@@ -348,6 +350,7 @@ export default function Solicitacoes({ arquivadas = false }) {
         setores={setoresLista}
         tiposSolicitacao={tiposSolicitacao}
         statusOptions={statusOptions}
+        mostrarFiltroResponsavel={isSetorFinanceiro}
         mostrarSomaValor={mostrarSomaValor}
         somaValorFiltrado={somaValorFiltrado}
       />
