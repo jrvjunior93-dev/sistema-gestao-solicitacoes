@@ -243,7 +243,7 @@ export default function GestaoContratos() {
   function baixarModeloImportacaoContratos() {
     const linhas = [
       ['Contrato', 'Codigo', 'Ref. do Contrato', 'Descrição', 'Itens de Apropriação', 'Solicitado'],
-      ['CT/PE001-7', '7', 'EXEMPLO REF CONTRATO', 'Descrição do contrato', 'APR001; APR002', '15000,00']
+      ['CT/PE001-7', '7', 'EXEMPLO REF CONTRATO', '', '', '15000,00']
     ];
 
     const csv = linhas
@@ -534,6 +534,7 @@ export default function GestaoContratos() {
 
           <span className="text-sm text-gray-600">
             Modelo CSV (abre no Excel): Contrato, Código da obra, Ref. do Contrato, Descrição, Itens de Apropriação e Solicitado.
+            Descrição e Itens de Apropriação podem ficar em branco.
           </span>
         </div>
       )}

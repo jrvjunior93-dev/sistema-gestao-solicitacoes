@@ -275,7 +275,7 @@ module.exports = {
       const faltando = camposObrigatorios.filter(([, idx]) => idx < 0).map(([nome]) => nome);
       if (faltando.length > 0) {
         return res.status(400).json({
-          error: `Cabeçalhos obrigatórios ausentes: ${faltando.join(', ')}`
+          error: `Cabeçalhos obrigatórios ausentes: ${faltando.join(', ')}. (Descrição e Itens de Apropriação são opcionais)`
         });
       }
 
