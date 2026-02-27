@@ -98,6 +98,8 @@ export default function Layout() {
       case 'USUARIO':
         add('/solicitacoes', 'Minhas Solicitações', HiOutlineClipboardDocumentList);
         add('/solicitacoes-arquivadas', 'Arquivadas', HiOutlineFolderOpen);
+        add('/conversas/entrada', 'Caixa de Entrada', HiOutlineClipboardDocumentList);
+        add('/conversas/saida', 'Caixa de Saída', HiOutlineFolderOpen);
         add('/nova-solicitacao', 'Nova Solicitação', HiOutlinePlusCircle);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
         if (isSetorObra) add('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes);
@@ -110,6 +112,8 @@ export default function Layout() {
       case 'SETOR':
         add('/solicitacoes', 'Solicitações do Setor', HiOutlineClipboardDocumentList);
         add('/solicitacoes-arquivadas', 'Arquivadas', HiOutlineFolderOpen);
+        add('/conversas/entrada', 'Caixa de Entrada', HiOutlineClipboardDocumentList);
+        add('/conversas/saida', 'Caixa de Saída', HiOutlineFolderOpen);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
         if (isSetorObra) add('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes);
         if (isFinanceiro) {
@@ -121,6 +125,8 @@ export default function Layout() {
       case 'GESTOR':
         add('/solicitacoes', 'Todas as Solicitações', HiOutlineClipboardDocumentList);
         add('/solicitacoes-arquivadas', 'Arquivadas', HiOutlineFolderOpen);
+        add('/conversas/entrada', 'Caixa de Entrada', HiOutlineClipboardDocumentList);
+        add('/conversas/saida', 'Caixa de Saída', HiOutlineFolderOpen);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
         if (isSetorObra) add('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes);
         if (isFinanceiro) {
@@ -132,6 +138,8 @@ export default function Layout() {
       case 'FINANCEIRO':
         add('/solicitacoes', 'Solicitações do Setor', HiOutlineClipboardDocumentList);
         add('/solicitacoes-arquivadas', 'Arquivadas', HiOutlineFolderOpen);
+        add('/conversas/entrada', 'Caixa de Entrada', HiOutlineClipboardDocumentList);
+        add('/conversas/saida', 'Caixa de Saída', HiOutlineFolderOpen);
         add('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp);
         add('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund);
         add('/perfil', 'Meu Perfil', HiOutlineCog6Tooth);
@@ -142,6 +150,8 @@ export default function Layout() {
         add('/nova-solicitacao', 'Nova Solicitação', HiOutlinePlusCircle);
         add('/solicitacoes', 'Solicitações', HiOutlineClipboardDocumentList);
         add('/solicitacoes-arquivadas', 'Arquivadas', HiOutlineFolderOpen);
+        add('/conversas/entrada', 'Caixa de Entrada', HiOutlineClipboardDocumentList);
+        add('/conversas/saida', 'Caixa de Saída', HiOutlineFolderOpen);
         if (isFinanceiro) {
           add('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp);
           add('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund);
@@ -156,6 +166,8 @@ export default function Layout() {
         add('/nova-solicitacao', 'Nova Solicitação', HiOutlinePlusCircle);
         add('/solicitacoes', 'Solicitações', HiOutlineClipboardDocumentList);
         add('/solicitacoes-arquivadas', 'Arquivadas', HiOutlineFolderOpen);
+        add('/conversas/entrada', 'Caixa de Entrada', HiOutlineClipboardDocumentList);
+        add('/conversas/saida', 'Caixa de Saída', HiOutlineFolderOpen);
         add('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp);
         add('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund);
         add('/usuarios', 'Usu\u00E1rios', HiOutlineUsers);
@@ -338,5 +350,4 @@ function MenuItem({ to, label, icon: Icon, active, onSelect, collapsed }) {
     </li>
   );
 }
-
 

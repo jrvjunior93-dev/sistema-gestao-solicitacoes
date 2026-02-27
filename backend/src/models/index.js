@@ -33,6 +33,8 @@ db.Notificacao = require('./Notificacao')(sequelize, Sequelize);
 db.NotificacaoDestinatario = require('./NotificacaoDestinatario')(sequelize, Sequelize);
 db.ConfiguracaoSistema = require('./ConfiguracaoSistema')(sequelize, Sequelize);
 db.LogExclusao = require('./LogExclusao')(sequelize, Sequelize);
+db.ConversaInterna = require('./ConversaInterna')(sequelize, Sequelize);
+db.ConversaInternaMensagem = require('./ConversaInternaMensagem')(sequelize, Sequelize);
 
   
 
@@ -332,6 +334,59 @@ db.User.hasMany(db.NotificacaoDestinatario, {
 db.NotificacaoDestinatario.belongsTo(db.User, {
   foreignKey: 'usuario_id',
   as: 'usuario'
+});
+
+// =====================
+// CONVERSAS INTERNAS
+// =====================
+db.User.hasMany(db.ConversaInterna, {
+  foreignKey: 'criado_por_id',
+  as: 'conversasCriadas'
+});
+
+db.ConversaInterna.belongsTo(db.User, {
+  foreignKey: 'criado_por_id',
+  as: 'criador'
+});
+
+db.User.hasMany(db.ConversaInterna, {
+  foreignKey: 'destinatario_id',
+  as: 'conversasRecebidas'
+});
+
+db.ConversaInterna.belongsTo(db.User, {
+  foreignKey: 'destinatario_id',
+  as: 'destinatario'
+});
+
+db.User.hasMany(db.ConversaInterna, {
+  foreignKey: 'concluida_por_id',
+  as: 'conversasConcluidas'
+});
+
+db.ConversaInterna.belongsTo(db.User, {
+  foreignKey: 'concluida_por_id',
+  as: 'concluidaPor'
+});
+
+db.ConversaInterna.hasMany(db.ConversaInternaMensagem, {
+  foreignKey: 'conversa_id',
+  as: 'mensagens'
+});
+
+db.ConversaInternaMensagem.belongsTo(db.ConversaInterna, {
+  foreignKey: 'conversa_id',
+  as: 'conversa'
+});
+
+db.User.hasMany(db.ConversaInternaMensagem, {
+  foreignKey: 'usuario_id',
+  as: 'mensagensConversaInterna'
+});
+
+db.ConversaInternaMensagem.belongsTo(db.User, {
+  foreignKey: 'usuario_id',
+  as: 'autor'
 });
 
 

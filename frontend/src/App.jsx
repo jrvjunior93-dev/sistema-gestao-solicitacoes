@@ -35,6 +35,9 @@ import SetoresVisiveisUsuario from './pages/SetoresVisiveisUsuario';
 import ComportamentoRecebimentoSetor from './pages/ComportamentoRecebimentoSetor';
 import TimeoutInatividade from './pages/TimeoutInatividade';
 import TiposSolicitacaoPorSetor from './pages/TiposSolicitacaoPorSetor';
+import ConversasEntrada from './pages/ConversasEntrada';
+import ConversasSaida from './pages/ConversasSaida';
+import ConversaDetalhe from './pages/ConversaDetalhe';
 import { useAuth } from './contexts/AuthContext';
 
 function GestaoUsuariosRoute({ children }) {
@@ -81,6 +84,9 @@ export default function App() {
         <Route path="solicitacoes" element={<Solicitacoes />} />
         <Route path="solicitacoes-arquivadas" element={<SolicitacoesArquivadas />} />
         <Route path="solicitacoes/:id" element={<SolicitacaoDetalhe />} />
+        <Route path="conversas/entrada" element={<ConversasEntrada />} />
+        <Route path="conversas/saida" element={<ConversasSaida />} />
+        <Route path="conversas/:id" element={<ConversaDetalhe />} />
 
         <Route path="nova-solicitacao" element={<NovaSolicitacao />} />
 

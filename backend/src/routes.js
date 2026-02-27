@@ -26,6 +26,7 @@ const AnexoController = require('./controllers/AnexoController');
 const NotificacaoController = require('./controllers/NotificacaoController');
 const SetorPermissaoController = require('./controllers/SetorPermissaoController');
 const ConfiguracaoSistemaController = require('./controllers/ConfiguracaoSistemaController');
+const ConversaInternaController = require('./controllers/ConversaInternaController');
 const { Setor } = require('./models');
 //console.log('AnexoController =>', AnexoController);
 
@@ -309,5 +310,18 @@ router.patch('/contratos/:id/desativar', ContratoController.desativar);
 // -------------------------------------------------------------------
 
 router.get('/dashboard/executivo', DashboardController.executivo);
+
+// -------------------------------------------------------------------
+// CONVERSAS INTERNAS (CAIXA DE ENTRADA/SAIDA)
+// -------------------------------------------------------------------
+router.get('/conversas-internas/destinatarios', ConversaInternaController.opcoesDestinatario);
+router.get('/conversas-internas/entrada', ConversaInternaController.entrada);
+router.get('/conversas-internas/saida', ConversaInternaController.saida);
+router.get('/conversas-internas/:id', ConversaInternaController.detalhar);
+router.post('/conversas-internas', ConversaInternaController.criar);
+router.post('/conversas-internas/:id/mensagens', ConversaInternaController.responder);
+router.patch('/conversas-internas/:id/concluir', ConversaInternaController.concluir);
+router.patch('/conversas-internas/:id/reabrir', ConversaInternaController.reabrir);
+router.patch('/conversas-internas/mensagens/:mensagemId', ConversaInternaController.editarMensagem);
 
 module.exports = router;
