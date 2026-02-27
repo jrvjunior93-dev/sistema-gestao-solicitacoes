@@ -318,8 +318,8 @@ router.get('/conversas-internas/destinatarios', ConversaInternaController.opcoes
 router.get('/conversas-internas/entrada', ConversaInternaController.entrada);
 router.get('/conversas-internas/saida', ConversaInternaController.saida);
 router.get('/conversas-internas/:id', ConversaInternaController.detalhar);
-router.post('/conversas-internas', ConversaInternaController.criar);
-router.post('/conversas-internas/:id/mensagens', ConversaInternaController.responder);
+router.post('/conversas-internas', uploadComprovantes.array('files'), ConversaInternaController.criar);
+router.post('/conversas-internas/:id/mensagens', uploadComprovantes.array('files'), ConversaInternaController.responder);
 router.patch('/conversas-internas/:id/concluir', ConversaInternaController.concluir);
 router.patch('/conversas-internas/:id/reabrir', ConversaInternaController.reabrir);
 router.patch('/conversas-internas/mensagens/:mensagemId', ConversaInternaController.editarMensagem);

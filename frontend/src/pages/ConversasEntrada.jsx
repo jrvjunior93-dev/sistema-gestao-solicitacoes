@@ -22,6 +22,7 @@ export default function ConversasEntrada() {
   const [assunto, setAssunto] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [destinatarioId, setDestinatarioId] = useState('');
+  const [arquivos, setArquivos] = useState([]);
   const [salvando, setSalvando] = useState(false);
 
   async function carregar() {
@@ -42,14 +43,14 @@ export default function ConversasEntrada() {
       setDestinatarios(Array.isArray(data) ? data : []);
       setShowNova(true);
     } catch (error) {
-      alert(error?.message || 'Erro ao carregar destinatarios');
+      alert(error?.message || 'Erro ao carregar destinatários');
     }
   }
 
   async function salvarNovaConversa(e) {
     e.preventDefault();
     if (!destinatarioId || !assunto.trim() || !mensagem.trim()) {
-      alert('Preencha destinatario, assunto e mensagem.');
+      alert('Preencha destinatário, assunto e mensagem.');
       return;
     }
 
@@ -58,12 +59,14 @@ export default function ConversasEntrada() {
       const result = await criarConversa({
         destinatario_id: Number(destinatarioId),
         assunto: assunto.trim(),
-        mensagem: mensagem.trim()
+        mensagem: mensagem.trim(),
+        files: arquivos
       });
       setShowNova(false);
       setAssunto('');
       setMensagem('');
       setDestinatarioId('');
+      setArquivos([]);
       await carregar();
       if (result?.id) {
         navigate(`/conversas/${result.id}`);
@@ -106,6 +109,7 @@ export default function ConversasEntrada() {
               <th>Remetente</th>
               <th>Status</th>
               <th>Última mensagem</th>
+              <th>Anexos</th>
               <th>Atualizado em</th>
               <th>Ações</th>
             </tr>
@@ -113,12 +117,12 @@ export default function ConversasEntrada() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan="6" align="center">Carregando...</td>
+                <td colSpan="7" align="center">Carregando...</td>
               </tr>
             )}
             {!loading && itens.length === 0 && (
               <tr>
-                <td colSpan="6" align="center">Nenhuma conversa recebida.</td>
+                <td colSpan="7" align="center">Nenhuma conversa recebida.</td>
               </tr>
             )}
             {!loading && itens.map(item => (
@@ -127,6 +131,7 @@ export default function ConversasEntrada() {
                 <td>{item.criador?.nome || '-'}</td>
                 <td>{item.status}</td>
                 <td>{item.ultima_mensagem?.mensagem || '-'}</td>
+                <td>{item.anexos_total ?? 0}</td>
                 <td>{formatarDataHora(item.updatedAt)}</td>
                 <td>
                   <button
@@ -177,11 +182,46 @@ export default function ConversasEntrada() {
               <label className="text-sm">
                 <span className="block mb-1">Mensagem</span>
                 <textarea
-                  className="input min-h-[120px]"
+                  className="w-full min-h-[120px] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-[var(--c-text)]"
                   value={mensagem}
                   onChange={(e) => setMensagem(e.target.value)}
                 />
               </label>
+
+              <label className="text-sm">
+                <span className="block mb-1">Anexos</span>
+                <input
+                  type="file"
+                  multiple
+                  onChange={(e) => {
+                    const novos = Array.from(e.target.files || []);
+                    if (novos.length === 0) return;
+                    setArquivos(prev => [...prev, ...novos]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+
+              {arquivos.length > 0 && (
+                <div className="rounded-lg border border-[var(--c-border)] p-2">
+                  <p className="text-xs mb-2 text-[var(--c-muted)]">Arquivos selecionados</p>
+                  <div className="space-y-1">
+                    {arquivos.map((file, index) => (
+                      <div key={`${file.name}-${index}`} className="flex items-center justify-between text-sm">
+                        <span className="truncate">{file.name}</span>
+                        <button
+                          type="button"
+                          className="text-red-600 font-semibold px-2"
+                          onClick={() => setArquivos(prev => prev.filter((_, i) => i !== index))}
+                          aria-label={`Remover ${file.name}`}
+                        >
+                          x
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 mt-1">
                 <button type="button" className="btn btn-outline" onClick={() => setShowNova(false)} disabled={salvando}>Cancelar</button>

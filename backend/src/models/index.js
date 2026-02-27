@@ -35,6 +35,7 @@ db.ConfiguracaoSistema = require('./ConfiguracaoSistema')(sequelize, Sequelize);
 db.LogExclusao = require('./LogExclusao')(sequelize, Sequelize);
 db.ConversaInterna = require('./ConversaInterna')(sequelize, Sequelize);
 db.ConversaInternaMensagem = require('./ConversaInternaMensagem')(sequelize, Sequelize);
+db.ConversaInternaAnexo = require('./ConversaInternaAnexo')(sequelize, Sequelize);
 
   
 
@@ -387,6 +388,26 @@ db.User.hasMany(db.ConversaInternaMensagem, {
 db.ConversaInternaMensagem.belongsTo(db.User, {
   foreignKey: 'usuario_id',
   as: 'autor'
+});
+
+db.ConversaInterna.hasMany(db.ConversaInternaAnexo, {
+  foreignKey: 'conversa_id',
+  as: 'anexos'
+});
+
+db.ConversaInternaAnexo.belongsTo(db.ConversaInterna, {
+  foreignKey: 'conversa_id',
+  as: 'conversa'
+});
+
+db.ConversaInternaMensagem.hasMany(db.ConversaInternaAnexo, {
+  foreignKey: 'mensagem_id',
+  as: 'anexos'
+});
+
+db.ConversaInternaAnexo.belongsTo(db.ConversaInternaMensagem, {
+  foreignKey: 'mensagem_id',
+  as: 'mensagem'
 });
 
 

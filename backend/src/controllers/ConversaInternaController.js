@@ -2,9 +2,11 @@ const { Op } = require('sequelize');
 const {
   ConversaInterna,
   ConversaInternaMensagem,
+  ConversaInternaAnexo,
   User,
   Setor
 } = require('../models');
+const { uploadToS3 } = require('../services/s3');
 
 const JANELA_EDICAO_MS = 5 * 60 * 1000;
 
@@ -46,6 +48,10 @@ async function montarResumoConversa(conversa) {
     order: [['createdAt', 'DESC']]
   });
 
+  const anexosTotal = await ConversaInternaAnexo.count({
+    where: { conversa_id: conversa.id }
+  });
+
   return {
     id: conversa.id,
     assunto: conversa.assunto,
@@ -80,8 +86,25 @@ async function montarResumoConversa(conversa) {
           createdAt: ultimaMensagem.createdAt,
           editada_em: ultimaMensagem.editada_em
         }
-      : null
+      : null,
+    anexos_total: anexosTotal
   };
+}
+
+async function salvarAnexosMensagem({ conversaId, mensagemId, files }) {
+  if (!Array.isArray(files) || files.length === 0) return;
+
+  for (const file of files) {
+    const caminho = await uploadToS3(file, `anexos/conversas/${conversaId}`);
+    await ConversaInternaAnexo.create({
+      conversa_id: conversaId,
+      mensagem_id: mensagemId,
+      nome_arquivo: file.originalname,
+      caminho,
+      mime_type: file.mimetype || null,
+      tamanho_bytes: Number(file.size || 0) || null
+    });
+  }
 }
 
 module.exports = {
@@ -195,8 +218,8 @@ module.exports = {
         return res.status(400).json({ error: 'Assunto obrigatorio' });
       }
 
-      if (!mensagemInicial) {
-        return res.status(400).json({ error: 'Mensagem obrigatoria' });
+      if (!mensagemInicial && (!Array.isArray(req.files) || req.files.length === 0)) {
+        return res.status(400).json({ error: 'Mensagem ou anexo obrigatorio' });
       }
 
       if (!destinatarioId || destinatarioId === Number(req.user.id)) {
@@ -219,10 +242,16 @@ module.exports = {
         status: 'ABERTA'
       });
 
-      await ConversaInternaMensagem.create({
+      const primeiraMensagem = await ConversaInternaMensagem.create({
         conversa_id: conversa.id,
         usuario_id: req.user.id,
-        mensagem: mensagemInicial
+        mensagem: mensagemInicial || '[Anexo enviado]'
+      });
+
+      await salvarAnexosMensagem({
+        conversaId: conversa.id,
+        mensagemId: primeiraMensagem.id,
+        files: req.files
       });
 
       return res.status(201).json({ id: conversa.id });
@@ -280,6 +309,27 @@ module.exports = {
         order: [['createdAt', 'ASC']]
       });
 
+      const anexos = await ConversaInternaAnexo.findAll({
+        where: { conversa_id: id },
+        attributes: ['id', 'mensagem_id', 'nome_arquivo', 'caminho', 'mime_type', 'tamanho_bytes', 'createdAt'],
+        order: [['createdAt', 'ASC']]
+      });
+
+      const anexosPorMensagem = anexos.reduce((acc, item) => {
+        if (!acc[item.mensagem_id]) {
+          acc[item.mensagem_id] = [];
+        }
+        acc[item.mensagem_id].push({
+          id: item.id,
+          nome_arquivo: item.nome_arquivo,
+          caminho: item.caminho,
+          mime_type: item.mime_type,
+          tamanho_bytes: item.tamanho_bytes,
+          createdAt: item.createdAt
+        });
+        return acc;
+      }, {});
+
       const agora = Date.now();
       const usuarioId = Number(req.user.id);
 
@@ -311,7 +361,8 @@ module.exports = {
             updatedAt: item.updatedAt,
             editada_em: item.editada_em,
             pode_editar: !!podeEditar,
-            autor: item.autor
+            autor: item.autor,
+            anexos: anexosPorMensagem[item.id] || []
           };
         })
       });
@@ -339,14 +390,20 @@ module.exports = {
       }
 
       const mensagem = normalizarTexto(req.body?.mensagem);
-      if (!mensagem) {
-        return res.status(400).json({ error: 'Mensagem obrigatoria' });
+      if (!mensagem && (!Array.isArray(req.files) || req.files.length === 0)) {
+        return res.status(400).json({ error: 'Mensagem ou anexo obrigatorio' });
       }
 
       const nova = await ConversaInternaMensagem.create({
         conversa_id: id,
         usuario_id: req.user.id,
-        mensagem
+        mensagem: mensagem || '[Anexo enviado]'
+      });
+
+      await salvarAnexosMensagem({
+        conversaId: id,
+        mensagemId: nova.id,
+        files: req.files
       });
 
       await conversa.update({ updatedAt: new Date() });

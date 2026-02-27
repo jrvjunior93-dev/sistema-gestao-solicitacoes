@@ -39,10 +39,19 @@ export async function getCaixaSaida() {
 }
 
 export async function criarConversa(payload) {
+  const formData = new FormData();
+  formData.append('destinatario_id', String(payload?.destinatario_id || ''));
+  formData.append('assunto', String(payload?.assunto || ''));
+  formData.append('mensagem', String(payload?.mensagem || ''));
+  const files = Array.isArray(payload?.files) ? payload.files : [];
+  for (const file of files) {
+    formData.append('files', file);
+  }
+
   const response = await fetch(`${API_URL}/conversas-internas`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(payload)
+    headers: authHeaders(),
+    body: formData
   });
   return parseResponse(response, 'Erro ao criar conversa');
 }
@@ -54,11 +63,17 @@ export async function getConversa(id) {
   return parseResponse(response, 'Erro ao carregar conversa');
 }
 
-export async function enviarMensagemConversa(id, mensagem) {
+export async function enviarMensagemConversa(id, mensagem, files = []) {
+  const formData = new FormData();
+  formData.append('mensagem', String(mensagem || ''));
+  for (const file of files) {
+    formData.append('files', file);
+  }
+
   const response = await fetch(`${API_URL}/conversas-internas/${id}/mensagens`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ mensagem })
+    headers: authHeaders(),
+    body: formData
   });
   return parseResponse(response, 'Erro ao enviar mensagem');
 }

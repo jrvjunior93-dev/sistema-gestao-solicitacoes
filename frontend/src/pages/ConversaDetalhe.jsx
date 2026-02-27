@@ -8,6 +8,7 @@ import {
   getConversa,
   reabrirConversa
 } from '../services/conversasInternas';
+import { API_URL, authHeaders, fileUrl } from '../services/api';
 
 const JANELA_EDICAO_MS = 5 * 60 * 1000;
 
@@ -36,6 +37,7 @@ export default function ConversaDetalhe() {
   const [enviando, setEnviando] = useState(false);
   const [editandoId, setEditandoId] = useState(null);
   const [textoEdicao, setTextoEdicao] = useState('');
+  const [arquivosMensagem, setArquivosMensagem] = useState([]);
 
   async function carregar() {
     try {
@@ -76,12 +78,13 @@ export default function ConversaDetalhe() {
 
   async function handleEnviarMensagem(e) {
     e.preventDefault();
-    if (!novaMensagem.trim()) return;
+    if (!novaMensagem.trim() && arquivosMensagem.length === 0) return;
 
     try {
       setEnviando(true);
-      await enviarMensagemConversa(id, novaMensagem.trim());
+      await enviarMensagemConversa(id, novaMensagem.trim(), arquivosMensagem);
       setNovaMensagem('');
+      setArquivosMensagem([]);
       await carregar();
       alert('Mensagem enviada com sucesso.');
     } catch (error) {
@@ -126,6 +129,56 @@ export default function ConversaDetalhe() {
       alert('Mensagem editada com sucesso.');
     } catch (error) {
       alert(error?.message || 'Erro ao editar mensagem');
+    }
+  }
+
+  async function obterUrlAssinada(caminhoArquivo) {
+    if (!caminhoArquivo) return null;
+    if (!String(caminhoArquivo).startsWith('http')) {
+      return fileUrl(caminhoArquivo);
+    }
+
+    const caminhoNormalizado = String(caminhoArquivo).replace(/%(?![0-9A-Fa-f]{2})/g, '%25');
+    const res = await fetch(
+      `${API_URL}/anexos/presign?url=${encodeURIComponent(caminhoNormalizado)}`,
+      { headers: authHeaders() }
+    );
+    if (!res.ok) {
+      throw new Error('Erro ao gerar link do anexo');
+    }
+    const data = await res.json();
+    return data?.url || caminhoNormalizado;
+  }
+
+  async function visualizarAnexo(caminhoArquivo) {
+    try {
+      const url = await obterUrlAssinada(caminhoArquivo);
+      if (!url) return;
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      alert(error?.message || 'Erro ao abrir anexo');
+    }
+  }
+
+  async function baixarAnexo(caminhoArquivo, nomeArquivo) {
+    try {
+      const urlArquivo = await obterUrlAssinada(caminhoArquivo);
+      const response = await fetch(urlArquivo);
+      if (!response.ok) {
+        throw new Error('Falha ao baixar arquivo');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = nomeArquivo || 'arquivo';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(error?.message || 'Erro ao baixar anexo');
     }
   }
 
@@ -208,6 +261,21 @@ export default function ConversaDetalhe() {
               ) : (
                 <>
                   <div className="whitespace-pre-wrap break-words">{item.mensagem}</div>
+                  {Array.isArray(item.anexos) && item.anexos.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {item.anexos.map((anexo) => (
+                        <div key={anexo.id} className="flex flex-wrap items-center gap-2 text-sm">
+                          <span className="font-medium">{anexo.nome_arquivo}</span>
+                          <button type="button" className="text-blue-600" onClick={() => visualizarAnexo(anexo.caminho)}>
+                            Visualizar
+                          </button>
+                          <button type="button" className="text-green-600" onClick={() => baixarAnexo(anexo.caminho, anexo.nome_arquivo)}>
+                            Baixar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {minhaMensagem && podeEditar && (
                     <div className="mt-2">
                       <button
@@ -238,11 +306,43 @@ export default function ConversaDetalhe() {
           disabled={!conversaAberta || enviando}
           placeholder={conversaAberta ? 'Digite a mensagem...' : 'Conversa concluída. Reabra para enviar mensagem.'}
         />
+        <div className="mt-2">
+          <input
+            type="file"
+            multiple
+            disabled={!conversaAberta || enviando}
+            onChange={(e) => {
+              const novos = Array.from(e.target.files || []);
+              if (novos.length === 0) return;
+              setArquivosMensagem(prev => [...prev, ...novos]);
+              e.target.value = '';
+            }}
+          />
+        </div>
+        {arquivosMensagem.length > 0 && (
+          <div className="mt-2 rounded-lg border border-[var(--c-border)] p-2">
+            <p className="text-xs mb-1 text-[var(--c-muted)]">Arquivos selecionados</p>
+            <div className="space-y-1">
+              {arquivosMensagem.map((file, index) => (
+                <div key={`${file.name}-${index}`} className="flex items-center justify-between text-sm">
+                  <span className="truncate">{file.name}</span>
+                  <button
+                    type="button"
+                    className="text-red-600 font-semibold px-2"
+                    onClick={() => setArquivosMensagem(prev => prev.filter((_, i) => i !== index))}
+                  >
+                    x
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="flex justify-end mt-2">
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={!conversaAberta || enviando || !novaMensagem.trim()}
+            disabled={!conversaAberta || enviando || (!novaMensagem.trim() && arquivosMensagem.length === 0)}
           >
             {enviando ? 'Enviando...' : 'Enviar mensagem'}
           </button>
