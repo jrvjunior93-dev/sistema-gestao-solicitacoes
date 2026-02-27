@@ -47,6 +47,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   const [colunasStoragePronto, setColunasStoragePronto] = useState(false);
   const [seletorColunasLeft, setSeletorColunasLeft] = useState(0);
   const [seletorColunasTop, setSeletorColunasTop] = useState(0);
+  const [filtrosStoragePronto, setFiltrosStoragePronto] = useState(false);
   const seletorColunasRef = useRef(null);
   const botaoColunasRef = useRef(null);
   const { user } = useAuth();
@@ -64,9 +65,40 @@ export default function Solicitacoes({ arquivadas = false }) {
     responsavel: ''
   });
 
+  const filtrosStorageKey = useMemo(() => {
+    const identificador = user?.id || user?.email || user?.nome || user?.perfil || 'anon';
+    const escopo = arquivadas ? 'arquivadas' : 'ativas';
+    return `solicitacoes:filtros:${escopo}:${identificador}`;
+  }, [user?.id, user?.email, user?.nome, user?.perfil, arquivadas]);
+
   useEffect(() => {
     carregar();
   }, [filtros, arquivadas]);
+
+  useEffect(() => {
+    try {
+      const salvo = localStorage.getItem(filtrosStorageKey);
+      if (salvo) {
+        const parsed = JSON.parse(salvo);
+        if (parsed && typeof parsed === 'object') {
+          setFiltros(prev => ({ ...prev, ...parsed }));
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar filtros salvos', error);
+    } finally {
+      setFiltrosStoragePronto(true);
+    }
+  }, [filtrosStorageKey]);
+
+  useEffect(() => {
+    if (!filtrosStoragePronto) return;
+    try {
+      localStorage.setItem(filtrosStorageKey, JSON.stringify(filtros));
+    } catch (error) {
+      console.error('Erro ao salvar filtros', error);
+    }
+  }, [filtros, filtrosStorageKey, filtrosStoragePronto]);
 
   useEffect(() => {
     carregarSetores();

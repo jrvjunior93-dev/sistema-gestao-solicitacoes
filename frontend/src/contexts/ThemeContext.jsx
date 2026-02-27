@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { getTemaSistema, salvarTemaSistema } from '../services/configuracoesSistema';
+import { useAuth } from './AuthContext';
 
 const ThemeContext = createContext();
 
@@ -51,10 +52,15 @@ function mergeTema(base, override) {
 
 export function ThemeProvider({ children }) {
   const [tema, setTema] = useState(TEMA_PADRAO);
+  const { user } = useAuth();
 
   useEffect(() => {
     carregar();
   }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [user?.id, user?.email]);
 
   useEffect(() => {
     function recarregarAoFocar() {
