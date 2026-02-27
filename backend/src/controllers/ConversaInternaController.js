@@ -647,6 +647,10 @@ module.exports = {
         return res.status(403).json({ error: 'Acesso negado a conversa' });
       }
 
+      if (String(conversa.status || '').toUpperCase() !== 'ABERTA') {
+        return res.status(400).json({ error: 'So e permitido adicionar participantes em conversas abertas.' });
+      }
+
       if (!isSuperadmin(req) && Number(req.user.id) !== Number(conversa.criado_por_id)) {
         return res.status(403).json({ error: 'Apenas o criador pode adicionar participantes' });
       }
