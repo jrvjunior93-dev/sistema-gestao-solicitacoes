@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   adicionarParticipantesConversa,
@@ -32,6 +32,7 @@ function aindaPodeEditar(mensagem) {
 export default function ConversaDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [conversa, setConversa] = useState(null);
@@ -65,7 +66,7 @@ export default function ConversaDetalhe() {
       setParticipantes(Array.isArray(data?.participantes) ? data.participantes : []);
     } catch (error) {
       alert(error?.message || 'Erro ao carregar conversa');
-      navigate('/conversas/entrada');
+      navigate(rotaVoltar);
     } finally {
       setLoading(false);
     }
@@ -243,7 +244,7 @@ export default function ConversaDetalhe() {
           <p className="page-subtitle">{tituloSecundario}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="btn btn-outline" type="button" onClick={() => navigate('/conversas/entrada')}>
+          <button className="btn btn-outline" type="button" onClick={() => navigate(rotaVoltar)}>
             Voltar
           </button>
           {podeAdicionarParticipantes && (
@@ -464,3 +465,5 @@ export default function ConversaDetalhe() {
     </div>
   );
 }
+  const origemConversa = String(location.state?.origemConversa || 'entrada').toLowerCase();
+  const rotaVoltar = origemConversa === 'saida' ? '/conversas/saida' : '/conversas/entrada';

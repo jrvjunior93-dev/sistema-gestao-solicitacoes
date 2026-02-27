@@ -245,7 +245,11 @@ export default function ConversasEntrada() {
                   <td>{formatarDataHora(item.updatedAt)}</td>
                   <td>
                     <div className="flex items-center gap-2">
-                      <button type="button" className="btn btn-outline" onClick={() => navigate(`/conversas/${item.id}`)}>
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => navigate(`/conversas/${item.id}`, { state: { origemConversa: 'entrada' } })}
+                      >
                         Abrir chat
                       </button>
                       <button
