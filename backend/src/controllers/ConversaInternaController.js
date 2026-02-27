@@ -3,6 +3,7 @@ const {
   ConversaInterna,
   ConversaInternaMensagem,
   ConversaInternaAnexo,
+  ConversaInternaParticipante,
   User,
   Setor
 } = require('../models');
@@ -18,20 +19,71 @@ function isSuperadmin(req) {
   return String(req.user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN';
 }
 
+function extrairIdsNumericos(lista) {
+  if (!Array.isArray(lista)) return [];
+  return [...new Set(
+    lista
+      .map((item) => Number(item))
+      .filter((id) => Number.isInteger(id) && id > 0)
+  )];
+}
+
+async function garantirParticipantesBasicos(conversa) {
+  const ids = [conversa.criado_por_id, conversa.destinatario_id]
+    .map((v) => Number(v))
+    .filter((v) => Number.isInteger(v) && v > 0);
+  for (const usuarioId of ids) {
+    await ConversaInternaParticipante.findOrCreate({
+      where: { conversa_id: conversa.id, usuario_id: usuarioId },
+      defaults: { adicionado_por_id: conversa.criado_por_id }
+    });
+  }
+}
+
+async function criarParticipantes(conversaId, usuarioIds, adicionadoPorId) {
+  for (const usuarioId of usuarioIds) {
+    await ConversaInternaParticipante.findOrCreate({
+      where: { conversa_id: conversaId, usuario_id: usuarioId },
+      defaults: { adicionado_por_id: adicionadoPorId }
+    });
+  }
+}
+
+async function salvarAnexosMensagem({ conversaId, mensagemId, files }) {
+  if (!Array.isArray(files) || files.length === 0) return;
+
+  for (const file of files) {
+    const caminho = await uploadToS3(file, `anexos/conversas/${conversaId}`);
+    await ConversaInternaAnexo.create({
+      conversa_id: conversaId,
+      mensagem_id: mensagemId,
+      nome_arquivo: file.originalname,
+      caminho,
+      mime_type: file.mimetype || null,
+      tamanho_bytes: Number(file.size || 0) || null
+    });
+  }
+}
+
 async function podeVisualizarConversa(req, conversaId) {
   const conversa = await ConversaInterna.findByPk(conversaId);
   if (!conversa) {
     return { conversa: null, permitido: false };
   }
 
+  await garantirParticipantesBasicos(conversa);
+
   if (isSuperadmin(req)) {
     return { conversa, permitido: true };
   }
 
   const usuarioId = Number(req.user?.id);
-  const permitido =
-    conversa.criado_por_id === usuarioId || conversa.destinatario_id === usuarioId;
+  const participacao = await ConversaInternaParticipante.findOne({
+    where: { conversa_id: conversa.id, usuario_id: usuarioId },
+    attributes: ['id']
+  });
 
+  const permitido = !!participacao;
   return { conversa, permitido };
 }
 
@@ -49,6 +101,10 @@ async function montarResumoConversa(conversa) {
   });
 
   const anexosTotal = await ConversaInternaAnexo.count({
+    where: { conversa_id: conversa.id }
+  });
+
+  const participantesTotal = await ConversaInternaParticipante.count({
     where: { conversa_id: conversa.id }
   });
 
@@ -87,24 +143,34 @@ async function montarResumoConversa(conversa) {
           editada_em: ultimaMensagem.editada_em
         }
       : null,
-    anexos_total: anexosTotal
+    anexos_total: anexosTotal,
+    participantes_total: participantesTotal
   };
 }
 
-async function salvarAnexosMensagem({ conversaId, mensagemId, files }) {
-  if (!Array.isArray(files) || files.length === 0) return;
+async function criarConversaIndividual({ criadorId, destinatarioId, assunto, mensagemInicial, files }) {
+  const conversa = await ConversaInterna.create({
+    assunto,
+    criado_por_id: criadorId,
+    destinatario_id: destinatarioId,
+    status: 'ABERTA'
+  });
 
-  for (const file of files) {
-    const caminho = await uploadToS3(file, `anexos/conversas/${conversaId}`);
-    await ConversaInternaAnexo.create({
-      conversa_id: conversaId,
-      mensagem_id: mensagemId,
-      nome_arquivo: file.originalname,
-      caminho,
-      mime_type: file.mimetype || null,
-      tamanho_bytes: Number(file.size || 0) || null
-    });
-  }
+  await criarParticipantes(conversa.id, [criadorId, destinatarioId], criadorId);
+
+  const primeiraMensagem = await ConversaInternaMensagem.create({
+    conversa_id: conversa.id,
+    usuario_id: criadorId,
+    mensagem: mensagemInicial || '[Anexo enviado]'
+  });
+
+  await salvarAnexosMensagem({
+    conversaId: conversa.id,
+    mensagemId: primeiraMensagem.id,
+    files
+  });
+
+  return conversa;
 }
 
 module.exports = {
@@ -142,29 +208,66 @@ module.exports = {
 
   async entrada(req, res) {
     try {
-      const where = {};
-      if (!isSuperadmin(req)) {
-        where.destinatario_id = req.user.id;
+      let conversas = [];
+
+      if (isSuperadmin(req)) {
+        conversas = await ConversaInterna.findAll({
+          include: [
+            {
+              model: User,
+              as: 'criador',
+              attributes: ['id', 'nome', 'setor_id'],
+              include: [{ model: Setor, as: 'setor', attributes: ['id', 'nome', 'codigo'] }]
+            },
+            {
+              model: User,
+              as: 'destinatario',
+              attributes: ['id', 'nome', 'setor_id'],
+              include: [{ model: Setor, as: 'setor', attributes: ['id', 'nome', 'codigo'] }]
+            }
+          ],
+          order: [['updatedAt', 'DESC']]
+        });
+      } else {
+        const participacoes = await ConversaInternaParticipante.findAll({
+          where: { usuario_id: req.user.id },
+          attributes: ['conversa_id']
+        });
+        const idsParticipacao = participacoes.map((item) => item.conversa_id);
+
+        conversas = await ConversaInterna.findAll({
+          where: {
+            [Op.and]: [
+              { criado_por_id: { [Op.ne]: req.user.id } },
+              {
+                [Op.or]: [
+                  { destinatario_id: req.user.id },
+                  idsParticipacao.length > 0 ? { id: { [Op.in]: idsParticipacao } } : null
+                ].filter(Boolean)
+              }
+            ]
+          },
+          include: [
+            {
+              model: User,
+              as: 'criador',
+              attributes: ['id', 'nome', 'setor_id'],
+              include: [{ model: Setor, as: 'setor', attributes: ['id', 'nome', 'codigo'] }]
+            },
+            {
+              model: User,
+              as: 'destinatario',
+              attributes: ['id', 'nome', 'setor_id'],
+              include: [{ model: Setor, as: 'setor', attributes: ['id', 'nome', 'codigo'] }]
+            }
+          ],
+          order: [['updatedAt', 'DESC']]
+        });
       }
 
-      const conversas = await ConversaInterna.findAll({
-        where,
-        include: [
-          {
-            model: User,
-            as: 'criador',
-            attributes: ['id', 'nome', 'setor_id'],
-            include: [{ model: Setor, as: 'setor', attributes: ['id', 'nome', 'codigo'] }]
-          },
-          {
-            model: User,
-            as: 'destinatario',
-            attributes: ['id', 'nome', 'setor_id'],
-            include: [{ model: Setor, as: 'setor', attributes: ['id', 'nome', 'codigo'] }]
-          }
-        ],
-        order: [['updatedAt', 'DESC']]
-      });
+      for (const conversa of conversas) {
+        await garantirParticipantesBasicos(conversa);
+      }
 
       const itens = await Promise.all(conversas.map(montarResumoConversa));
       return res.json(itens);
@@ -199,6 +302,10 @@ module.exports = {
         ],
         order: [['updatedAt', 'DESC']]
       });
+
+      for (const conversa of conversas) {
+        await garantirParticipantesBasicos(conversa);
+      }
 
       const itens = await Promise.all(conversas.map(montarResumoConversa));
       return res.json(itens);
@@ -235,22 +342,11 @@ module.exports = {
         return res.status(404).json({ error: 'Destinatario nao encontrado' });
       }
 
-      const conversa = await ConversaInterna.create({
+      const conversa = await criarConversaIndividual({
+        criadorId: req.user.id,
+        destinatarioId,
         assunto,
-        criado_por_id: req.user.id,
-        destinatario_id: destinatarioId,
-        status: 'ABERTA'
-      });
-
-      const primeiraMensagem = await ConversaInternaMensagem.create({
-        conversa_id: conversa.id,
-        usuario_id: req.user.id,
-        mensagem: mensagemInicial || '[Anexo enviado]'
-      });
-
-      await salvarAnexosMensagem({
-        conversaId: conversa.id,
-        mensagemId: primeiraMensagem.id,
+        mensagemInicial,
         files: req.files
       });
 
@@ -258,6 +354,62 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao criar conversa' });
+    }
+  },
+
+  async criarEmMassa(req, res) {
+    try {
+      const assunto = normalizarTexto(req.body?.assunto);
+      const mensagemInicial = normalizarTexto(req.body?.mensagem);
+      const destinatariosIds = extrairIdsNumericos(req.body?.destinatarios_ids);
+      const setoresIds = extrairIdsNumericos(req.body?.setores_ids);
+
+      if (!assunto) {
+        return res.status(400).json({ error: 'Assunto obrigatorio' });
+      }
+
+      if (!mensagemInicial && (!Array.isArray(req.files) || req.files.length === 0)) {
+        return res.status(400).json({ error: 'Mensagem ou anexo obrigatorio' });
+      }
+
+      const usuarios = new Set(destinatariosIds);
+      if (setoresIds.length > 0) {
+        const usuariosSetor = await User.findAll({
+          where: {
+            ativo: true,
+            setor_id: { [Op.in]: setoresIds },
+            id: { [Op.ne]: req.user.id }
+          },
+          attributes: ['id']
+        });
+        usuariosSetor.forEach((item) => usuarios.add(item.id));
+      }
+
+      usuarios.delete(Number(req.user.id));
+      const usuariosFinal = [...usuarios];
+      if (usuariosFinal.length === 0) {
+        return res.status(400).json({ error: 'Selecione ao menos um destinatario ou setor com usuarios ativos.' });
+      }
+
+      const conversasCriadas = [];
+      for (const usuarioId of usuariosFinal) {
+        const conversa = await criarConversaIndividual({
+          criadorId: req.user.id,
+          destinatarioId: usuarioId,
+          assunto,
+          mensagemInicial,
+          files: req.files
+        });
+        conversasCriadas.push(conversa.id);
+      }
+
+      return res.status(201).json({
+        total: conversasCriadas.length,
+        ids: conversasCriadas
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao criar conversas em massa' });
     }
   },
 
@@ -309,6 +461,19 @@ module.exports = {
         order: [['createdAt', 'ASC']]
       });
 
+      const participantes = await ConversaInternaParticipante.findAll({
+        where: { conversa_id: id },
+        include: [
+          {
+            model: User,
+            as: 'usuario',
+            attributes: ['id', 'nome', 'email', 'setor_id'],
+            include: [{ model: Setor, as: 'setor', attributes: ['id', 'nome', 'codigo'] }]
+          }
+        ],
+        order: [['createdAt', 'ASC']]
+      });
+
       const anexos = await ConversaInternaAnexo.findAll({
         where: { conversa_id: id },
         attributes: ['id', 'mensagem_id', 'nome_arquivo', 'caminho', 'mime_type', 'tamanho_bytes', 'createdAt'],
@@ -348,6 +513,12 @@ module.exports = {
           destinatario: conversaCompleta.destinatario,
           concluidaPor: conversaCompleta.concluidaPor
         },
+        participantes: participantes.map((item) => ({
+          id: item.id,
+          usuario_id: item.usuario_id,
+          createdAt: item.createdAt,
+          usuario: item.usuario
+        })),
         mensagens: mensagens.map(item => {
           const podeEditar =
             item.usuario_id === usuarioId &&
@@ -461,6 +632,49 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao editar mensagem' });
+    }
+  },
+
+  async adicionarParticipantes(req, res) {
+    try {
+      const id = Number(req.params?.id || 0);
+      const { conversa, permitido } = await podeVisualizarConversa(req, id);
+
+      if (!conversa) {
+        return res.status(404).json({ error: 'Conversa nao encontrada' });
+      }
+      if (!permitido) {
+        return res.status(403).json({ error: 'Acesso negado a conversa' });
+      }
+
+      if (!isSuperadmin(req) && Number(req.user.id) !== Number(conversa.criado_por_id)) {
+        return res.status(403).json({ error: 'Apenas o criador pode adicionar participantes' });
+      }
+
+      const usuarioIds = extrairIdsNumericos(req.body?.usuario_ids);
+      if (usuarioIds.length === 0) {
+        return res.status(400).json({ error: 'Informe ao menos um usuario' });
+      }
+
+      const usuariosValidos = await User.findAll({
+        where: {
+          id: { [Op.in]: usuarioIds },
+          ativo: true
+        },
+        attributes: ['id']
+      });
+      const idsValidos = usuariosValidos.map((item) => item.id);
+      if (idsValidos.length === 0) {
+        return res.status(400).json({ error: 'Nenhum usuario valido para adicionar' });
+      }
+
+      await criarParticipantes(id, idsValidos, req.user.id);
+      await conversa.update({ updatedAt: new Date() });
+
+      return res.json({ adicionados: idsValidos.length });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao adicionar participantes' });
     }
   },
 

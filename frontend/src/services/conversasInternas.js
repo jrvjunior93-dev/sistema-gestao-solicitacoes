@@ -56,6 +56,34 @@ export async function criarConversa(payload) {
   return parseResponse(response, 'Erro ao criar conversa');
 }
 
+export async function criarConversaEmMassa(payload) {
+  const formData = new FormData();
+  formData.append('assunto', String(payload?.assunto || ''));
+  formData.append('mensagem', String(payload?.mensagem || ''));
+
+  const destinatarios = Array.isArray(payload?.destinatarios_ids) ? payload.destinatarios_ids : [];
+  for (const id of destinatarios) {
+    formData.append('destinatarios_ids[]', String(id));
+  }
+
+  const setores = Array.isArray(payload?.setores_ids) ? payload.setores_ids : [];
+  for (const id of setores) {
+    formData.append('setores_ids[]', String(id));
+  }
+
+  const files = Array.isArray(payload?.files) ? payload.files : [];
+  for (const file of files) {
+    formData.append('files', file);
+  }
+
+  const response = await fetch(`${API_URL}/conversas-internas/massa`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData
+  });
+  return parseResponse(response, 'Erro ao criar conversas em massa');
+}
+
 export async function getConversa(id) {
   const response = await fetch(`${API_URL}/conversas-internas/${id}`, {
     headers: authHeaders()
@@ -85,6 +113,15 @@ export async function editarMensagemConversa(mensagemId, mensagem) {
     body: JSON.stringify({ mensagem })
   });
   return parseResponse(response, 'Erro ao editar mensagem');
+}
+
+export async function adicionarParticipantesConversa(id, usuarioIds = []) {
+  const response = await fetch(`${API_URL}/conversas-internas/${id}/participantes`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ usuario_ids: usuarioIds })
+  });
+  return parseResponse(response, 'Erro ao adicionar participantes');
 }
 
 export async function concluirConversa(id) {

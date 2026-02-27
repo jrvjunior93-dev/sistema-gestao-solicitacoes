@@ -49,6 +49,7 @@ export default function ConversasSaida() {
               <th>Status</th>
               <th>Última mensagem</th>
               <th>Anexos</th>
+              <th>Participantes</th>
               <th>Atualizado em</th>
               <th>Ações</th>
             </tr>
@@ -56,12 +57,12 @@ export default function ConversasSaida() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan="7" align="center">Carregando...</td>
+                <td colSpan="8" align="center">Carregando...</td>
               </tr>
             )}
             {!loading && itens.length === 0 && (
               <tr>
-                <td colSpan="7" align="center">Nenhuma conversa enviada.</td>
+                <td colSpan="8" align="center">Nenhuma conversa enviada.</td>
               </tr>
             )}
             {!loading && itens.map(item => (
@@ -71,6 +72,7 @@ export default function ConversasSaida() {
                 <td>{item.status}</td>
                 <td>{item.ultima_mensagem?.mensagem || '-'}</td>
                 <td>{item.anexos_total ?? 0}</td>
+                <td>{item.participantes_total ?? 0}</td>
                 <td>{formatarDataHora(item.updatedAt)}</td>
                 <td>
                   <button

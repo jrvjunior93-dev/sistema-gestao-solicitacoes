@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  adicionarParticipantesConversa,
   concluirConversa,
   editarMensagemConversa,
   enviarMensagemConversa,
+  getDestinatariosConversa,
   getConversa,
   reabrirConversa
 } from '../services/conversasInternas';
@@ -38,6 +40,10 @@ export default function ConversaDetalhe() {
   const [editandoId, setEditandoId] = useState(null);
   const [textoEdicao, setTextoEdicao] = useState('');
   const [arquivosMensagem, setArquivosMensagem] = useState([]);
+  const [participantes, setParticipantes] = useState([]);
+  const [showAdicionarParticipantes, setShowAdicionarParticipantes] = useState(false);
+  const [candidatosParticipantes, setCandidatosParticipantes] = useState([]);
+  const [novosParticipantesIds, setNovosParticipantesIds] = useState([]);
 
   async function carregar() {
     try {
@@ -45,6 +51,7 @@ export default function ConversaDetalhe() {
       const data = await getConversa(id);
       setConversa(data?.conversa || null);
       setMensagens(Array.isArray(data?.mensagens) ? data.mensagens : []);
+      setParticipantes(Array.isArray(data?.participantes) ? data.participantes : []);
     } catch (error) {
       alert(error?.message || 'Erro ao carregar conversa');
       navigate('/conversas/entrada');
@@ -67,6 +74,7 @@ export default function ConversaDetalhe() {
   const criadorId = Number(conversa?.criado_por_id || 0);
   const usuarioId = Number(user?.id || 0);
   const podeConcluir = usuarioId > 0 && usuarioId === criadorId;
+  const podeAdicionarParticipantes = podeConcluir;
   const conversaAberta = String(conversa?.status || '') === 'ABERTA';
 
   const tituloSecundario = useMemo(() => {
@@ -113,6 +121,36 @@ export default function ConversaDetalhe() {
       alert('Conversa reaberta com sucesso.');
     } catch (error) {
       alert(error?.message || 'Erro ao reabrir conversa');
+    }
+  }
+
+  async function abrirAdicionarParticipantes() {
+    try {
+      const usuarios = await getDestinatariosConversa();
+      const jaParticipantes = new Set(participantes.map((item) => Number(item.usuario_id)));
+      const candidatos = (Array.isArray(usuarios) ? usuarios : []).filter(
+        (item) => !jaParticipantes.has(Number(item.id))
+      );
+      setCandidatosParticipantes(candidatos);
+      setNovosParticipantesIds([]);
+      setShowAdicionarParticipantes(true);
+    } catch (error) {
+      alert(error?.message || 'Erro ao carregar usuários');
+    }
+  }
+
+  async function confirmarAdicionarParticipantes() {
+    if (novosParticipantesIds.length === 0) {
+      alert('Selecione ao menos um usuário.');
+      return;
+    }
+    try {
+      await adicionarParticipantesConversa(id, novosParticipantesIds);
+      setShowAdicionarParticipantes(false);
+      await carregar();
+      alert('Participantes adicionados com sucesso.');
+    } catch (error) {
+      alert(error?.message || 'Erro ao adicionar participantes');
     }
   }
 
@@ -193,6 +231,11 @@ export default function ConversaDetalhe() {
           <button className="btn btn-outline" type="button" onClick={() => navigate('/conversas/entrada')}>
             Voltar
           </button>
+          {podeAdicionarParticipantes && (
+            <button className="btn btn-outline" type="button" onClick={abrirAdicionarParticipantes}>
+              Adicionar participantes
+            </button>
+          )}
           {podeConcluir && conversaAberta && (
             <button className="btn btn-secondary" type="button" onClick={handleConcluir}>
               Concluir
@@ -211,6 +254,19 @@ export default function ConversaDetalhe() {
           <span>Status: <strong>{conversa?.status || '-'}</strong></span>
           <span>Criada em: <strong>{formatarDataHora(conversa?.createdAt)}</strong></span>
           <span>Atualizada em: <strong>{formatarDataHora(conversa?.updatedAt)}</strong></span>
+        </div>
+        <div className="mt-3">
+          <p className="text-sm font-semibold mb-1">Participantes</p>
+          <div className="flex flex-wrap gap-2">
+            {participantes.map((item) => (
+              <span key={item.id} className="px-2 py-1 text-xs rounded-full bg-[var(--c-bg-soft)] border border-[var(--c-border)]">
+                {item.usuario?.nome || '-'} ({item.usuario?.setor?.nome || 'Sem setor'})
+              </span>
+            ))}
+            {participantes.length === 0 && (
+              <span className="text-sm text-[var(--c-muted)]">Sem participantes.</span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -348,6 +404,39 @@ export default function ConversaDetalhe() {
           </button>
         </div>
       </form>
+
+      {showAdicionarParticipantes && (
+        <div className="fixed inset-0 bg-black/30 z-40 flex items-center justify-center p-4" onClick={() => setShowAdicionarParticipantes(false)}>
+          <div className="card w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-semibold mb-3">Adicionar participantes</h2>
+            <select
+              multiple
+              value={novosParticipantesIds.map(String)}
+              onChange={(e) => {
+                const ids = Array.from(e.target.selectedOptions)
+                  .map((opt) => Number(opt.value))
+                  .filter((val) => Number.isInteger(val) && val > 0);
+                setNovosParticipantesIds(ids);
+              }}
+              className="w-full min-h-[180px] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-[var(--c-text)]"
+            >
+              {candidatosParticipantes.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.nome} ({item.setor?.nome || 'Sem setor'})
+                </option>
+              ))}
+            </select>
+            <div className="flex justify-end gap-2 mt-3">
+              <button type="button" className="btn btn-outline" onClick={() => setShowAdicionarParticipantes(false)}>
+                Cancelar
+              </button>
+              <button type="button" className="btn btn-primary" onClick={confirmarAdicionarParticipantes}>
+                Adicionar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

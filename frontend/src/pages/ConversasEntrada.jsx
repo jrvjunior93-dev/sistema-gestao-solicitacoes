@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   criarConversa,
+  criarConversaEmMassa,
   getCaixaEntrada,
   getDestinatariosConversa
 } from '../services/conversasInternas';
+import { getSetores } from '../services/setores';
 
 function formatarDataHora(valor) {
   if (!valor) return '-';
@@ -13,17 +15,27 @@ function formatarDataHora(valor) {
   return data.toLocaleString('pt-BR');
 }
 
+function parseIdsSelecionados(options) {
+  return Array.from(options || [])
+    .map((opt) => Number(opt.value))
+    .filter((v) => Number.isInteger(v) && v > 0);
+}
+
 export default function ConversasEntrada() {
   const navigate = useNavigate();
   const [itens, setItens] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNova, setShowNova] = useState(false);
   const [destinatarios, setDestinatarios] = useState([]);
+  const [setores, setSetores] = useState([]);
   const [assunto, setAssunto] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [destinatarioId, setDestinatarioId] = useState('');
+  const [destinatariosMassaIds, setDestinatariosMassaIds] = useState([]);
+  const [setoresMassaIds, setSetoresMassaIds] = useState([]);
   const [arquivos, setArquivos] = useState([]);
   const [salvando, setSalvando] = useState(false);
+  const [modoMassa, setModoMassa] = useState(false);
 
   async function carregar() {
     try {
@@ -39,23 +51,60 @@ export default function ConversasEntrada() {
 
   async function abrirNovaConversa() {
     try {
-      const data = await getDestinatariosConversa();
-      setDestinatarios(Array.isArray(data) ? data : []);
+      const [usuarios, setoresAtivos] = await Promise.all([
+        getDestinatariosConversa(),
+        getSetores()
+      ]);
+      setDestinatarios(Array.isArray(usuarios) ? usuarios : []);
+      setSetores((Array.isArray(setoresAtivos) ? setoresAtivos : []).filter((item) => item.ativo !== false));
       setShowNova(true);
     } catch (error) {
-      alert(error?.message || 'Erro ao carregar destinatários');
+      alert(error?.message || 'Erro ao carregar opções');
     }
   }
 
   async function salvarNovaConversa(e) {
     e.preventDefault();
-    if (!destinatarioId || !assunto.trim() || !mensagem.trim()) {
-      alert('Preencha destinatário, assunto e mensagem.');
+    if (!assunto.trim()) {
+      alert('Preencha o assunto.');
+      return;
+    }
+    if (!mensagem.trim() && arquivos.length === 0) {
+      alert('Informe mensagem ou anexo.');
       return;
     }
 
     try {
       setSalvando(true);
+      if (modoMassa) {
+        if (destinatariosMassaIds.length === 0 && setoresMassaIds.length === 0) {
+          alert('Selecione usuários e/ou setores para envio em massa.');
+          return;
+        }
+        const result = await criarConversaEmMassa({
+          assunto: assunto.trim(),
+          mensagem: mensagem.trim(),
+          destinatarios_ids: destinatariosMassaIds,
+          setores_ids: setoresMassaIds,
+          files: arquivos
+        });
+        alert(`Mensagens enviadas com sucesso. Conversas criadas: ${result?.total || 0}.`);
+        setShowNova(false);
+        setAssunto('');
+        setMensagem('');
+        setDestinatarioId('');
+        setDestinatariosMassaIds([]);
+        setSetoresMassaIds([]);
+        setArquivos([]);
+        await carregar();
+        return;
+      }
+
+      if (!destinatarioId) {
+        alert('Selecione o destinatário.');
+        return;
+      }
+
       const result = await criarConversa({
         destinatario_id: Number(destinatarioId),
         assunto: assunto.trim(),
@@ -66,6 +115,8 @@ export default function ConversasEntrada() {
       setAssunto('');
       setMensagem('');
       setDestinatarioId('');
+      setDestinatariosMassaIds([]);
+      setSetoresMassaIds([]);
       setArquivos([]);
       await carregar();
       if (result?.id) {
@@ -110,6 +161,7 @@ export default function ConversasEntrada() {
               <th>Status</th>
               <th>Última mensagem</th>
               <th>Anexos</th>
+              <th>Participantes</th>
               <th>Atualizado em</th>
               <th>Ações</th>
             </tr>
@@ -117,12 +169,12 @@ export default function ConversasEntrada() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan="7" align="center">Carregando...</td>
+                <td colSpan="8" align="center">Carregando...</td>
               </tr>
             )}
             {!loading && itens.length === 0 && (
               <tr>
-                <td colSpan="7" align="center">Nenhuma conversa recebida.</td>
+                <td colSpan="8" align="center">Nenhuma conversa recebida.</td>
               </tr>
             )}
             {!loading && itens.map(item => (
@@ -132,6 +184,7 @@ export default function ConversasEntrada() {
                 <td>{item.status}</td>
                 <td>{item.ultima_mensagem?.mensagem || '-'}</td>
                 <td>{item.anexos_total ?? 0}</td>
+                <td>{item.participantes_total ?? 0}</td>
                 <td>{formatarDataHora(item.updatedAt)}</td>
                 <td>
                   <button
@@ -150,24 +203,81 @@ export default function ConversasEntrada() {
 
       {showNova && (
         <div className="fixed inset-0 bg-black/30 z-40 flex items-center justify-center p-4" onClick={() => !salvando && setShowNova(false)}>
-          <div className="card w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="card w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold mb-3">Nova conversa</h2>
             <form className="grid gap-3" onSubmit={salvarNovaConversa}>
-              <label className="text-sm">
-                <span className="block mb-1">Destinatário</span>
-                <select
-                  value={destinatarioId}
-                  onChange={(e) => setDestinatarioId(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-[var(--c-text)]"
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className={`btn ${!modoMassa ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => setModoMassa(false)}
                 >
-                  <option value="">Selecione...</option>
-                  {destinatarios.map(dest => (
-                    <option key={dest.id} value={dest.id}>
-                      {dest.nome} ({dest.setor?.nome || 'Sem setor'})
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  Individual
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${modoMassa ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => setModoMassa(true)}
+                >
+                  Em massa
+                </button>
+              </div>
+
+              {!modoMassa ? (
+                <label className="text-sm">
+                  <span className="block mb-1">Destinatário</span>
+                  <select
+                    value={destinatarioId}
+                    onChange={(e) => setDestinatarioId(e.target.value)}
+                    className="w-full rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-[var(--c-text)]"
+                  >
+                    <option value="">Selecione...</option>
+                    {destinatarios.map(dest => (
+                      <option key={dest.id} value={dest.id}>
+                        {dest.nome} ({dest.setor?.nome || 'Sem setor'})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="text-sm">
+                    <span className="block mb-1">Usuários (múltiplos)</span>
+                    <select
+                      multiple
+                      value={destinatariosMassaIds.map(String)}
+                      onChange={(e) => {
+                        setDestinatariosMassaIds(parseIdsSelecionados(e.target.selectedOptions));
+                      }}
+                      className="w-full min-h-[160px] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-[var(--c-text)]"
+                    >
+                      {destinatarios.map(dest => (
+                        <option key={dest.id} value={dest.id}>
+                          {dest.nome} ({dest.setor?.nome || 'Sem setor'})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="text-sm">
+                    <span className="block mb-1">Setores (múltiplos)</span>
+                    <select
+                      multiple
+                      value={setoresMassaIds.map(String)}
+                      onChange={(e) => {
+                        setSetoresMassaIds(parseIdsSelecionados(e.target.selectedOptions));
+                      }}
+                      className="w-full min-h-[160px] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-[var(--c-text)]"
+                    >
+                      {setores.map(setor => (
+                        <option key={setor.id} value={setor.id}>
+                          {setor.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
 
               <label className="text-sm">
                 <span className="block mb-1">Assunto</span>

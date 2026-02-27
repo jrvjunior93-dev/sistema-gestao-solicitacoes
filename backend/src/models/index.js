@@ -36,6 +36,7 @@ db.LogExclusao = require('./LogExclusao')(sequelize, Sequelize);
 db.ConversaInterna = require('./ConversaInterna')(sequelize, Sequelize);
 db.ConversaInternaMensagem = require('./ConversaInternaMensagem')(sequelize, Sequelize);
 db.ConversaInternaAnexo = require('./ConversaInternaAnexo')(sequelize, Sequelize);
+db.ConversaInternaParticipante = require('./ConversaInternaParticipante')(sequelize, Sequelize);
 
   
 
@@ -408,6 +409,36 @@ db.ConversaInternaMensagem.hasMany(db.ConversaInternaAnexo, {
 db.ConversaInternaAnexo.belongsTo(db.ConversaInternaMensagem, {
   foreignKey: 'mensagem_id',
   as: 'mensagem'
+});
+
+db.ConversaInterna.hasMany(db.ConversaInternaParticipante, {
+  foreignKey: 'conversa_id',
+  as: 'participantes'
+});
+
+db.ConversaInternaParticipante.belongsTo(db.ConversaInterna, {
+  foreignKey: 'conversa_id',
+  as: 'conversa'
+});
+
+db.User.hasMany(db.ConversaInternaParticipante, {
+  foreignKey: 'usuario_id',
+  as: 'participacoesConversaInterna'
+});
+
+db.ConversaInternaParticipante.belongsTo(db.User, {
+  foreignKey: 'usuario_id',
+  as: 'usuario'
+});
+
+db.User.hasMany(db.ConversaInternaParticipante, {
+  foreignKey: 'adicionado_por_id',
+  as: 'participantesAdicionadosConversaInterna'
+});
+
+db.ConversaInternaParticipante.belongsTo(db.User, {
+  foreignKey: 'adicionado_por_id',
+  as: 'adicionadoPor'
 });
 
 
