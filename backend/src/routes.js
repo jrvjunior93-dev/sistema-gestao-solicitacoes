@@ -322,6 +322,8 @@ router.post('/conversas-internas', uploadComprovantes.array('files'), ConversaIn
 router.post('/conversas-internas/massa', uploadComprovantes.array('files'), ConversaInternaController.criarEmMassa);
 router.post('/conversas-internas/:id/mensagens', uploadComprovantes.array('files'), ConversaInternaController.responder);
 router.post('/conversas-internas/:id/participantes', ConversaInternaController.adicionarParticipantes);
+router.patch('/conversas-internas/arquivar-massa', ConversaInternaController.arquivarMassa);
+router.patch('/conversas-internas/desarquivar-massa', ConversaInternaController.desarquivarMassa);
 router.patch('/conversas-internas/:id/concluir', ConversaInternaController.concluir);
 router.patch('/conversas-internas/:id/reabrir', ConversaInternaController.reabrir);
 router.patch('/conversas-internas/mensagens/:mensagemId', ConversaInternaController.editarMensagem);

@@ -37,6 +37,7 @@ db.ConversaInterna = require('./ConversaInterna')(sequelize, Sequelize);
 db.ConversaInternaMensagem = require('./ConversaInternaMensagem')(sequelize, Sequelize);
 db.ConversaInternaAnexo = require('./ConversaInternaAnexo')(sequelize, Sequelize);
 db.ConversaInternaParticipante = require('./ConversaInternaParticipante')(sequelize, Sequelize);
+db.ConversaInternaArquivoUsuario = require('./ConversaInternaArquivoUsuario')(sequelize, Sequelize);
 
   
 
@@ -439,6 +440,26 @@ db.User.hasMany(db.ConversaInternaParticipante, {
 db.ConversaInternaParticipante.belongsTo(db.User, {
   foreignKey: 'adicionado_por_id',
   as: 'adicionadoPor'
+});
+
+db.ConversaInterna.hasMany(db.ConversaInternaArquivoUsuario, {
+  foreignKey: 'conversa_id',
+  as: 'arquivamentos'
+});
+
+db.ConversaInternaArquivoUsuario.belongsTo(db.ConversaInterna, {
+  foreignKey: 'conversa_id',
+  as: 'conversa'
+});
+
+db.User.hasMany(db.ConversaInternaArquivoUsuario, {
+  foreignKey: 'usuario_id',
+  as: 'conversasArquivadas'
+});
+
+db.ConversaInternaArquivoUsuario.belongsTo(db.User, {
+  foreignKey: 'usuario_id',
+  as: 'usuario'
 });
 
 

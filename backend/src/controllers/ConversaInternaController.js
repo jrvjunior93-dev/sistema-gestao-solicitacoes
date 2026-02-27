@@ -4,6 +4,7 @@ const {
   ConversaInternaMensagem,
   ConversaInternaAnexo,
   ConversaInternaParticipante,
+  ConversaInternaArquivoUsuario,
   User,
   Setor
 } = require('../models');
@@ -20,9 +21,15 @@ function isSuperadmin(req) {
 }
 
 function extrairIdsNumericos(lista) {
-  if (!Array.isArray(lista)) return [];
+  const valores = Array.isArray(lista)
+    ? lista
+    : String(lista || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+
   return [...new Set(
-    lista
+    valores
       .map((item) => Number(item))
       .filter((id) => Number.isInteger(id) && id > 0)
   )];
@@ -173,6 +180,28 @@ async function criarConversaIndividual({ criadorId, destinatarioId, assunto, men
   return conversa;
 }
 
+function parseBoolean(valor) {
+  const texto = String(valor || '').trim().toLowerCase();
+  return texto === '1' || texto === 'true' || texto === 'sim';
+}
+
+async function filtrarPorArquivamento(conversas, usuarioId, somenteArquivadas) {
+  if (!Array.isArray(conversas) || conversas.length === 0) return [];
+  const conversaIds = conversas.map((item) => item.id);
+  const arquivadas = await ConversaInternaArquivoUsuario.findAll({
+    where: {
+      usuario_id: usuarioId,
+      conversa_id: { [Op.in]: conversaIds }
+    },
+    attributes: ['conversa_id']
+  });
+  const setArquivadas = new Set(arquivadas.map((item) => Number(item.conversa_id)));
+  return conversas.filter((item) => {
+    const estaArquivada = setArquivadas.has(Number(item.id));
+    return somenteArquivadas ? estaArquivada : !estaArquivada;
+  });
+}
+
 module.exports = {
   async opcoesDestinatario(req, res) {
     try {
@@ -209,6 +238,7 @@ module.exports = {
   async entrada(req, res) {
     try {
       let conversas = [];
+      const somenteArquivadas = parseBoolean(req.query?.arquivadas);
 
       if (isSuperadmin(req)) {
         conversas = await ConversaInterna.findAll({
@@ -269,6 +299,12 @@ module.exports = {
         await garantirParticipantesBasicos(conversa);
       }
 
+      conversas = await filtrarPorArquivamento(
+        conversas,
+        Number(req.user.id),
+        somenteArquivadas
+      );
+
       const itens = await Promise.all(conversas.map(montarResumoConversa));
       return res.json(itens);
     } catch (error) {
@@ -280,6 +316,7 @@ module.exports = {
   async saida(req, res) {
     try {
       const where = {};
+      const somenteArquivadas = parseBoolean(req.query?.arquivadas);
       if (!isSuperadmin(req)) {
         where.criado_por_id = req.user.id;
       }
@@ -306,6 +343,12 @@ module.exports = {
       for (const conversa of conversas) {
         await garantirParticipantesBasicos(conversa);
       }
+
+      conversas = await filtrarPorArquivamento(
+        conversas,
+        Number(req.user.id),
+        somenteArquivadas
+      );
 
       const itens = await Promise.all(conversas.map(montarResumoConversa));
       return res.json(itens);
@@ -361,8 +404,12 @@ module.exports = {
     try {
       const assunto = normalizarTexto(req.body?.assunto);
       const mensagemInicial = normalizarTexto(req.body?.mensagem);
-      const destinatariosIds = extrairIdsNumericos(req.body?.destinatarios_ids);
-      const setoresIds = extrairIdsNumericos(req.body?.setores_ids);
+      const destinatariosIds = extrairIdsNumericos(
+        req.body?.destinatarios_ids || req.body?.['destinatarios_ids[]']
+      );
+      const setoresIds = extrairIdsNumericos(
+        req.body?.setores_ids || req.body?.['setores_ids[]']
+      );
 
       if (!assunto) {
         return res.status(400).json({ error: 'Assunto obrigatorio' });
@@ -679,6 +726,56 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao adicionar participantes' });
+    }
+  },
+
+  async arquivarMassa(req, res) {
+    try {
+      const conversaIds = extrairIdsNumericos(req.body?.conversa_ids);
+      if (conversaIds.length === 0) {
+        return res.status(400).json({ error: 'Informe ao menos uma conversa para arquivar' });
+      }
+
+      for (const conversaId of conversaIds) {
+        const { conversa, permitido } = await podeVisualizarConversa(req, conversaId);
+        if (!conversa || !permitido) continue;
+
+        await ConversaInternaArquivoUsuario.findOrCreate({
+          where: {
+            conversa_id: conversaId,
+            usuario_id: req.user.id
+          },
+          defaults: {
+            arquivada_em: new Date()
+          }
+        });
+      }
+
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao arquivar conversas' });
+    }
+  },
+
+  async desarquivarMassa(req, res) {
+    try {
+      const conversaIds = extrairIdsNumericos(req.body?.conversa_ids);
+      if (conversaIds.length === 0) {
+        return res.status(400).json({ error: 'Informe ao menos uma conversa para desarquivar' });
+      }
+
+      await ConversaInternaArquivoUsuario.destroy({
+        where: {
+          usuario_id: req.user.id,
+          conversa_id: { [Op.in]: conversaIds }
+        }
+      });
+
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao desarquivar conversas' });
     }
   },
 

@@ -24,15 +24,15 @@ export async function getDestinatariosConversa(setorId) {
   return parseResponse(response, 'Erro ao buscar destinatarios');
 }
 
-export async function getCaixaEntrada() {
-  const response = await fetch(`${API_URL}/conversas-internas/entrada`, {
+export async function getCaixaEntrada({ arquivadas = false } = {}) {
+  const response = await fetch(`${API_URL}/conversas-internas/entrada?arquivadas=${arquivadas ? 1 : 0}`, {
     headers: authHeaders()
   });
   return parseResponse(response, 'Erro ao buscar caixa de entrada');
 }
 
-export async function getCaixaSaida() {
-  const response = await fetch(`${API_URL}/conversas-internas/saida`, {
+export async function getCaixaSaida({ arquivadas = false } = {}) {
+  const response = await fetch(`${API_URL}/conversas-internas/saida?arquivadas=${arquivadas ? 1 : 0}`, {
     headers: authHeaders()
   });
   return parseResponse(response, 'Erro ao buscar caixa de saida');
@@ -122,6 +122,24 @@ export async function adicionarParticipantesConversa(id, usuarioIds = []) {
     body: JSON.stringify({ usuario_ids: usuarioIds })
   });
   return parseResponse(response, 'Erro ao adicionar participantes');
+}
+
+export async function arquivarConversasEmMassa(conversaIds = []) {
+  const response = await fetch(`${API_URL}/conversas-internas/arquivar-massa`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ conversa_ids: conversaIds })
+  });
+  return parseResponse(response, 'Erro ao arquivar conversas');
+}
+
+export async function desarquivarConversasEmMassa(conversaIds = []) {
+  const response = await fetch(`${API_URL}/conversas-internas/desarquivar-massa`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ conversa_ids: conversaIds })
+  });
+  return parseResponse(response, 'Erro ao desarquivar conversas');
 }
 
 export async function concluirConversa(id) {
