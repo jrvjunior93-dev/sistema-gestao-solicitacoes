@@ -47,6 +47,15 @@ export default function ConversaDetalhe() {
   const [novosParticipantesIds, setNovosParticipantesIds] = useState([]);
   const [previewAnexo, setPreviewAnexo] = useState(null);
 
+  function alternarSelecionado(id) {
+    setNovosParticipantesIds((prev) => {
+      if (prev.includes(id)) {
+        return prev.filter((item) => item !== id);
+      }
+      return [...prev, id];
+    });
+  }
+
   async function carregar() {
     try {
       setLoading(true);
@@ -415,23 +424,25 @@ export default function ConversaDetalhe() {
         <div className="fixed inset-0 bg-black/30 z-40 flex items-center justify-center p-4" onClick={() => setShowAdicionarParticipantes(false)}>
           <div className="card w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-lg font-semibold mb-3">Adicionar participantes</h2>
-            <select
-              multiple
-              value={novosParticipantesIds.map(String)}
-              onChange={(e) => {
-                const ids = Array.from(e.target.selectedOptions)
-                  .map((opt) => Number(opt.value))
-                  .filter((val) => Number.isInteger(val) && val > 0);
-                setNovosParticipantesIds(ids);
-              }}
-              className="w-full min-h-[180px] rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-[var(--c-text)]"
-            >
-              {candidatosParticipantes.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.nome} ({item.setor?.nome || 'Sem setor'})
-                </option>
-              ))}
-            </select>
+            <div className="w-full min-h-[180px] max-h-[260px] overflow-auto rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-[var(--c-text)] space-y-2">
+              {candidatosParticipantes.map((item) => {
+                const idNumero = Number(item.id);
+                const checked = novosParticipantesIds.includes(idNumero);
+                return (
+                  <label key={item.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => alternarSelecionado(idNumero)}
+                    />
+                    <span>{item.nome} ({item.setor?.nome || 'Sem setor'})</span>
+                  </label>
+                );
+              })}
+              {candidatosParticipantes.length === 0 && (
+                <span className="text-sm text-[var(--c-muted)]">Nenhum usuário disponível para adicionar.</span>
+              )}
+            </div>
             <div className="flex justify-end gap-2 mt-3">
               <button type="button" className="btn btn-outline" onClick={() => setShowAdicionarParticipantes(false)}>
                 Cancelar
