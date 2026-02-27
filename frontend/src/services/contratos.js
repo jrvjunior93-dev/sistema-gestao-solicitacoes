@@ -45,6 +45,18 @@ export async function atualizarContrato(id, data) {
   return res.json();
 }
 
+export async function excluirContrato(id) {
+  const res = await fetch(`${API_URL}/contratos/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error || 'Erro ao excluir contrato');
+  }
+}
+
 export async function uploadContratoAnexos(id, files) {
   const formData = new FormData();
   files.forEach(file => formData.append('files', file));

@@ -571,6 +571,46 @@ module.exports = {
     }
   },
 
+  async excluir(req, res) {
+    try {
+      const podeAcessar = await isAdminGEO(req);
+      if (!podeAcessar) {
+        return res.status(403).json({ error: 'Acesso negado' });
+      }
+
+      const { id } = req.params;
+      const contrato = await Contrato.findByPk(id);
+      if (!contrato) {
+        return res.status(404).json({ error: 'Contrato não encontrado' });
+      }
+
+      const totalSolicitacoesRelacionadas = await Solicitacao.count({
+        where: {
+          [Op.or]: [
+            { contrato_id: contrato.id },
+            { codigo_contrato: contrato.codigo }
+          ]
+        }
+      });
+
+      if (totalSolicitacoesRelacionadas > 0) {
+        return res.status(409).json({
+          error: 'Não é possível excluir contrato com solicitações vinculadas.'
+        });
+      }
+
+      await ContratoAnexo.destroy({
+        where: { contrato_id: contrato.id }
+      });
+
+      await contrato.destroy();
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao excluir contrato' });
+    }
+  },
+
   async uploadAnexos(req, res) {
     try {
       const podeAcessar = await isAdminGEO(req);

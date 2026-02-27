@@ -300,6 +300,7 @@ router.post('/contratos', ContratoController.create);
 router.post('/contratos/importar-massa', permit(['SUPERADMIN']), uploadComprovantes.single('file'), ContratoController.importarMassa);
 router.post('/contratos/:id/anexos', uploadComprovantes.array('files'), ContratoController.uploadAnexos);
 router.patch('/contratos/:id', ContratoController.update);
+router.delete('/contratos/:id', ContratoController.excluir);
 router.patch('/contratos/:id/ativar', ContratoController.ativar);
 router.patch('/contratos/:id/desativar', ContratoController.desativar);
 

@@ -6,6 +6,7 @@ import { getMinhasObras, getObras } from '../services/obras';
 import {
   atualizarContrato,
   criarContrato,
+  excluirContrato,
   getContratoAnexos,
   getContratos,
   getContratosResumo,
@@ -213,6 +214,18 @@ export default function GestaoContratos() {
     } catch (error) {
       console.error(error);
       alert('Erro ao salvar ajustes.');
+    }
+  }
+
+  async function excluirContratoItem(contrato) {
+    if (!confirm(`Excluir o contrato ${contrato.codigo}?`)) return;
+    try {
+      await excluirContrato(contrato.id);
+      await carregar();
+      alert('Contrato excluído com sucesso.');
+    } catch (error) {
+      console.error(error);
+      alert(error?.message || 'Erro ao excluir contrato.');
     }
   }
 
@@ -742,12 +755,20 @@ export default function GestaoContratos() {
                   </button>
                 </td>
                 <td className="p-3">
-                  <button
-                    className="text-green-600"
-                    onClick={() => salvarAjustes(c)}
-                  >
-                    Salvar
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      className="text-green-600"
+                      onClick={() => salvarAjustes(c)}
+                    >
+                      Salvar
+                    </button>
+                    <button
+                      className="text-red-600"
+                      onClick={() => excluirContratoItem(c)}
+                    >
+                      Excluir
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
