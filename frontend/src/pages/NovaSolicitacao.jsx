@@ -117,6 +117,22 @@ export default function NovaSolicitacao() {
     setForm({ ...form, [e.target.name]: e.target.value });
   }
 
+  function limparSelecaoObraERegras() {
+    setForm(prev => ({
+      ...prev,
+      obra_id: '',
+      area_responsavel: '',
+      tipo_solicitacao_id: '',
+      tipo_sub_id: '',
+      contrato_id: '',
+      codigo_contrato: ''
+    }));
+    setContratos([]);
+    setContratosRef([]);
+    setRefContratoBusca('');
+    setRefResultados([]);
+  }
+
   const tipoSelecionado = tipos.find(t => String(t.id) === String(form.tipo_solicitacao_id));
   const nomeTipoSelecionado = String(tipoSelecionado?.nome || '').trim().toUpperCase();
   const nomeTipoNormalizado = useMemo(() => {
@@ -454,7 +470,22 @@ export default function NovaSolicitacao() {
                 className="input"
                 placeholder="Ex: OBRA123"
                 value={obraCodigo}
-                onChange={e => setObraCodigo(e.target.value)}
+                onChange={e => {
+                  const novoCodigo = e.target.value;
+                  setObraCodigo(novoCodigo);
+
+                  if (!form.obra_id) return;
+                  const obraSelecionada = obras.find(o => String(o.id) === String(form.obra_id));
+                  if (!obraSelecionada) {
+                    limparSelecaoObraERegras();
+                    return;
+                  }
+
+                  const codigoAtual = String(obraSelecionada.codigo || '');
+                  if (String(novoCodigo) !== codigoAtual) {
+                    limparSelecaoObraERegras();
+                  }
+                }}
               />
               <button type="button" className="btn btn-outline" onClick={buscarObrasPorCodigo}>
                 Buscar
@@ -469,7 +500,22 @@ export default function NovaSolicitacao() {
                 className="input"
                 placeholder="Buscar por descrição"
                 value={obraDescricao}
-                onChange={e => setObraDescricao(e.target.value)}
+                onChange={e => {
+                  const novaDescricao = e.target.value;
+                  setObraDescricao(novaDescricao);
+
+                  if (!form.obra_id) return;
+                  const obraSelecionada = obras.find(o => String(o.id) === String(form.obra_id));
+                  if (!obraSelecionada) {
+                    limparSelecaoObraERegras();
+                    return;
+                  }
+
+                  const descricaoAtual = String(obraSelecionada.nome || '');
+                  if (String(novaDescricao) !== descricaoAtual) {
+                    limparSelecaoObraERegras();
+                  }
+                }}
               />
               <button type="button" className="btn btn-outline" onClick={buscarObrasPorDescricao}>
                 Buscar
