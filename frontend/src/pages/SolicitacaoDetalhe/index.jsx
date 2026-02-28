@@ -8,6 +8,7 @@ import Comentarios from './Comentarios';
 import Anexos from './Anexos';
 import Pedido from './Pedido';
 import ModalAlterarStatus from './ModalAlterarStatus';
+import ModalEnviarSetor from '../Solicitacoes/ModalEnviarSetor';
 import { updateStatusSolicitacao } from '../../services/solicitacoes';
 import { API_URL, authHeaders } from '../../services/api';
 
@@ -29,6 +30,7 @@ export default function SolicitacaoDetalhe() {
   const [solicitacao, setSolicitacao] = useState(null);
   const [loading, setLoading] = useState(true);
   const [modalStatus, setModalStatus] = useState(false);
+  const [modalEnviarSetor, setModalEnviarSetor] = useState(false);
 
   const perfil = String(user?.perfil || '').trim().toUpperCase();
   const setorUsuario =
@@ -104,7 +106,9 @@ export default function SolicitacaoDetalhe() {
       <Header
         solicitacao={solicitacao}
         onAlterarStatus={() => setModalStatus(true)}
+        onEnviarSetor={() => setModalEnviarSetor(true)}
         mostrarAlterarStatus
+        mostrarEnviarSetor
       />
 
       {/* CONTEÚDO */}
@@ -150,6 +154,14 @@ export default function SolicitacaoDetalhe() {
         onClose={() => setModalStatus(false)}
         onSalvar={salvarStatus}
       />
+
+      {modalEnviarSetor && (
+        <ModalEnviarSetor
+          solicitacaoId={solicitacao.id}
+          onClose={() => setModalEnviarSetor(false)}
+          onSucesso={carregar}
+        />
+      )}
 
     </div>
   );

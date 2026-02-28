@@ -28,7 +28,9 @@ function extrairMensagemErro(error) {
 export default function Header({
   solicitacao,
   onAlterarStatus,
+  onEnviarSetor,
   mostrarAlterarStatus = true,
+  mostrarEnviarSetor = true,
   podeEditarRefContrato = false,
   contratosObra = [],
   onSalvarRefContrato
@@ -86,13 +88,21 @@ export default function Header({
         </div>
 
         <div className="flex items-center gap-3">
-          <StatusBadge status={solicitacao.status_global} setor={setorStatusAtual} />
           {mostrarAlterarStatus && (
             <button
               onClick={onAlterarStatus}
               className="btn btn-outline"
             >
               Alterar status
+            </button>
+          )}
+          <StatusBadge status={solicitacao.status_global} setor={setorStatusAtual} />
+          {mostrarEnviarSetor && (
+            <button
+              onClick={onEnviarSetor}
+              className="btn btn-outline"
+            >
+              Enviar para outro setor
             </button>
           )}
         </div>
