@@ -504,7 +504,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   }
 
   return (
-    <div className="px-0 py-1 md:py-2">
+    <div className="solicitacoes-page px-0 py-1 md:py-2">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4 md:mb-6">
         <h1 className="text-xl md:text-2xl font-semibold">
           {arquivadas ? 'Solicitações Arquivadas' : 'Solicitações'}
@@ -524,7 +524,7 @@ export default function Solicitacoes({ arquivadas = false }) {
       />
 
       {!arquivadas && (
-        <div className="acoes-massa-solicitacoes relative bg-white dark:bg-slate-900 p-3 md:p-4 rounded-xl shadow ring-1 ring-gray-200 dark:ring-slate-700 mb-4 flex flex-col xl:flex-row xl:items-center gap-3">
+        <div className="acoes-massa-solicitacoes solicitacoes-toolbar relative bg-white dark:bg-slate-900 p-3 md:p-4 rounded-xl shadow ring-1 ring-gray-200 dark:ring-slate-700 mb-4 flex flex-col xl:flex-row xl:items-center gap-3">
           <div className="text-sm text-gray-600 dark:text-slate-300">
             Selecionadas: <strong>{selecionadasIds.length}</strong>
           </div>

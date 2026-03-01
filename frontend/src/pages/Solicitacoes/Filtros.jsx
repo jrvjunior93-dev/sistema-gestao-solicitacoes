@@ -72,7 +72,7 @@ export default function Filtros({
   ].filter(v => String(v || '').trim() !== '').length;
 
   return (
-    <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl shadow mb-4 md:mb-6 ring-1 ring-gray-200 dark:ring-slate-700">
+    <div className="solicitacoes-filtros bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl shadow mb-4 md:mb-6 ring-1 ring-gray-200 dark:ring-slate-700">
       <div className="md:hidden mb-3">
         <button
           type="button"

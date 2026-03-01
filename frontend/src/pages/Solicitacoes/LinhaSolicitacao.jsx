@@ -369,10 +369,10 @@ export default function LinhaSolicitacao({
 
         {mostrarColuna('acoes') && (
         <td {...tdBase('Ações', 'p-2 whitespace-nowrap')}>
-          <div className={`flex gap-2 ${isMobileCard ? 'flex-wrap' : 'flex-nowrap'}`}>
+          <div className={`solicitacao-acoes ${isMobileCard ? 'flex-wrap' : 'flex-nowrap'}`}>
 
           <button
-            className="hover:underline text-xs"
+            className="acao-link"
             style={{ color: acaoCores.ver || '#2563eb' }}
             onClick={() =>
               navigate(`/solicitacoes/${solicitacao.id}`)
@@ -382,7 +382,7 @@ export default function LinhaSolicitacao({
           </button>
           {podeAssumir && (
             <button
-              className="text-xs hover:underline"
+              className="acao-link"
               style={{ color: acaoCores.assumir || '#16a34a' }}
               onClick={async () => {
                 const res = await fetch(
@@ -413,7 +413,7 @@ export default function LinhaSolicitacao({
 
           {podeAtribuir && (
             <button
-              className="hover:underline text-xs"
+              className="acao-link"
               style={{ color: acaoCores.atribuir || '#7c3aed' }}
               onClick={() => setModalAtribuir(true)}
             >
@@ -423,7 +423,7 @@ export default function LinhaSolicitacao({
 
           {!isSetorObra && (
             <button
-              className="hover:underline text-xs"
+              className="acao-link"
               style={{ color: acaoCores.enviar || '#f97316' }}
               onClick={() => setModalEnviar(true)}
             >
@@ -433,7 +433,7 @@ export default function LinhaSolicitacao({
 
           {(isSuperadmin || isAdminGEO) && (
             <button
-              className="hover:underline text-xs"
+              className="acao-link"
               style={{ color: '#dc2626' }}
               onClick={excluirSolicitacao}
             >
@@ -443,7 +443,7 @@ export default function LinhaSolicitacao({
 
           {!mostrarArquivadas ? (
             <button
-              className="hover:underline text-xs"
+              className="acao-link"
               style={{ color: acaoCores.ocultar || '#6b7280' }}
               onClick={arquivarItem}
             >
@@ -451,7 +451,7 @@ export default function LinhaSolicitacao({
             </button>
           ) : (
             <button
-              className="hover:underline text-xs"
+              className="acao-link"
               style={{ color: acaoCores.ocultar || '#6b7280' }}
               onClick={desarquivarItem}
             >

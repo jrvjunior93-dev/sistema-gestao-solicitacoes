@@ -241,7 +241,7 @@ export default function TabelaSolicitacoes({
   }, [solicitacoesOrdenadas.length, totalTableWidth, columns.length, visibleColumns]);
 
   return (
-    <div className={`bg-white dark:bg-slate-900 rounded-xl shadow ring-1 ring-gray-200 dark:ring-slate-700 solicitacoes-table-shell solicitacoes-table-shell--${viewportMode}`}>
+    <div className={`bg-white dark:bg-slate-900 rounded-xl shadow ring-1 ring-gray-200 dark:ring-slate-700 solicitacoes-table-shell solicitacoes-table-shell--${viewportMode} solicitacoes-table-compact`}>
       <div
         ref={tableWrapRef}
         className="overflow-x-auto overflow-y-auto max-h-[70vh] scrollbar-thin"
