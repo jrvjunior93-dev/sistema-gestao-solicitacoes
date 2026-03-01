@@ -953,11 +953,11 @@ table th {
    Global controls (lighter UI)
 ============================ */
 :root {
-  --ui-control-height: 40px;
-  --ui-control-radius: 9px;
-  --ui-control-font: 0.92rem;
-  --ui-control-padding-y: 0.5rem;
-  --ui-control-padding-x: 0.75rem;
+  --ui-control-height: 36px;
+  --ui-control-radius: 8px;
+  --ui-control-font: 0.88rem;
+  --ui-control-padding-y: 0.38rem;
+  --ui-control-padding-x: 0.65rem;
 }
 
 .input {
@@ -977,11 +977,11 @@ textarea.input {
   padding: var(--ui-control-padding-y) calc(var(--ui-control-padding-x) + 0.1rem);
   border-radius: var(--ui-control-radius);
   font-size: var(--ui-control-font);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 @media (max-width: 767px) {
   :root {
-    --ui-control-height: 42px;
+    --ui-control-height: 40px;
   }
 }
