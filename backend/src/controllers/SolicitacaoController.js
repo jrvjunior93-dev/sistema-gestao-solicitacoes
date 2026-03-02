@@ -999,24 +999,53 @@ module.exports = {
       if (responsavel) {
         const responsavelFiltro = String(responsavel).trim();
         if (responsavelFiltro) {
-          const filtroEscapado = responsavelFiltro.replace(/'/g, "''");
+          const responsaveisSelecionados = responsavelFiltro
+            .split(',')
+            .map(item => String(item || '').trim())
+            .filter(Boolean);
+
           where[Op.and] = where[Op.and] || [];
-          where[Op.and].push(
-            Sequelize.literal(`EXISTS (
-              SELECT 1
-              FROM historicos h
-              INNER JOIN users u ON u.id = h.usuario_responsavel_id
-              WHERE h.solicitacao_id = Solicitacao.id
-                AND h.acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
-                AND h.createdAt = (
-                  SELECT MAX(h2.createdAt)
-                  FROM historicos h2
-                  WHERE h2.solicitacao_id = Solicitacao.id
-                    AND h2.acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
-                )
-                AND UPPER(u.nome) LIKE UPPER('%${filtroEscapado}%')
-            )`)
-          );
+
+          if (responsaveisSelecionados.length > 1) {
+            const valoresIn = responsaveisSelecionados
+              .map(item => `'${item.replace(/'/g, "''").toUpperCase()}'`)
+              .join(', ');
+
+            where[Op.and].push(
+              Sequelize.literal(`EXISTS (
+                SELECT 1
+                FROM historicos h
+                INNER JOIN users u ON u.id = h.usuario_responsavel_id
+                WHERE h.solicitacao_id = Solicitacao.id
+                  AND h.acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
+                  AND h.createdAt = (
+                    SELECT MAX(h2.createdAt)
+                    FROM historicos h2
+                    WHERE h2.solicitacao_id = Solicitacao.id
+                      AND h2.acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
+                  )
+                  AND UPPER(u.nome) IN (${valoresIn})
+              )`)
+            );
+          } else {
+            const filtroEscapado = responsaveisSelecionados[0].replace(/'/g, "''");
+            where[Op.and].push(
+              Sequelize.literal(`EXISTS (
+                SELECT 1
+                FROM historicos h
+                INNER JOIN users u ON u.id = h.usuario_responsavel_id
+                WHERE h.solicitacao_id = Solicitacao.id
+                  AND h.acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
+                  AND h.createdAt = (
+                    SELECT MAX(h2.createdAt)
+                    FROM historicos h2
+                    WHERE h2.solicitacao_id = Solicitacao.id
+                      AND h2.acao IN ('RESPONSAVEL_ATRIBUIDO', 'RESPONSAVEL_ASSUMIU')
+                  )
+                  AND UPPER(u.nome) LIKE UPPER('%${filtroEscapado}%')
+              )`)
+            );
+          }
         }
       }
       /* ===============================

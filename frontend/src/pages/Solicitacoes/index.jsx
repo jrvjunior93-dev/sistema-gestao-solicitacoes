@@ -16,7 +16,6 @@ import ModalEnviarSetor from './ModalEnviarSetor';
 import { API_URL, authHeaders } from '../../services/api';
 import { getSetores } from '../../services/setores';
 import { getTiposSolicitacao } from '../../services/tiposSolicitacao';
-import { getMinhasObras } from '../../services/obras';
 import { getSetorPermissoes } from '../../services/setorPermissoes';
 import { getStatusSetor } from '../../services/statusSetor';
 import { useAuth } from '../../contexts/AuthContext';
@@ -48,11 +47,16 @@ export default function Solicitacoes({ arquivadas = false }) {
   const [setoresLista, setSetoresLista] = useState([]);
   const [tiposSolicitacao, setTiposSolicitacao] = useState([]);
   const [statusOptions, setStatusOptions] = useState([]);
+  const [obrasOptions, setObrasOptions] = useState([]);
+  const [responsaveisOptions, setResponsaveisOptions] = useState([]);
   const [permissaoUsuario, setPermissaoUsuario] = useState(null);
   const [selecionadasIds, setSelecionadasIds] = useState([]);
   const [modalEnvioMassa, setModalEnvioMassa] = useState(false);
   const [modalAtribuir, setModalAtribuir] = useState(false);
   const [modalEnviarUnitario, setModalEnviarUnitario] = useState(false);
+  const [modalAtribuirMassa, setModalAtribuirMassa] = useState(false);
+  const [usuariosAtribuicao, setUsuariosAtribuicao] = useState([]);
+  const [usuarioAtribuicaoMassa, setUsuarioAtribuicaoMassa] = useState('');
   const [setorEnvioMassa, setSetorEnvioMassa] = useState('');
   const [processandoMassa, setProcessandoMassa] = useState(false);
   const [mostrarSeletorColunas, setMostrarSeletorColunas] = useState(false);
@@ -66,7 +70,6 @@ export default function Solicitacoes({ arquivadas = false }) {
   const { user } = useAuth();
 
   const [filtros, setFiltros] = useState({
-    obra_descricao: '',
     obra_ids: '',
     area: '',
     tipo_solicitacao_id: '',
@@ -190,6 +193,43 @@ export default function Solicitacoes({ arquivadas = false }) {
     }
   }
 
+  function montarOpcoesObrasEResponsaveis(lista) {
+    const obrasMap = new Map();
+    const responsaveisMap = new Map();
+
+    (Array.isArray(lista) ? lista : []).forEach(item => {
+      const obraId = item?.obra?.id ?? item?.obra_id;
+      const obraNome = item?.obra?.nome || null;
+      if (obraId && obraNome) {
+        const chave = String(obraId);
+        if (!obrasMap.has(chave)) {
+          obrasMap.set(chave, {
+            value: chave,
+            label: obraNome
+          });
+        }
+      }
+
+      const responsavel = String(item?.responsavel || '').trim();
+      if (responsavel && responsavel !== '-') {
+        const chaveResp = responsavel.toUpperCase();
+        if (!responsaveisMap.has(chaveResp)) {
+          responsaveisMap.set(chaveResp, {
+            value: responsavel,
+            label: responsavel
+          });
+        }
+      }
+    });
+
+    setObrasOptions(
+      Array.from(obrasMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
+    );
+    setResponsaveisOptions(
+      Array.from(responsaveisMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
+    );
+  }
+
   async function carregar() {
     try {
       setLoading(true);
@@ -215,7 +255,9 @@ export default function Solicitacoes({ arquivadas = false }) {
       }
 
       const data = await res.json();
-      setSolicitacoes(Array.isArray(data) ? data : []);
+      const lista = Array.isArray(data) ? data : [];
+      setSolicitacoes(lista);
+      montarOpcoesObrasEResponsaveis(lista);
       setSelecionadasIds([]);
     } catch (error) {
       console.error(error);
@@ -223,22 +265,6 @@ export default function Solicitacoes({ arquivadas = false }) {
     } finally {
       setLoading(false);
     }
-  }
-
-  async function buscarObraDescricao() {
-    const descricao = (filtros.obra_descricao || '').trim();
-    if (!descricao) {
-      setFiltros(prev => ({ ...prev, obra_ids: '' }));
-      return;
-    }
-    const data = await getMinhasObras({ descricao });
-    const lista = Array.isArray(data) ? data : [];
-    if (lista.length === 0) {
-      setFiltros(prev => ({ ...prev, obra_ids: '0' }));
-      return;
-    }
-    const ids = lista.map(o => o.id).join(',');
-    setFiltros(prev => ({ ...prev, obra_ids: ids }));
   }
 
   const perfilUpper = String(user?.perfil || '').toUpperCase();
@@ -541,6 +567,14 @@ export default function Solicitacoes({ arquivadas = false }) {
     const isUsuario = user?.perfil === 'USUARIO';
     return isUsuario ? (!!permissaoUsuario?.usuario_pode_atribuir || isSetorFinanceiro) : true;
   }, [selecionadaUnica, isSetorObra, permissaoUsuario, user?.perfil, isSetorFinanceiro]);
+  const podeAtribuirMassa = useMemo(() => {
+    if (selecionadasIds.length <= 1) return false;
+    if (isSetorObra) return false;
+    const modo = String(permissaoUsuario?.modo_recebimento || 'TODOS_VISIVEIS').toUpperCase();
+    if (modo !== 'TODOS_VISIVEIS') return false;
+    const isUsuario = user?.perfil === 'USUARIO';
+    return isUsuario ? (!!permissaoUsuario?.usuario_pode_atribuir || isSetorFinanceiro) : true;
+  }, [selecionadasIds.length, isSetorObra, permissaoUsuario, user?.perfil, isSetorFinanceiro]);
 
   const podeExcluirUnica = !!selecionadaUnica && (isSuperadmin || isAdminGEO);
 
@@ -589,6 +623,92 @@ export default function Solicitacoes({ arquivadas = false }) {
     }
   }
 
+  async function carregarUsuariosAtribuicao() {
+    try {
+      const res = await fetch(`${API_URL}/usuarios/opcoes-atribuicao`, {
+        headers: authHeaders()
+      });
+      if (!res.ok) {
+        setUsuariosAtribuicao([]);
+        return;
+      }
+
+      const data = await res.json();
+      const lista = Array.isArray(data) ? data : [];
+      const setorUsuario = user?.setor_id ? String(user.setor_id) : '';
+      const filtrados = setorUsuario
+        ? lista.filter(u => String(u.setor_id) === setorUsuario)
+        : lista;
+      setUsuariosAtribuicao(filtrados);
+    } catch (error) {
+      console.error(error);
+      setUsuariosAtribuicao([]);
+    }
+  }
+
+  async function abrirModalAtribuirMassa() {
+    setUsuarioAtribuicaoMassa('');
+    await carregarUsuariosAtribuicao();
+    setModalAtribuirMassa(true);
+  }
+
+  async function confirmarAtribuirMassa() {
+    if (!usuarioAtribuicaoMassa) {
+      alert('Selecione um usuário.');
+      return;
+    }
+    if (selecionadasIds.length <= 1) {
+      alert('Selecione mais de uma solicitação.');
+      return;
+    }
+
+    try {
+      setProcessandoMassa(true);
+      let sucesso = 0;
+      const erros = [];
+
+      for (const solicitacaoId of selecionadasIds) {
+        try {
+          const res = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/atribuir`, {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({
+              usuario_responsavel_id: usuarioAtribuicaoMassa
+            })
+          });
+
+          if (!res.ok) {
+            let mensagem = 'Erro ao atribuir';
+            try {
+              const data = await res.json();
+              mensagem = data?.error || mensagem;
+            } catch (_) {}
+            erros.push(`SOL-${solicitacaoId}: ${mensagem}`);
+            continue;
+          }
+
+          sucesso += 1;
+        } catch (error) {
+          erros.push(`SOL-${solicitacaoId}: falha de conexão`);
+        }
+      }
+
+      setModalAtribuirMassa(false);
+      await carregar();
+
+      if (erros.length > 0) {
+        alert(`Atribuição em massa concluída. Sucesso: ${sucesso}. Falhas: ${erros.length}.`);
+      } else {
+        alert('Atribuição em massa realizada com sucesso.');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao atribuir em massa.');
+    } finally {
+      setProcessandoMassa(false);
+    }
+  }
+
   return (
     <div className="solicitacoes-page px-0 py-1 md:py-2">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4 md:mb-6">
@@ -600,7 +720,8 @@ export default function Solicitacoes({ arquivadas = false }) {
       <Filtros
         filtros={filtros}
         setFiltros={setFiltros}
-        onBuscarObraDescricao={buscarObraDescricao}
+        obrasOptions={obrasOptions}
+        responsaveisOptions={responsaveisOptions}
         setores={setoresLista}
         tiposSolicitacao={tiposSolicitacao}
         statusOptions={statusOptions}
@@ -810,6 +931,19 @@ export default function Solicitacoes({ arquivadas = false }) {
             </button>
           )}
 
+          {podeAtribuirMassa && (
+            <button
+              type="button"
+              className="btn btn-outline !min-h-0 h-9 px-3 inline-flex items-center gap-2"
+              onClick={abrirModalAtribuirMassa}
+              disabled={processandoMassa}
+              title="Atribuir responsável em massa"
+            >
+              <HiOutlineUserPlus className="w-4 h-4" />
+              <span className="hidden sm:inline">Atribuir em massa</span>
+            </button>
+          )}
+
           {selecionadaUnica && podeExcluirUnica && (
             <button
               type="button"
@@ -852,6 +986,48 @@ export default function Solicitacoes({ arquivadas = false }) {
           onClose={() => setModalEnviarUnitario(false)}
           onSucesso={carregar}
         />
+      )}
+
+      {modalAtribuirMassa && !arquivadas && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-3">
+          <div className="bg-white dark:bg-slate-900 p-4 md:p-6 rounded-xl w-full max-w-md ring-1 ring-gray-200 dark:ring-slate-700">
+            <h2 className="text-lg font-semibold mb-3">Atribuir em massa</h2>
+            <p className="text-sm text-gray-600 dark:text-slate-300 mb-3">
+              Selecionadas: {selecionadasIds.length}
+            </p>
+            <select
+              className="input mb-4"
+              value={usuarioAtribuicaoMassa}
+              onChange={e => setUsuarioAtribuicaoMassa(e.target.value)}
+            >
+              <option value="">Selecione um usuário</option>
+              {usuariosAtribuicao.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.nome}
+                </option>
+              ))}
+            </select>
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setModalAtribuirMassa(false)}
+                disabled={processandoMassa}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn bg-purple-600 text-white disabled:opacity-60"
+                onClick={confirmarAtribuirMassa}
+                disabled={processandoMassa}
+              >
+                {processandoMassa ? 'Atribuindo...' : 'Atribuir'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {modalEnvioMassa && !arquivadas && (
