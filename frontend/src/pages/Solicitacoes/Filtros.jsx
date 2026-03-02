@@ -205,22 +205,19 @@ export default function Filtros({
           </div>
 
           {mostrarFiltroResponsavel && (
-            <div>
-              <label className="text-sm text-gray-600 block mb-1">Responsáveis</label>
-              <select
-                name="responsavel"
-                className="input"
-                value={filtros.responsavel || ''}
-                onChange={handleChange}
-              >
-                <option value="">Responsável</option>
-                {responsaveisOptions.map(responsavel => (
-                  <option key={responsavel.value} value={responsavel.value}>
-                    {responsavel.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              name="responsavel"
+              className="input"
+              value={filtros.responsavel || ''}
+              onChange={handleChange}
+            >
+              <option value="">Responsável</option>
+              {responsaveisOptions.map(responsavel => (
+                <option key={responsavel.value} value={responsavel.value}>
+                  {responsavel.label}
+                </option>
+              ))}
+            </select>
           )}
 
           <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end md:col-span-2 xl:col-span-2">
