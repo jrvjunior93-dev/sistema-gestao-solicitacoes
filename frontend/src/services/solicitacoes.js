@@ -20,7 +20,17 @@ export async function createSolicitacao(data) {
   });
 
   if (!res.ok) {
-    throw new Error('Erro ao criar solicitação');
+    let mensagem = 'Erro ao criar solicitacao';
+    try {
+      const json = await res.json();
+      mensagem = json?.error || mensagem;
+    } catch (_) {
+      try {
+        const text = await res.text();
+        if (text) mensagem = text;
+      } catch (_) {}
+    }
+    throw new Error(mensagem);
   }
 
   return res.json();
@@ -154,5 +164,6 @@ export async function enviarSolicitacoesParaSetorEmMassa({ solicitacao_ids, seto
 
   return res.json();
 }
+
 
 

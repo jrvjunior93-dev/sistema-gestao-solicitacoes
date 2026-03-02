@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
-import { getMinhasObras, getObras } from '../services/obras';
+import { getMinhasObras } from '../services/obras';
 import { getTiposSolicitacao } from '../services/tiposSolicitacao';
 import { getSetores } from '../services/setores';
 import { createSolicitacao } from '../services/solicitacoes';
@@ -105,9 +105,15 @@ export default function NovaSolicitacao() {
     }
 
     async function loadContratos() {
-      const data = await getContratos({ obra_id: form.obra_id });
-      setContratos(Array.isArray(data) ? data : []);
-      setContratosRef([]);
+      try {
+        const data = await getContratos({ obra_id: form.obra_id, modo: 'CRIACAO' });
+        setContratos(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error(error);
+        setContratos([]);
+      } finally {
+        setContratosRef([]);
+      }
     }
 
     loadContratos();
@@ -182,67 +188,84 @@ export default function NovaSolicitacao() {
   }
 
   async function buscarObrasPorCodigo() {
-    const codigo = obraCodigo.trim().toUpperCase();
-    if (!codigo) return;
-    const data = await getMinhasObras({ codigo, modo: 'CRIACAO' });
-    const lista = Array.isArray(data) ? data : [];
-    if (lista.length === 1) {
-      const obra = lista[0];
-      setForm(prev => ({ ...prev, obra_id: String(obra.id) }));
-      setObraDescricao(obra.nome || '');
-      setObras(lista);
+    try {
+      const codigo = obraCodigo.trim().toUpperCase();
+      if (!codigo) return;
+      const data = await getMinhasObras({ codigo, modo: 'CRIACAO' });
+      const lista = Array.isArray(data) ? data : [];
+      if (lista.length === 1) {
+        const obra = lista[0];
+        setForm(prev => ({ ...prev, obra_id: String(obra.id) }));
+        setObraDescricao(obra.nome || '');
+        setObras(lista);
+        return;
+      }
+      alert('Obra nao encontrada');
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao buscar obra por codigo');
       return;
     }
-    alert('Obra nao encontrada');
   }
 
   async function buscarObrasPorDescricao() {
-    const descricao = obraDescricao.trim();
-    if (!descricao) return;
-    const data = await getObras({ descricao });
-    const lista = Array.isArray(data) ? data : [];
-    if (lista.length === 0) {
-      alert('Nenhuma obra encontrada');
+    try {
+      const descricao = obraDescricao.trim();
+      if (!descricao) return;
+      const data = await getMinhasObras({ descricao, modo: 'CRIACAO' });
+      const lista = Array.isArray(data) ? data : [];
+      if (lista.length === 0) {
+        alert('Nenhuma obra encontrada');
+        return;
+      }
+      setListaModal(lista);
+      setModalObras(true);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao buscar obra por descricao');
       return;
     }
-    setListaModal(lista);
-    setModalObras(true);
   }
 
   async function buscarRefContrato() {
-    if (!form.obra_id) {
-      alert('Selecione uma obra antes de buscar a ref. do contrato.');
-      setRefResultados([]);
-      setContratosRef([]);
-      return;
-    }
+    try {
+      if (!form.obra_id) {
+        alert('Selecione uma obra antes de buscar a ref. do contrato.');
+        setRefResultados([]);
+        setContratosRef([]);
+        return;
+      }
 
-    const termo = refContratoBusca.trim();
-    if (!termo) return;
-    const listaBase = Array.isArray(contratos) ? contratos : [];
-    const termoNormalizado = termo
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toUpperCase();
-    const lista = listaBase.filter(item => {
-      const ref = String(item?.ref_contrato || '');
-      const refNormalizada = ref
+      const termo = refContratoBusca.trim();
+      if (!termo) return;
+      const listaBase = Array.isArray(contratos) ? contratos : [];
+      const termoNormalizado = termo
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toUpperCase();
-      return refNormalizada.includes(termoNormalizado);
-    });
+      const lista = listaBase.filter(item => {
+        const ref = String(item?.ref_contrato || '');
+        const refNormalizada = ref
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toUpperCase();
+        return refNormalizada.includes(termoNormalizado);
+      });
 
-    if (lista.length === 0) {
-      alert('Nenhuma referencia encontrada');
-      setRefResultados([]);
-      setContratosRef([]);
-      return;
-    }
-    setRefResultados(lista);
-    setContratosRef(lista);
-    if (lista.length === 1) {
-      selecionarContratoRef(lista[0]);
+      if (lista.length === 0) {
+        alert('Nenhuma referencia encontrada');
+        setRefResultados([]);
+        setContratosRef([]);
+        return;
+      }
+      setRefResultados(lista);
+      setContratosRef(lista);
+      if (lista.length === 1) {
+        selecionarContratoRef(lista[0]);
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao buscar referencia de contrato');
     }
   }
 
@@ -333,45 +356,50 @@ export default function NovaSolicitacao() {
       ref_contrato_abertura: form.ref_contrato_abertura || null
     };
 
-    const solicitacao = await createSolicitacao(payload);
+    try {
+      const solicitacao = await createSolicitacao(payload);
 
-    if (arquivos.length > 0) {
-      await uploadArquivos({
-        files: arquivos,
-        solicitacao_id: solicitacao.id,
-        tipo: 'SOLICITACAO'
+      if (arquivos.length > 0) {
+        await uploadArquivos({
+          files: arquivos,
+          solicitacao_id: solicitacao.id,
+          tipo: 'SOLICITACAO'
+        });
+      }
+
+      alert('Solicitacao criada com sucesso');
+      setForm({
+        obra_id: '',
+        tipo_solicitacao_id: '',
+        tipo_sub_id: '',
+        contrato_id: '',
+        codigo_contrato: '',
+        area_responsavel: '',
+        descricao: '',
+        itens_apropriacao: '',
+        ref_contrato_abertura: '',
+        valor: '',
+        data_vencimento: '',
+        data_inicio_medicao: '',
+        data_fim_medicao: ''
       });
-    }
-
-    alert('Solicitacao criada com sucesso');
-    setForm({
-      obra_id: '',
-      tipo_solicitacao_id: '',
-      tipo_sub_id: '',
-      contrato_id: '',
-      codigo_contrato: '',
-      area_responsavel: '',
-      descricao: '',
-      itens_apropriacao: '',
-      ref_contrato_abertura: '',
-      valor: '',
-      data_vencimento: '',
-      data_inicio_medicao: '',
-      data_fim_medicao: ''
-    });
-    setContratos([]);
-    setTiposSub([]);
-    setArquivos([]);
-    setObraCodigo('');
-    setObraDescricao('');
-    setListaModal([]);
-    setModalObras(false);
-    setValorTexto('');
-    setRefContratoBusca('');
-    setRefResultados([]);
-    setContratosRef([]);
-    if (anexosRef.current) {
-      anexosRef.current.value = '';
+      setContratos([]);
+      setTiposSub([]);
+      setArquivos([]);
+      setObraCodigo('');
+      setObraDescricao('');
+      setListaModal([]);
+      setModalObras(false);
+      setValorTexto('');
+      setRefContratoBusca('');
+      setRefResultados([]);
+      setContratosRef([]);
+      if (anexosRef.current) {
+        anexosRef.current.value = '';
+      }
+    } catch (error) {
+      console.error(error);
+      alert(error?.message || 'Erro ao criar solicitacao');
     }
   }
 

@@ -8,9 +8,11 @@ const {
   Solicitacao,
   Comprovante,
   Setor,
-  UsuarioObra
+  UsuarioObra,
+  ConfiguracaoSistema
 } = require('../models');
 const { uploadToS3 } = require('../services/s3');
+const CHAVE_SETORES_CRIACAO_TODAS_OBRAS = 'SETORES_CRIACAO_TODAS_OBRAS';
 
 function normalizarCabecalho(valor) {
   return String(valor || '')
@@ -124,13 +126,55 @@ async function isSetorObra(req) {
   return nome === 'OBRA' || codigo === 'OBRA';
 }
 
+async function obterSetoresCriacaoTodasObras() {
+  const item = await ConfiguracaoSistema.findOne({
+    where: { chave: CHAVE_SETORES_CRIACAO_TODAS_OBRAS },
+    order: [['id', 'DESC']]
+  });
+  if (!item?.valor) return [];
+
+  try {
+    const data = JSON.parse(item.valor);
+    if (!Array.isArray(data?.setores)) return [];
+    return [...new Set(
+      data.setores
+        .map(v => String(v || '').trim().toUpperCase())
+        .filter(Boolean)
+    )];
+  } catch {
+    return [];
+  }
+}
+
+async function obterTokensSetorUsuario(req) {
+  const tokens = new Set();
+  if (req.user?.area) tokens.add(String(req.user.area).trim().toUpperCase());
+  if (req.user?.setor_id) {
+    tokens.add(String(req.user.setor_id).trim().toUpperCase());
+    const setor = await Setor.findByPk(req.user.setor_id, { attributes: ['codigo', 'nome'] });
+    if (setor?.codigo) tokens.add(String(setor.codigo).trim().toUpperCase());
+    if (setor?.nome) tokens.add(String(setor.nome).trim().toUpperCase());
+  }
+  return Array.from(tokens).filter(Boolean);
+}
+
 module.exports = {
   async index(req, res) {
     try {
-      const { obra_id, ref, codigo } = req.query;
+      const { obra_id, ref, codigo, modo } = req.query;
       const where = {};
       const podeAcessar = await isAdminGEO(req);
       const acessoObra = await isSetorObra(req);
+      const modoCriacao = String(modo || '').trim().toUpperCase() === 'CRIACAO';
+      let podeCriarEmTodasObras = false;
+
+      if (modoCriacao && !podeAcessar) {
+        const [tokensUsuario, setoresPermitidos] = await Promise.all([
+          obterTokensSetorUsuario(req),
+          obterSetoresCriacaoTodasObras()
+        ]);
+        podeCriarEmTodasObras = tokensUsuario.some(token => setoresPermitidos.includes(token));
+      }
 
       if (obra_id) {
         where.obra_id = obra_id;
@@ -143,7 +187,7 @@ module.exports = {
         where.codigo = { [Op.like]: `%${String(codigo).trim()}%` };
       }
 
-      if (acessoObra && !podeAcessar) {
+      if (acessoObra && !podeAcessar && !podeCriarEmTodasObras) {
         const vinculos = await UsuarioObra.findAll({
           where: { user_id: req.user.id },
           attributes: ['obra_id']
