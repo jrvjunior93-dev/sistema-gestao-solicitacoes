@@ -75,11 +75,6 @@ export default function Filtros({
     mostrarFiltroResponsavel ? filtros.responsavel : ''
   ].filter(v => String(v || '').trim() !== '').length;
 
-  const obraValues = String(filtros.obra_ids || '')
-    .split(',')
-    .map(v => v.trim())
-    .filter(Boolean);
-
   const responsavelValues = String(filtros.responsavel || '')
     .split(',')
     .map(v => v.trim())
@@ -117,11 +112,11 @@ export default function Filtros({
             <label className="text-sm text-gray-600 block mb-1">Obras</label>
             <select
               name="obra_ids"
-              className="input h-28"
-              multiple
-              value={obraValues}
-              onChange={handleMultiChange}
+              className="input"
+              value={filtros.obra_ids || ''}
+              onChange={handleChange}
             >
+              <option value="">Obra</option>
               {obrasOptions.map(obra => (
                 <option key={obra.value} value={obra.value}>
                   {obra.label}
