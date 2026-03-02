@@ -75,11 +75,6 @@ export default function Filtros({
     mostrarFiltroResponsavel ? filtros.responsavel : ''
   ].filter(v => String(v || '').trim() !== '').length;
 
-  const responsavelValues = String(filtros.responsavel || '')
-    .split(',')
-    .map(v => v.trim())
-    .filter(Boolean);
-
   return (
     <div className="solicitacoes-filtros bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-xl shadow mb-4 md:mb-6 ring-1 ring-gray-200 dark:ring-slate-700">
       <div className="md:hidden mb-3">
@@ -214,11 +209,11 @@ export default function Filtros({
               <label className="text-sm text-gray-600 block mb-1">Responsáveis</label>
               <select
                 name="responsavel"
-                className="input h-28"
-                multiple
-                value={responsavelValues}
-                onChange={handleMultiChange}
+                className="input"
+                value={filtros.responsavel || ''}
+                onChange={handleChange}
               >
+                <option value="">Responsável</option>
                 {responsaveisOptions.map(responsavel => (
                   <option key={responsavel.value} value={responsavel.value}>
                     {responsavel.label}
