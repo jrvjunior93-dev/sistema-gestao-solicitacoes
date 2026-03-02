@@ -1268,6 +1268,7 @@ module.exports = {
       const exigeCamposContrato =
         nomeTipoNormalizado === 'MEDICAO' ||
         nomeTipo === 'ADM LOCAL DE OBRA';
+      const exigeSubtipo = nomeTipo === 'ADM LOCAL DE OBRA';
 
       if (!tiposSemValor.has(nomeTipoNormalizado) && (valor === '' || valor === null || valor === undefined)) {
         return res.status(400).json({
@@ -1281,7 +1282,7 @@ module.exports = {
         });
       }
 
-      if (exigeCamposContrato && !tipo_sub_id) {
+      if (exigeSubtipo && !tipo_sub_id) {
         return res.status(400).json({
           error: 'Para continuar, selecione o subtipo.'
         });
