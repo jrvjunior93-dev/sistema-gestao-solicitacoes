@@ -54,6 +54,42 @@ export function ThemeProvider({ children }) {
   const [tema, setTema] = useState(TEMA_PADRAO);
   const { user } = useAuth();
 
+  function aplicarPaletteConformeModo(modoEscuroAtivo, palette) {
+    const root = document.documentElement;
+    const chaves = [
+      '--c-bg',
+      '--c-surface',
+      '--c-border',
+      '--c-text',
+      '--c-muted',
+      '--c-primary',
+      '--c-primary-600',
+      '--c-secondary',
+      '--c-warning',
+      '--c-danger',
+      '--c-success'
+    ];
+
+    if (modoEscuroAtivo) {
+      // Em modo escuro, deixa as variáveis definidas no CSS da classe `.dark`
+      // para evitar mistura de tema claro + utilitários dark.
+      chaves.forEach(chave => root.style.removeProperty(chave));
+      return;
+    }
+
+    root.style.setProperty('--c-bg', palette.bg);
+    root.style.setProperty('--c-surface', palette.surface);
+    root.style.setProperty('--c-border', palette.border);
+    root.style.setProperty('--c-text', palette.text);
+    root.style.setProperty('--c-muted', palette.muted);
+    root.style.setProperty('--c-primary', palette.primary);
+    root.style.setProperty('--c-primary-600', palette.primary600);
+    root.style.setProperty('--c-secondary', palette.secondary);
+    root.style.setProperty('--c-warning', palette.warning);
+    root.style.setProperty('--c-danger', palette.danger);
+    root.style.setProperty('--c-success', palette.success);
+  }
+
   useEffect(() => {
     carregar();
   }, []);
@@ -78,17 +114,18 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     if (!tema?.palette) return;
     const root = document.documentElement;
-    root.style.setProperty('--c-bg', tema.palette.bg);
-    root.style.setProperty('--c-surface', tema.palette.surface);
-    root.style.setProperty('--c-border', tema.palette.border);
-    root.style.setProperty('--c-text', tema.palette.text);
-    root.style.setProperty('--c-muted', tema.palette.muted);
-    root.style.setProperty('--c-primary', tema.palette.primary);
-    root.style.setProperty('--c-primary-600', tema.palette.primary600);
-    root.style.setProperty('--c-secondary', tema.palette.secondary);
-    root.style.setProperty('--c-warning', tema.palette.warning);
-    root.style.setProperty('--c-danger', tema.palette.danger);
-    root.style.setProperty('--c-success', tema.palette.success);
+
+    const aplicar = () => {
+      const darkAtivo = root.classList.contains('dark');
+      aplicarPaletteConformeModo(darkAtivo, tema.palette);
+    };
+
+    aplicar();
+
+    const observer = new MutationObserver(aplicar);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+
+    return () => observer.disconnect();
   }, [tema]);
 
   async function carregar() {
