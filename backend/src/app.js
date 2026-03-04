@@ -7,6 +7,7 @@ const db = require('./models');
 const routes = require('./routes');
 const path = require('path');
 const fs = require('fs');
+const uploadMaxMb = Number(process.env.UPLOAD_MAX_FILE_SIZE_MB || 10);
 
 const allowedOrigins = new Set([
   'https://sistema-gestao-solicitacoes.vercel.app',
@@ -46,7 +47,7 @@ app.use('/api', routes);
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'Arquivo excede o limite de 5MB.' });
+      return res.status(400).json({ error: `Arquivo excede o limite de ${uploadMaxMb}MB.` });
     }
     return res.status(400).json({ error: 'Falha no upload do arquivo.' });
   }

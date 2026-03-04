@@ -1,6 +1,8 @@
 const multer = require('multer');
 
 const storage = multer.memoryStorage();
+const uploadMaxMb = Number(process.env.UPLOAD_MAX_FILE_SIZE_MB || 10);
+const uploadMaxBytes = Math.max(1, uploadMaxMb) * 1024 * 1024;
 
 const fileFilter = (req, file, cb) => {
 
@@ -31,6 +33,6 @@ module.exports = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024
+    fileSize: uploadMaxBytes
   }
 });
