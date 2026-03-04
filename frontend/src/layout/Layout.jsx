@@ -345,7 +345,10 @@ export default function Layout() {
               />
               <div className="flex items-center gap-2 brand-text">
                 <div className="leading-tight">
-                  <p className="brand-title">Fluxy</p>
+                  <p className="brand-title inline-flex items-center gap-1.5">
+                    <BsBuildingsFill size={14} />
+                    <span>Fluxy</span>
+                  </p>
                   {!collapsed && <p className="brand-subtitle">Gestão de solicitações</p>}
                 </div>
               </div>
@@ -486,8 +489,9 @@ export default function Layout() {
               </button>
 
               <div className="min-w-0 flex-1">
-                <p className="brand-title truncate" style={{ fontSize: '1.1rem' }}>
-                  Fluxy
+                <p className="brand-title truncate inline-flex items-center gap-2" style={{ fontSize: '1.1rem' }}>
+                  <BsBuildingsFill size={16} />
+                  <span>Fluxy</span>
                 </p>
                 <p className="text-xs text-[var(--c-muted)] truncate">
                   {user?.nome} · {perfilUpper || 'USUARIO'}
