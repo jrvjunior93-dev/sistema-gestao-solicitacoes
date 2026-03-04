@@ -12,6 +12,7 @@ import {
   updateValorSolicitacao
 } from '../../services/solicitacoes';
 import { useAuth } from '../../contexts/AuthContext';
+import { parseDateSmart } from '../../utils/dateLocal';
 
 export default function LinhaSolicitacao({
   solicitacao,
@@ -95,7 +96,7 @@ export default function LinhaSolicitacao({
     ? dataCriacao.toLocaleString('pt-BR')
     : '';
   const dataVencimentoRaw = solicitacao.data_vencimento || null;
-  const dataVencimento = dataVencimentoRaw ? new Date(dataVencimentoRaw) : null;
+  const dataVencimento = dataVencimentoRaw ? parseDateSmart(dataVencimentoRaw) : null;
   const dataVencimentoValida = dataVencimento && !Number.isNaN(dataVencimento.getTime());
   const dataVencimentoLabel = dataVencimentoValida
     ? dataVencimento.toLocaleDateString('pt-BR')

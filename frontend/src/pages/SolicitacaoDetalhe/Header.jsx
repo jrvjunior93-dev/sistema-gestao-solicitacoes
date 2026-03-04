@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import StatusBadge from '../../components/StatusBadge';
+import { formatarDataLocalPtBr } from '../../utils/dateLocal';
 
 function formatarData(valor) {
-  if (!valor) return '-';
-  const data = new Date(valor);
-  if (Number.isNaN(data.getTime())) return '-';
-  return data.toLocaleDateString('pt-BR');
+  return formatarDataLocalPtBr(valor);
 }
 
 function formatarDataHora(valor) {

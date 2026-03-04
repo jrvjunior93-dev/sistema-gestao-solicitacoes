@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import LinhaSolicitacao from './LinhaSolicitacao';
 import { useAuth } from '../../contexts/AuthContext';
+import { timestampOrdenacaoData } from '../../utils/dateLocal';
 
 const SORTABLE_COLUMNS = new Set(['data', 'vencimento', 'valor']);
 
@@ -150,8 +151,8 @@ export default function TabelaSolicitacoes({
       }
       if (campo === 'vencimento') {
         const raw = item?.data_vencimento || null;
-        const ts = raw ? new Date(raw).getTime() : null;
-        return Number.isNaN(ts) ? null : ts;
+        const ts = raw ? timestampOrdenacaoData(raw) : null;
+        return ts;
       }
       if (campo === 'valor') {
         const n = Number(item?.valor);

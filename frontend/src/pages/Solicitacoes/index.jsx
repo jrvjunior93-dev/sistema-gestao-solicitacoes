@@ -19,6 +19,7 @@ import { getTiposSolicitacao } from '../../services/tiposSolicitacao';
 import { getSetorPermissoes } from '../../services/setorPermissoes';
 import { getStatusSetor } from '../../services/statusSetor';
 import { useAuth } from '../../contexts/AuthContext';
+import { parseDateSmart } from '../../utils/dateLocal';
 import {
   arquivarSolicitacoesEmMassa,
   deleteSolicitacao,
@@ -410,8 +411,8 @@ export default function Solicitacoes({ arquivadas = false }) {
 
   function formatarDataExportacao(valor) {
     if (!valor) return '';
-    const data = new Date(valor);
-    if (Number.isNaN(data.getTime())) return String(valor);
+    const data = parseDateSmart(valor);
+    if (!data || Number.isNaN(data.getTime())) return String(valor);
     return data.toLocaleDateString('pt-BR');
   }
 
