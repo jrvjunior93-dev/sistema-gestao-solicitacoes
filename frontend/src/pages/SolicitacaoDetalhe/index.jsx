@@ -35,11 +35,14 @@ export default function SolicitacaoDetalhe() {
 
   const perfil = String(user?.perfil || '').trim().toUpperCase();
   const setorUsuario = user?.setor?.codigo || user?.area || user?.setor?.nome || '';
+  const isAdminObra = perfil === 'ADMIN' && setorTokens.includes('OBRA');
   const setorParaStatus =
     perfil === 'SUPERADMIN'
       ? null
       : isSetorGeo
         ? 'GEO'
+        : isAdminObra
+          ? 'OBRA'
         : perfil.startsWith('ADMIN')
           ? solicitacao?.area_responsavel
           : setorUsuario;
