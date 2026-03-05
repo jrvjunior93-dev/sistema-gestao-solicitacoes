@@ -453,17 +453,21 @@ export default function NovaSolicitacao() {
     const setorKey = String(form.area_responsavel || '').trim().toUpperCase();
     if (!setorKey) return [];
 
+    const tiposAtivos = Array.isArray(tipos)
+      ? tipos.filter(tipo => tipo?.ativo !== false)
+      : [];
+
     const regra = tiposPorSetorConfig?.[setorKey];
     const tiposPermitidos = Array.isArray(regra?.tipos)
       ? regra.tipos.map(Number).filter(Number.isFinite)
       : [];
 
     if (tiposPermitidos.length === 0) {
-      return tipos;
+      return tiposAtivos;
     }
 
     const idsPermitidos = new Set(tiposPermitidos);
-    return tipos.filter(tipo => idsPermitidos.has(Number(tipo.id)));
+    return tiposAtivos.filter(tipo => idsPermitidos.has(Number(tipo.id)));
   }, [tipos, tiposPorSetorConfig, form.area_responsavel]);
 
   useEffect(() => {

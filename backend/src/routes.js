@@ -239,6 +239,7 @@ router.post('/tipos-solicitacao', permit(['SUPERADMIN']), TipoSolicitacaoControl
 router.patch('/tipos-solicitacao/:id', permit(['SUPERADMIN']), TipoSolicitacaoController.update);
 router.patch('/tipos-solicitacao/:id/ativar', permit(['SUPERADMIN']), TipoSolicitacaoController.ativar);
 router.patch('/tipos-solicitacao/:id/desativar', permit(['SUPERADMIN']), TipoSolicitacaoController.desativar);
+router.delete('/tipos-solicitacao/:id', permit(['SUPERADMIN']), TipoSolicitacaoController.excluir);
 
 // -------------------------------------------------------------------
 // TIPOS MACRO E SUB DE CONTRATO

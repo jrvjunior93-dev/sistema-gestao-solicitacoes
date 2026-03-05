@@ -1,4 +1,4 @@
-const { TipoSolicitacao } = require('../models');
+const { TipoSolicitacao, TipoSubContrato, Solicitacao, Contrato } = require('../models');
 
 module.exports = {
   async index(req, res) {
@@ -31,7 +31,6 @@ module.exports = {
 
       await tipo.update({ nome });
       return res.json(tipo);
-
     } catch (error) {
       console.error('Erro ao atualizar tipo:', error);
       return res.status(500).json({ error: 'Erro ao atualizar tipo' });
@@ -39,18 +38,61 @@ module.exports = {
   },
 
   async ativar(req, res) {
-    await TipoSolicitacao.update(
-      { ativo: true },
-      { where: { id: req.params.id } }
-    );
-    return res.sendStatus(204);
+    try {
+      const tipo = await TipoSolicitacao.findByPk(req.params.id);
+      if (!tipo) {
+        return res.status(404).json({ error: 'Tipo nao encontrado' });
+      }
+
+      await tipo.update({ ativo: true });
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error('Erro ao ativar tipo:', error);
+      return res.status(500).json({ error: 'Erro ao ativar tipo' });
+    }
   },
 
   async desativar(req, res) {
-    await TipoSolicitacao.update(
-      { ativo: false },
-      { where: { id: req.params.id } }
-    );
-    return res.sendStatus(204);
+    try {
+      const tipo = await TipoSolicitacao.findByPk(req.params.id);
+      if (!tipo) {
+        return res.status(404).json({ error: 'Tipo nao encontrado' });
+      }
+
+      await tipo.update({ ativo: false });
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error('Erro ao desativar tipo:', error);
+      return res.status(500).json({ error: 'Erro ao desativar tipo' });
+    }
+  },
+
+  async excluir(req, res) {
+    try {
+      const { id } = req.params;
+      const tipo = await TipoSolicitacao.findByPk(id);
+
+      if (!tipo) {
+        return res.status(404).json({ error: 'Tipo nao encontrado' });
+      }
+
+      const [totalSubtipos, totalSolicitacoes, totalContratos] = await Promise.all([
+        TipoSubContrato.count({ where: { tipo_macro_id: id } }),
+        Solicitacao.count({ where: { tipo_solicitacao_id: id } }),
+        Contrato.count({ where: { tipo_macro_id: id } })
+      ]);
+
+      if (totalSubtipos > 0 || totalSolicitacoes > 0 || totalContratos > 0) {
+        return res.status(409).json({
+          error: 'Nao e possivel excluir tipo com subtipos, solicitacoes ou contratos vinculados.'
+        });
+      }
+
+      await tipo.destroy();
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error('Erro ao excluir tipo:', error);
+      return res.status(500).json({ error: 'Erro ao excluir tipo' });
+    }
   }
 };

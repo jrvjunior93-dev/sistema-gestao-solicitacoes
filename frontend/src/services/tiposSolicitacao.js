@@ -31,15 +31,37 @@ export async function atualizarTipoSolicitacao(id, data) {
 }
 
 export async function ativarTipoSolicitacao(id) {
-  await fetch(`${API_URL}/tipos-solicitacao/${id}/ativar`, {
+  const res = await fetch(`${API_URL}/tipos-solicitacao/${id}/ativar`, {
     method: 'PATCH',
     headers: authHeaders()
   });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.error || 'Erro ao ativar tipo');
+  }
 }
 
 export async function desativarTipoSolicitacao(id) {
-  await fetch(`${API_URL}/tipos-solicitacao/${id}/desativar`, {
+  const res = await fetch(`${API_URL}/tipos-solicitacao/${id}/desativar`, {
     method: 'PATCH',
     headers: authHeaders()
   });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.error || 'Erro ao desativar tipo');
+  }
+}
+
+export async function excluirTipoSolicitacao(id) {
+  const res = await fetch(`${API_URL}/tipos-solicitacao/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.error || 'Erro ao excluir tipo');
+  }
 }
