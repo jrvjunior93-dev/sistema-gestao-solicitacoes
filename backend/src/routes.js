@@ -48,6 +48,7 @@ router.get('/arquivos-modelos/admins', ArquivoModeloController.listarAdmins);
 router.get('/arquivos-modelos', ArquivoModeloController.listarArquivos);
 router.post('/arquivos-modelos/upload', uploadComprovantes.single('file'), ArquivoModeloController.upload);
 router.get('/arquivos-modelos/:id/link', ArquivoModeloController.obterLink);
+router.delete('/arquivos-modelos/:id', ArquivoModeloController.remover);
 router.post('/arquivos-modelos/paginas', permit(['SUPERADMIN']), ArquivoModeloController.criarPagina);
 router.patch('/arquivos-modelos/paginas', permit(['SUPERADMIN']), ArquivoModeloController.salvarPaginas);
 router.patch('/arquivos-modelos/paginas/:codigo/ativar', permit(['SUPERADMIN']), ArquivoModeloController.ativarPagina);

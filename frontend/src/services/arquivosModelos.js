@@ -48,6 +48,17 @@ export async function getLinkArquivoModelo(id) {
   return data?.url;
 }
 
+export async function excluirArquivoModelo(id) {
+  const res = await fetch(`${API_URL}/arquivos-modelos/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.error || 'Erro ao excluir arquivo');
+  }
+}
+
 export async function criarPaginaArquivoModelo(nome) {
   const res = await fetch(`${API_URL}/arquivos-modelos/paginas`, {
     method: 'POST',

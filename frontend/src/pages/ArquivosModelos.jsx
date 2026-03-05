@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  excluirArquivoModelo,
   getContextoArquivosModelos,
   getLinkArquivoModelo,
   listarArquivosModelos,
@@ -99,6 +100,18 @@ export default function ArquivosModelos() {
     }
   }
 
+  async function handleExcluir(arquivoId) {
+    if (!window.confirm('Deseja excluir este arquivo?')) return;
+    try {
+      await excluirArquivoModelo(arquivoId);
+      await carregarArquivos(paginaSelecionada);
+      alert('Arquivo excluido com sucesso.');
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Erro ao excluir arquivo');
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div>
@@ -157,6 +170,11 @@ export default function ArquivosModelos() {
                 <button type="button" className="btn btn-outline" onClick={() => abrirArquivo(arquivo.id)}>
                   Baixar
                 </button>
+                {podeUploadAtual && (
+                  <button type="button" className="btn btn-danger" onClick={() => handleExcluir(arquivo.id)}>
+                    Excluir
+                  </button>
+                )}
               </div>
             </div>
           ))}

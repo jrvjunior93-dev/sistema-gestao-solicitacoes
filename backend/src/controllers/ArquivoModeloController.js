@@ -302,5 +302,26 @@ module.exports = {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao gerar link de acesso' });
     }
+  },
+
+  async remover(req, res) {
+    try {
+      const arquivo = await ArquivoModelo.findByPk(req.params.id);
+      if (!arquivo || !arquivo.ativo) return res.status(404).json({ error: 'Arquivo nao encontrado' });
+
+      if (!isSuperadmin(req)) {
+        const uploadersByPagina = await getUploaders();
+        const permitido = podeUploadPagina(req, arquivo.pagina_codigo, uploadersByPagina);
+        if (!permitido) {
+          return res.status(403).json({ error: 'Sem permissao para excluir arquivo desta pagina' });
+        }
+      }
+
+      await arquivo.update({ ativo: false });
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao excluir arquivo' });
+    }
   }
 };
