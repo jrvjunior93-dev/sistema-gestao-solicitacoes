@@ -5,6 +5,7 @@ import {
   desarquivarConversasEmMassa,
   getCaixaSaida
 } from '../services/conversasInternas';
+import { useAuth } from '../contexts/AuthContext';
 
 function formatarDataHora(valor) {
   if (!valor) return '-';
@@ -20,6 +21,7 @@ function alternarSelecionado(lista, id) {
 
 export default function ConversasSaida() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [itens, setItens] = useState([]);
   const [loading, setLoading] = useState(true);
   const [aba, setAba] = useState('ABERTAS');
@@ -33,6 +35,13 @@ export default function ConversasSaida() {
       const data = await getCaixaSaida({ arquivadas });
       setItens(Array.isArray(data) ? data : []);
       setSelecionadas([]);
+      if (!arquivadas) {
+        const userId = Number(user?.id);
+        if (Number.isInteger(userId) && userId > 0) {
+          localStorage.setItem(`conversas_saida_last_seen_${userId}`, new Date().toISOString());
+          window.dispatchEvent(new Event('conversas:saida:seen'));
+        }
+      }
     } catch (error) {
       alert(error?.message || 'Erro ao carregar caixa de saída');
     } finally {
@@ -76,7 +85,7 @@ export default function ConversasSaida() {
 
   useEffect(() => {
     carregar();
-  }, [aba]);
+  }, [aba, user?.id]);
 
   return (
     <div className="page">

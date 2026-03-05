@@ -2,7 +2,7 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../contexts/AuthContext';
 import NotificacoesBell from '../components/NotificacoesBell';
-import { getCaixaEntrada } from '../services/conversasInternas';
+import { getCaixaEntrada, getCaixaSaida } from '../services/conversasInternas';
 import {
   HiOutlineSquares2X2,
   HiOutlinePlusCircle,
@@ -45,6 +45,7 @@ export default function Layout() {
     typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)').matches : false
   );
   const [inboxNovasCount, setInboxNovasCount] = useState(0);
+  const [saidaNovasCount, setSaidaNovasCount] = useState(0);
 
   const sidebarWidth = isMobileViewport ? 292 : (collapsed ? 76 : 236);
 
@@ -88,27 +89,42 @@ export default function Layout() {
     const userId = Number(user?.id);
     if (!Number.isInteger(userId) || userId <= 0) {
       setInboxNovasCount(0);
+      setSaidaNovasCount(0);
       return undefined;
     }
 
-    const storageKey = `conversas_entrada_last_seen_${userId}`;
+    const storageKeyEntrada = `conversas_entrada_last_seen_${userId}`;
+    const storageKeySaida = `conversas_saida_last_seen_${userId}`;
     let ativo = true;
 
     const atualizarBadge = async () => {
       try {
-        const lista = await getCaixaEntrada({ arquivadas: false });
+        const [listaEntrada, listaSaida] = await Promise.all([
+          getCaixaEntrada({ arquivadas: false }),
+          getCaixaSaida({ arquivadas: false })
+        ]);
         if (!ativo) return;
-        const seenValue = localStorage.getItem(storageKey);
-        const seenMs = seenValue ? new Date(seenValue).getTime() : 0;
+        const seenEntradaValue = localStorage.getItem(storageKeyEntrada);
+        const seenEntradaMs = seenEntradaValue ? new Date(seenEntradaValue).getTime() : 0;
+        const seenSaidaValue = localStorage.getItem(storageKeySaida);
+        const seenSaidaMs = seenSaidaValue ? new Date(seenSaidaValue).getTime() : 0;
 
-        const total = (Array.isArray(lista) ? lista : []).filter(item => {
+        const totalEntrada = (Array.isArray(listaEntrada) ? listaEntrada : []).filter(item => {
           const updatedMs = new Date(item?.updatedAt || item?.createdAt).getTime();
           const autorId = Number(item?.ultima_mensagem?.autor?.id || 0);
           const autorEhOutroUsuario = !autorId || autorId !== userId;
-          return updatedMs > seenMs && autorEhOutroUsuario;
+          return updatedMs > seenEntradaMs && autorEhOutroUsuario;
         }).length;
 
-        setInboxNovasCount(total);
+        const totalSaida = (Array.isArray(listaSaida) ? listaSaida : []).filter(item => {
+          const updatedMs = new Date(item?.updatedAt || item?.createdAt).getTime();
+          const autorId = Number(item?.ultima_mensagem?.autor?.id || 0);
+          const autorEhOutroUsuario = !autorId || autorId !== userId;
+          return updatedMs > seenSaidaMs && autorEhOutroUsuario;
+        }).length;
+
+        setInboxNovasCount(totalEntrada);
+        setSaidaNovasCount(totalSaida);
       } catch {
         // sem bloqueio visual em caso de falha temporaria
       }
@@ -119,12 +135,14 @@ export default function Layout() {
     };
 
     window.addEventListener('conversas:entrada:seen', handleSeenEvent);
+    window.addEventListener('conversas:saida:seen', handleSeenEvent);
     atualizarBadge();
     const interval = setInterval(atualizarBadge, 20000);
 
     return () => {
       ativo = false;
       window.removeEventListener('conversas:entrada:seen', handleSeenEvent);
+      window.removeEventListener('conversas:saida:seen', handleSeenEvent);
       clearInterval(interval);
     };
   }, [user?.id]);
@@ -452,6 +470,7 @@ export default function Layout() {
                               }}
                               collapsed={collapsed}
                               inboxNovasCount={inboxNovasCount}
+                              saidaNovasCount={saidaNovasCount}
                             />
                           ))}
                 </ul>
@@ -474,9 +493,9 @@ export default function Layout() {
                           <span className="nav-group-heading">
                             {GroupIcon && <GroupIcon className="nav-group-icon" />}
                             <span className="nav-group-title">{group.label}</span>
-                            {group.label === 'Comunicação' && inboxNovasCount > 0 && (
+                            {group.label === 'Comunicação' && (inboxNovasCount + saidaNovasCount) > 0 && (
                               <span className="inline-flex min-w-[20px] h-5 px-1.5 items-center justify-center rounded-full text-[11px] font-semibold bg-red-600 text-white">
-                                {inboxNovasCount > 99 ? '99+' : inboxNovasCount}
+                                {(inboxNovasCount + saidaNovasCount) > 99 ? '99+' : (inboxNovasCount + saidaNovasCount)}
                               </span>
                             )}
                           </span>
@@ -505,6 +524,7 @@ export default function Layout() {
                                 collapsed={false}
                                 subItem
                                 inboxNovasCount={inboxNovasCount}
+                                saidaNovasCount={saidaNovasCount}
                               />
                             ))}
                           </ul>
@@ -601,9 +621,11 @@ function isPathActive(currentPath, targetPath) {
   return currentPath === targetPath || currentPath.startsWith(`${targetPath}/`);
 }
 
-function MenuItem({ to, label, icon: Icon, active, onSelect, collapsed, subItem = false, inboxNovasCount = 0 }) {
+function MenuItem({ to, label, icon: Icon, active, onSelect, collapsed, subItem = false, inboxNovasCount = 0, saidaNovasCount = 0 }) {
   const mostrarBadgeInbox = to === '/conversas/entrada';
+  const mostrarBadgeSaida = to === '/conversas/saida';
   const inboxCount = Number(inboxNovasCount || 0);
+  const saidaCount = Number(saidaNovasCount || 0);
   return (
     <li>
       <Link
@@ -618,6 +640,11 @@ function MenuItem({ to, label, icon: Icon, active, onSelect, collapsed, subItem 
         {!collapsed && mostrarBadgeInbox && inboxCount > 0 && (
           <span className="ml-auto inline-flex min-w-[20px] h-5 px-1.5 items-center justify-center rounded-full text-[11px] font-semibold bg-red-600 text-white">
             {inboxCount > 99 ? '99+' : inboxCount}
+          </span>
+        )}
+        {!collapsed && mostrarBadgeSaida && saidaCount > 0 && (
+          <span className="ml-auto inline-flex min-w-[20px] h-5 px-1.5 items-center justify-center rounded-full text-[11px] font-semibold bg-red-600 text-white">
+            {saidaCount > 99 ? '99+' : saidaCount}
           </span>
         )}
       </Link>
