@@ -474,6 +474,11 @@ export default function Layout() {
                           <span className="nav-group-heading">
                             {GroupIcon && <GroupIcon className="nav-group-icon" />}
                             <span className="nav-group-title">{group.label}</span>
+                            {group.label === 'Comunicação' && inboxNovasCount > 0 && (
+                              <span className="inline-flex min-w-[20px] h-5 px-1.5 items-center justify-center rounded-full text-[11px] font-semibold bg-red-600 text-white">
+                                {inboxNovasCount > 99 ? '99+' : inboxNovasCount}
+                              </span>
+                            )}
                           </span>
                           {isOpen ? (
                             <HiOutlineChevronDown className="nav-group-chevron" />
