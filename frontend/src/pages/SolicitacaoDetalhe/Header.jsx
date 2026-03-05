@@ -39,6 +39,14 @@ function InfoItem({ label, value }) {
   );
 }
 
+function normalizarTexto(valor) {
+  return String(valor || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 export default function Header({
   solicitacao,
   onAlterarStatus,
@@ -81,6 +89,9 @@ export default function Header({
   }
 
   const historicos = Array.isArray(solicitacao?.historicos) ? solicitacao.historicos : [];
+  const tipoNomeNormalizado = normalizarTexto(solicitacao?.tipo?.nome);
+  const exibirSubtipoAdmLocal = tipoNomeNormalizado === 'ADM LOCAL DE OBRA';
+  const subtipoSolicitacao = solicitacao?.tipoSubSolicitacao?.nome || '-';
   const ultimoHistoricoStatus = [...historicos]
     .filter(item => item?.acao === 'STATUS_ALTERADO')
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
@@ -124,6 +135,9 @@ export default function Header({
       <div className="sol-detail-stats-grid sol-detail-contract-grid">
         <InfoItem label="Ref. do contrato" value={refContratoAtual} />
         <InfoItem label="Contrato" value={codigoContratoAtual} />
+        {exibirSubtipoAdmLocal && (
+          <InfoItem label="Subtipo" value={subtipoSolicitacao} />
+        )}
       </div>
 
       {podeEditarRefContrato && (
