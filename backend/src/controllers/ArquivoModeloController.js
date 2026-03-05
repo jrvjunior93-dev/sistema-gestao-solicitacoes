@@ -1,6 +1,7 @@
 const { Op } = require('sequelize');
 const { ArquivoModelo, ConfiguracaoSistema, User, Setor } = require('../models');
 const { uploadToS3, getPresignedUrl } = require('../services/s3');
+const { normalizeOriginalName } = require('../utils/fileName');
 
 const KEY_PAGINAS = 'ARQUIVOS_MODELOS_PAGINAS';
 const KEY_UPLOADERS = 'ARQUIVOS_MODELOS_UPLOADERS';
@@ -275,10 +276,11 @@ module.exports = {
         return res.status(403).json({ error: 'Sem permissao para upload nesta pagina' });
       }
 
+      const nomeOriginal = normalizeOriginalName(req.file.originalname);
       const url = await uploadToS3(req.file, `modelos/${paginaCodigo}`);
       const registro = await ArquivoModelo.create({
         pagina_codigo: paginaCodigo,
-        nome_original: req.file.originalname,
+        nome_original: nomeOriginal,
         arquivo_url: url,
         mimetype: req.file.mimetype,
         tamanho_bytes: req.file.size,

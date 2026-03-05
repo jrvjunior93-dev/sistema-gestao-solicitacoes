@@ -6,6 +6,7 @@ const {
 } = require('../models');
 const { criarNotificacao } = require('../services/notificacoes');
 const { uploadToS3, getPresignedUrl } = require('../services/s3');
+const { normalizeOriginalName } = require('../utils/fileName');
 
 class AnexoController {
 
@@ -51,6 +52,7 @@ class AnexoController {
       const registros = [];
 
       for (const file of req.files) {
+        const nomeOriginal = normalizeOriginalName(file.originalname);
         const url = await uploadToS3(
           file,
           `anexos/${codigo}/${tipoNormalizado.toLowerCase()}`
@@ -59,7 +61,7 @@ class AnexoController {
         const anexo = await Anexo.create({
           solicitacao_id,
           tipo: tipoNormalizado,
-          nome_original: file.originalname,
+          nome_original: nomeOriginal,
           caminho_arquivo: url,
           uploaded_by: usuario.id,
           area_origem: usuario.setor_id
@@ -73,7 +75,7 @@ class AnexoController {
           usuario_responsavel_id: usuario.id,
           setor: usuario.setor_id,
           acao: 'ANEXO_ADICIONADO',
-          descricao: file.originalname,
+          descricao: nomeOriginal,
           metadata: JSON.stringify({
             anexo_id: anexo.id,
             caminho: url

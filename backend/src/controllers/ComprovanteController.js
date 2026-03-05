@@ -1,6 +1,7 @@
 const { Comprovante, Solicitacao, Obra, Historico, Sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { uploadToS3 } = require('../services/s3');
+const { normalizeOriginalName } = require('../utils/fileName');
 
 function extrairInfo(nome) {
   const result = {
@@ -29,7 +30,8 @@ module.exports = {
       const setor = req.user?.area || null;
 
       for (const file of arquivos) {
-        const info = extrairInfo(file.originalname);
+        const nomeOriginal = normalizeOriginalName(file.originalname);
+        const info = extrairInfo(nomeOriginal);
 
         let solicitacao = null;
         let obra = null;
@@ -52,7 +54,7 @@ module.exports = {
         const url = await uploadToS3(file, 'comprovantes');
 
         const comprovante = await Comprovante.create({
-          nome_original: file.originalname,
+          nome_original: nomeOriginal,
           caminho_arquivo: url,
           solicitacao_id: solicitacao?.id || null,
           obra_id: obra?.id || null,
@@ -66,7 +68,7 @@ module.exports = {
             usuario_responsavel_id: usuarioId,
             setor,
             acao: 'COMPROVANTE_ADICIONADO',
-            descricao: file.originalname,
+            descricao: nomeOriginal,
             metadata: JSON.stringify({
               comprovante_id: comprovante.id,
               valor: info.valor || null,

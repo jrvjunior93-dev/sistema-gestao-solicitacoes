@@ -9,6 +9,7 @@ const {
   Setor
 } = require('../models');
 const { uploadToS3 } = require('../services/s3');
+const { normalizeOriginalName } = require('../utils/fileName');
 
 const JANELA_EDICAO_MS = 5 * 60 * 1000;
 
@@ -56,11 +57,12 @@ async function salvarAnexosMensagem({ conversaId, mensagemId, files }) {
   if (!Array.isArray(files) || files.length === 0) return;
 
   for (const file of files) {
+    const nomeArquivo = normalizeOriginalName(file.originalname);
     const caminho = await uploadToS3(file, `anexos/conversas/${conversaId}`);
     await ConversaInternaAnexo.create({
       conversa_id: conversaId,
       mensagem_id: mensagemId,
-      nome_arquivo: file.originalname,
+      nome_arquivo: nomeArquivo,
       caminho,
       mime_type: file.mimetype || null,
       tamanho_bytes: Number(file.size || 0) || null

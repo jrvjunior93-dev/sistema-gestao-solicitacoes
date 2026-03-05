@@ -12,6 +12,7 @@ const {
   ConfiguracaoSistema
 } = require('../models');
 const { uploadToS3 } = require('../services/s3');
+const { normalizeOriginalName } = require('../utils/fileName');
 const CHAVE_SETORES_CRIACAO_TODAS_OBRAS = 'SETORES_CRIACAO_TODAS_OBRAS';
 
 function normalizarCabecalho(valor) {
@@ -291,7 +292,7 @@ module.exports = {
         return res.status(400).json({ error: 'Envie um arquivo CSV no campo "file".' });
       }
 
-      const nomeArquivo = String(file.originalname || '').toLowerCase();
+      const nomeArquivo = normalizeOriginalName(file.originalname).toLowerCase();
       if (!nomeArquivo.endsWith('.csv')) {
         return res.status(400).json({ error: 'Formato inválido. Utilize a planilha modelo em CSV.' });
       }
@@ -686,6 +687,7 @@ module.exports = {
       const registros = [];
 
       for (const file of req.files) {
+        const nomeOriginal = normalizeOriginalName(file.originalname);
         const url = await uploadToS3(
           file,
           `contratos/${String(codigo)}`
@@ -693,7 +695,7 @@ module.exports = {
 
         const anexo = await ContratoAnexo.create({
           contrato_id: contrato.id,
-          nome_original: file.originalname,
+          nome_original: nomeOriginal,
           caminho_arquivo: url,
           uploaded_by: req.user.id
         });

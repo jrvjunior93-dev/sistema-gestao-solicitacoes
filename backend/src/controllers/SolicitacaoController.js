@@ -25,6 +25,7 @@ const { Op } = require('sequelize');
 const { criarNotificacao } = require('../services/notificacoes');
 const gerarCodigoSolicitacao = require('../services/solicitacao/gerarCodigo');
 const { uploadToS3 } = require('../services/s3');
+const { normalizeOriginalName } = require('../utils/fileName');
 
 const CHAVE_AREAS_POR_SETOR_ORIGEM = 'AREAS_POR_SETOR_ORIGEM';
 const CHAVE_SETORES_VISIVEIS_POR_USUARIO = 'SETORES_VISIVEIS_POR_USUARIO';
@@ -2442,10 +2443,11 @@ module.exports = {
   async upload(req, res) {
     const url = await uploadToS3(req.file, 'solicitacoes');
     const nomeArquivo = url.split('/').pop();
+    const nomeOriginal = normalizeOriginalName(req.file.originalname);
 
     const anexo = await Anexo.create({
       solicitacao_id: req.params.id,
-      nome_original: req.file.originalname,
+      nome_original: nomeOriginal,
       nome_arquivo: nomeArquivo,
       url
     });

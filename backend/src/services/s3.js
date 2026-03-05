@@ -1,5 +1,6 @@
 const { S3Client, PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const { sanitizeFileNameForStorage } = require('../utils/fileName');
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION,
@@ -10,9 +11,10 @@ const s3 = new S3Client({
 });
 
 async function uploadToS3(file, folder) {
+  const safeName = sanitizeFileNameForStorage(file.originalname);
   const command = new PutObjectCommand({
     Bucket: process.env.AWS_S3_BUCKET,
-    Key: `${folder}/${Date.now()}-${file.originalname}`,
+    Key: `${folder}/${Date.now()}-${safeName}`,
     Body: file.buffer,
     ContentType: file.mimetype
   });

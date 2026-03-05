@@ -77,15 +77,15 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false
       },
       data_vencimento: {
-        type: DataTypes.DATE,
+        type: DataTypes.DATEONLY,
         allowNull: true
       },
       data_inicio_medicao: {
-        type: DataTypes.DATE,
+        type: DataTypes.DATEONLY,
         allowNull: true
       },
       data_fim_medicao: {
-        type: DataTypes.DATE,
+        type: DataTypes.DATEONLY,
         allowNull: true
       },
       cancelada: {
