@@ -368,7 +368,6 @@ export default function Layout() {
                     <BsBuildingsFill size={14} />
                     <span>Fluxy</span>
                   </p>
-                  {!collapsed && <p className="brand-subtitle">Gestão de solicitações</p>}
                 </div>
               </div>
               <div className="flex items-center gap-2">
