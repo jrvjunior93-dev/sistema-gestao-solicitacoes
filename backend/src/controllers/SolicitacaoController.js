@@ -1603,61 +1603,53 @@ module.exports = {
       const setorAtual = solicitacao.area_responsavel;
 
       if (!isSuperadmin) {
-        let etapas = await EtapaSetor.findAll({
-          where: {
-            setor: setorAtual,
-            ativo: true
-          },
-          attributes: ['nome']
-        });
+        const setorAtualStr = String(setorAtual || '').trim();
+        const whereSetor = {
+          ativo: true
+        };
 
-        if (etapas.length === 0 && setorAtual) {
+        if (setorAtualStr) {
           const setorRow = await Setor.findOne({
             where: {
               [Op.or]: [
-                { codigo: setorAtual },
-                { nome: setorAtual },
+                { codigo: setorAtualStr },
+                { nome: setorAtualStr },
                 Sequelize.where(
                   Sequelize.fn('LOWER', Sequelize.col('codigo')),
-                  String(setorAtual).toLowerCase()
+                  setorAtualStr.toLowerCase()
                 ),
                 Sequelize.where(
                   Sequelize.fn('LOWER', Sequelize.col('nome')),
-                  String(setorAtual).toLowerCase()
+                  setorAtualStr.toLowerCase()
                 )
               ]
-            }
+            },
+            attributes: ['codigo', 'nome']
           });
 
-          if (setorRow && setorRow.codigo) {
-            etapas = await EtapaSetor.findAll({
-              where: {
-                setor: setorRow.codigo,
-                ativo: true
-              },
-              attributes: ['nome']
-            });
-          }
+          const tokensSetor = [
+            setorAtualStr,
+            String(setorRow?.codigo || '').trim(),
+            String(setorRow?.nome || '').trim()
+          ].filter(Boolean);
+
+          whereSetor.setor = { [Op.in]: tokensSetor };
         }
 
+        const etapas = await EtapaSetor.findAll({
+          where: whereSetor,
+          attributes: ['nome']
+        });
+
         if (etapas.length > 0) {
-          const permitidos = etapas.map(e => e.nome);
-          if (!permitidos.includes(status)) {
+          const permitidos = etapas
+            .map(e => String(e.nome || '').trim().toUpperCase())
+            .filter(Boolean);
+          const statusNovo = String(status || '').trim().toUpperCase();
+
+          if (!permitidos.includes(statusNovo)) {
             return res.status(400).json({
               error: 'Status nao permitido para este setor'
-            });
-          }
-        } else {
-          const transicoes = {
-            PENDENTE: ['EM_ANALISE'],
-            EM_ANALISE: ['APROVADA', 'AGUARDANDO_AJUSTE', 'REJEITADA'],
-            AGUARDANDO_AJUSTE: ['EM_ANALISE', 'APROVADA', 'REJEITADA'],
-            APROVADA: ['CONCLUIDA']
-          };
-
-          if (!transicoes[statusAnterior]?.includes(status)) {
-            return res.status(400).json({
-              error: `Transicao invalida de ${statusAnterior} para ${status}`
             });
           }
         }
