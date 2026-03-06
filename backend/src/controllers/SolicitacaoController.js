@@ -932,9 +932,15 @@ module.exports = {
         }
       }
       if (tipo_solicitacao_id) {
-        const tipoSolicitacaoNum = Number(tipo_solicitacao_id);
-        if (!Number.isNaN(tipoSolicitacaoNum) && tipoSolicitacaoNum > 0) {
-          where.tipo_solicitacao_id = tipoSolicitacaoNum;
+        const tiposSelecionados = String(tipo_solicitacao_id)
+          .split(',')
+          .map(id => Number(id))
+          .filter(id => !Number.isNaN(id) && id > 0);
+
+        if (tiposSelecionados.length > 1) {
+          where.tipo_solicitacao_id = { [Op.in]: tiposSelecionados };
+        } else if (tiposSelecionados.length === 1) {
+          where.tipo_solicitacao_id = tiposSelecionados[0];
         }
       }
       if (codigo_contrato) {
