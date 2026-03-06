@@ -194,9 +194,8 @@ export default function Solicitacoes({ arquivadas = false }) {
     }
   }
 
-  function montarOpcoesObrasEResponsaveis(lista) {
+  function extrairOpcoesObras(lista) {
     const obrasMap = new Map();
-    const responsaveisMap = new Map();
 
     (Array.isArray(lista) ? lista : []).forEach(item => {
       const obraId = item?.obra?.id ?? item?.obra_id;
@@ -210,7 +209,15 @@ export default function Solicitacoes({ arquivadas = false }) {
           });
         }
       }
+    });
 
+    return Array.from(obrasMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+  }
+
+  function extrairOpcoesResponsaveis(lista) {
+    const responsaveisMap = new Map();
+
+    (Array.isArray(lista) ? lista : []).forEach(item => {
       const responsavel = String(item?.responsavel || '').trim();
       if (responsavel && responsavel !== '-') {
         const chaveResp = responsavel.toUpperCase();
@@ -223,12 +230,24 @@ export default function Solicitacoes({ arquivadas = false }) {
       }
     });
 
-    setObrasOptions(
-      Array.from(obrasMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
-    );
-    setResponsaveisOptions(
-      Array.from(responsaveisMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'))
-    );
+    return Array.from(responsaveisMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+  }
+
+  async function carregarOpcoesObras(paramsObj = {}) {
+    const paramsObras = { ...paramsObj };
+    delete paramsObras.obra_ids;
+
+    const query = new URLSearchParams(paramsObras).toString();
+    const res = await fetch(`${API_URL}/solicitacoes?${query}`, {
+      headers: authHeaders()
+    });
+
+    if (!res.ok) {
+      throw new Error('Erro ao carregar opcoes de obras');
+    }
+
+    const data = await res.json();
+    return extrairOpcoesObras(Array.isArray(data) ? data : []);
   }
 
   async function carregar() {
@@ -258,7 +277,16 @@ export default function Solicitacoes({ arquivadas = false }) {
       const data = await res.json();
       const lista = Array.isArray(data) ? data : [];
       setSolicitacoes(lista);
-      montarOpcoesObrasEResponsaveis(lista);
+      setResponsaveisOptions(extrairOpcoesResponsaveis(lista));
+
+      try {
+        const obrasLista = await carregarOpcoesObras(paramsObj);
+        setObrasOptions(obrasLista);
+      } catch (errorOpcoesObras) {
+        console.error(errorOpcoesObras);
+        setObrasOptions(extrairOpcoesObras(lista));
+      }
+
       setSelecionadasIds([]);
     } catch (error) {
       console.error(error);
