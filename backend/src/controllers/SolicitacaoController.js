@@ -1607,9 +1607,10 @@ module.exports = {
       }
 
       const setorAtual = solicitacao.area_responsavel;
+      const setorValidacaoStatus = String(areaUsuario || setorAtual || '').trim();
 
       if (!isSuperadmin) {
-        const setorAtualStr = String(setorAtual || '').trim();
+        const setorAtualStr = setorValidacaoStatus;
         const whereSetor = {
           ativo: true
         };
@@ -1666,10 +1667,7 @@ module.exports = {
       await Historico.create({
         solicitacao_id: id,
         usuario_responsavel_id: usuarioId,
-        // A cor do status usa o setor gravado no historico.
-        // Deve refletir o setor da solicitacao no momento da alteracao,
-        // nao necessariamente o "area" do usuario (que pode estar diferente/desatualizado).
-        setor: solicitacao.area_responsavel,
+        setor: setorValidacaoStatus || solicitacao.area_responsavel,
         acao: 'STATUS_ALTERADO',
         status_anterior: statusAnterior,
         status_novo: status,
