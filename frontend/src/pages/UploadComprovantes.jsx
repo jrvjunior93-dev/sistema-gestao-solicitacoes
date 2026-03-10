@@ -66,7 +66,7 @@ export default function UploadComprovantes() {
               <input
                 type="file"
                 multiple
-                accept=".pdf,.jpg,.jpeg,.png,.html"
+                accept=".pdf,.jpg,.jpeg,.png,.html,.rar"
                 className="hidden"
                 disabled={loading}
                 onChange={handleFileChange}

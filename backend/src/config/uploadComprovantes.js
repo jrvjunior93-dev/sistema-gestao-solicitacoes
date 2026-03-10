@@ -1,4 +1,5 @@
 const multer = require('multer');
+const path = require('path');
 
 const storage = multer.memoryStorage();
 const uploadMaxMb = Number(process.env.UPLOAD_MAX_FILE_SIZE_MB || 10);
@@ -18,10 +19,30 @@ const fileFilter = (req, file, cb) => {
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'image/png',
     'image/jpeg',
-    'text/html'
+    'text/html',
+    'application/vnd.rar',
+    'application/x-rar-compressed'
   ];
 
-  if (tiposPermitidos.includes(file.mimetype)) {
+  const extensoesPermitidas = new Set([
+    '.pdf',
+    '.doc',
+    '.docx',
+    '.xls',
+    '.xlsx',
+    '.csv',
+    '.ppt',
+    '.pptx',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.html',
+    '.rar'
+  ]);
+
+  const extensaoArquivo = String(path.extname(file.originalname || '') || '').toLowerCase();
+
+  if (tiposPermitidos.includes(file.mimetype) || extensoesPermitidas.has(extensaoArquivo)) {
     cb(null, true);
   } else {
     cb(new Error('Tipo de arquivo não permitido'));
