@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { Op, fn, col, where } = require('sequelize');
 const { User, Setor } = require('../models');
 
 const JWT_SECRET = 'segredo_super_secreto';
@@ -9,10 +10,20 @@ module.exports = {
   async login(req, res) {
     try {
 
-      const { email, senha } = req.body;
+      const emailNormalizado = String(req.body?.email || '').trim().toLowerCase();
+      const senha = req.body?.senha;
+
+      if (!emailNormalizado || !senha) {
+        return res.status(400).json({ error: 'Email e senha sao obrigatorios' });
+      }
 
       const user = await User.findOne({
-        where: { email },
+        where: {
+          [Op.or]: [
+            { email: emailNormalizado },
+            where(fn('LOWER', fn('TRIM', col('email'))), emailNormalizado)
+          ]
+        },
         include: [
           {
             model: Setor,

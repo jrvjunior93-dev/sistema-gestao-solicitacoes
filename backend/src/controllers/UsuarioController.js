@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const { Op, fn, col, where } = require('sequelize');
 
 const {
   User,
@@ -27,6 +28,12 @@ function normalizarCabecalho(valor) {
   return normalizarTexto(valor)
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
+}
+
+function normalizarEmail(valor) {
+  return String(valor || '')
+    .trim()
+    .toLowerCase();
 }
 
 function parseCsvLine(line, delimiter) {
@@ -225,7 +232,9 @@ module.exports = {
         obras = []
       } = req.body;
 
-      if (!nome || !email || !senha || !perfil) {
+      const emailNormalizado = normalizarEmail(email);
+
+      if (!nome || !emailNormalizado || !senha || !perfil) {
         return res.status(400).json({
           error: 'Nome, email, senha e perfil são obrigatórios'
         });
@@ -237,7 +246,14 @@ module.exports = {
         });
       }
       // Verifica email duplicado
-      const existe = await User.findOne({ where: { email } });
+      const existe = await User.findOne({
+        where: {
+          [Op.or]: [
+            { email: emailNormalizado },
+            where(fn('LOWER', fn('TRIM', col('email'))), emailNormalizado)
+          ]
+        }
+      });
 
       if (existe) {
         return res.status(400).json({
@@ -250,7 +266,7 @@ module.exports = {
 
       const usuario = await User.create({
         nome,
-        email,
+        email: emailNormalizado,
         senha: senhaHash,
         cargo_id,
         setor_id,
@@ -302,6 +318,8 @@ module.exports = {
         ativo
       } = req.body;
 
+      const emailNormalizado = normalizarEmail(email);
+
       const usuario = await User.findByPk(id);
 
       if (!usuario) {
@@ -318,12 +336,30 @@ module.exports = {
 
       const dadosUpdate = {
         nome,
-        email,
+        email: emailNormalizado,
         cargo_id,
         setor_id,
         perfil,
         ativo
       };
+
+      if (emailNormalizado) {
+        const existeOutro = await User.findOne({
+          where: {
+            id: { [Op.ne]: id },
+            [Op.or]: [
+              { email: emailNormalizado },
+              where(fn('LOWER', fn('TRIM', col('email'))), emailNormalizado)
+            ]
+          }
+        });
+
+        if (existeOutro) {
+          return res.status(400).json({
+            error: 'Email jÃ¡ cadastrado'
+          });
+        }
+      }
 
       // 🔐 Troca senha se enviada
       if (senha && senha.trim()) {
