@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { HiArrowDownTray, HiArrowUpTray, HiPaperClip } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import { isGeoSetor } from '../utils/setor';
 import { API_URL, authHeaders, fileUrl } from '../services/api';
 import { getMinhasObras, getObras } from '../services/obras';
 import {
@@ -57,7 +58,7 @@ export default function GestaoContratos() {
     String(user?.area || '').toUpperCase()
   ];
   const isAdminGEO =
-    user?.perfil === 'ADMIN' && setorTokens.includes('GEO');
+    user?.perfil === 'ADMIN' && setorTokens.some(isGeoSetor);
   const isSetorObra = setorTokens.includes('OBRA');
   const podeAcessar =
     user?.perfil === 'SUPERADMIN' || isAdminGEO || isSetorObra;

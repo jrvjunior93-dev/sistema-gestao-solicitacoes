@@ -42,6 +42,7 @@ import ConversaDetalhe from './pages/ConversaDetalhe';
 import ArquivosModelos from './pages/ArquivosModelos';
 import ArquivosModelosConfig from './pages/ArquivosModelosConfig';
 import { useAuth } from './contexts/AuthContext';
+import { isGeoSetor } from './utils/setor';
 
 function GestaoUsuariosRoute({ children }) {
   const { user } = useAuth();
@@ -51,7 +52,7 @@ function GestaoUsuariosRoute({ children }) {
     String(user?.setor?.nome || '').toUpperCase(),
     String(user?.area || '').toUpperCase()
   ];
-  const isAdminGEO = perfil === 'ADMIN' && tokens.includes('GEO');
+  const isAdminGEO = perfil === 'ADMIN' && tokens.some(isGeoSetor);
   const permitido = perfil === 'SUPERADMIN' || isAdminGEO;
 
   if (!permitido) {

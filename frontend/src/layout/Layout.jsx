@@ -32,6 +32,7 @@ import {
   HiOutlinePaperAirplane
 } from 'react-icons/hi2';
 import { BsBuildingsFill } from 'react-icons/bs';
+import { isGeoSetor } from '../utils/setor';
 
 export default function Layout() {
   const { user, logout } = useContext(AuthContext);
@@ -163,7 +164,7 @@ export default function Layout() {
     String(user?.area || '').toUpperCase()
   ];
   const isAdminGEO =
-    user?.perfil === 'ADMIN' && setorTokens.includes('GEO');
+    user?.perfil === 'ADMIN' && setorTokens.some(isGeoSetor);
   const isSetorObra = setorTokens.includes('OBRA');
 
   const menuGroups = useMemo(() => {

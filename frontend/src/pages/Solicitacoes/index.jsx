@@ -20,6 +20,7 @@ import { getSetorPermissoes } from '../../services/setorPermissoes';
 import { getStatusSetor } from '../../services/statusSetor';
 import { useAuth } from '../../contexts/AuthContext';
 import { parseDateSmart } from '../../utils/dateLocal';
+import { isGeoSetor } from '../../utils/setor';
 import {
   arquivarSolicitacoesEmMassa,
   deleteSolicitacao,
@@ -310,7 +311,7 @@ export default function Solicitacoes({ arquivadas = false }) {
   ];
   const isSetorObra = setorTokens.includes('OBRA');
   const isSetorFinanceiro = setorTokens.includes('FINANCEIRO');
-  const isAdminGEO = perfilUpper.startsWith('ADMIN') && setorTokens.includes('GEO');
+  const isAdminGEO = perfilUpper.startsWith('ADMIN') && setorTokens.some(isGeoSetor);
   const isSuperadmin = perfilUpper === 'SUPERADMIN';
   const colunasStorageKey = useMemo(() => {
     const identificador = user?.id || user?.email || user?.nome || user?.perfil || 'anon';

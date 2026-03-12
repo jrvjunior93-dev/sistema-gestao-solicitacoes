@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import StatusBadge from '../../components/StatusBadge';
 import { useTheme } from '../../contexts/ThemeContext';
+import { isGeoSetor } from '../../utils/setor';
 import ModalAtribuirResponsavel from './ModalAtribuirResponsavel';
 import ModalEnviarSetor from './ModalEnviarSetor';
 import { API_URL, authHeaders } from '../../services/api';
@@ -56,7 +57,7 @@ export default function LinhaSolicitacao({
   ];
   const isAdminGEO =
     String(user?.perfil || '').toUpperCase().startsWith('ADMIN') &&
-    setorTokens.includes('GEO');
+    setorTokens.some(isGeoSetor);
   const isSuperadmin = String(user?.perfil || '').toUpperCase() === 'SUPERADMIN';
   const podeEditarValor = isAdminGEO || isSuperadmin;
   const setorNomeSolicitacao =

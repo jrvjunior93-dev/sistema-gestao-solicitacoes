@@ -12,6 +12,7 @@ import ModalAlterarStatus from './ModalAlterarStatus';
 import ModalEnviarSetor from '../Solicitacoes/ModalEnviarSetor';
 import { updateStatusSolicitacao } from '../../services/solicitacoes';
 import { API_URL, authHeaders } from '../../services/api';
+import { isGeoSetor } from '../../utils/setor';
 
 export default function SolicitacaoDetalhe() {
   const { id } = useParams();
@@ -24,7 +25,7 @@ export default function SolicitacaoDetalhe() {
     String(user?.area || '').toUpperCase()
   ];
 
-  const isSetorGeo = setorTokens.includes('GEO');
+  const isSetorGeo = setorTokens.some(isGeoSetor);
   const isSetorCompras = setorTokens.includes('COMPRAS');
   const isSuperadmin = String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN';
 
