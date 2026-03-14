@@ -1,0 +1,60 @@
+# Projeto: Sistema de Gestao de Solicitacoes
+# Observacao:
+# - Este repositorio nao e um projeto Python.
+# - O arquivo package.json continua sendo a fonte de verdade para instalacao.
+# - Este requirements.txt foi criado apenas como inventario operacional das dependencias
+#   e pre-requisitos para rodar o sistema sem alterar o fluxo atual de deploy.
+
+RUNTIME
+node>=18
+npm>=9
+
+BACKEND_NPM_DEPENDENCIES
+@aws-sdk/client-s3==3.888.0
+@aws-sdk/s3-request-presigner==3.888.0
+bcryptjs==3.0.3
+cors==2.8.5
+dotenv==17.2.3
+express==4.18.2
+jsonwebtoken==9.0.3
+multer==2.0.2
+mysql2==3.9.0
+sequelize==6.37.0
+
+FRONTEND_NPM_DEPENDENCIES
+react==18.2.0
+react-dom==18.2.0
+react-icons==5.5.0
+react-router-dom==6.22.0
+
+FRONTEND_NPM_DEV_DEPENDENCIES
+@vitejs/plugin-react==4.2.1
+autoprefixer==10.4.19
+postcss==8.4.38
+tailwindcss==3.4.1
+vite==5.0.10
+
+INFRA_PREREQUISITES
+mysql_or_aws_rds
+aws_s3_bucket
+pm2
+nginx
+vercel
+
+INSTALLATION_REFERENCE
+# Backend:
+#   cd backend
+#   npm install
+#
+# Frontend:
+#   cd frontend
+#   npm install
+#
+# Deploy backend:
+#   git pull origin main
+#   npm install
+#   pm2 restart backend-solicitacoes --update-env
+#
+# Build frontend:
+#   cd frontend
+#   npm run build

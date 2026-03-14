@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import PreviewAnexoModal from './SolicitacaoDetalhe/PreviewAnexoModal';
 import { fileUrl } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import {
   getComprovantesPendentes,
   buscarSolicitacoesParaComprovante,
-  vincularComprovante
+  vincularComprovante,
+  excluirComprovante
 } from '../services/comprovantes';
 
 export default function ComprovantesPendentes() {
+  const { user } = useAuth();
   const [pendentes, setPendentes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState('');
@@ -16,6 +19,7 @@ export default function ComprovantesPendentes() {
   const [buscando, setBuscando] = useState(false);
   const [vinculando, setVinculando] = useState({});
   const [preview, setPreview] = useState(null);
+  const isSuperadmin = String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN';
 
   useEffect(() => {
     carregarPendentes();
@@ -68,6 +72,19 @@ export default function ComprovantesPendentes() {
       alert(error?.message || 'Erro ao vincular comprovante');
     } finally {
       setVinculando(prev => ({ ...prev, [comprovanteId]: false }));
+    }
+  }
+
+  async function handleExcluir(comprovanteId) {
+    if (!window.confirm('Deseja excluir este comprovante?')) return;
+
+    try {
+      await excluirComprovante(comprovanteId);
+      await carregarPendentes();
+      alert('Comprovante excluido com sucesso.');
+    } catch (error) {
+      console.error(error);
+      alert(error?.message || 'Erro ao excluir comprovante');
     }
   }
 
@@ -207,13 +224,24 @@ export default function ComprovantesPendentes() {
                   </div>
                 </td>
                 <td className="p-3 text-right">
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => handleVincular(item.id)}
-                    disabled={vinculando[item.id]}
-                  >
-                    {vinculando[item.id] ? 'Vinculando...' : 'Vincular'}
-                  </button>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => handleVincular(item.id)}
+                      disabled={vinculando[item.id]}
+                    >
+                      {vinculando[item.id] ? 'Vinculando...' : 'Vincular'}
+                    </button>
+                    {isSuperadmin && (
+                      <button
+                        className="btn btn-danger"
+                        type="button"
+                        onClick={() => handleExcluir(item.id)}
+                      >
+                        Excluir
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

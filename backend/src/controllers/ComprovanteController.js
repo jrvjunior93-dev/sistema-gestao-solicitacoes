@@ -150,6 +150,54 @@ module.exports = {
     }
   },
 
+  async remover(req, res) {
+    try {
+      const perfil = String(req.user?.perfil || '').trim().toUpperCase();
+      if (perfil !== 'SUPERADMIN') {
+        return res.status(403).json({ error: 'Apenas SUPERADMIN pode excluir comprovante.' });
+      }
+
+      const { id } = req.params;
+      const comprovante = await Comprovante.findByPk(id);
+      if (!comprovante) {
+        return res.status(404).json({ error: 'Comprovante nao encontrado' });
+      }
+
+      if (comprovante.solicitacao_id) {
+        const historicos = await Historico.findAll({
+          where: {
+            solicitacao_id: comprovante.solicitacao_id,
+            acao: 'COMPROVANTE_ADICIONADO'
+          },
+          attributes: ['id', 'metadata']
+        });
+
+        const historicosParaExcluir = historicos
+          .filter(item => {
+            try {
+              const metadata = item?.metadata ? JSON.parse(item.metadata) : {};
+              return Number(metadata?.comprovante_id) === Number(comprovante.id);
+            } catch {
+              return false;
+            }
+          })
+          .map(item => item.id);
+
+        if (historicosParaExcluir.length > 0) {
+          await Historico.destroy({
+            where: { id: { [Op.in]: historicosParaExcluir } }
+          });
+        }
+      }
+
+      await comprovante.destroy();
+      return res.sendStatus(204);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao excluir comprovante' });
+    }
+  },
+
   async solicitacoes(req, res) {
     try {
       const { q } = req.query;

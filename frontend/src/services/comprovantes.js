@@ -57,3 +57,14 @@ export async function vincularComprovante(id, solicitacao_id) {
   }
   return res.json();
 }
+
+export async function excluirComprovante(id) {
+  const res = await fetch(`${API_URL}/comprovantes/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders()
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Erro ao excluir comprovante');
+  }
+}

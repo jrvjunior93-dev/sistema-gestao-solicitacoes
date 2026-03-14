@@ -197,6 +197,12 @@ router.post(
   allowComprovantes,
   ComprovanteController.vincular
 );
+
+router.delete(
+  '/comprovantes/:id',
+  allowComprovantes,
+  ComprovanteController.remover
+);
 // -------------------------------------------------------------------
 // USUÁRIOS
 // -------------------------------------------------------------------
