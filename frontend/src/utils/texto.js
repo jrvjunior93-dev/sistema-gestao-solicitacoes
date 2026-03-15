@@ -11,6 +11,10 @@ export function corrigirTextoCorrompido(valor) {
     return decodeURIComponent(escape(texto));
   } catch {
     return texto
+      .replace(/Solicita..o de Compra/g, 'Solicitação de Compra')
+      .replace(/Observa..es/g, 'Observações')
+      .replace(/Descri..o/g, 'Descrição')
+      .replace(/Necess.rio/g, 'Necessário')
       .replace(/Ã§/g, 'ç')
       .replace(/Ã£/g, 'ã')
       .replace(/Ã¡/g, 'á')
