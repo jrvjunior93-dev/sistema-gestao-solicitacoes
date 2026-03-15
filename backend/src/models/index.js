@@ -39,6 +39,13 @@ db.ConversaInternaAnexo = require('./ConversaInternaAnexo')(sequelize, Sequelize
 db.ConversaInternaParticipante = require('./ConversaInternaParticipante')(sequelize, Sequelize);
 db.ConversaInternaArquivoUsuario = require('./ConversaInternaArquivoUsuario')(sequelize, Sequelize);
 db.ArquivoModelo = require('./ArquivoModelo')(sequelize, Sequelize);
+db.Unidade = require('./Unidade')(sequelize, Sequelize);
+db.Categoria = require('./Categoria')(sequelize, Sequelize);
+db.Insumo = require('./Insumo')(sequelize, Sequelize);
+db.Apropriacao = require('./Apropriacao')(sequelize, Sequelize);
+db.SolicitacaoCompra = require('./SolicitacaoCompra')(sequelize, Sequelize);
+db.SolicitacaoCompraItem = require('./SolicitacaoCompraItem')(sequelize, Sequelize);
+db.SolicitacaoCompraItemManual = require('./SolicitacaoCompraItemManual')(sequelize, Sequelize);
 
   
 
@@ -471,6 +478,96 @@ db.User.hasMany(db.ConversaInternaArquivoUsuario, {
 db.ConversaInternaArquivoUsuario.belongsTo(db.User, {
   foreignKey: 'usuario_id',
   as: 'usuario'
+});
+
+// =====================
+// MODULO DE COMPRAS
+// =====================
+db.Insumo.belongsTo(db.Unidade, {
+  foreignKey: 'unidade_id',
+  as: 'unidade'
+});
+
+db.Insumo.belongsTo(db.Categoria, {
+  foreignKey: 'categoria_id',
+  as: 'categoria'
+});
+
+db.Unidade.hasMany(db.Insumo, {
+  foreignKey: 'unidade_id',
+  as: 'insumos'
+});
+
+db.Categoria.hasMany(db.Insumo, {
+  foreignKey: 'categoria_id',
+  as: 'insumos'
+});
+
+db.Apropriacao.belongsTo(db.Obra, {
+  foreignKey: 'obra_id',
+  as: 'obra'
+});
+
+db.Obra.hasMany(db.Apropriacao, {
+  foreignKey: 'obra_id',
+  as: 'apropriacoes'
+});
+
+db.SolicitacaoCompra.belongsTo(db.Obra, {
+  foreignKey: 'obra_id',
+  as: 'obra'
+});
+
+db.SolicitacaoCompra.belongsTo(db.User, {
+  foreignKey: 'solicitante_id',
+  as: 'solicitante'
+});
+
+db.SolicitacaoCompra.belongsTo(db.Solicitacao, {
+  foreignKey: 'solicitacao_principal_id',
+  as: 'solicitacaoPrincipal'
+});
+
+db.SolicitacaoCompra.hasMany(db.SolicitacaoCompraItem, {
+  foreignKey: 'solicitacao_compra_id',
+  as: 'itens',
+  onDelete: 'CASCADE'
+});
+
+db.SolicitacaoCompra.hasMany(db.SolicitacaoCompraItemManual, {
+  foreignKey: 'solicitacao_compra_id',
+  as: 'itensManuais',
+  onDelete: 'CASCADE'
+});
+
+db.SolicitacaoCompraItem.belongsTo(db.SolicitacaoCompra, {
+  foreignKey: 'solicitacao_compra_id',
+  as: 'solicitacao'
+});
+
+db.SolicitacaoCompraItemManual.belongsTo(db.SolicitacaoCompra, {
+  foreignKey: 'solicitacao_compra_id',
+  as: 'solicitacao'
+});
+
+db.SolicitacaoCompraItem.belongsTo(db.Insumo, {
+  foreignKey: 'insumo_id',
+  as: 'insumo'
+});
+
+db.SolicitacaoCompraItem.belongsTo(db.Unidade, {
+  foreignKey: 'unidade_id',
+  as: 'unidade'
+});
+
+db.SolicitacaoCompraItem.belongsTo(db.Apropriacao, {
+  foreignKey: 'apropriacao_id',
+  as: 'apropriacao'
+});
+
+db.SolicitacaoCompraItemManual.belongsTo(db.Apropriacao, {
+  foreignKey: 'apropriacao_id',
+  as: 'apropriacao'
 });
 
 

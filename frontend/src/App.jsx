@@ -41,6 +41,17 @@ import ConversasSaida from './pages/ConversasSaida';
 import ConversaDetalhe from './pages/ConversaDetalhe';
 import ArquivosModelos from './pages/ArquivosModelos';
 import ArquivosModelosConfig from './pages/ArquivosModelosConfig';
+import {
+  GestaoApropriacoes,
+  GestaoCategorias,
+  GestaoInsumos,
+  GestaoUnidades,
+  NovaSolicitacaoCompra,
+  RevisarSolicitacaoCompra,
+  RevisarSolicitacaoCompraFinal,
+  SolicitacaoCompraDetalhe,
+  SolicitacoesCompra
+} from './modules/solicitacao-compra/pages';
 import { useAuth } from './contexts/AuthContext';
 import { isGeoSetor } from './utils/setor';
 
@@ -68,6 +79,21 @@ function SuperadminRoute({ children }) {
   if (perfil !== 'SUPERADMIN') {
     return <Navigate to="/" replace />;
   }
+  return children;
+}
+
+function ModuloComprasRoute({ children }) {
+  const { user } = useAuth();
+  const perfil = String(user?.perfil || '').toUpperCase();
+  const permitido =
+    perfil === 'SUPERADMIN' ||
+    perfil === 'ADMIN' ||
+    Boolean(user?.pode_criar_solicitacao_compra);
+
+  if (!permitido) {
+    return <Navigate to="/" replace />;
+  }
+
   return children;
 }
 
@@ -131,6 +157,15 @@ export default function App() {
         <Route path="comprovantes/upload" element={<UploadComprovantes />} />
         <Route path="comprovantes/pendentes" element={<ComprovantesPendentes />} />
         <Route path="perfil" element={<Perfil />} />
+        <Route path="solicitacoes-compra" element={<ModuloComprasRoute><SolicitacoesCompra /></ModuloComprasRoute>} />
+        <Route path="solicitacoes-compra/:id" element={<ModuloComprasRoute><SolicitacaoCompraDetalhe /></ModuloComprasRoute>} />
+        <Route path="solicitacoes-compra/nova" element={<ModuloComprasRoute><NovaSolicitacaoCompra /></ModuloComprasRoute>} />
+        <Route path="solicitacoes-compra/revisar" element={<ModuloComprasRoute><RevisarSolicitacaoCompra /></ModuloComprasRoute>} />
+        <Route path="solicitacoes-compra/finalizada/:id" element={<ModuloComprasRoute><RevisarSolicitacaoCompraFinal /></ModuloComprasRoute>} />
+        <Route path="gestao-apropriacoes" element={<SuperadminRoute><GestaoApropriacoes /></SuperadminRoute>} />
+        <Route path="gestao-insumos" element={<SuperadminRoute><GestaoInsumos /></SuperadminRoute>} />
+        <Route path="gestao-unidades" element={<SuperadminRoute><GestaoUnidades /></SuperadminRoute>} />
+        <Route path="gestao-categorias" element={<SuperadminRoute><GestaoCategorias /></SuperadminRoute>} />
 
       </Route>
 

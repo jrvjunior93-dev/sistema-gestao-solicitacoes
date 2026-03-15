@@ -174,6 +174,7 @@ export default function Layout() {
       Painel: HiOutlineSquares2X2,
       Solicitações: HiOutlineClipboardDocumentList,
       Comunicação: HiOutlineChatBubbleLeftRight,
+      Compras: HiOutlineWallet,
       Financeiro: HiOutlineWallet,
       Cadastros: HiOutlineRectangleGroup,
       Contratos: HiOutlineBanknotes,
@@ -185,6 +186,9 @@ export default function Layout() {
       const items = entries.filter(Boolean);
       if (items.length) groups.push({ label, icon: groupIcons[label] || HiOutlineFolderOpen, items });
     };
+    const hasModuloComprasAccess =
+      ['SUPERADMIN', 'ADMIN'].includes(String(user?.perfil || '').toUpperCase()) ||
+      Boolean(user?.pode_criar_solicitacao_compra);
 
     switch (user?.perfil) {
       case 'USUARIO':
@@ -200,6 +204,12 @@ export default function Layout() {
         addGroup('Biblioteca', [
           item('/arquivos-modelos', 'Arquivos Modelos', HiOutlineFolderOpen)
         ]);
+        if (hasModuloComprasAccess) {
+          addGroup('Compras', [
+            item('/solicitacoes-compra', 'Solicitações de Compra', HiOutlineClipboardDocumentList),
+            item('/solicitacoes-compra/nova', 'Nova Solicitação de Compra', HiOutlinePlusCircle)
+          ]);
+        }
         if (isSetorObra) {
           addGroup('Contratos', [
             item('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes)
@@ -228,6 +238,12 @@ export default function Layout() {
         addGroup('Biblioteca', [
           item('/arquivos-modelos', 'Arquivos Modelos', HiOutlineFolderOpen)
         ]);
+        if (hasModuloComprasAccess) {
+          addGroup('Compras', [
+            item('/solicitacoes-compra', 'Solicitações de Compra', HiOutlineClipboardDocumentList),
+            item('/solicitacoes-compra/nova', 'Nova Solicitação de Compra', HiOutlinePlusCircle)
+          ]);
+        }
         if (isSetorObra) {
           addGroup('Contratos', [
             item('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes)
@@ -256,6 +272,12 @@ export default function Layout() {
         addGroup('Biblioteca', [
           item('/arquivos-modelos', 'Arquivos Modelos', HiOutlineFolderOpen)
         ]);
+        if (hasModuloComprasAccess) {
+          addGroup('Compras', [
+            item('/solicitacoes-compra', 'Solicitações de Compra', HiOutlineClipboardDocumentList),
+            item('/solicitacoes-compra/nova', 'Nova Solicitação de Compra', HiOutlinePlusCircle)
+          ]);
+        }
         if (isSetorObra) {
           addGroup('Contratos', [
             item('/gestao-contratos', 'Gestão de Contratos', HiOutlineBanknotes)
@@ -284,6 +306,12 @@ export default function Layout() {
         addGroup('Biblioteca', [
           item('/arquivos-modelos', 'Arquivos Modelos', HiOutlineFolderOpen)
         ]);
+        if (hasModuloComprasAccess) {
+          addGroup('Compras', [
+            item('/solicitacoes-compra', 'Solicitações de Compra', HiOutlineClipboardDocumentList),
+            item('/solicitacoes-compra/nova', 'Nova Solicitação de Compra', HiOutlinePlusCircle)
+          ]);
+        }
         addGroup('Financeiro', [
           item('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp),
           item('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund)
@@ -309,6 +337,12 @@ export default function Layout() {
         addGroup('Biblioteca', [
           item('/arquivos-modelos', 'Arquivos Modelos', HiOutlineFolderOpen)
         ]);
+        if (hasModuloComprasAccess) {
+          addGroup('Compras', [
+            item('/solicitacoes-compra', 'Solicitações de Compra', HiOutlineClipboardDocumentList),
+            item('/solicitacoes-compra/nova', 'Nova Solicitação de Compra', HiOutlinePlusCircle)
+          ]);
+        }
         if (isFinanceiro) {
           addGroup('Financeiro', [
             item('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp),
@@ -344,6 +378,14 @@ export default function Layout() {
         addGroup('Biblioteca', [
           item('/arquivos-modelos', 'Arquivos Modelos', HiOutlineFolderOpen)
         ]);
+        addGroup('Compras', [
+          item('/solicitacoes-compra', 'Solicitações de Compra', HiOutlineClipboardDocumentList),
+          item('/solicitacoes-compra/nova', 'Nova Solicitação de Compra', HiOutlinePlusCircle),
+          item('/gestao-apropriacoes', 'Gestão de Apropriações', HiOutlineAdjustmentsHorizontal),
+          item('/gestao-insumos', 'Gestão de Insumos', HiOutlineRectangleGroup),
+          item('/gestao-unidades', 'Gestão de Unidades', HiOutlineBuildingOffice2),
+          item('/gestao-categorias', 'Gestão de Categorias', HiOutlineFolderOpen)
+        ]);
         addGroup('Financeiro', [
           item('/comprovantes/upload', 'Upload Comprovantes', HiOutlineCloudArrowUp),
           item('/comprovantes/pendentes', 'Comprovantes Pendentes', HiOutlineReceiptRefund)
@@ -371,7 +413,7 @@ export default function Layout() {
     }
 
     return groups;
-  }, [user?.perfil, isFinanceiro, isAdminGEO, isSetorObra]);
+  }, [user?.perfil, user?.pode_criar_solicitacao_compra, isFinanceiro, isAdminGEO, isSetorObra]);
 
   const flatMenuItems = useMemo(
     () => menuGroups.flatMap(group => group.items),

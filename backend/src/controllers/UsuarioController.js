@@ -36,6 +36,44 @@ function normalizarEmail(valor) {
     .toLowerCase();
 }
 
+function parseBoolean(valor) {
+  if (typeof valor === 'boolean') {
+    return valor;
+  }
+
+  if (typeof valor === 'string') {
+    const normalizado = valor.trim().toLowerCase();
+    if (normalizado === 'true') return true;
+    if (normalizado === 'false') return false;
+    if (normalizado === '1') return true;
+    if (normalizado === '0') return false;
+    if (normalizado === 'sim') return true;
+    if (normalizado === 'nao') return false;
+    if (normalizado === 'não') return false;
+  }
+
+  if (typeof valor === 'number') {
+    if (valor === 1) return true;
+    if (valor === 0) return false;
+  }
+
+  return null;
+}
+
+function definirPermissaoSolicitacaoCompra(perfil, valorInformado, fallback = false) {
+  const perfilNormalizado = String(perfil || '').trim().toUpperCase();
+  if (perfilNormalizado === 'SUPERADMIN' || perfilNormalizado === 'ADMIN') {
+    return true;
+  }
+
+  const parseado = parseBoolean(valorInformado);
+  if (parseado === null) {
+    return Boolean(fallback);
+  }
+
+  return parseado;
+}
+
 function parseCsvLine(line, delimiter) {
   const values = [];
   let current = '';
@@ -229,7 +267,8 @@ module.exports = {
         cargo_id,
         setor_id,
         perfil,
-        obras = []
+        obras = [],
+        pode_criar_solicitacao_compra
       } = req.body;
 
       const emailNormalizado = normalizarEmail(email);
@@ -271,7 +310,12 @@ module.exports = {
         cargo_id,
         setor_id,
         perfil,
-        ativo: true
+        ativo: true,
+        pode_criar_solicitacao_compra: definirPermissaoSolicitacaoCompra(
+          perfil,
+          pode_criar_solicitacao_compra,
+          false
+        )
       });
 
       // 🔗 Vínculo obras
@@ -288,7 +332,8 @@ module.exports = {
         nome: usuario.nome,
         email: usuario.email,
         perfil: usuario.perfil,
-        ativo: usuario.ativo
+        ativo: usuario.ativo,
+        pode_criar_solicitacao_compra: usuario.pode_criar_solicitacao_compra
       });
 
     } catch (error) {
@@ -315,7 +360,8 @@ module.exports = {
         setor_id,
         perfil,
         obras = [],
-        ativo
+        ativo,
+        pode_criar_solicitacao_compra
       } = req.body;
 
       const emailNormalizado = normalizarEmail(email);
@@ -340,7 +386,12 @@ module.exports = {
         cargo_id,
         setor_id,
         perfil,
-        ativo
+        ativo,
+        pode_criar_solicitacao_compra: definirPermissaoSolicitacaoCompra(
+          perfil,
+          pode_criar_solicitacao_compra,
+          usuario.pode_criar_solicitacao_compra
+        )
       };
 
       if (emailNormalizado) {
@@ -386,7 +437,8 @@ module.exports = {
         nome: usuario.nome,
         email: usuario.email,
         perfil: usuario.perfil,
-        ativo: usuario.ativo
+        ativo: usuario.ativo,
+        pode_criar_solicitacao_compra: usuario.pode_criar_solicitacao_compra
       });
 
     } catch (error) {
@@ -464,6 +516,9 @@ module.exports = {
       const idxObras = headerMap.findIndex(h => h === 'obras');
       const idxSenha = headerMap.findIndex(h => h === 'senha');
       const idxPerfil = headerMap.findIndex(h => h === 'perfil');
+      const idxPermissaoCompras = headerMap.findIndex(
+        h => h === 'pode_criar_solicitacao_compra' || h === 'permite_solicitacao_compra'
+      );
 
       const obrigatorios = [
         ['Nome', idxNome],
@@ -526,6 +581,8 @@ module.exports = {
         const obrasRaw = String(idxObras >= 0 ? (row[idxObras] ?? '') : '').trim();
         const senhaRaw = String(row[idxSenha] ?? '').trim();
         const perfilRaw = idxPerfil >= 0 ? String(row[idxPerfil] ?? '').trim() : '';
+        const permissaoComprasRaw =
+          idxPermissaoCompras >= 0 ? String(row[idxPermissaoCompras] ?? '').trim() : '';
         const perfil = (perfilRaw || 'USUARIO').toUpperCase();
         const perfisPermitidos = new Set(['USUARIO', 'ADMIN', 'SUPERADMIN']);
 
@@ -606,7 +663,12 @@ module.exports = {
           cargo_id: cargo.id,
           setor_id: setor.id,
           perfil,
-          ativo: true
+          ativo: true,
+          pode_criar_solicitacao_compra: definirPermissaoSolicitacaoCompra(
+            perfil,
+            permissaoComprasRaw,
+            false
+          )
         });
 
         for (const obra_id of obrasIds) {

@@ -66,6 +66,29 @@ if (fs.existsSync(staticDir)) {
   app.use(express.static(staticDir));
 }
 
+async function tableExists(tableName) {
+  const [rows] = await db.sequelize.query(
+    `SELECT COUNT(*) AS total
+       FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ${db.sequelize.escape(tableName)}`
+  );
+
+  return Number(rows?.[0]?.total || 0) > 0;
+}
+
+async function columnExists(tableName, columnName) {
+  const [rows] = await db.sequelize.query(
+    `SELECT COUNT(*) AS total
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ${db.sequelize.escape(tableName)}
+        AND COLUMN_NAME = ${db.sequelize.escape(columnName)}`
+  );
+
+  return Number(rows?.[0]?.total || 0) > 0;
+}
+
 async function prepararBanco() {
   try {
     await db.sequelize.query(
@@ -247,6 +270,215 @@ async function prepararBanco() {
     );
   } catch (error) {
     // ignora se a coluna ja existe
+  }
+
+  // Modulo de compras - permissao por usuario
+  try {
+    const hasColumn = await columnExists('users', 'pode_criar_solicitacao_compra');
+    if (!hasColumn) {
+      await db.sequelize.query(
+        "ALTER TABLE users ADD COLUMN pode_criar_solicitacao_compra BOOLEAN NOT NULL DEFAULT 0"
+      );
+    }
+
+    await db.sequelize.query(
+      "UPDATE users SET pode_criar_solicitacao_compra = 1 WHERE perfil IN ('SUPERADMIN', 'ADMIN')"
+    );
+  } catch (error) {
+    // ignora se nao conseguir aplicar agora
+  }
+
+  // Modulo de compras - tabelas auxiliares
+  try {
+    await db.sequelize.query(
+      `CREATE TABLE IF NOT EXISTS unidades (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nome VARCHAR(255) NOT NULL,
+        sigla VARCHAR(50) NOT NULL,
+        ativo BOOLEAN DEFAULT TRUE,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )`
+    );
+  } catch (error) {
+    // ignora se nao conseguir criar
+  }
+
+  try {
+    await db.sequelize.query(
+      `CREATE TABLE IF NOT EXISTS categorias (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nome VARCHAR(255) NOT NULL UNIQUE,
+        ativo BOOLEAN DEFAULT TRUE,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )`
+    );
+  } catch (error) {
+    // ignora se nao conseguir criar
+  }
+
+  try {
+    await db.sequelize.query(
+      `CREATE TABLE IF NOT EXISTS insumos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nome VARCHAR(255) NOT NULL,
+        codigo VARCHAR(255) UNIQUE,
+        descricao TEXT,
+        unidade_id INT NOT NULL,
+        categoria_id INT NULL,
+        ativo BOOLEAN DEFAULT TRUE,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_insumos_unidade FOREIGN KEY (unidade_id) REFERENCES unidades(id),
+        CONSTRAINT fk_insumos_categoria FOREIGN KEY (categoria_id) REFERENCES categorias(id)
+      )`
+    );
+  } catch (error) {
+    // ignora se a tabela/constraints ja existirem
+  }
+
+  try {
+    await db.sequelize.query(
+      `CREATE TABLE IF NOT EXISTS apropriacoes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        obra_id INT NOT NULL,
+        codigo VARCHAR(255) NOT NULL,
+        descricao VARCHAR(255) NULL,
+        ativo BOOLEAN DEFAULT TRUE,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_apropriacoes_obra FOREIGN KEY (obra_id) REFERENCES obras(id)
+      )`
+    );
+  } catch (error) {
+    // ignora se a tabela/constraints ja existirem
+  }
+
+  try {
+    const hasSolicitacaoCompras = await tableExists('solicitacao_compras');
+    if (hasSolicitacaoCompras) {
+      const hasSolicitacaoPrincipal = await columnExists('solicitacao_compras', 'solicitacao_principal_id');
+      if (!hasSolicitacaoPrincipal) {
+        await db.sequelize.query(
+          'ALTER TABLE solicitacao_compras ADD COLUMN solicitacao_principal_id INT NULL'
+        );
+      }
+    }
+  } catch (error) {
+    // ignora se nao conseguir ajustar
+  }
+
+  try {
+    await db.sequelize.query(
+      `CREATE TABLE IF NOT EXISTS solicitacao_compras (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        obra_id INT NOT NULL,
+        solicitante_id INT NOT NULL,
+        solicitacao_principal_id INT NULL,
+        status VARCHAR(50) NOT NULL DEFAULT 'ABERTA',
+        observacoes TEXT NULL,
+        necessario_para DATE NULL,
+        link_geral VARCHAR(500) NULL,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_solicitacao_compras_obra FOREIGN KEY (obra_id) REFERENCES obras(id),
+        CONSTRAINT fk_solicitacao_compras_solicitante FOREIGN KEY (solicitante_id) REFERENCES users(id)
+      )`
+    );
+  } catch (error) {
+    // ignora se a tabela/constraints ja existirem
+  }
+
+  try {
+    await db.sequelize.query(
+      `CREATE TABLE IF NOT EXISTS solicitacao_compra_itens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        solicitacao_compra_id INT NOT NULL,
+        insumo_id INT NOT NULL,
+        unidade_id INT NOT NULL,
+        apropriacao_id INT NOT NULL,
+        quantidade DECIMAL(12,2) NOT NULL,
+        especificacao TEXT NOT NULL,
+        necessario_para DATE NULL,
+        link_produto VARCHAR(500) NULL,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_solicitacao_compra_itens_solicitacao FOREIGN KEY (solicitacao_compra_id) REFERENCES solicitacao_compras(id) ON DELETE CASCADE,
+        CONSTRAINT fk_solicitacao_compra_itens_insumo FOREIGN KEY (insumo_id) REFERENCES insumos(id),
+        CONSTRAINT fk_solicitacao_compra_itens_unidade FOREIGN KEY (unidade_id) REFERENCES unidades(id),
+        CONSTRAINT fk_solicitacao_compra_itens_apropriacao FOREIGN KEY (apropriacao_id) REFERENCES apropriacoes(id)
+      )`
+    );
+  } catch (error) {
+    // ignora se a tabela/constraints ja existirem
+  }
+
+  try {
+    await db.sequelize.query(
+      `CREATE TABLE IF NOT EXISTS solicitacao_compra_itens_manuais (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        solicitacao_compra_id INT NOT NULL,
+        apropriacao_id INT NOT NULL,
+        nome_manual VARCHAR(255) NOT NULL,
+        unidade_sigla_manual VARCHAR(50) NOT NULL,
+        quantidade DECIMAL(12,2) NOT NULL,
+        especificacao TEXT NOT NULL,
+        necessario_para DATE NULL,
+        link_produto VARCHAR(500) NULL,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_solicitacao_compra_itens_manuais_solicitacao FOREIGN KEY (solicitacao_compra_id) REFERENCES solicitacao_compras(id) ON DELETE CASCADE,
+        CONSTRAINT fk_solicitacao_compra_itens_manuais_apropriacao FOREIGN KEY (apropriacao_id) REFERENCES apropriacoes(id)
+      )`
+    );
+  } catch (error) {
+    // ignora se a tabela/constraints ja existirem
+  }
+
+  try {
+    const hasUnidades = await tableExists('unidades');
+    if (hasUnidades) {
+      const [rows] = await db.sequelize.query('SELECT COUNT(*) AS total FROM unidades');
+      if (Number(rows?.[0]?.total || 0) === 0) {
+        await db.sequelize.query(
+          `INSERT INTO unidades (nome, sigla) VALUES
+            ('Metro', 'm'),
+            ('Metro Quadrado', 'm2'),
+            ('Metro Cubico', 'm3'),
+            ('Quilograma', 'kg'),
+            ('Tonelada', 't'),
+            ('Litro', 'L'),
+            ('Unidade', 'un'),
+            ('Caixa', 'cx'),
+            ('Pacote', 'pct'),
+            ('Saco', 'sc')`
+        );
+      }
+    }
+  } catch (error) {
+    // ignora se nao conseguir popular
+  }
+
+  try {
+    const hasCategorias = await tableExists('categorias');
+    if (hasCategorias) {
+      const [rows] = await db.sequelize.query('SELECT COUNT(*) AS total FROM categorias');
+      if (Number(rows?.[0]?.total || 0) === 0) {
+        await db.sequelize.query(
+          `INSERT INTO categorias (nome) VALUES
+            ('Material de Construcao'),
+            ('Ferramentas'),
+            ('Equipamentos'),
+            ('Eletrica'),
+            ('Hidraulica'),
+            ('Acabamento'),
+            ('Outros')`
+        );
+      }
+    }
+  } catch (error) {
+    // ignora se nao conseguir popular
   }
 }
 

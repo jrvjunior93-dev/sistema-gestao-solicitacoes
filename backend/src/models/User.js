@@ -39,6 +39,12 @@ module.exports = (sequelize, DataTypes) => {
     ativo: {
       type: DataTypes.BOOLEAN,
       defaultValue: true
+    },
+
+    pode_criar_solicitacao_compra: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false
     }
   }, {
     tableName: 'users',

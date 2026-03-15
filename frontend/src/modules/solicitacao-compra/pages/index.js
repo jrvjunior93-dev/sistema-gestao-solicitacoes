@@ -1,0 +1,9 @@
+export { default as SolicitacoesCompra } from './SolicitacoesCompra';
+export { default as SolicitacaoCompraDetalhe } from './SolicitacaoCompraDetalhe';
+export { default as NovaSolicitacaoCompra } from './NovaSolicitacaoCompra';
+export { default as RevisarSolicitacaoCompra } from './RevisarSolicitacaoCompra';
+export { default as RevisarSolicitacaoCompraFinal } from './RevisarSolicitacaoCompraFinal';
+export { default as GestaoApropriacoes } from './GestaoApropriacoes';
+export { default as GestaoInsumos } from './GestaoInsumos';
+export { default as GestaoCategorias } from './GestaoCategorias';
+export { default as GestaoUnidades } from './GestaoUnidades';

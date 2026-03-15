@@ -66,7 +66,8 @@ module.exports = {
           email: user.email,
           perfil: user.perfil,
           setor_id: user.setor_id,
-          setor: user.setor
+          setor: user.setor,
+          pode_criar_solicitacao_compra: Boolean(user.pode_criar_solicitacao_compra)
         }
       });
 
