@@ -67,8 +67,8 @@ export default function RevisarSolicitacaoCompraFinal() {
             <button type="button" className="btn btn-primary" onClick={handleAbrirPdf} disabled={baixando}>
               {baixando ? 'Abrindo PDF...' : 'Abrir PDF'}
             </button>
-            <button type="button" className="btn btn-outline" onClick={() => navigate('/solicitacoes-compra')}>
-              Ir para listagem
+            <button type="button" className="btn btn-outline" onClick={() => navigate('/solicitacoes')}>
+              Ir para solicitações
             </button>
             <button type="button" className="btn btn-outline" onClick={() => navigate('/solicitacoes-compra/nova')}>
               Nova solicitação

@@ -170,6 +170,12 @@ export default function Layout() {
   const menuGroups = useMemo(() => {
     const groups = [];
     const item = (to, label, icon) => ({ to, label, icon });
+    const normalizeMenuLabel = (value) =>
+      String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toUpperCase();
     const groupIcons = {
       Painel: HiOutlineSquares2X2,
       Solicitações: HiOutlineClipboardDocumentList,
@@ -410,6 +416,37 @@ export default function Layout() {
 
       default:
         break;
+    }
+
+    if (hasModuloComprasAccess) {
+      const grupoSolicitacoes = groups.find(
+        (group) => normalizeMenuLabel(group.label) === 'SOLICITACOES'
+      );
+
+      if (
+        grupoSolicitacoes &&
+        !grupoSolicitacoes.items.some((entry) => entry.to === '/solicitacoes-compra/nova')
+      ) {
+        grupoSolicitacoes.items.push(
+          item('/solicitacoes-compra/nova', 'Nova Solicitação de Compra', HiOutlineWallet)
+        );
+      }
+
+      const indiceCompras = groups.findIndex(
+        (group) => normalizeMenuLabel(group.label) === 'COMPRAS'
+      );
+
+      if (indiceCompras >= 0) {
+        groups[indiceCompras].items = groups[indiceCompras].items.filter(
+          (entry) =>
+            entry.to !== '/solicitacoes-compra' &&
+            entry.to !== '/solicitacoes-compra/nova'
+        );
+
+        if (!groups[indiceCompras].items.length) {
+          groups.splice(indiceCompras, 1);
+        }
+      }
     }
 
     return groups;
