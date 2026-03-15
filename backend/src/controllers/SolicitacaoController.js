@@ -22,7 +22,10 @@ const {
 } = require('../models');
 
 const { Op } = require('sequelize');
-const { criarNotificacao } = require('../services/notificacoes');
+const {
+  criarNotificacao,
+  obterDestinatariosCriacaoSetor
+} = require('../services/notificacoes');
 const gerarCodigoSolicitacao = require('../services/solicitacao/gerarCodigo');
 const { uploadToS3 } = require('../services/s3');
 const { normalizeOriginalName } = require('../utils/fileName');
@@ -1409,11 +1412,15 @@ module.exports = {
         metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null
       });
 
+      const destinatariosCriacao = await obterDestinatariosCriacaoSetor(solicitacao);
+
       await criarNotificacao({
         solicitacao_id: solicitacao.id,
         tipo: 'SOLICITACAO_CRIADA',
         mensagem: `${usuario?.nome || 'Usuario'} criou a solicitacao ${codigo}`,
-        created_by: usuarioId
+        created_by: usuarioId,
+        destinatarios: destinatariosCriacao,
+        usarDestinatariosInformados: true
       });
 
       // Criador ja enxerga
@@ -2105,7 +2112,7 @@ module.exports = {
   async adicionarComentario(req, res) {
     try {
       const { id } = req.params;
-      const { descricao } = req.body;
+      const { descricao, mencoes } = req.body;
       const usuario = await User.findByPk(req.user.id);
 
       if (!descricao?.trim()) {
@@ -2132,12 +2139,52 @@ module.exports = {
         descricao
       });
 
-      await criarNotificacao({
-        solicitacao_id: id,
-        tipo: 'COMENTARIO',
-        mensagem: `${usuario?.nome || 'Usuario'} comentou na solicitacao ${id}`,
-        created_by: req.user.id
-      });
+      const mencoesRecebidas = Array.isArray(mencoes) ? mencoes : [];
+      const idsMencionados = [
+        ...new Set(
+          mencoesRecebidas
+            .map(item => Number(item))
+            .filter(item => Number.isInteger(item) && item > 0 && item !== req.user.id)
+        )
+      ];
+
+      let temMencoes = false;
+
+      if (idsMencionados.length > 0) {
+        const usuariosMencionados = await User.findAll({
+          where: {
+            id: { [Op.in]: idsMencionados },
+            ativo: true
+          },
+          attributes: ['id', 'nome']
+        });
+
+        for (const usuarioMencionado of usuariosMencionados) {
+          temMencoes = true;
+
+          await criarNotificacao({
+            solicitacao_id: id,
+            tipo: 'MENCAO_COMENTARIO',
+            mensagem: `${usuario?.nome || 'Usuario'} mencionou você: "${descricao}"`,
+            metadata: {
+              comentario: descricao,
+              mencionado_por: req.user.id
+            },
+            created_by: req.user.id,
+            destinatarios: [usuarioMencionado.id],
+            usarDestinatariosInformados: true
+          });
+        }
+      }
+
+      if (!temMencoes) {
+        await criarNotificacao({
+          solicitacao_id: id,
+          tipo: 'COMENTARIO',
+          mensagem: `${usuario?.nome || 'Usuario'} comentou na solicitacao ${id}`,
+          created_by: req.user.id
+        });
+      }
 
       return res.sendStatus(201);
 

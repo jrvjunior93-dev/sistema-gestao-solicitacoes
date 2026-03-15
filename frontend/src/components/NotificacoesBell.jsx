@@ -6,6 +6,8 @@ import {
   marcarTodasNotificacoesLidas
 } from '../services/notificacoes';
 
+const TIPOS_VISIVEIS = new Set(['MENCAO_COMENTARIO', 'SOLICITACAO_CRIADA']);
+
 export default function NotificacoesBell() {
   const [aberto, setAberto] = useState(false);
   const [itens, setItens] = useState([]);
@@ -15,8 +17,12 @@ export default function NotificacoesBell() {
   async function carregar() {
     try {
       const data = await getNotificacoes({ limit: 50 });
-      setItens(Array.isArray(data.itens) ? data.itens : []);
-      setTotalNaoLidas(Number(data.total_nao_lidas || 0));
+      const itensFiltrados = Array.isArray(data.itens)
+        ? data.itens.filter(item => TIPOS_VISIVEIS.has(String(item.tipo || '').toUpperCase()))
+        : [];
+
+      setItens(itensFiltrados);
+      setTotalNaoLidas(itensFiltrados.filter(item => !item.lida_em).length);
     } catch (e) {
       console.error(e);
     }

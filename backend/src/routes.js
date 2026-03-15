@@ -44,6 +44,7 @@ router.post('/login', AuthController.login);
 router.get('/configuracoes/tema', ConfiguracaoSistemaController.getTema);
 const auth = require('./middlewares/auth');
 router.use(auth);
+router.get('/usuarios-lista', UsuarioController.listaPublica);
 
 // -------------------------------------------------------------------
 // ARQUIVOS MODELOS

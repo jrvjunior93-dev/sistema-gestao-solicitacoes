@@ -5,8 +5,35 @@ const {
   Historico,
   Solicitacao,
   User,
-  Setor
+  Setor,
+  SetorPermissao,
+  ConfiguracaoSistema
 } = require('../models');
+
+const CHAVE_TIPOS_SOLICITACAO_POR_SETOR = 'TIPOS_SOLICITACAO_POR_SETOR';
+
+function parseJsonOrDefault(value, fallback) {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function construirTokensSetor(areaResponsavel) {
+  const area = String(areaResponsavel || '').trim().toUpperCase();
+  if (!area) return [];
+
+  const tokens = new Set([area]);
+  if (['GEO', 'GERENCIA DE PROCESSOS', 'GERENCIA_PROCESSOS'].includes(area)) {
+    tokens.add('GEO');
+    tokens.add('GERENCIA DE PROCESSOS');
+    tokens.add('GERENCIA_PROCESSOS');
+  }
+
+  return Array.from(tokens);
+}
 
 async function resolverSetorPorArea(areaResponsavel) {
   if (!areaResponsavel) return null;
@@ -86,28 +113,113 @@ async function obterSuperadmins() {
   return superadmins.map(a => a.id);
 }
 
+async function obterModoRecebimentoSetor(tokensSetor = []) {
+  if (!Array.isArray(tokensSetor) || tokensSetor.length === 0) {
+    return 'TODOS_VISIVEIS';
+  }
+
+  const permissoes = await SetorPermissao.findAll({
+    where: {
+      setor: { [Op.in]: tokensSetor }
+    },
+    attributes: ['setor', 'modo_recebimento']
+  });
+
+  for (const token of tokensSetor) {
+    const item = permissoes.find(
+      permissao => String(permissao.setor || '').toUpperCase() === String(token).toUpperCase()
+    );
+    if (item?.modo_recebimento) {
+      return String(item.modo_recebimento).toUpperCase();
+    }
+  }
+
+  return 'TODOS_VISIVEIS';
+}
+
+async function obterModoRecebimentoPorSetorETipo(tokensSetor = [], tipoSolicitacaoId = null) {
+  const tipoId = Number(tipoSolicitacaoId);
+  if (Number.isInteger(tipoId) && tipoId > 0) {
+    const item = await ConfiguracaoSistema.findOne({
+      where: { chave: CHAVE_TIPOS_SOLICITACAO_POR_SETOR },
+      order: [['id', 'DESC']]
+    });
+    const configuracao = parseJsonOrDefault(item?.valor, {});
+
+    for (const token of tokensSetor) {
+      const regraSetor = configuracao[String(token || '').trim().toUpperCase()];
+      const modoPorTipo = regraSetor?.modos?.[String(tipoId)];
+      if (modoPorTipo) {
+        return String(modoPorTipo).toUpperCase();
+      }
+    }
+  }
+
+  return obterModoRecebimentoSetor(tokensSetor);
+}
+
+async function obterDestinatariosCriacaoSetor(solicitacao) {
+  if (!solicitacao?.area_responsavel) return [];
+
+  const setor = await resolverSetorPorArea(solicitacao.area_responsavel);
+  if (!setor) return [];
+
+  const tokensSetor = construirTokensSetor(solicitacao.area_responsavel);
+  const modoRecebimento = await obterModoRecebimentoPorSetorETipo(
+    tokensSetor,
+    solicitacao.tipo_solicitacao_id
+  );
+
+  const whereUsuarios = {
+    ativo: true,
+    setor_id: setor.id
+  };
+
+  if (modoRecebimento !== 'TODOS_VISIVEIS') {
+    whereUsuarios.perfil = 'ADMIN';
+  }
+
+  const usuariosSetor = await User.findAll({
+    where: whereUsuarios,
+    attributes: ['id']
+  });
+
+  return usuariosSetor.map(usuario => usuario.id);
+}
+
 async function criarNotificacao({
   solicitacao_id,
   tipo,
   mensagem,
   metadata,
-  created_by
+  created_by,
+  destinatarios,
+  usarDestinatariosInformados = false
 }) {
   const { solicitacao, participantes } = await obterParticipantes(solicitacao_id);
   if (!solicitacao) return null;
 
-  const destinatarios = new Set(participantes);
+  const destinatariosSet = new Set();
 
-  const adminsSetor = await obterAdminsDoSetor(solicitacao.area_responsavel);
-  adminsSetor.forEach(id => destinatarios.add(id));
+  if (usarDestinatariosInformados && Array.isArray(destinatarios)) {
+    destinatarios
+      .map(usuarioId => Number(usuarioId))
+      .filter(usuarioId => Number.isInteger(usuarioId) && usuarioId > 0)
+      .forEach(usuarioId => destinatariosSet.add(usuarioId));
+  } else {
+    participantes.forEach(usuarioId => destinatariosSet.add(usuarioId));
 
-  const adminsGEO = await obterAdminsGEO();
-  adminsGEO.forEach(id => destinatarios.add(id));
+    const adminsSetor = await obterAdminsDoSetor(solicitacao.area_responsavel);
+    adminsSetor.forEach(id => destinatariosSet.add(id));
 
-  const superadmins = await obterSuperadmins();
-  superadmins.forEach(id => destinatarios.add(id));
+    const adminsGEO = await obterAdminsGEO();
+    adminsGEO.forEach(id => destinatariosSet.add(id));
 
-  if (created_by) destinatarios.delete(created_by);
+    const superadmins = await obterSuperadmins();
+    superadmins.forEach(id => destinatariosSet.add(id));
+  }
+
+  if (created_by) destinatariosSet.delete(created_by);
 
   const notificacao = await Notificacao.create({
     solicitacao_id,
@@ -117,7 +229,7 @@ async function criarNotificacao({
     created_by: created_by || null
   });
 
-  const linhas = Array.from(destinatarios).map(usuario_id => ({
+  const linhas = Array.from(destinatariosSet).map(usuario_id => ({
     notificacao_id: notificacao.id,
     usuario_id
   }));
@@ -130,5 +242,6 @@ async function criarNotificacao({
 }
 
 module.exports = {
-  criarNotificacao
+  criarNotificacao,
+  obterDestinatariosCriacaoSetor
 };

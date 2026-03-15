@@ -210,6 +210,25 @@ module.exports = {
     }
   },
 
+  async listaPublica(req, res) {
+    try {
+      const usuarios = await User.findAll({
+        where: {
+          ativo: true
+        },
+        attributes: ['id', 'nome', 'email'],
+        order: [['nome', 'ASC']]
+      });
+
+      return res.json(usuarios);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        error: 'Erro ao buscar usuarios'
+      });
+    }
+  },
+
   // =====================================================
   // DETALHE USUÃRIO
   // =====================================================
