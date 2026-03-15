@@ -17,12 +17,15 @@ export default function UsuarioNovo() {
   const [cargoId, setCargoId] = useState('');
   const [setorId, setSetorId] = useState('');
   const [obras, setObras] = useState([]);
+  const [podeCriarSolicitacaoCompra, setPodeCriarSolicitacaoCompra] = useState(false);
 
   const [listaCargos, setListaCargos] = useState([]);
   const [listaSetores, setListaSetores] = useState([]);
   const [listaObras, setListaObras] = useState([]);
   const [loading, setLoading] = useState(true);
   const isSuperadminLogado = String(user?.perfil || '').toUpperCase() === 'SUPERADMIN';
+  const perfilNormalizado = String(perfil || '').toUpperCase();
+  const permissaoCompraTravada = perfilNormalizado === 'ADMIN' || perfilNormalizado === 'SUPERADMIN';
 
   useEffect(() => {
     carregarDados();
@@ -48,6 +51,7 @@ export default function UsuarioNovo() {
         setPerfil(usuario.perfil || '');
         setCargoId(usuario.cargo_id ? String(usuario.cargo_id) : '');
         setSetorId(usuario.setor_id ? String(usuario.setor_id) : '');
+        setPodeCriarSolicitacaoCompra(Boolean(usuario.pode_criar_solicitacao_compra));
         const vinculos = Array.isArray(usuario.vinculos) ? usuario.vinculos : [];
         setObras(vinculos.map(v => v.obra_id).filter(Boolean));
       }
@@ -77,7 +81,8 @@ export default function UsuarioNovo() {
       perfil,
       cargo_id: cargoId || null,
       setor_id: setorId || null,
-      obras
+      obras,
+      pode_criar_solicitacao_compra: podeCriarSolicitacaoCompra
     };
 
     if (editando && !senha.trim()) {
@@ -189,6 +194,28 @@ export default function UsuarioNovo() {
             </select>
           </label>
         </div>
+
+        {isSuperadminLogado && (
+          <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
+            <label className="flex items-start gap-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={permissaoCompraTravada ? true : podeCriarSolicitacaoCompra}
+                onChange={e => setPodeCriarSolicitacaoCompra(e.target.checked)}
+                disabled={permissaoCompraTravada}
+              />
+              <span className="grid gap-1">
+                <span className="font-medium">Permitir acesso a Nova Solicitação de Compra</span>
+                <span className="text-[var(--c-muted)]">
+                  {permissaoCompraTravada
+                    ? 'Perfis ADMIN e SUPERADMIN ja possuem esse acesso automaticamente.'
+                    : 'Define se este usuário pode acessar e utilizar a tela de Nova Solicitação de Compra.'}
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         <div>
           <p className="font-medium mb-2">Obras vinculadas</p>
