@@ -47,6 +47,7 @@ import {
 } from '../../services/solicitacoes';
 import {
   atualizarApropriacoesItemSolicitacaoCompra,
+  atualizarQuantidadeItemSolicitacaoCompra,
   cadastrarUnidadeItemSolicitacaoCompra,
   obterSolicitacaoCompraPorSolicitacao
 } from '../../services/compras';
@@ -68,6 +69,7 @@ import {
   canEditarApropriacoesItemCompraDireta,
   canEditarApropriacoesItemSolicitacaoCompra,
   canEditarApropriacoesSolicitacao,
+  canEditarItensSolicitacaoCompra,
   canViewSolicitacaoFinanceiro,
   hasConfiguredAreaPermissions,
   hasEnabledModule,
@@ -283,10 +285,13 @@ export default function SolicitacaoDetalhe() {
   const moduloComprasHabilitado = hasEnabledModule(user, 'COMPRAS');
   const podeEditarApropriacoes = moduloComprasHabilitado && canEditarApropriacoesSolicitacao(user);
   const podeEditarItensCompraDiretaBase = moduloComprasHabilitado && canEditarApropriacoesItemCompraDireta(user);
+  const podeEditarApropriacoesItensSolicitacaoCompraBase = moduloComprasHabilitado
+    && canEditarApropriacoesItemSolicitacaoCompra(user);
+  const podeCadastrarUnidadeItemSolicitacaoCompraBase = moduloComprasHabilitado
+    && canEditarItensSolicitacaoCompra(user);
   const podeEditarItensSolicitacaoCompraBase = moduloComprasHabilitado && (
-    canAlterarQuantidadeSolicitacaoCompra(user) || canEditarApropriacoesItemSolicitacaoCompra(user)
+    canAlterarQuantidadeSolicitacaoCompra(user) || podeEditarApropriacoesItensSolicitacaoCompraBase
   );
-  const podeCadastrarUnidadeCompraDireta = podeEditarItensCompraDiretaBase || podeEditarItensSolicitacaoCompraBase;
   const podeCatalogarItensManuaisCompra = moduloComprasHabilitado && canCatalogarItensManuaisCompras(user);
 
   const [solicitacao, setSolicitacao] = useState(null);
@@ -349,6 +354,8 @@ export default function SolicitacaoDetalhe() {
   const [itemCompraDiretaSelecionado, setItemCompraDiretaSelecionado] = useState(null);
   const [rateiosCompraDireta, setRateiosCompraDireta] = useState([]);
   const [motivoCompraDireta, setMotivoCompraDireta] = useState('');
+  const [quantidadeItemCompra, setQuantidadeItemCompra] = useState('');
+  const [motivoQuantidadeItemCompra, setMotivoQuantidadeItemCompra] = useState('');
   const [salvandoCompraDireta, setSalvandoCompraDireta] = useState(false);
   const [acaoItemCompraDireta, setAcaoItemCompraDireta] = useState('APROPRIAR');
   const localMutationsRef = useRef(new Map());
@@ -374,7 +381,21 @@ export default function SolicitacaoDetalhe() {
     && podeInteragirSolicitacao
     && !isSolicitacaoCompra
     && !solicitacaoEhContrato;
-  const podeEditarItensCompraDireta = podeInteragirSolicitacao && podeEditarItensCompraDiretaBase && isCompraDiretaSolicitacao;
+  const podeEditarApropriacoesItemCompra = podeInteragirSolicitacao && isSolicitacaoCompra && (
+    isCompraDiretaSolicitacao
+      ? podeEditarItensCompraDiretaBase
+      : podeEditarApropriacoesItensSolicitacaoCompraBase
+  );
+  const podeCadastrarUnidadeItemCompra = podeInteragirSolicitacao && isSolicitacaoCompra && (
+    isCompraDiretaSolicitacao
+      ? podeEditarItensCompraDiretaBase
+      : podeCadastrarUnidadeItemSolicitacaoCompraBase
+  );
+  const podeEditarQuantidadeItemCompra = podeInteragirSolicitacao
+    && isSolicitacaoCompra
+    && !isCompraDiretaSolicitacao
+    && moduloComprasHabilitado
+    && canAlterarQuantidadeSolicitacaoCompra(user);
   const podeGerenciarItensCompra = isSolicitacaoCompra && podeInteragirSolicitacao && (
     (isCompraDiretaSolicitacao ? podeEditarItensCompraDiretaBase : podeEditarItensSolicitacaoCompraBase)
     || podeCatalogarItensManuaisCompra
@@ -398,7 +419,7 @@ export default function SolicitacaoDetalhe() {
 
   useEffect(() => {
     const obraId = solicitacao?.obra_id || solicitacao?.obra?.id;
-    if (!obraId || (!podeEditarApropriacoesSolicitacaoNormal && !podeEditarItensCompraDireta)) {
+    if (!obraId || (!podeEditarApropriacoesSolicitacaoNormal && !podeEditarApropriacoesItemCompra)) {
       setApropriacoesCatalogo([]);
       return;
     }
@@ -424,7 +445,7 @@ export default function SolicitacaoDetalhe() {
     solicitacao?.obra_id,
     solicitacao?.obra?.id,
     podeEditarApropriacoesSolicitacaoNormal,
-    podeEditarItensCompraDireta
+    podeEditarApropriacoesItemCompra
   ]);
 
   useEffect(() => {
@@ -734,9 +755,9 @@ export default function SolicitacaoDetalhe() {
     }
   }
 
-  function montarItensCompraDireta() {
-    const itens = Array.isArray(compraDiretaDetalhe?.itens) ? compraDiretaDetalhe.itens : [];
-    const itensManuais = Array.isArray(compraDiretaDetalhe?.itensManuais) ? compraDiretaDetalhe.itensManuais : [];
+  function montarItensCompraDireta(detalhe = compraDiretaDetalhe) {
+    const itens = Array.isArray(detalhe?.itens) ? detalhe.itens : [];
+    const itensManuais = Array.isArray(detalhe?.itensManuais) ? detalhe.itensManuais : [];
 
     return [
       ...itens.map((item) => ({
@@ -757,12 +778,10 @@ export default function SolicitacaoDetalhe() {
       setItemCompraDiretaSelecionado(null);
       setRateiosCompraDireta([]);
       setMotivoCompraDireta('');
+      setQuantidadeItemCompra('');
+      setMotivoQuantidadeItemCompra('');
       setAcaoItemCompraDireta(podeCatalogarItensManuaisCompra ? 'CATALOGAR' : 'APROPRIAR');
       const data = await obterSolicitacaoCompraPorSolicitacao(solicitacao.id);
-      if (!isCompraDiretaSolicitacao) {
-        navigate(`/solicitacoes-compra/${data.id}`);
-        return;
-      }
       setCompraDiretaDetalhe(data || null);
       setModalCompraDiretaAberto(true);
     } catch (error) {
@@ -770,7 +789,7 @@ export default function SolicitacaoDetalhe() {
       avisar.erro(
         error?.code === 'COMPRA_LEGADA_SEM_ITENS_ESTRUTURADOS'
           ? 'Registro legado sem itens estruturados. Os itens precisam ser reconstruídos antes de usar o gerenciamento.'
-          : error?.message || 'Erro ao carregar itens da compra'
+          : error?.message || 'Erro ao carregar itens da solicitação de compra'
       );
     } finally {
       setCarregandoCompraDireta(false);
@@ -783,6 +802,8 @@ export default function SolicitacaoDetalhe() {
     setItemCompraDiretaSelecionado(null);
     setRateiosCompraDireta([]);
     setMotivoCompraDireta('');
+    setQuantidadeItemCompra('');
+    setMotivoQuantidadeItemCompra('');
     setAcaoItemCompraDireta(podeCatalogarItensManuaisCompra ? 'CATALOGAR' : 'APROPRIAR');
   }
 
@@ -791,6 +812,8 @@ export default function SolicitacaoDetalhe() {
     setItemCompraDiretaSelecionado(item);
     setRateiosCompraDireta(rateios.length ? rateios : [criarRateioBase(item?.quantidade)]);
     setMotivoCompraDireta('');
+    setQuantidadeItemCompra(String(item?.quantidade ?? '').replace('.', ','));
+    setMotivoQuantidadeItemCompra('');
     setAcaoItemCompraDireta(
       item?.item_tipo === 'MANUAL' && podeCatalogarItensManuaisCompra
         ? 'CATALOGAR'
@@ -813,7 +836,7 @@ export default function SolicitacaoDetalhe() {
       registrarMutacaoLocal(solicitacao.id);
     } catch (error) {
       console.error(error);
-      avisar.erro(error?.message || 'O item foi catalogado, mas a lista nao pôde ser atualizada. Reabra os itens da compra direta.');
+      avisar.erro(error?.message || 'O item foi catalogado, mas a lista não pôde ser atualizada. Reabra o gerenciamento de itens.');
     }
   }
 
@@ -848,6 +871,46 @@ export default function SolicitacaoDetalhe() {
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao cadastrar a unidade informada no item');
+    } finally {
+      setSalvandoCompraDireta(false);
+    }
+  }
+
+  async function salvarQuantidadeItemCompra() {
+    const compraAlvo = Number(compraDiretaDetalhe?.id || 0);
+    const itemAlvo = itemCompraDiretaSelecionado;
+    if (!compraAlvo || !itemAlvo?.id || !podeEditarQuantidadeItemCompra) return;
+
+    const quantidade = Number(String(quantidadeItemCompra || '').trim().replace(/\./g, '').replace(',', '.'));
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      avisar.alerta('Informe uma quantidade válida maior que zero.');
+      return;
+    }
+
+    const motivo = String(motivoQuantidadeItemCompra || '').trim();
+    if (!motivo) {
+      avisar.alerta('Informe o motivo da alteração da quantidade.');
+      return;
+    }
+
+    try {
+      setSalvandoCompraDireta(true);
+      const data = await atualizarQuantidadeItemSolicitacaoCompra(compraAlvo, itemAlvo.id, {
+        item_tipo: itemAlvo.item_tipo,
+        quantidade,
+        motivo
+      });
+      setCompraDiretaDetalhe(data || null);
+      const itemAtualizado = montarItensCompraDireta(data).find(
+        (item) => item.item_tipo === itemAlvo.item_tipo && Number(item.id) === Number(itemAlvo.id)
+      );
+      selecionarItemCompraDireta(itemAtualizado || { ...itemAlvo, quantidade });
+      setAcaoItemCompraDireta('APROPRIAR');
+      registrarMutacaoLocal(solicitacao?.id);
+      avisar.sucesso('Quantidade atualizada. Revise e salve as apropriações deste item antes de continuar.');
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao atualizar a quantidade do item');
     } finally {
       setSalvandoCompraDireta(false);
     }
@@ -905,7 +968,7 @@ export default function SolicitacaoDetalhe() {
     const { ok } = await confirmar({
       titulo: 'Alterar apropriações do item',
       mensagem: `Regravar as apropriações do item "${itemAlvo.descricao}" `
-        + `(${itemAlvo.quantidade || '-'} ${itemAlvo.unidade_label || ''}) da compra direta da `
+        + `(${itemAlvo.quantidade || '-'} ${itemAlvo.unidade_label || ''}) da ${isCompraDiretaSolicitacao ? 'compra direta' : 'solicitação de compra'} vinculada à `
         + `solicitação ${solicitacao?.codigo || ''} em ${rateiosAlvo.length} `
         + `apropriaç${rateiosAlvo.length === 1 ? 'ão' : 'ões'}? `
         + 'As apropriações anteriores deste item são substituídas, com auditoria.',
@@ -1720,7 +1783,7 @@ export default function SolicitacaoDetalhe() {
 
       {modalCompraDiretaAberto && (
         <OverlayModal
-          rotulo="Itens da compra direta"
+          rotulo={isCompraDiretaSolicitacao ? 'Itens da compra direta' : 'Itens da solicitação de compra'}
           largura="var(--modal-max-w-2xl, 90rem)"
           onFechar={fecharModalCompraDireta}
         >
@@ -1728,7 +1791,9 @@ export default function SolicitacaoDetalhe() {
             data-modal="cabecalho"
             className="app-bloco-head border-b border-[var(--c-border)] px-4 py-3 sm:px-6"
           >
-            <h2 className="app-bloco-titulo">Itens da compra direta</h2>
+            <h2 className="app-bloco-titulo">
+              {isCompraDiretaSolicitacao ? 'Itens da compra direta' : 'Itens da solicitação de compra'}
+            </h2>
             <span className="app-bloco-acoes">
               <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalCompraDireta}>
                 Fechar
@@ -1755,7 +1820,7 @@ export default function SolicitacaoDetalhe() {
                 <h3 className="app-bloco-titulo">Itens</h3>
                 {montarItensCompraDireta().length === 0 ? (
                   <BlocoConteudo variante="secundario">
-                    Nenhum item localizado para esta compra direta.
+                    Nenhum item localizado para esta solicitação de compra.
                   </BlocoConteudo>
                 ) : (
                   montarItensCompraDireta().map((item) => {
@@ -1812,7 +1877,17 @@ export default function SolicitacaoDetalhe() {
                           Catalogar item
                         </button>
                       ) : null}
-                      {podeEditarItensCompraDireta ? (
+                      {podeEditarQuantidadeItemCompra ? (
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${acaoItemCompraDireta === 'QUANTIDADE' ? 'btn-primary' : 'btn-outline'}`}
+                          onClick={() => setAcaoItemCompraDireta('QUANTIDADE')}
+                          aria-pressed={acaoItemCompraDireta === 'QUANTIDADE'}
+                        >
+                          Editar quantidade
+                        </button>
+                      ) : null}
+                      {podeEditarApropriacoesItemCompra ? (
                         <button
                           type="button"
                           className={`btn btn-sm ${acaoItemCompraDireta === 'APROPRIAR' ? 'btn-primary' : 'btn-outline'}`}
@@ -1824,7 +1899,7 @@ export default function SolicitacaoDetalhe() {
                       ) : null}
                       {itemCompraDiretaSelecionado.item_tipo === 'CADASTRADO'
                         && itemCompraDiretaSelecionado.unidade_sigla_manual
-                        && podeCadastrarUnidadeCompraDireta ? (
+                        && podeCadastrarUnidadeItemCompra ? (
                           <button
                             type="button"
                             className="btn btn-outline btn-sm"
@@ -1867,7 +1942,44 @@ export default function SolicitacaoDetalhe() {
                     </p>
                   ) : null}
 
-                  {acaoItemCompraDireta === 'APROPRIAR' && podeEditarItensCompraDireta ? (
+                  {acaoItemCompraDireta === 'QUANTIDADE' && podeEditarQuantidadeItemCompra ? (
+                    <>
+                      <FormSecao colunas={2}>
+                        <CampoForm label="Nova quantidade" obrigatorio>
+                          <input
+                            className="input"
+                            value={quantidadeItemCompra}
+                            onChange={(event) => setQuantidadeItemCompra(event.target.value)}
+                            inputMode="decimal"
+                            placeholder="Quantidade maior que zero"
+                          />
+                        </CampoForm>
+                        <CampoForm label="Motivo da alteração" obrigatorio tipo="observacao">
+                          <textarea
+                            className="input"
+                            value={motivoQuantidadeItemCompra}
+                            onChange={(event) => setMotivoQuantidadeItemCompra(event.target.value)}
+                            placeholder="Explique por que a quantidade solicitada foi alterada."
+                          />
+                        </CampoForm>
+                      </FormSecao>
+                      <p className="text-sm text-muted">
+                        Depois de salvar a quantidade, revise obrigatoriamente as apropriações do item.
+                      </p>
+                      <div className="app-actionbar">
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={salvarQuantidadeItemCompra}
+                          disabled={salvandoCompraDireta}
+                        >
+                          {salvandoCompraDireta ? 'Salvando quantidade...' : 'Salvar quantidade'}
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {acaoItemCompraDireta === 'APROPRIAR' && podeEditarApropriacoesItemCompra ? (
                     <>
                       {rateiosCompraDireta.map((rateio, index) => (
                         <FormSecao key={`rateio-compra-direta-${index}`} colunas={4}>
@@ -1937,7 +2049,7 @@ export default function SolicitacaoDetalhe() {
                     </>
                   ) : null}
 
-                  {itemCompraDiretaSelecionado.item_tipo !== 'MANUAL' && !podeEditarItensCompraDireta ? (
+                  {itemCompraDiretaSelecionado.item_tipo !== 'MANUAL' && !podeEditarApropriacoesItemCompra ? (
                     <p className="text-sm text-muted">
                       Este item já está cadastrado. Sua permissão atual é exclusiva para tratar itens manuais.
                     </p>
