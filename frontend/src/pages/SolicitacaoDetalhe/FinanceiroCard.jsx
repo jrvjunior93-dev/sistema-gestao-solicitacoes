@@ -1658,7 +1658,7 @@ export default function FinanceiroCard({
       }
       avisar.sucesso('Conta gerada com sucesso.');
     } catch (error) {
-      avisar.erro(error?.message || 'Erro ao gerar conta');
+      avisar.erro(error?.message || 'Erro ao criar título');
     } finally {
       setSaving(false);
     }
@@ -1891,8 +1891,8 @@ export default function FinanceiroCard({
                 className="btn btn-primary"
                 disabled={geracaoManualDesabilitada}
                 aria-label={geracaoManualDesabilitada
-                  ? `Gerar conta desabilitado. ${motivoGeracaoManualDesabilitada}`
-                  : 'Gerar conta'}
+                  ? `Criar Título desabilitado. ${motivoGeracaoManualDesabilitada}`
+                  : 'Criar Título'}
                 onClick={() => {
                   limparAvisos();
                   resetModalState(solicitacao);
@@ -2243,7 +2243,7 @@ export default function FinanceiroCard({
           */}
           <div data-modal="cabecalho" className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] p-4">
             <div>
-              <h3 className="text-lg font-semibold text-[var(--c-text)]">Gerar conta</h3>
+              <h3 className="text-lg font-semibold text-[var(--c-text)]">Criar Título</h3>
               <p className="text-sm text-[var(--c-muted)]">
                 O sistema sugere os dados da solicitação. Você confirma e cria o título.
               </p>
