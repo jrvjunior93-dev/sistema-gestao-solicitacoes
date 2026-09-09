@@ -69,6 +69,7 @@
     "src/modules/sst/pages/SstTimeline.jsx",
     "src/navigation/HomeHub.jsx",
     "src/navigation/ModuleHub.jsx",
+    "src/pages/AprovacaoSolicitacaoPorTipo.jsx",
     "src/pages/AreasObra.jsx",
     "src/pages/AreasPorSetorOrigem.jsx",
     "src/pages/ArquivosModelos.jsx",

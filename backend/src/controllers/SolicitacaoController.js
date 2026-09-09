@@ -104,10 +104,16 @@ const {
 } = require('../services/recargaCartaoService');
 const {
   canEditarApropriacoesSolicitacao,
+  isBusinessAdmin,
   userHasAreaPermission,
   userHasAreaPermissionWhenConfigured,
   userHasConfiguredAreaPermissions
 } = require('../services/authorizationService');
+const {
+  resolverContextoAprovacaoPorTipo
+} = require('../services/solicitacao/aprovacaoTipoConfig');
+const { registrarLogSolicitacaoCompra } = require('../services/comprasCotacao');
+const { publishComprasRealtimeEventSafe } = require('../services/comprasRealtimeService');
 const {
   obterRegrasSetoresVisiveisPorUsuario
 } = require('../services/setoresVisiveisUsuarioService');
@@ -1048,6 +1054,17 @@ function setorPertenceAoUsuario(tokensSetor = [], setorSolicitacao = null) {
     if (tokenNormalizado === setorNormalizado) return true;
     return isGeoToken(tokenNormalizado) && isGeoToken(setorNormalizado);
   });
+}
+
+async function solicitacaoEstaNoSetorGeo(solicitacao, transaction = null) {
+  const setorGeo = await findSetorByCapability('eh_setor_geo', {
+    attributes: ['id', 'codigo', 'nome', 'eh_setor_geo'],
+    onlyActive: true,
+    transaction
+  });
+  if (!setorGeo) return isGeoToken(solicitacao?.area_responsavel);
+  const tokensGeo = buildSetorComparisonTokens(setorGeo).map(normalizarTokenComparacao);
+  return tokensGeo.includes(normalizarTokenComparacao(solicitacao?.area_responsavel));
 }
 
 function obterClassificacaoDaObra(obra) {
@@ -4003,15 +4020,30 @@ module.exports = {
           String(req.user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN' ||
           setorPertenceAoUsuario(tokensSetorUsuario, solicitacao.area_responsavel)
         );
+      const contextoAprovacaoTipo = usaFluxoAprovacaoDiretoria
+        ? { configurada: false, valida: false }
+        : await resolverContextoAprovacaoPorTipo(solicitacao);
+      const [usuarioEhGeo, usuarioTemPermissaoAprovacao, solicitacaoNoGeo] = await Promise.all([
+        userHasSetorCapability(req.user, 'eh_setor_geo'),
+        userHasAreaPermissionWhenConfigured(req.user, ['solicitacoes.acoes.aprovar']),
+        solicitacaoEstaNoSetorGeo(solicitacao)
+      ]);
+      let podeAprovarPorTipo = Boolean(
+        contextoAprovacaoTipo.valida &&
+        solicitacaoNoGeo &&
+        !solicitacao.cancelada &&
+        (isBusinessAdmin(req.user) || usuarioEhGeo || usuarioTemPermissaoAprovacao)
+      );
 
       const payload = solicitacao.toJSON ? solicitacao.toJSON() : solicitacao;
-      const compraDiretaVinculada = await SolicitacaoCompra.findOne({
+      const compraVinculada = await SolicitacaoCompra.findOne({
         where: {
-          solicitacao_principal_id: solicitacao.id,
-          origem: 'COMPRA_DIRETA'
+          solicitacao_principal_id: solicitacao.id
         },
         attributes: [
           'id',
+          'origem',
+          'status',
           'valor_fechado',
           'desconto_total',
           'frete_tipo',
@@ -4029,9 +4061,22 @@ module.exports = {
           }
         ]
       });
-      payload.compra_direta = compraDiretaVinculada
-        ? (compraDiretaVinculada.toJSON ? compraDiretaVinculada.toJSON() : compraDiretaVinculada)
+      const compraVinculadaPayload = compraVinculada
+        ? (compraVinculada.toJSON ? compraVinculada.toJSON() : compraVinculada)
         : null;
+      if (
+        compraVinculadaPayload &&
+        normalizarTokenComparacao(compraVinculadaPayload.origem) !== 'COMPRA_DIRETA' &&
+        !['PENDENTE', 'ENVIADO', 'INTEGRADO_SIENGE'].includes(
+          normalizarTokenComparacao(compraVinculadaPayload.status)
+        )
+      ) {
+        podeAprovarPorTipo = false;
+      }
+      payload.compra_direta = normalizarTokenComparacao(compraVinculadaPayload?.origem) === 'COMPRA_DIRETA'
+        ? compraVinculadaPayload
+        : null;
+      payload.solicitacao_compra_id = compraVinculadaPayload?.id || null;
       const resumoFinanceiro = calcularResumoFinanceiroSolicitacao(payload);
       payload.valor_total = resumoFinanceiro.valorTotal;
       payload.valor_pago_acumulado = resumoFinanceiro.valorPagoAcumulado;
@@ -4047,6 +4092,16 @@ module.exports = {
       payload.acao_aprovar_diretoria_disponivel = podeAprovarDiretoria;
       payload.setor_destino_aprovacao = contextoAprovacaoDiretoria.setorDestinoAprovacao || null;
       payload.diretoria_responsavel = contextoAprovacaoDiretoria.diretoriaEsperada || null;
+      payload.aprovacao_por_tipo = {
+        configurada: contextoAprovacaoTipo.configurada === true,
+        valida: contextoAprovacaoTipo.valida === true,
+        setor_destino: contextoAprovacaoTipo.setorDestino || null,
+        setor_destino_nome: contextoAprovacaoTipo.setorDestinoNome || null,
+        status_destino: contextoAprovacaoTipo.statusDestino || null,
+        status_destino_nome: contextoAprovacaoTipo.statusDestinoNome || null,
+        erro_configuracao: contextoAprovacaoTipo.erro || null
+      };
+      payload.acao_aprovar_tipo_disponivel = podeAprovarPorTipo;
       payload.contexto_interacao = await montarContextoInteracao(
         req,
         solicitacao,
@@ -5159,6 +5214,214 @@ module.exports = {
       console.error(error);
       const status = /cpf\/cnpj|parceiro|telefone|nome/i.test(String(error?.message || '')) ? 400 : 500;
       return res.status(status).json({ error: error?.message || 'Erro ao cadastrar credor da solicitacao' });
+    }
+  },
+
+  async aprovarPorTipo(req, res) {
+    const transaction = await sequelize.transaction();
+    let solicitacaoCompraAtualizada = null;
+
+    try {
+      const solicitacao = await Solicitacao.findByPk(req.params.id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!solicitacao) {
+        await transaction.rollback();
+        return res.status(404).json({ error: 'Solicitacao nao encontrada' });
+      }
+
+      const acesso = await verificarAcessoDetalheSolicitacao(req, solicitacao, {
+        permitirLeituraGlobal: true
+      });
+      if (!acesso.allowed) {
+        await transaction.rollback();
+        return res.status(acesso.status || 403).json({ error: acesso.error || 'Acesso negado' });
+      }
+
+      const [usuarioEhGeo, usuarioTemPermissao, solicitacaoNoGeo] = await Promise.all([
+        userHasSetorCapability(req.user, 'eh_setor_geo'),
+        userHasAreaPermissionWhenConfigured(req.user, ['solicitacoes.acoes.aprovar']),
+        solicitacaoEstaNoSetorGeo(solicitacao, transaction)
+      ]);
+      if (!(isBusinessAdmin(req.user) || usuarioEhGeo || usuarioTemPermissao)) {
+        await transaction.rollback();
+        return res.status(403).json({
+          error: 'Apenas GEO ou um usuario com permissao para aprovar solicitacoes pode concluir esta acao.'
+        });
+      }
+      if (!solicitacaoNoGeo) {
+        await transaction.rollback();
+        return res.status(409).json({
+          error: 'A solicitacao nao esta mais no setor GEO para ser aprovada.'
+        });
+      }
+      if (solicitacao.cancelada) {
+        await transaction.rollback();
+        return res.status(400).json({ error: 'Solicitacao cancelada nao pode ser aprovada.' });
+      }
+      if (solicitacao.fluxo_aprovacao_diretoria && !solicitacao.aprovada_diretoria_em) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: 'Esta solicitacao segue o fluxo de aprovacao da diretoria.'
+        });
+      }
+
+      const contexto = await resolverContextoAprovacaoPorTipo(solicitacao, { transaction });
+      if (!contexto.configurada) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: 'Configure o setor destino e o status de chegada deste tipo antes de aprovar.'
+        });
+      }
+      if (!contexto.valida) {
+        await transaction.rollback();
+        return res.status(400).json({
+          error: contexto.erro || 'A configuracao de aprovacao deste tipo esta invalida.'
+        });
+      }
+
+      const areaAnterior = solicitacao.area_responsavel;
+      const statusAnterior = solicitacao.status_global;
+      const compraVinculada = await SolicitacaoCompra.findOne({
+        where: { solicitacao_principal_id: solicitacao.id },
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      const ehCompraDireta = normalizarTokenComparacao(compraVinculada?.origem) === 'COMPRA_DIRETA';
+
+      if (compraVinculada && !ehCompraDireta) {
+        const statusCompra = normalizarTokenComparacao(compraVinculada.status);
+        if (statusCompra === 'AGUARDANDO_DIRETORIA') {
+          await transaction.rollback();
+          return res.status(400).json({
+            error: 'A solicitacao de compra ainda aguarda aprovacao da diretoria.'
+          });
+        }
+        if (!['PENDENTE', 'ENVIADO', 'INTEGRADO_SIENGE'].includes(statusCompra)) {
+          await transaction.rollback();
+          return res.status(409).json({
+            error: 'A solicitacao de compra ja foi encaminhada ou nao esta pendente de revisao do GEO.'
+          });
+        }
+      }
+
+      await solicitacao.update({
+        area_responsavel: contexto.setorDestino,
+        status_global: contexto.statusDestino
+      }, { transaction });
+
+      const historico = await Historico.create({
+        solicitacao_id: solicitacao.id,
+        usuario_responsavel_id: req.user.id,
+        setor: areaAnterior,
+        acao: 'SOLICITACAO_APROVADA_ENCAMINHADA',
+        status_anterior: statusAnterior,
+        status_novo: contexto.statusDestino,
+        descricao: `Solicitacao aprovada e enviada para ${contexto.setorDestinoNome} com status ${contexto.statusDestinoNome}`,
+        metadata: JSON.stringify({
+          tipo_solicitacao_id: solicitacao.tipo_solicitacao_id,
+          area_anterior: areaAnterior,
+          area_nova: contexto.setorDestino,
+          status_anterior: statusAnterior,
+          status_novo: contexto.statusDestino,
+          solicitacao_compra_id: compraVinculada?.id || null,
+          origem: 'APROVACAO_CONFIGURADA_POR_TIPO'
+        })
+      }, { transaction });
+
+      await StatusArea.create({
+        solicitacao_id: solicitacao.id,
+        setor: contexto.setorDestino,
+        status: contexto.statusDestino,
+        observacao: `Aprovada pelo GEO e encaminhada conforme a configuracao do tipo`
+      }, { transaction });
+
+      if (compraVinculada && !ehCompraDireta) {
+        const liberadoEm = compraVinculada.liberado_para_compra_em || new Date();
+        const statusAnteriorCompra = compraVinculada.status;
+        await compraVinculada.update({
+          status: 'LIBERADO_PARA_COMPRA',
+          liberado_para_compra_em: liberadoEm,
+          comprador_responsavel_id: null,
+          prazo_compra: null,
+          delegado_por: null,
+          delegado_em: null,
+          motivo_atraso: null,
+          motivo_atraso_em: null
+        }, { transaction });
+
+        await PedidoCompra.update({
+          atribuido_a: null,
+          prazo_finalizacao: null
+        }, {
+          where: { solicitacao_compra_id: compraVinculada.id },
+          transaction
+        });
+
+        await registrarLogSolicitacaoCompra({
+          solicitacaoCompraId: compraVinculada.id,
+          usuarioId: req.user.id,
+          tipoAcao: 'ENCAMINHAMENTO_COMPRAS',
+          descricao: 'Solicitacao aprovada e encaminhada conforme a configuracao do tipo',
+          metadados: {
+            status_anterior: statusAnteriorCompra,
+            status_novo: 'LIBERADO_PARA_COMPRA',
+            setor_destino: contexto.setorDestino,
+            status_destino_principal: contexto.statusDestino,
+            responsavel_removido: true,
+            historico_id: historico.id,
+            origem: 'APROVACAO_CONFIGURADA_POR_TIPO'
+          },
+          transaction
+        });
+        solicitacaoCompraAtualizada = compraVinculada;
+      }
+
+      await transaction.commit();
+
+      void criarNotificacao({
+        solicitacao_id: solicitacao.id,
+        tipo: 'SOLICITACAO_APROVADA',
+        mensagem: `${req.user?.nome || 'Usuario'} aprovou a solicitacao ${solicitacao.codigo} e a enviou para ${contexto.setorDestinoNome}`,
+        created_by: req.user.id,
+        metadata: {
+          setor_destino: contexto.setorDestino,
+          status_destino: contexto.statusDestino
+        }
+      }).catch((error) => console.error('[APROVACAO_SOLICITACAO] Falha ao notificar.', error));
+
+      void publishSolicitacaoRealtimeEvent({
+        action: 'APPROVED',
+        solicitacao,
+        actor: { id: req.user.id, nome: req.user?.nome || null },
+        metadata: {
+          setor_destino: contexto.setorDestino,
+          status_destino: contexto.statusDestino
+        }
+      }).catch((error) => console.error('[APROVACAO_SOLICITACAO] Falha no realtime.', error));
+
+      if (solicitacaoCompraAtualizada) {
+        void publishComprasRealtimeEventSafe({
+          action: 'SOLICITACAO_ENCAMINHADA_COMPRAS',
+          solicitacaoCompraId: solicitacaoCompraAtualizada.id,
+          actor: { id: req.user.id, nome: req.user?.nome || null }
+        });
+      }
+
+      return res.json({
+        ok: true,
+        solicitacao_id: solicitacao.id,
+        setor_destino: contexto.setorDestino,
+        status_destino: contexto.statusDestino,
+        solicitacao_compra_id: solicitacaoCompraAtualizada?.id || null
+      });
+    } catch (error) {
+      if (!transaction.finished) await transaction.rollback();
+      console.error(error);
+      return res.status(error?.statusCode || 500).json({
+        error: error?.message || 'Erro ao aprovar e encaminhar a solicitacao'
+      });
     }
   },
 

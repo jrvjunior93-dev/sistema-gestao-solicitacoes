@@ -264,6 +264,20 @@ export async function aprovarDiretoriaSolicitacao(id) {
   return true;
 }
 
+export async function aprovarSolicitacaoPorTipo(id) {
+  const res = await fetch(`${API_URL}/solicitacoes/${id}/aprovar`, {
+    method: 'POST',
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    const payload = await parseJsonSafe(res);
+    throw buildResponseError(res.status, 'Nao foi possivel aprovar a solicitacao.', payload);
+  }
+
+  return res.json();
+}
+
 export async function adicionarPagamentoSolicitacao(id, data) {
   const res = await fetch(`${API_URL}/solicitacoes/${id}/pagamentos`, {
     method: 'POST',

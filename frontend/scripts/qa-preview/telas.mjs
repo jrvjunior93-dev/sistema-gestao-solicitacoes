@@ -814,6 +814,20 @@ export const TELAS = [
     }
   },
   {
+    id: 'config-aprovacao-solicitacao-por-tipo',
+    arquivo: 'src/pages/AprovacaoSolicitacaoPorTipo.jsx',
+    rota: '/aprovacao-solicitacao-por-tipo',
+    tipo: 'mista',
+    naoAplica: {
+      F1: "tela de configuração sem caixa de busca — não há duas a conciliar",
+      F2: "idem F1: não há recorte de lista por filtro",
+      F3: "idem F1",
+      F4: "idem F1",
+      C3: "configuração de sistema, não é tela de detalhe de registro",
+      C4: "idem C3"
+    }
+  },
+  {
     id: 'config-arquivos-modelos',
     arquivo: 'src/pages/ArquivosModelosConfig.jsx',
     rota: '/arquivos-modelos-config',

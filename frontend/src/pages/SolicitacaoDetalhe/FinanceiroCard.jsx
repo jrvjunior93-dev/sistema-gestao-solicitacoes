@@ -1064,8 +1064,29 @@ export default function FinanceiroCard({
     ])
       .then(([formasData, cartoesData]) => {
         if (!active) return;
-        setFormasPagamento(Array.isArray(formasData) ? formasData : []);
+        const formasCarregadas = Array.isArray(formasData) ? formasData : [];
+        setFormasPagamento(formasCarregadas);
         setCartoes(Array.isArray(cartoesData) ? cartoesData : []);
+        setForm((current) => ({
+          ...current,
+          pagamentos: (current.pagamentos || []).map((pagamento) => {
+            const forma = formasCarregadas.find(
+              (item) => String(item.id) === String(pagamento.forma_pagamento_id)
+            );
+            if (!formaUsaParcelasDetalhadas(forma)) return pagamento;
+
+            const quantidade = Math.max(Number(pagamento.quantidade_parcelas || 1), 1);
+            return {
+              ...pagamento,
+              parcelas: buildParcelasDetalhadas(
+                pagamento.parcelas,
+                quantidade,
+                pagamento.data_vencimento || today(),
+                pagamento.valor
+              )
+            };
+          })
+        }));
       })
       .catch((error) => {
         if (!active) return;
@@ -1332,6 +1353,7 @@ export default function FinanceiroCard({
   }
 
   function adicionarPagamento() {
+    setGeracaoMultiplaTitulos(true);
     setForm((current) => ({
       ...current,
       pagamentos: [
@@ -1656,7 +1678,7 @@ export default function FinanceiroCard({
       if (typeof onTituloCriado === 'function') {
         await onTituloCriado();
       }
-      avisar.sucesso('Conta gerada com sucesso.');
+      avisar.sucesso('Título criado com sucesso.');
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao criar título');
     } finally {
@@ -2844,11 +2866,9 @@ export default function FinanceiroCard({
                       </div>
                     ) : null}
                   </div>
-                  {geracaoMultiplaTitulos ? (
-                    <button type="button" className="btn btn-outline shrink-0" onClick={adicionarPagamento}>
-                      Adicionar título
-                    </button>
-                  ) : null}
+                  <button type="button" className="btn btn-outline shrink-0" onClick={adicionarPagamento}>
+                    Adicionar forma de pagamento
+                  </button>
                 </div>
 
                 {(form.pagamentos || []).map((pagamento, pagamentoIndex) => {

@@ -7,7 +7,7 @@ import { API_URL, authHeaders } from './api';
 export const CATALOGO_ACOES_PRINCIPAIS = [
   { valor: 'alterar_status', rotulo: 'Alterar status' },
   { valor: 'enviar_setor', rotulo: 'Enviar para outro setor' },
-  { valor: 'gerar_titulo', rotulo: 'Gerar conta (título financeiro)' },
+  { valor: 'gerar_titulo', rotulo: 'Criar título financeiro' },
   { valor: 'informar_pagamento', rotulo: 'Informar pagamento' },
   { valor: 'registrar_medicao', rotulo: 'Registrar medição' },
   { valor: 'aprovar_diretoria', rotulo: 'Aprovar e enviar (diretoria)' },

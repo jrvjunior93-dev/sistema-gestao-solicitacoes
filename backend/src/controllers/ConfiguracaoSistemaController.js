@@ -1,5 +1,12 @@
 const { Op } = require('sequelize');
-const { ConfiguracaoSistema, CategoriaFinanceira, User, Setor } = require('../models');
+const {
+  ConfiguracaoSistema,
+  CategoriaFinanceira,
+  EtapaSetor,
+  TipoSolicitacao,
+  User,
+  Setor
+} = require('../models');
 const {
   DEFAULT_STATUS_PEDIDOS_COMPRA,
   getPedidoCompraStatusConfig,
@@ -37,6 +44,15 @@ const {
   normalizarTiposCompartilhados,
   normalizarAutomacoesStatus
 } = require('../services/solicitacao/configuracoesVisibilidadeAutomacao');
+const {
+  CHAVE_APROVACAO_SOLICITACAO_POR_TIPO,
+  CODIGO_SOLICITACAO_COMPRA,
+  normalizarToken: normalizarTokenAprovacao,
+  normalizarRegrasAprovacao,
+  obterRegrasAprovacaoSolicitacaoPorTipo
+} = require('../services/solicitacao/aprovacaoTipoConfig');
+const { normalizeTipoSolicitacaoCodigo } = require('../services/tipoSolicitacaoBehaviorService');
+const { hasSetorCapability } = require('../services/setorCapabilityService');
 const {
   montarPayloadConfigCampos,
   obterConfigCamposNovaSolicitacao,
@@ -1086,6 +1102,105 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao salvar automacao de status por setor' });
+    }
+  },
+
+  async getAprovacaoSolicitacaoPorTipo(req, res) {
+    try {
+      const regras = await obterRegrasAprovacaoSolicitacaoPorTipo();
+      return res.json({ regras });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao buscar o fluxo de aprovacao por tipo' });
+    }
+  },
+
+  async updateAprovacaoSolicitacaoPorTipo(req, res) {
+    try {
+      const regrasRecebidas = normalizarRegrasAprovacao(req.body?.regras);
+      const tipoIds = [...new Set(regrasRecebidas.map((regra) => regra.tipo_solicitacao_id))];
+      const [tipos, setores, etapas] = await Promise.all([
+        TipoSolicitacao.findAll({
+          where: { id: { [Op.in]: tipoIds }, ativo: true },
+          attributes: ['id', 'nome', 'codigo_interno']
+        }),
+        Setor.findAll({
+          where: { ativo: true },
+          attributes: [
+            'id',
+            'codigo',
+            'nome',
+            'eh_setor_obra',
+            'eh_setor_financeiro',
+            'eh_setor_compras',
+            'eh_setor_geo',
+            'eh_setor_administrativo'
+          ]
+        }),
+        EtapaSetor.findAll({
+          where: { ativo: true },
+          attributes: ['id', 'setor', 'nome', 'ordem']
+        })
+      ]);
+
+      const tiposPorId = new Map(tipos.map((tipo) => [Number(tipo.id), tipo]));
+      const setoresPorToken = new Map();
+      setores.forEach((setor) => {
+        [setor.codigo, setor.nome].forEach((valor) => {
+          const token = normalizarTokenAprovacao(valor);
+          if (token) setoresPorToken.set(token, setor);
+        });
+      });
+
+      const regras = [];
+      for (const regra of regrasRecebidas) {
+        const tipo = tiposPorId.get(Number(regra.tipo_solicitacao_id));
+        if (!tipo) {
+          return res.status(400).json({
+            error: `O tipo de solicitacao ${regra.tipo_solicitacao_id} nao existe ou esta inativo.`
+          });
+        }
+
+        const setor = setoresPorToken.get(normalizarTokenAprovacao(regra.setor_destino));
+        if (!setor) {
+          return res.status(400).json({
+            error: `O setor de destino ${regra.setor_destino} nao existe ou esta inativo.`
+          });
+        }
+
+        const tokensSetor = new Set(
+          [setor.codigo, setor.nome].map(normalizarTokenAprovacao).filter(Boolean)
+        );
+        const etapa = etapas.find((item) => (
+          tokensSetor.has(normalizarTokenAprovacao(item.setor)) &&
+          normalizarTokenAprovacao(item.nome) === normalizarTokenAprovacao(regra.status_destino)
+        ));
+        if (!etapa) {
+          return res.status(400).json({
+            error: `O status ${regra.status_destino} nao esta ativo no setor ${setor.nome}.`
+          });
+        }
+
+        const codigoTipo = normalizeTipoSolicitacaoCodigo(tipo.codigo_interno, tipo.nome);
+        if (codigoTipo === CODIGO_SOLICITACAO_COMPRA && !hasSetorCapability(setor, 'eh_setor_compras')) {
+          return res.status(400).json({
+            error: 'Solicitacao de Compra deve ser encaminhada para o setor configurado como Compras.'
+          });
+        }
+
+        regras.push({
+          tipo_solicitacao_id: Number(tipo.id),
+          setor_destino: String(setor.codigo || setor.nome).trim().toUpperCase(),
+          status_destino: normalizarTokenAprovacao(etapa.nome)
+        });
+      }
+
+      await salvarConfiguracaoJson(CHAVE_APROVACAO_SOLICITACAO_POR_TIPO, { regras });
+      const regrasComPadrao = await obterRegrasAprovacaoSolicitacaoPorTipo();
+      return res.json({ ok: true, regras: regrasComPadrao });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao salvar o fluxo de aprovacao por tipo' });
     }
   },
 

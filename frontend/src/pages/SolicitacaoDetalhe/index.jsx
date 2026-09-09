@@ -40,6 +40,7 @@ import {
 } from '../../components/padrao';
 import {
   aprovarDiretoriaSolicitacao,
+  aprovarSolicitacaoPorTipo,
   atualizarApropriacoesSolicitacao,
   atualizarPendenciaFinanceiraSolicitacao,
   getSolicitacaoById,
@@ -302,6 +303,7 @@ export default function SolicitacaoDetalhe() {
   const [falhaContrato, setFalhaContrato] = useState('');
   const [loading, setLoading] = useState(true);
   const [modalStatus, setModalStatus] = useState(false);
+  const [aprovandoSolicitacao, setAprovandoSolicitacao] = useState(false);
   const [statusDependenciasVersao, setStatusDependenciasVersao] = useState(0);
   // Mapeamento configurável setor+estado → ação em destaque (Configurações
   // → Ação principal por setor). Vazio/indisponível = layout atual.
@@ -617,6 +619,34 @@ export default function SolicitacaoDetalhe() {
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao aprovar solicitacao pela diretoria');
+    }
+  }
+
+  async function aprovarPorTipo() {
+    const alvo = solicitacao;
+    const fluxo = alvo?.aprovacao_por_tipo;
+    if (!alvo?.id || !fluxo?.setor_destino || !fluxo?.status_destino) return;
+
+    const destino = fluxo.setor_destino_nome || fluxo.setor_destino;
+    const status = fluxo.status_destino_nome || fluxo.status_destino;
+    const { ok } = await confirmar({
+      titulo: 'Aprovar solicitação',
+      mensagem: `Aprovar a solicitação ${alvo.codigo} (${alvo.tipo?.nome || 'sem tipo'}) e enviá-la para ${destino} com o status ${status}? A aprovação ficará registrada em seu nome no histórico.`,
+      rotuloConfirmar: 'Aprovar e enviar'
+    });
+    if (!ok) return;
+
+    try {
+      setAprovandoSolicitacao(true);
+      await aprovarSolicitacaoPorTipo(alvo.id);
+      registrarMutacaoLocal(alvo.id);
+      await carregar({ silent: true });
+      avisar.sucesso(`Solicitação ${alvo.codigo} aprovada e enviada para ${destino} com status ${status}.`);
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao aprovar e encaminhar a solicitação.');
+    } finally {
+      setAprovandoSolicitacao(false);
     }
   }
 
@@ -1060,6 +1090,7 @@ export default function SolicitacaoDetalhe() {
       )
     )
   );
+  const podeAprovarPorTipo = Boolean(solicitacao.acao_aprovar_tipo_disponivel);
   const podeEnviarSetor =
     podeInteragirSolicitacao &&
     !usaFluxoAprovacaoDiretoria &&
@@ -1109,7 +1140,8 @@ export default function SolicitacaoDetalhe() {
     alterar_status: { rotulo: 'Alterar status', disponivel: podeAlterarStatus, executar: () => setModalStatus(true) },
     enviar_setor: { rotulo: 'Enviar para outro setor', disponivel: podeEnviarSetor, executar: () => setModalEnviarSetor(true) },
     aprovar_diretoria: { rotulo: 'Aprovar e enviar', disponivel: podeAprovarDiretoria, executar: aprovarDiretoria },
-    gerar_titulo: { rotulo: 'Gerar conta', disponivel: isFinanceiro && podeAcessarModuloFinanceiro, executar: rolarAte('sol-detail-financeiro') },
+    aprovar_solicitacao: { rotulo: 'Aprovar solicitação', disponivel: podeAprovarPorTipo, executar: aprovarPorTipo },
+    gerar_titulo: { rotulo: 'Criar título', disponivel: isFinanceiro && podeAcessarModuloFinanceiro, executar: rolarAte('sol-detail-financeiro') },
     // O card Pagamentos saiu do detalhe (a função vive no card Financeiro);
     // "informar_pagamento" leva ao mesmo destino para mapeamentos antigos.
     informar_pagamento: { rotulo: 'Informar pagamento', disponivel: isFinanceiro && podeAcessarModuloFinanceiro, executar: rolarAte('sol-detail-financeiro') },
@@ -1126,6 +1158,11 @@ export default function SolicitacaoDetalhe() {
     if (!acao || !acao.disponivel) return null;
     return { acao: mapeada.acao, rotulo: mapeada.rotulo || acao.rotulo, executar: acao.executar };
   })();
+  const acaoPrincipalCabecalho = acaoPrincipalResolvida || (
+    podeAprovarPorTipo
+      ? { acao: 'aprovar_solicitacao', rotulo: aprovandoSolicitacao ? 'Aprovando...' : 'Aprovar solicitação', executar: aprovarPorTipo }
+      : null
+  );
 
   /*
     BARRA DE AÇÕES DA FAIXA (C5/C6): um primário sólido, secundários em
@@ -1144,6 +1181,9 @@ export default function SolicitacaoDetalhe() {
       : null,
     !acaoPrincipalResolvida && podeAprovarDiretoria
       ? { rotulo: 'Aprovar e enviar', onClick: aprovarDiretoria }
+      : null,
+    podeAprovarPorTipo && acaoPrincipalCabecalho?.acao !== 'aprovar_solicitacao'
+      ? { rotulo: aprovandoSolicitacao ? 'Aprovando...' : 'Aprovar solicitação', onClick: aprovarPorTipo, desabilitada: aprovandoSolicitacao }
       : null
   ].filter(Boolean);
 
@@ -1489,8 +1529,12 @@ export default function SolicitacaoDetalhe() {
         contagem={formatarValorSolicitacao(solicitacao.valor) || undefined}
         descricao={apoioRegistro || undefined}
         voltar={{ to: '/solicitacoes', title: 'Voltar para solicitações' }}
-        acaoPrincipal={acaoPrincipalResolvida
-          ? { rotulo: acaoPrincipalResolvida.rotulo, onClick: acaoPrincipalResolvida.executar }
+        acaoPrincipal={acaoPrincipalCabecalho
+          ? {
+            rotulo: acaoPrincipalCabecalho.rotulo,
+            onClick: acaoPrincipalCabecalho.executar,
+            desabilitada: aprovandoSolicitacao && acaoPrincipalCabecalho.acao === 'aprovar_solicitacao'
+          }
           : undefined}
         /*
           "PERSONALIZAR LAYOUT" SAIU DO "⋯" (decisão do cliente, 07/09).

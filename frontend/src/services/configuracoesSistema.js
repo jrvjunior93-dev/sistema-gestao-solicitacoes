@@ -321,6 +321,27 @@ export async function salvarAutomacaoStatusSetor(data) {
   return res.json();
 }
 
+export async function getAprovacaoSolicitacaoPorTipo() {
+  const res = await fetch(`${API_URL}/configuracoes/aprovacao-solicitacao-por-tipo`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) throw new Error('Erro ao buscar o fluxo de aprovacao por tipo');
+  return res.json();
+}
+
+export async function salvarAprovacaoSolicitacaoPorTipo(data) {
+  const res = await fetch(`${API_URL}/configuracoes/aprovacao-solicitacao-por-tipo`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    throw new Error(payload?.error || 'Erro ao salvar o fluxo de aprovacao por tipo');
+  }
+  return res.json();
+}
+
 export const getTiposCompartilhadosEntreSetores = getTiposCompartilhadosSetor;
 export const salvarTiposCompartilhadosEntreSetores = salvarTiposCompartilhadosSetor;
 

@@ -161,6 +161,7 @@ const NovaSolicitacaoCamposConfig = lazy(() => import('./pages/NovaSolicitacaoCa
 const NovaSolicitacaoAutomacaoDestinoConfig = lazy(() => import('./pages/NovaSolicitacaoAutomacaoDestinoConfig'));
 const TiposCompartilhadosSetor = lazy(() => import('./pages/TiposCompartilhadosSetor'));
 const AutomacaoStatusSetor = lazy(() => import('./pages/AutomacaoStatusSetor'));
+const AprovacaoSolicitacaoPorTipo = lazy(() => import('./pages/AprovacaoSolicitacaoPorTipo'));
 const SetoresCriacaoTodasObras = lazy(() => import('./pages/SetoresCriacaoTodasObras'));
 const SetoresAcessoTodasObras = lazy(() => import('./pages/SetoresAcessoTodasObras'));
 const UsuariosEnvioQualquerSetor = lazy(() => import('./pages/UsuariosEnvioQualquerSetor'));
@@ -930,6 +931,7 @@ export default function App() {
         <Route path="nova-solicitacao-automacao-destino" element={<ConfiguracoesAreaRoute area="solicitacoes"><NovaSolicitacaoAutomacaoDestinoConfig /></ConfiguracoesAreaRoute>} />
         <Route path="tipos-compartilhados-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><TiposCompartilhadosSetor /></ConfiguracoesAreaRoute>} />
         <Route path="automacao-status-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><AutomacaoStatusSetor /></ConfiguracoesAreaRoute>} />
+        <Route path="aprovacao-solicitacao-por-tipo" element={<ConfiguracoesAreaRoute area="status_vinculos"><AprovacaoSolicitacaoPorTipo /></ConfiguracoesAreaRoute>} />
         <Route path="configuracoes-acoes-principais" element={<ConfiguracoesAreaRoute area="status_vinculos"><ConfiguracoesAcoesPrincipais /></ConfiguracoesAreaRoute>} />
         <Route path="configuracoes-atalhos-setor" element={<ConfiguracoesAreaRoute area="status_vinculos"><ConfiguracoesAtalhosSetor /></ConfiguracoesAreaRoute>} />
         <Route path="configuracoes-detalhe-layout" element={<ConfiguracoesAreaRoute area="status_vinculos"><ConfiguracoesDetalheLayout /></ConfiguracoesAreaRoute>} />
