@@ -2232,7 +2232,7 @@ export default function FinanceiroCard({
           pior que o defeito que a migracao veio consertar.
         */
         <OverlayModal
-          rotulo="Gerar conta"
+          rotulo="Criar Título"
           largura="var(--modal-max-w-lg, 860px)"
         >
           {/*
