@@ -788,7 +788,7 @@ export default function SolicitacaoDetalhe() {
       console.error(error);
       avisar.erro(
         error?.code === 'COMPRA_LEGADA_SEM_ITENS_ESTRUTURADOS'
-          ? 'Registro legado sem itens estruturados. Os itens precisam ser reconstruídos antes de usar o gerenciamento.'
+          ? 'Esta solicitação é legada e não possui itens cadastrados individualmente. Por isso, não é possível gerenciá-los nesta tela.'
           : error?.message || 'Erro ao carregar itens da solicitação de compra'
       );
     } finally {
