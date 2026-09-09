@@ -1317,6 +1317,9 @@ async function registrarClassificacaoEstornoBancario(conciliacao) {
 }
 
 function assertSemAlertaEstornoBancario(conciliacao) {
+  // Protege somente operacoes que descartariam o lancamento sem classifica-lo
+  // (ignorar/remover). Acoes manuais explicitas — tarifa, titulo, movimento,
+  // fatura ou transferencia — sao formas validas de resolver um falso positivo.
   if (
     String(conciliacao.match_inicial_tipo || '').toUpperCase() === 'ESTORNO_ALERTA'
     && String(conciliacao.estorno_status || '').toUpperCase() !== 'CONFIRMADO'
@@ -1977,7 +1980,6 @@ async function confirmarConciliacaoFatura(req, conciliacaoId, payload = {}) {
       lock: transaction.LOCK.UPDATE
     });
     if (!conciliacao) throw createHttpError(404, 'Lancamento de conciliacao nao encontrado.');
-    assertSemAlertaEstornoBancario(conciliacao);
     if (String(conciliacao.status || '').toUpperCase() !== 'PENDENTE') {
       throw createHttpError(400, 'Somente conciliacoes pendentes podem ser confirmadas.');
     }
@@ -2047,7 +2049,6 @@ async function confirmarConciliacaoTransferencia(req, conciliacaoId, payload = {
       lock: transaction.LOCK.UPDATE
     });
     if (!conciliacao) throw createHttpError(404, 'Lancamento de conciliacao nao encontrado.');
-    assertSemAlertaEstornoBancario(conciliacao);
     if (String(conciliacao.status || '').toUpperCase() !== 'PENDENTE') {
       throw createHttpError(400, 'Somente conciliacoes pendentes podem ser confirmadas.');
     }
@@ -2435,8 +2436,6 @@ async function confirmarConciliacaoTarifa(req, conciliacaoId, payload = {}) {
       lock: transaction.LOCK.UPDATE
     });
     if (!conciliacao) throw createHttpError(404, 'Lancamento de conciliacao nao encontrado.');
-    assertSemAlertaEstornoBancario(conciliacao);
-
     const statusConciliacao = String(conciliacao.status || '').toUpperCase();
     if (statusConciliacao !== 'PENDENTE') {
       const movimentoExistente = statusConciliacao === 'CONCILIADO' && conciliacao.movimento_financeiro_id
@@ -3053,8 +3052,6 @@ async function confirmarConciliacaoCreditoRotativo(req, conciliacaoId, payload =
       lock: transaction.LOCK.UPDATE
     });
     if (!conciliacao) throw createHttpError(404, 'Lancamento de conciliacao nao encontrado.');
-    assertSemAlertaEstornoBancario(conciliacao);
-
     const valorBanco = Number(conciliacao.valor || 0);
     if (!Number.isFinite(valorBanco) || valorBanco === 0) {
       throw createHttpError(400, 'Valor do lancamento bancario invalido para credito rotativo.');
@@ -3192,7 +3189,6 @@ async function finalizarConciliacao(req, conciliacao, movimento, { batch = false
 
 async function confirmarConciliacao(req, conciliacaoId, payload = {}) {
   const conciliacao = await loadConciliacaoById(req, conciliacaoId);
-  assertSemAlertaEstornoBancario(conciliacao);
   if (String(conciliacao.status || '').toUpperCase() !== 'PENDENTE') {
     throw createHttpError(400, 'Somente conciliacoes pendentes podem ser confirmadas.');
   }
@@ -3280,8 +3276,6 @@ async function criarTituloEConciliar(req, conciliacaoId, payload = {}) {
     if (!conciliacao) {
       throw createHttpError(404, 'Lancamento de conciliacao nao encontrado.');
     }
-    assertSemAlertaEstornoBancario(conciliacao);
-
     if (String(conciliacao.status || '').toUpperCase() !== 'PENDENTE') {
       throw createHttpError(400, 'Somente conciliacoes pendentes podem receber criacao rapida de titulo.');
     }

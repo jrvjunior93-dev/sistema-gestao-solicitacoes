@@ -151,6 +151,52 @@ assert(
     && reconciliationPageSource.includes('onClick={() => onPrepararSugestao(item, sugestao)}'),
   'O frontend deve permitir preparar um titulo compativel antes da confirmacao manual.'
 );
+
+const itemConciliacaoSource = reconciliationPageSource.match(
+  /function ItemConciliacao[\s\S]*?\n}\n\n\/\/ \u2500\u2500\u2500 Filtros/
+)?.[0] || reconciliationPageSource.match(
+  /function ItemConciliacao[\s\S]*?\n}\n\nfunction/
+)?.[0] || '';
+assert(
+  itemConciliacaoSource.includes('{isPendente && (')
+    && itemConciliacaoSource.includes('onAcoesRapidas(item)')
+    && itemConciliacaoSource.includes('onAssociarManual(item)')
+    && itemConciliacaoSource.includes('onAssociarFatura(item)')
+    && itemConciliacaoSource.includes('onAssociarTransferencia(item)'),
+  'Alertas de estorno pendentes devem manter disponiveis todas as alternativas manuais.'
+);
+
+const funcoesManuaisComSobreposicao = [
+  'confirmarConciliacaoFatura',
+  'confirmarConciliacaoTransferencia',
+  'confirmarConciliacaoTarifa',
+  'confirmarConciliacaoCreditoRotativo',
+  'confirmarConciliacao',
+  'criarTituloEConciliar'
+];
+for (const [index, nomeFuncao] of funcoesManuaisComSobreposicao.entries()) {
+  const proximaFuncao = funcoesManuaisComSobreposicao[index + 1];
+  const fim = proximaFuncao
+    ? `async function ${proximaFuncao}`
+    : 'async function listarMovimentosAssociacao';
+  const trecho = serviceSource.match(
+    new RegExp(`async function ${nomeFuncao}[\\s\\S]*?${fim}`)
+  )?.[0] || '';
+  assert(
+    trecho && !trecho.includes('assertSemAlertaEstornoBancario(conciliacao)'),
+    `${nomeFuncao} deve aceitar a classificacao manual de um falso positivo de estorno.`
+  );
+}
+
+for (const nomeFuncao of ['ignorarConciliacao', 'removerConciliacao']) {
+  const trecho = serviceSource.match(
+    new RegExp(`async function ${nomeFuncao}[\\s\\S]*?\\n}`)
+  )?.[0] || '';
+  assert(
+    trecho.includes('assertSemAlertaEstornoBancario(conciliacao)'),
+    `${nomeFuncao} deve continuar bloqueado enquanto houver alerta de estorno.`
+  );
+}
 assert(
   serviceSource.includes("as: 'categoriaFinanceira'")
     && serviceSource.includes('categoria_financeira_nome: movimento.titulo?.categoriaFinanceira?.nome || null'),
@@ -336,7 +382,7 @@ assert(
     && serviceSource.includes("match_inicial_tipo: 'ESTORNO_ALERTA'")
     && serviceSource.includes('origemSemBaixa = true')
     && serviceSource.includes('pareado_sem_baixa: origemSemBaixa')
-    && reconciliationPageSource.includes('Sem baixa de titulo: a saida e a devolucao serao pareadas')
+    && /Sem baixa de t[ií]tulo: a sa[ií]da e a devolu[cç][aã]o ser[aã]o pareadas/i.test(reconciliationPageSource)
     && reconciliationPageSource.includes('if (!candidatoEstornoApto(candidato))')
     && !reconciliationPageSource.includes("if (!candidato?.titulo || !candidato?.movimento?.id)")
     && reconciliationPageSource.includes('Confirmar devolucao'),
