@@ -1724,7 +1724,10 @@ export default function SolicitacaoDetalhe() {
           largura="var(--modal-max-w-xl, 1120px)"
           onFechar={fecharModalCompraDireta}
         >
-          <div data-modal="cabecalho" className="app-bloco-head">
+          <div
+            data-modal="cabecalho"
+            className="app-bloco-head border-b border-[var(--c-border)] px-4 py-3 sm:px-6"
+          >
             <h2 className="app-bloco-titulo">Itens da compra direta</h2>
             <span className="app-bloco-acoes">
               <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalCompraDireta}>
@@ -1732,52 +1735,62 @@ export default function SolicitacaoDetalhe() {
               </button>
             </span>
           </div>
-          <p className="app-bloco-lead" title="Selecione um item manual para catalogar ou corrigir seu vínculo oficial.">
-            Selecione um item manual para catalogar ou corrigir seu vínculo oficial.
-          </p>
+          {/*
+            O OverlayModal separa cabecalho e corpo para manter a rolagem.
+            Este modal nasceu antes dessa separacao e dependia do padding do
+            card externo; depois da padronizacao, lista e painel ficaram
+            colados nas bordas e o workspace encolhia ate parecer cortado.
+          */}
+          <div className="min-w-0 p-4 sm:p-6">
+            <p
+              className="app-bloco-lead app-bloco-lead--integral"
+              title="Selecione um item para catalogar, cadastrar sua unidade ou corrigir as apropriações."
+            >
+              Selecione um item para catalogar, cadastrar sua unidade ou corrigir as apropriações.
+            </p>
 
-          <div className="flex flex-col gap-4 md:flex-row md:items-start">
-            {/* A medida do painel lateral mora na classe, não na tela (R10). */}
-            <div className="app-painel-lateral flex flex-col gap-2">
-              <h3 className="app-bloco-titulo">Itens</h3>
-              {montarItensCompraDireta().length === 0 ? (
-                <BlocoConteudo variante="secundario">
-                  Nenhum item localizado para esta compra direta.
-                </BlocoConteudo>
-              ) : (
-                montarItensCompraDireta().map((item) => {
-                  const selecionado =
-                    itemCompraDiretaSelecionado?.id === item.id &&
-                    itemCompraDiretaSelecionado?.item_tipo === item.item_tipo;
-                  const resumoApropriacao = montarLinhasResumoApropriacao(item, apropriacoesCatalogo).join(' | ') || '-';
+            <div className="mt-4 flex min-w-0 flex-col gap-4 md:flex-row md:items-stretch">
+              {/* A medida do painel lateral mora na classe, não na tela (R10). */}
+              <div className="app-painel-lateral flex min-h-0 flex-col gap-2">
+                <h3 className="app-bloco-titulo">Itens</h3>
+                {montarItensCompraDireta().length === 0 ? (
+                  <BlocoConteudo variante="secundario">
+                    Nenhum item localizado para esta compra direta.
+                  </BlocoConteudo>
+                ) : (
+                  montarItensCompraDireta().map((item) => {
+                    const selecionado =
+                      itemCompraDiretaSelecionado?.id === item.id &&
+                      itemCompraDiretaSelecionado?.item_tipo === item.item_tipo;
+                    const resumoApropriacao = montarLinhasResumoApropriacao(item, apropriacoesCatalogo).join(' | ') || '-';
 
-                  return (
-                    <button
-                      key={`${item.item_tipo}-${item.id}`}
-                      type="button"
-                      className={`btn w-full justify-start text-left ${selecionado ? 'btn-primary' : 'btn-outline'}`}
-                      aria-pressed={selecionado}
-                      onClick={() => selecionarItemCompraDireta(item)}
-                    >
-                      <span className="flex flex-col gap-1">
-                        <span className="font-semibold">{item.descricao}</span>
-                        <span className="text-xs text-muted">
-                          Qtd.: {item.quantidade || '-'} {item.unidade_label || ''}
+                    return (
+                      <button
+                        key={`${item.item_tipo}-${item.id}`}
+                        type="button"
+                        className={`btn w-full shrink-0 justify-start text-left ${selecionado ? 'btn-primary' : 'btn-outline'}`}
+                        aria-pressed={selecionado}
+                        onClick={() => selecionarItemCompraDireta(item)}
+                      >
+                        <span className="flex min-w-0 flex-col gap-1">
+                          <span className="break-words font-semibold">{item.descricao}</span>
+                          <span className="text-xs text-muted">
+                            Qtd.: {item.quantidade || '-'} {item.unidade_label || ''}
+                          </span>
+                          <span className="text-xs text-muted">
+                            {item.item_tipo === 'MANUAL'
+                              ? (item.insumo_catalogado_id ? 'Manual · catalogado' : 'Manual · pendente de cadastro')
+                              : (item.unidade_sigla_manual ? 'Cadastro oficial · UN pendente' : 'Cadastro oficial')}
+                          </span>
+                          <span className="break-words text-xs text-muted">{resumoApropriacao}</span>
                         </span>
-                        <span className="text-xs text-muted">
-                          {item.item_tipo === 'MANUAL'
-                            ? (item.insumo_catalogado_id ? 'Manual · catalogado' : 'Manual · pendente de cadastro')
-                            : (item.unidade_sigla_manual ? 'Cadastro oficial · UN pendente' : 'Cadastro oficial')}
-                        </span>
-                        <span className="text-xs text-muted">{resumoApropriacao}</span>
-                      </span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
 
-            <div className="flex-1 min-w-0">
+              <div className="min-w-0 flex-1">
               {!itemCompraDiretaSelecionado ? (
                 <BlocoConteudo variante="secundario">
                   Selecione um item para ver as ações disponíveis.
@@ -1931,6 +1944,7 @@ export default function SolicitacaoDetalhe() {
                   ) : null}
                 </BlocoConteudo>
               )}
+              </div>
             </div>
           </div>
         </OverlayModal>

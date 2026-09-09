@@ -2635,7 +2635,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         largura="var(--modal-max-w-lg, 860px)"
         onFechar={fecharModalApropriacao}
       >
-        <div data-modal="cabecalho" className="app-bloco-head">
+        <div
+          data-modal="cabecalho"
+          className="app-bloco-head border-b border-[var(--c-border)] px-4 py-3 sm:px-6"
+        >
           <div>
             <h2 className="app-bloco-titulo">Apropriar item</h2>
             {/* 05/09 — apoio de bloco agora é UMA linha com reticências; o
@@ -2711,7 +2714,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           </div>
         </div>
 
-        <div data-modal="rodape" className="app-actionbar p-4">
+        <div data-modal="rodape" className="app-actionbar border-t border-[var(--c-border)] p-4">
           <span className="app-actionbar-apartada">
             <button type="button" className="btn btn-outline" onClick={fecharModalApropriacao}>
               Cancelar
