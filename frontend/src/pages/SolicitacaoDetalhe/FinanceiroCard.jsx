@@ -1899,7 +1899,7 @@ export default function FinanceiroCard({
                   setModalOpen(true);
                 }}
               >
-                Gerar conta
+                Criar Título
               </button>
             </span>
           </span>
