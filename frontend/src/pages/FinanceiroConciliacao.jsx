@@ -1033,7 +1033,14 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
         {/* ── Coluna direita: sugestão / vazio ── */}
         <div className="flex flex-col gap-1 p-2">
           {/* header */}
-          {isPendente && !alertaEstorno && (
+          {/*
+            O alerta de estorno continua impedindo a conciliacao automatica,
+            mas nao pode esconder as alternativas manuais. Descricoes
+            bancarias como "Taxa de devolucao de cheque" podem produzir um
+            falso positivo; neste caso o usuario precisa escolher a
+            classificacao correta pelos atalhos abaixo.
+          */}
+          {isPendente && (
             <div className="flex items-center justify-between gap-1">
               <p className="text-[9px] uppercase tracking-wide font-semibold text-[var(--c-muted)]">Lançamento Fluxy</p>
               <div className="flex items-center gap-0.5">
