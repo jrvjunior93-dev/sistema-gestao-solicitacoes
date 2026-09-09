@@ -2234,15 +2234,21 @@
   z-index: var(--z-modal);
   inset: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 18px;
   background: color-mix(in srgb, #071226 58%, transparent);
 }
 
 .cr-modal {
   width: min(100%, 720px);
+  min-width: 0;
+  max-width: 100%;
   max-height: min(86vh, 720px);
-  overflow-y: auto;
+  justify-self: center;
+  overflow: auto;
   border: 1px solid var(--ui-border);
   border-radius: 13px;
   background: var(--ui-surface);
@@ -4204,12 +4210,16 @@
 }
 
 .cr-import-modal-backdrop {
+  --cr-import-modal-gap: clamp(0.5rem, 2vw, 1.5rem);
   position: fixed;
   z-index: var(--z-modal-acima);
   inset: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
-  padding: clamp(0.5rem, 2vw, 1.5rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--cr-import-modal-gap);
   background: color-mix(in srgb, var(--cr-text) 58%, transparent);
 }
 
@@ -4217,7 +4227,10 @@
   display: flex;
   flex-direction: column;
   width: min(92rem, 100%);
-  max-height: calc(100vh - 2rem);
+  min-width: 0;
+  max-width: 100%;
+  max-height: calc(100dvh - (var(--cr-import-modal-gap) * 2));
+  justify-self: center;
   overflow: clip;
   border: 1px solid var(--cr-border);
   border-radius: 0.85rem;

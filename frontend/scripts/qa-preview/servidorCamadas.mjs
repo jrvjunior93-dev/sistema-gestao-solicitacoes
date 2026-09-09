@@ -30,6 +30,7 @@ const CSS = [
   'src/styles/escala.css',
   'src/styles/componentes-padrao.css',
   'src/modules/solicitacao-compra/compras-responsive.css',
+  'src/modules/custosRecebiveis/styles/custos-recebiveis.css',
   'src/styles/responsive-system.css'
 ];
 

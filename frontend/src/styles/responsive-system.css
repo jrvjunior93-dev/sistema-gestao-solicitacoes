@@ -292,7 +292,9 @@ body {
     padding-right: max(0.75rem, env(safe-area-inset-right));
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
     padding-left: max(0.75rem, env(safe-area-inset-left));
-    overflow-y: auto;
+    align-items: safe center;
+    justify-content: safe center;
+    overflow: auto;
     overscroll-behavior: contain;
   }
 
@@ -304,7 +306,7 @@ body {
 
   .modal-body {
     min-height: 0;
-    overflow-y: auto;
+    overflow: auto;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -465,16 +467,17 @@ body {
 
   .modal-overlay,
   .app-modal-overlay {
-    align-items: flex-end;
-    padding: 0;
+    align-items: safe center;
+    justify-content: safe center;
+    padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
   }
 
   .modal-dialog,
   .app-modal-surface {
     width: 100%;
-    max-width: 100%;
-    max-height: calc(100dvh - env(safe-area-inset-top));
-    border-radius: 1rem 1rem 0 0;
+    max-width: calc(100vw - max(1.5rem, env(safe-area-inset-left) + env(safe-area-inset-right)));
+    max-height: calc(100dvh - max(1.5rem, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+    border-radius: 1rem;
   }
 
   .modal-header,

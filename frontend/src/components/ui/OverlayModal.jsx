@@ -67,6 +67,12 @@ export default function OverlayModal({
         style={{
           zIndex: 'var(--z-modal)',
           background: 'var(--modal-overlay, rgba(15, 23, 42, 0.48))',
+          alignItems: 'safe center',
+          justifyContent: 'safe center',
+          overflow: 'auto',
+          overscrollBehavior: 'contain',
+          paddingTop: 'max(0.75rem, env(safe-area-inset-top))',
+          paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))',
           paddingLeft: `calc(${recuoConteudo}px + 1rem)`,
           paddingRight: '1rem'
         }}
@@ -87,7 +93,8 @@ export default function OverlayModal({
           style={{
             overflow: 'clip',
             width: `min(100%, ${largura})`,
-            maxHeight: 'min(88vh, 920px)',
+            maxWidth: '100%',
+            maxHeight: 'min(calc(100dvh - 1.5rem), 920px)',
             display: 'flex',
             flexDirection: 'column',
             padding: 0
@@ -143,7 +150,17 @@ function ModalCorpo({ children }) {
         fora do painel e a rolagem nunca acontece. É o mesmo motivo das
         trilhas `minmax(0, 1fr)` que a ComunicacaoInterna precisou.
       */}
-      <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>{corpo}</div>
+      <div
+        className="min-w-0"
+        style={{
+          flex: '1 1 auto',
+          minHeight: 0,
+          overflow: 'auto',
+          overscrollBehavior: 'contain'
+        }}
+      >
+        {corpo}
+      </div>
       {rodape.length ? <div style={{ flex: '0 0 auto' }}>{rodape}</div> : null}
     </>
   );
