@@ -1721,7 +1721,7 @@ export default function SolicitacaoDetalhe() {
       {modalCompraDiretaAberto && (
         <OverlayModal
           rotulo="Itens da compra direta"
-          largura="var(--modal-max-w-xl, 1120px)"
+          largura="var(--modal-max-w-2xl, 90rem)"
           onFechar={fecharModalCompraDireta}
         >
           <div
@@ -1741,7 +1741,7 @@ export default function SolicitacaoDetalhe() {
             card externo; depois da padronizacao, lista e painel ficaram
             colados nas bordas e o workspace encolhia ate parecer cortado.
           */}
-          <div className="min-w-0 p-4 sm:p-6">
+          <div className="h-[76dvh] min-w-0 p-4 sm:p-6">
             <p
               className="app-bloco-lead app-bloco-lead--integral"
               title="Selecione um item para catalogar, cadastrar sua unidade ou corrigir as apropriações."
@@ -1749,7 +1749,7 @@ export default function SolicitacaoDetalhe() {
               Selecione um item para catalogar, cadastrar sua unidade ou corrigir as apropriações.
             </p>
 
-            <div className="mt-4 flex min-w-0 flex-col gap-4 md:flex-row md:items-stretch">
+            <div className="mt-4 flex min-h-full min-w-0 flex-col gap-4 md:flex-row md:items-stretch">
               {/* A medida do painel lateral mora na classe, não na tela (R10). */}
               <div className="app-painel-lateral flex min-h-0 flex-col gap-2">
                 <h3 className="app-bloco-titulo">Itens</h3>

@@ -168,6 +168,7 @@
   --modal-max-w-md: 640px;
   --modal-max-w-lg: 860px;
   --modal-max-w-xl: 1120px;
+  --modal-max-w-2xl: 90rem;
   /* Status badge tokens */
   --status-pending-bg: #f7f2eb;
   --status-pending-text: #9a5b06;
