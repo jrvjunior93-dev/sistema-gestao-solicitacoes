@@ -581,9 +581,6 @@ export default function BlocoContratoFluxoNovo({
               onRemover={() => setCampos((atuais) => ({ ...atuais, documentos_representante_legal_arquivo: null }))}
             />
           </div>
-          <p className="text-xs" style={{ color: 'var(--c-muted)', marginTop: -12 }}>
-            Formatos aceitos: PDF, DOCX, JPG ou PNG.
-          </p>
 
           <fieldset className="border-0 border-t border-[var(--c-border)] pt-4"
             style={{ paddingLeft: 0, paddingRight: 0, paddingBottom: 0, margin: 0 }}>
