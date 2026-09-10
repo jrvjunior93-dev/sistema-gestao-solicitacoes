@@ -28,6 +28,27 @@ function tipoEhSolicitacaoCompra(tipo) {
   return codigo === 'SOLICITACAO_DE_COMPRA' || codigo === 'SOLICITACAO_COMPRA';
 }
 
+function encontrarSetorCompras(setores = []) {
+  return setores.find((setor) => (
+    setor?.eh_setor_compras === true ||
+    [setor?.codigo, setor?.nome].filter(Boolean).some((valor) => normalizar(valor) === 'COMPRAS')
+  ));
+}
+
+function sugerirDestinoCompra(regrasAtuais = {}, tiposAtivos = [], setoresAtivos = []) {
+  const tipoCompra = tiposAtivos.find(tipoEhSolicitacaoCompra);
+  const setorCompras = encontrarSetorCompras(setoresAtivos);
+  if (!tipoCompra || !setorCompras || regrasAtuais[String(tipoCompra.id)]) return regrasAtuais;
+
+  return {
+    ...regrasAtuais,
+    [String(tipoCompra.id)]: {
+      setor_destino: String(setorCompras.codigo || setorCompras.nome || '').trim().toUpperCase(),
+      status_destino: ''
+    }
+  };
+}
+
 const DESCRICAO = 'Defina para onde cada tipo segue depois da aprovação do GEO e com qual status ele entra no setor destino.';
 
 export default function AprovacaoSolicitacaoPorTipo() {
@@ -56,10 +77,12 @@ export default function AprovacaoSolicitacaoPorTipo() {
             status_destino: String(regra.status_destino || '')
           };
         });
-        setTipos((Array.isArray(tiposData) ? tiposData : []).filter((tipo) => tipo?.ativo !== false));
-        setSetores((Array.isArray(setoresData) ? setoresData : []).filter((setor) => setor?.ativo !== false));
+        const tiposAtivos = (Array.isArray(tiposData) ? tiposData : []).filter((tipo) => tipo?.ativo !== false);
+        const setoresAtivos = (Array.isArray(setoresData) ? setoresData : []).filter((setor) => setor?.ativo !== false);
+        setTipos(tiposAtivos);
+        setSetores(setoresAtivos);
         setEtapas((Array.isArray(etapasData) ? etapasData : []).filter((etapa) => etapa?.ativo !== false));
-        setRegras(regrasCarregadas);
+        setRegras(sugerirDestinoCompra(regrasCarregadas, tiposAtivos, setoresAtivos));
       } catch (error) {
         console.error(error);
         avisar.erro(error?.message || 'Erro ao carregar os fluxos de aprovação.');
@@ -119,6 +142,9 @@ export default function AprovacaoSolicitacaoPorTipo() {
   async function salvar() {
     const incompletos = tiposOrdenados.filter((tipo) => {
       const regra = regras[String(tipo.id)] || {};
+      if (tipoEhSolicitacaoCompra(tipo) && regra.setor_destino && !regra.status_destino) {
+        return false;
+      }
       return Boolean(regra.setor_destino) !== Boolean(regra.status_destino);
     });
     if (incompletos.length > 0) {
@@ -144,7 +170,7 @@ export default function AprovacaoSolicitacaoPorTipo() {
           status_destino: regra.status_destino
         };
       });
-      setRegras(regrasSalvas);
+      setRegras(sugerirDestinoCompra(regrasSalvas, tipos, setores));
       avisar.sucesso('Fluxos de aprovação salvos com sucesso.');
     } catch (error) {
       console.error(error);
@@ -196,7 +222,9 @@ export default function AprovacaoSolicitacaoPorTipo() {
                     <p className="font-semibold text-[var(--c-text)]">{tipo.nome}</p>
                     <p className="app-note mt-1">
                       {compra
-                        ? 'Fluxo operacional de Compras: o setor permanece fixo em Compras.'
+                        ? regra.status_destino
+                          ? 'Fluxo operacional de Compras configurado.'
+                          : 'Compras já está definido. Escolha um status apenas quando quiser ativar esta aprovação.'
                         : regra.setor_destino
                           ? 'Aprovação configurada.'
                           : 'Sem aprovação configurada.'}

@@ -70,6 +70,8 @@ function validarIntegracaoFrontendBackend() {
   const configFrontend = read('frontend/src/utils/novaSolicitacaoCampos.js');
   const tituloFinanceiro = read('backend/src/services/tituloFinanceiroService.js');
   const lotePagamento = read('backend/src/services/paymentBatchService.js');
+  const aprovacaoTipo = read('backend/src/services/solicitacao/aprovacaoTipoConfig.js');
+  const telaAprovacaoTipo = read('frontend/src/pages/AprovacaoSolicitacaoPorTipo.jsx');
 
   assert(financeiro.includes('function buildPaymentDraftForTitle'));
   assert(financeiro.includes('Dados para pagamento deste título'));
@@ -121,6 +123,14 @@ function validarIntegracaoFrontendBackend() {
   assert(novaSolicitacao.includes('<BlocoConteudo titulo="Valor">'));
   assert(!novaSolicitacao.includes('titulo="Valor e apropriação"'));
   assert(!novaSolicitacao.includes('O valor é o número que a apropriação reparte'));
+
+  // O fallback de Solicitacao de Compra so pode ser efetivado quando LIBERADO esta ativo em
+  // Compras. Sem isso, a tela sugere o setor com status vazio e nao bloqueia outras regras.
+  assert(aprovacaoTipo.includes('const statusPadraoAtivo = etapasCompras.some'));
+  assert(aprovacaoTipo.includes('if (statusPadraoAtivo)'));
+  assert(aprovacaoTipo.includes('porTipo.delete(chaveTipoCompra)'));
+  assert(telaAprovacaoTipo.includes('function sugerirDestinoCompra'));
+  assert(telaAprovacaoTipo.includes('tipoEhSolicitacaoCompra(tipo) && regra.setor_destino && !regra.status_destino'));
 }
 
 function run() {

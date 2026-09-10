@@ -91,12 +91,40 @@ async function obterRegrasAprovacaoSolicitacaoPorTipo({ incluirPadraoCompra = tr
   if (!tipoCompra || !setorCompras) return regras;
 
   const porTipo = new Map(regras.map((regra) => [String(regra.tipo_solicitacao_id), regra]));
-  if (!porTipo.has(String(tipoCompra.id))) {
-    porTipo.set(String(tipoCompra.id), {
+  const tokensSetorCompras = new Set(
+    [setorCompras.codigo, setorCompras.nome].map(normalizarToken).filter(Boolean)
+  );
+  const chaveTipoCompra = String(tipoCompra.id);
+  const regraCompraExistente = porTipo.get(chaveTipoCompra);
+  const regraCompraUsaPadrao = Boolean(
+    regraCompraExistente &&
+    tokensSetorCompras.has(normalizarToken(regraCompraExistente.setor_destino)) &&
+    normalizarToken(regraCompraExistente.status_destino) === REGRA_PADRAO_SOLICITACAO_COMPRA.status_destino
+  );
+  if (regraCompraExistente && !regraCompraUsaPadrao) return regras;
+
+  const etapasCompras = await EtapaSetor.findAll({
+    where: { ativo: true },
+    attributes: ['setor', 'nome']
+  });
+  const statusPadraoAtivo = etapasCompras.some((etapa) => (
+    tokensSetorCompras.has(normalizarToken(etapa.setor)) &&
+    normalizarToken(etapa.nome) === REGRA_PADRAO_SOLICITACAO_COMPRA.status_destino
+  ));
+
+  // A regra de Compra e apenas um fallback operacional. Se o status padrao nao existir no
+  // setor, nao devolvemos uma configuracao virtual invalida que bloquearia o salvamento das
+  // demais regras. A tela continua sugerindo Compras e permite escolher um status ativo.
+  if (statusPadraoAtivo) {
+    porTipo.set(chaveTipoCompra, {
       tipo_solicitacao_id: Number(tipoCompra.id),
       ...REGRA_PADRAO_SOLICITACAO_COMPRA,
       setor_destino: normalizarToken(setorCompras.codigo || setorCompras.nome)
     });
+  } else if (regraCompraUsaPadrao) {
+    // Tambem neutraliza uma regra padrao que tenha sido salva antes de LIBERADO ser
+    // desativado no setor Compras. O proximo salvamento remove o valor obsoleto da configuracao.
+    porTipo.delete(chaveTipoCompra);
   }
 
   return Array.from(porTipo.values()).sort(
