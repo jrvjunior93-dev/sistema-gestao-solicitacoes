@@ -38,7 +38,6 @@ import { hasEnabledModule } from '../utils/acessoProduto';
 import {
   applyTipoSolicitacaoModuleAvailability,
   getTipoSolicitacaoBehavior,
-  normalizeTipoToken,
   obterRotuloDataSolicitacao
 } from '../utils/tipoSolicitacao';
 import { obterOpcoesNovaSolicitacaoFrontend, resolverCamposNovaSolicitacaoFrontend } from '../utils/novaSolicitacaoCampos';
@@ -714,9 +713,6 @@ export default function NovaSolicitacao() {
   ), [comportamentoTipo, camposNovaSolicitacaoConfig, form.tipo_solicitacao_id, form.area_responsavel, form.tipo_sub_id, moduloApropriacoesHabilitado]);
   const tipoConfiguradoComoDespesaEventual = Boolean(comportamentoTipo.usa_fluxo_despesa_eventual);
   const tipoConfiguradoComoRecargaCartao = isTipoRecargaCartao(tipoSelecionado, comportamentoTipo);
-  const tipoEhAdmLocalObra = normalizeTipoToken(
-    tipoSelecionado?.codigo_interno || tipoSelecionado?.nome
-  ) === 'ADM_LOCAL_DE_OBRA';
   const tipoSolicitacaoEscolhido = Boolean(form.tipo_solicitacao_id);
   const camposFixosDespesaEventual = new Set([
     'valor',
@@ -944,17 +940,18 @@ export default function NovaSolicitacao() {
   );
   const pagamentoViaPix = formaPagamentoEhPix(formaPagamentoSelecionada);
   const pagamentoViaBoleto = formaPagamentoEhBoleto(formaPagamentoSelecionada);
-  // ADM Local de Obra usa o boleto como documento suficiente. Nas demais formas, o comprovante
-  // complementar aparece somente depois da escolha da forma e passa a ser obrigatorio. A regra
-  // fica derivada do codigo interno do tipo, sem depender do nome que o administrador exibe.
-  const exibirAnexosAdmLocal = tipoEhAdmLocalObra
-    && Boolean(formaPagamentoSelecionada)
-    && !pagamentoViaBoleto;
-  const exibirAnexos = tipoEhAdmLocalObra
-    ? exibirAnexosAdmLocal
+  // Regra unica para todo tipo que exibe Forma de pagamento: depois da escolha, o campo geral de
+  // anexos permanece disponivel para todas as formas. O boleto possui seu proprio upload e torna
+  // esse anexo complementar opcional; nas demais formas, o anexo/comprovante e obrigatorio.
+  const usaRegraAnexoPorFormaPagamento = exibirFormaPagamento;
+  const exibirAnexosPagamento = usaRegraAnexoPorFormaPagamento
+    && Boolean(formaPagamentoSelecionada);
+  const exigirAnexoPagamento = exibirAnexosPagamento && !pagamentoViaBoleto;
+  const exibirAnexos = usaRegraAnexoPorFormaPagamento
+    ? exibirAnexosPagamento
     : exibirAnexosConfigurados;
-  const anexosObrigatorios = tipoEhAdmLocalObra
-    ? exibirAnexosAdmLocal
+  const anexosObrigatorios = usaRegraAnexoPorFormaPagamento
+    ? exigirAnexoPagamento
     : (tipoEhDeMedicao || campoObrigatorio('anexos'));
   const exibirFavorecidoPagamento = exibirFavorecido && Boolean(formaPagamentoSelecionada);
   // Se existe uma forma de pagamento escolhida, precisa existir quem recebera. A configuracao
@@ -1598,12 +1595,9 @@ export default function NovaSolicitacao() {
       return;
     }
     if (!tipoEhDeMedicao && anexosObrigatorios && arquivos.length === 0) {
-      reprovarCampo(
-        'anexos',
-        tipoEhAdmLocalObra
-          ? 'Anexe ao menos um comprovante para esta forma de pagamento.'
-          : 'Anexe ao menos um comprovante da despesa.'
-      );
+      reprovarCampo('anexos', usaRegraAnexoPorFormaPagamento
+        ? 'Anexe ao menos um comprovante para esta forma de pagamento.'
+        : 'Anexe ao menos um comprovante da despesa.');
       return;
     }
 
@@ -3424,18 +3418,18 @@ export default function NovaSolicitacao() {
 
         {tipoSolicitacaoEscolhido && (
           <BlocoConteudo titulo={exibirAnexos ? 'Anexos e envio' : 'Envio'}>
-            {exibirAnexos && !(tipoEhDeMedicao && (pagamentoViaBoleto || medicaoContratoDados?.pagamento?.via_boleto)) && (
+            {exibirAnexos && (
               /* Mesmo motivo do boleto: o gatilho do seletor de arquivo é um
                  <label>, então este campo usa as classes `.form-*` direto em
                  vez do `CampoForm` (que também é um <label>). A tela ANTIGA
                  tinha exatamente esse aninhamento aqui. */
               <div className="form-group nova-solicitacao-anexos">
-                <span className={`form-label${(tipoEhDeMedicao || usaFluxoDespesaEventual || anexosObrigatorios) ? ' form-label--required' : ''}`}>
+                <span className={`form-label${(anexosObrigatorios && !medicaoContratoDados?.pagamento?.via_boleto) ? ' form-label--required' : ''}`}>
                   {tipoEhDeMedicao
                     ? 'Anexo da medição'
                     : (usaFluxoDespesaEventual
                       ? 'Comprovante da despesa'
-                      : (tipoEhAdmLocalObra ? 'Anexo/comprovante' : 'Anexos'))}
+                      : (usaRegraAnexoPorFormaPagamento ? 'Anexo/comprovante' : 'Anexos'))}
                 </span>
                 <div className="flex flex-wrap items-center gap-2 nova-solicitacao-inline-actions">
                   <label className="btn btn-outline btn-sm inline-flex cursor-pointer items-center gap-2">

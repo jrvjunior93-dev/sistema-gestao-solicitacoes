@@ -90,11 +90,17 @@ function validarIntegracaoFrontendBackend() {
   assert(novaCompra.includes('const validacaoRateios = validarRateiosItem(itemNovo)'));
   assert(novaCompra.includes('titulo="Apropriação do item"'));
 
-  // ADM Local: boleto tem seu proprio upload; as demais formas exibem e exigem o comprovante.
-  assert(novaSolicitacao.includes("=== 'ADM_LOCAL_DE_OBRA'"));
-  assert(novaSolicitacao.includes('const exibirAnexosAdmLocal'));
-  assert(novaSolicitacao.includes('? exibirAnexosAdmLocal'));
-  assert(solicitacaoController.includes('tipoEhAdmLocalObra'));
+  // Todo tipo com Forma de pagamento mantem o anexo geral disponivel: no boleto ele e opcional;
+  // nas demais formas e obrigatorio, sem condicionar a regra ao codigo de um tipo especifico.
+  assert(novaSolicitacao.includes('const usaRegraAnexoPorFormaPagamento = exibirFormaPagamento'));
+  assert(novaSolicitacao.includes('const exibirAnexosPagamento'));
+  assert(novaSolicitacao.includes('const exigirAnexoPagamento = exibirAnexosPagamento && !pagamentoViaBoleto'));
+  assert(novaSolicitacao.includes('? exibirAnexosPagamento'));
+  assert(!novaSolicitacao.includes('exibirAnexos && !(tipoEhDeMedicao'));
+  assert(!novaSolicitacao.includes('tipoEhAdmLocalObra'));
+  assert(!solicitacaoController.includes('tipoEhAdmLocalObra'));
+  assert(solicitacaoController.includes("const exibeFormaPagamentoNaNovaSolicitacao = campoVisivel('forma_pagamento')"));
+  assert(solicitacaoController.includes("!exibeFormaPagamentoNaNovaSolicitacao && campoObrigatorio('anexos')"));
   assert(solicitacaoController.includes('!formaPagamentoEhBoleto(formaPagamentoSelecionada)'));
   assert(solicitacaoController.includes('Anexe ao menos um comprovante para esta forma de pagamento.'));
 

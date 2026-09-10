@@ -57,7 +57,6 @@ const {
 const {
   applyTipoSolicitacaoModuleAvailability,
   normalizeTipoSolicitacaoBehavior,
-  normalizeTipoSolicitacaoCodigo,
   obterRotuloDataSolicitacao
 } = require('../services/tipoSolicitacaoBehaviorService');
 const { isModuleEnabled } = require('../services/moduleConfigService');
@@ -2961,10 +2960,6 @@ module.exports = {
       }
       await assertTipoDisponivelNoDestino(obraSelecionada, tipoSelecionado);
       const comportamentoBase = normalizeTipoSolicitacaoBehavior(tipoSelecionado);
-      const tipoEhAdmLocalObra = normalizeTipoSolicitacaoCodigo(
-        tipoSelecionado.codigo_interno,
-        tipoSelecionado.nome
-      ) === 'ADM_LOCAL_DE_OBRA';
       const usaFluxoDespesaEventual = tipoEhDespesaEventual(tipoSelecionado);
       const usaFluxoRecargaCartao = tipoEhRecargaCartao(tipoSelecionado);
       if (
@@ -3020,6 +3015,8 @@ module.exports = {
         || (!usaFluxoRecargaCartao && usaFluxoDespesaEventual && camposFixosDespesaEventual.has(campo))
         || (!usaFluxoRecargaCartao && camposNovaSolicitacao?.[campo]?.visivel !== false)
       );
+      const exibeFormaPagamentoNaNovaSolicitacao = campoVisivel('forma_pagamento')
+        && comportamentoTipo.usa_fluxo_contrato_novo !== true;
       const usaApropriacaoAutomaticaObra = comportamentoTipo.usa_apropriacao_automatica_obra === true;
       const tipoEhDeMedicao = Boolean(
         comportamentoTipo.mostrar_periodo_medicao || comportamentoTipo.exige_periodo_medicao
@@ -3080,11 +3077,11 @@ module.exports = {
       if (campoObrigatorio('forma_pagamento') && !forma_pagamento_id) {
         return res.status(400).json({ error: 'Selecione a forma de pagamento.' });
       }
-      // ADM Local possui regra condicional por forma de pagamento, validada depois que a forma
-      // ativa for carregada. Aplicar a exigencia configuravel aqui faria o boleto pedir dois
-      // arquivos: o proprio boleto e um anexo generico redundante.
+      // Quando o tipo possui forma de pagamento, a regra de anexo depende da forma ativa e e
+      // validada depois que ela for carregada. Antecipar a exigencia aqui faria o boleto pedir
+      // dois arquivos: o proprio boleto e um anexo generico redundante.
       if (
-        (tipoEhDeMedicao || (!tipoEhAdmLocalObra && campoObrigatorio('anexos')))
+        (tipoEhDeMedicao || (!exibeFormaPagamentoNaNovaSolicitacao && campoObrigatorio('anexos')))
         && nomesAnexosPendentes.length === 0
       ) {
         return res.status(400).json({
@@ -3603,8 +3600,7 @@ module.exports = {
         return res.status(400).json({ error: 'Anexe o boleto para usar esta forma de pagamento.' });
       }
       if (
-        tipoEhAdmLocalObra
-        && formaPagamentoSelecionada
+        formaPagamentoSelecionada
         && !formaPagamentoEhBoleto(formaPagamentoSelecionada)
         && nomesAnexosPendentes.length === 0
       ) {
