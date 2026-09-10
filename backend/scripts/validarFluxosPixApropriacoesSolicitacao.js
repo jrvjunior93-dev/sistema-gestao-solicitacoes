@@ -131,6 +131,15 @@ function validarIntegracaoFrontendBackend() {
   assert(aprovacaoTipo.includes('porTipo.delete(chaveTipoCompra)'));
   assert(telaAprovacaoTipo.includes('function sugerirDestinoCompra'));
   assert(telaAprovacaoTipo.includes('tipoEhSolicitacaoCompra(tipo) && regra.setor_destino && !regra.status_destino'));
+
+  // Aprovar pelo fluxo configurado deve acionar a mesma sincronizacao da troca manual de status;
+  // para Recarga de Cartao isso transforma o titulo PREVISAO em ABERTO na mesma transacao.
+  assert(solicitacaoController.includes(`await sincronizarTituloComStatusSolicitacao(
+        solicitacao.id,
+        contexto.statusDestino,
+        req.user.id,
+        transaction
+      );`));
 }
 
 function run() {

@@ -5328,6 +5328,16 @@ module.exports = {
         status_global: contexto.statusDestino
       }, { transaction });
 
+      // A aprovacao configurada por tipo precisa produzir os mesmos efeitos financeiros da
+      // troca manual de status. No fluxo de Recarga de Cartao, LIBERADO/APROVADA e o marco que
+      // converte o titulo atomico de PREVISAO para ABERTO.
+      await sincronizarTituloComStatusSolicitacao(
+        solicitacao.id,
+        contexto.statusDestino,
+        req.user.id,
+        transaction
+      );
+
       const historico = await Historico.create({
         solicitacao_id: solicitacao.id,
         usuario_responsavel_id: req.user.id,
