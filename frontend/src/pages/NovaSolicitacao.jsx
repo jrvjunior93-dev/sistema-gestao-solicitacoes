@@ -940,15 +940,13 @@ export default function NovaSolicitacao() {
   );
   const pagamentoViaPix = formaPagamentoEhPix(formaPagamentoSelecionada);
   const pagamentoViaBoleto = formaPagamentoEhBoleto(formaPagamentoSelecionada);
-  // Regra unica para todo tipo que exibe Forma de pagamento: depois da escolha, o campo geral de
-  // anexos permanece disponivel para todas as formas. O boleto possui seu proprio upload e torna
-  // esse anexo complementar opcional; nas demais formas, o anexo/comprovante e obrigatorio.
+  // Regra unica para todo tipo que exibe Forma de pagamento, inclusive quando o campo foi
+  // habilitado pela configuracao: o anexo geral ja nasce obrigatorio com o tipo. Selecionar
+  // Boleto remove essa obrigatoriedade porque o boleto possui seu proprio upload.
   const usaRegraAnexoPorFormaPagamento = exibirFormaPagamento;
-  const exibirAnexosPagamento = usaRegraAnexoPorFormaPagamento
-    && Boolean(formaPagamentoSelecionada);
-  const exigirAnexoPagamento = exibirAnexosPagamento && !pagamentoViaBoleto;
+  const exigirAnexoPagamento = usaRegraAnexoPorFormaPagamento && !pagamentoViaBoleto;
   const exibirAnexos = usaRegraAnexoPorFormaPagamento
-    ? exibirAnexosPagamento
+    ? true
     : exibirAnexosConfigurados;
   const anexosObrigatorios = usaRegraAnexoPorFormaPagamento
     ? exigirAnexoPagamento

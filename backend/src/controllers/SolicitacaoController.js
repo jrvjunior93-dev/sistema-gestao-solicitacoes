@@ -3600,7 +3600,7 @@ module.exports = {
         return res.status(400).json({ error: 'Anexe o boleto para usar esta forma de pagamento.' });
       }
       if (
-        formaPagamentoSelecionada
+        exibeFormaPagamentoNaNovaSolicitacao
         && !formaPagamentoEhBoleto(formaPagamentoSelecionada)
         && nomesAnexosPendentes.length === 0
       ) {

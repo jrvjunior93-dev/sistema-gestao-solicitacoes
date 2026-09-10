@@ -90,12 +90,12 @@ function validarIntegracaoFrontendBackend() {
   assert(novaCompra.includes('const validacaoRateios = validarRateiosItem(itemNovo)'));
   assert(novaCompra.includes('titulo="Apropriação do item"'));
 
-  // Todo tipo com Forma de pagamento mantem o anexo geral disponivel: no boleto ele e opcional;
-  // nas demais formas e obrigatorio, sem condicionar a regra ao codigo de um tipo especifico.
+  // Todo tipo com Forma de pagamento, inclusive habilitada pela configuracao, ja exibe o anexo
+  // geral como obrigatorio. Selecionar Boleto o torna opcional.
   assert(novaSolicitacao.includes('const usaRegraAnexoPorFormaPagamento = exibirFormaPagamento'));
-  assert(novaSolicitacao.includes('const exibirAnexosPagamento'));
-  assert(novaSolicitacao.includes('const exigirAnexoPagamento = exibirAnexosPagamento && !pagamentoViaBoleto'));
-  assert(novaSolicitacao.includes('? exibirAnexosPagamento'));
+  assert(novaSolicitacao.includes('const exigirAnexoPagamento = usaRegraAnexoPorFormaPagamento && !pagamentoViaBoleto'));
+  assert(novaSolicitacao.includes('const exibirAnexos = usaRegraAnexoPorFormaPagamento'));
+  assert(novaSolicitacao.includes('? true'));
   assert(!novaSolicitacao.includes('exibirAnexos && !(tipoEhDeMedicao'));
   assert(!novaSolicitacao.includes('tipoEhAdmLocalObra'));
   assert(!solicitacaoController.includes('tipoEhAdmLocalObra'));
