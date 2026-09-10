@@ -3242,6 +3242,16 @@ db.TituloFinanceiro.belongsTo(db.Parceiro, {
   as: 'parceiro'
 });
 
+db.PaymentBeneficiary.hasMany(db.TituloFinanceiro, {
+  foreignKey: 'payment_beneficiary_id',
+  as: 'titulosPreferenciais'
+});
+
+db.TituloFinanceiro.belongsTo(db.PaymentBeneficiary, {
+  foreignKey: 'payment_beneficiary_id',
+  as: 'paymentBeneficiary'
+});
+
 db.Parceiro.hasMany(db.ObraCustoHistorico, {
   foreignKey: 'parceiro_id',
   as: 'custosHistoricosObra'

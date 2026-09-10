@@ -64,10 +64,15 @@ function validarIntegracaoFrontendBackend() {
   const novaCompra = read('frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx');
   const configBackend = read('backend/src/services/novaSolicitacaoCamposConfig.js');
   const configFrontend = read('frontend/src/utils/novaSolicitacaoCampos.js');
+  const tituloFinanceiro = read('backend/src/services/tituloFinanceiroService.js');
+  const lotePagamento = read('backend/src/services/paymentBatchService.js');
 
-  assert(financeiro.includes("const chavePixSolicitacao = String(solicitacao?.favorecido_chave_pix || '').trim()"));
-  assert(financeiro.includes('pix_chave: chavePixSolicitacao'));
-  assert(financeiro.includes('favorecidoCompleto?.nome'));
+  assert(financeiro.includes('function buildPaymentDraftForTitle'));
+  assert(financeiro.includes('Dados para pagamento deste título'));
+  assert(financeiro.includes('Buscar entre as chaves cadastradas'));
+  assert(financeiro.includes('payment_beneficiary_id: beneficiaryIds.get(pagamento.id)'));
+  assert(tituloFinanceiro.includes('payment_beneficiary_id: pagamento.paymentBeneficiary?.id || null'));
+  assert(lotePagamento.includes('titulo.payment_beneficiary_id'));
 
   assert(configBackend.includes('visivelPadrao: (behavior) => Boolean(behavior.usa_fluxo_contrato_novo)'));
   assert(configFrontend.includes('visivel: Boolean(behavior.usa_fluxo_contrato_novo), obrigatorio: false'));

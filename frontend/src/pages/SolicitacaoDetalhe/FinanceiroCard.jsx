@@ -202,6 +202,48 @@ function createPaymentDraft() {
   };
 }
 
+function buildPaymentDraftForTitle({ parceiro, beneficiaries = [], solicitacao, usarChaveSolicitacao = false }) {
+  const lista = Array.isArray(beneficiaries) ? beneficiaries : [];
+  const chavePixSolicitacao = usarChaveSolicitacao
+    ? String(solicitacao?.favorecido_chave_pix || '').trim()
+    : '';
+  const favorecidoSolicitacao = solicitacao?.favorecido || null;
+  const favorecidoEhCredor = favorecidoSolicitacao?.id
+    && String(favorecidoSolicitacao.id) === String(parceiro?.id);
+  const beneficiaryDaSolicitacao = chavePixSolicitacao
+    ? lista.find((item) => (
+        item.ativo !== false
+        && normalizePixKey(item.pix_chave) === normalizePixKey(chavePixSolicitacao)
+      )) || null
+    : null;
+  const beneficiary = beneficiaryDaSolicitacao
+    || lista.find((item) => item.ativo !== false && item.pix_chave)
+    || lista.find((item) => item.ativo !== false)
+    || null;
+  const favorecido = chavePixSolicitacao
+    ? (favorecidoSolicitacao || parceiro)
+    : null;
+  const pixDaSolicitacao = findPartnerPixOption(favorecido, chavePixSolicitacao);
+  const pixDoCredor = getParceiroPixPrincipal(parceiro);
+  const pixChave = chavePixSolicitacao || beneficiary?.pix_chave || pixDoCredor?.chave || '';
+
+  return {
+    preparar_pagamento_pix: Boolean(pixChave),
+    usar_credor_como_favorecido: Boolean(
+      chavePixSolicitacao ? (favorecidoEhCredor && pixDaSolicitacao) : (!beneficiary && pixDoCredor?.chave)
+    ),
+    payment_beneficiary_id: beneficiary?.id ? String(beneficiary.id) : '',
+    nome: favorecido?.nome || beneficiary?.nome || parceiro?.nome || '',
+    cpf_cnpj: favorecido?.cpf_cnpj || beneficiary?.cpf_cnpj || parceiro?.cpf_cnpj || '',
+    pix_tipo_chave: pixDaSolicitacao?.tipo
+      || beneficiary?.pix_tipo_chave
+      || pixDoCredor?.tipo
+      || inferPixKeyType(pixChave, favorecido?.telefone || parceiro?.telefone)
+      || 'CNPJ',
+    pix_chave: pixChave
+  };
+}
+
 function currencyToNumber(value) {
   if (value == null || value === '') return 0;
   const raw = String(value).trim().replace(/[R$\s]/gi, '');
@@ -373,7 +415,9 @@ function createPagamento(solicitacao, valor = '', categoriaFinanceiraId = '', op
     cartao_id: '',
     quantidade_parcelas: '1',
     data_compra: today(),
-    parcelas: []
+    parcelas: [],
+    dados_pagamento: createPaymentDraft(),
+    dados_pagamento_parceiro_id: ''
   };
 }
 
@@ -609,6 +653,198 @@ function ParceiroPagamentoField({ pagamento, pagamentoIndex, tipo, onSelect }) {
   );
 }
 
+function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, onUsePartner }) {
+  const draft = pagamento?.dados_pagamento || createPaymentDraft();
+  const parceiro = context?.parceiro || null;
+  const beneficiaries = (context?.beneficiaries || []).filter((item) => item.ativo !== false);
+  const opcoesChave = [];
+  const chavesIncluidas = new Set();
+
+  for (const beneficiary of beneficiaries) {
+    const chaveNormalizada = normalizePixKey(beneficiary.pix_chave);
+    if (!chaveNormalizada || chavesIncluidas.has(chaveNormalizada)) continue;
+    chavesIncluidas.add(chaveNormalizada);
+    opcoesChave.push({
+      id: `beneficiary-${beneficiary.id}`,
+      label: `${beneficiary.nome} - ${beneficiary.pix_tipo_chave}`,
+      tipo: beneficiary.pix_tipo_chave,
+      chave: beneficiary.pix_chave,
+      beneficiary
+    });
+  }
+
+  for (const pix of getParceiroPixOptions(parceiro)) {
+    const chaveNormalizada = normalizePixKey(pix.chave);
+    if (!chaveNormalizada || chavesIncluidas.has(chaveNormalizada)) continue;
+    chavesIncluidas.add(chaveNormalizada);
+    opcoesChave.push({ ...pix, id: `partner-${pix.id}` });
+  }
+
+  return (
+    <div
+      className="rounded-xl border p-3"
+      style={{ borderColor: 'var(--sem-info-border)', background: 'var(--sem-info-bg)' }}
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-sm font-semibold text-[var(--c-text)]">Dados para pagamento deste título</div>
+          <div className="text-xs text-[var(--c-muted)]">
+            Confirme o favorecido e a chave que serão usados na preparação do PIX.
+          </div>
+        </div>
+        <label className="flex shrink-0 items-center gap-2 text-sm font-medium text-[var(--c-text)]">
+          <input
+            type="checkbox"
+            checked={Boolean(draft.preparar_pagamento_pix)}
+            onChange={(event) => {
+              const checked = event.target.checked;
+              const pix = getParceiroPixPrincipal(parceiro);
+              onChange(pagamentoIndex, {
+                preparar_pagamento_pix: checked,
+                ...(checked && !draft.pix_chave
+                  ? {
+                      nome: parceiro?.nome || draft.nome,
+                      cpf_cnpj: parceiro?.cpf_cnpj || draft.cpf_cnpj,
+                      pix_tipo_chave: pix?.tipo || draft.pix_tipo_chave,
+                      pix_chave: pix?.chave || draft.pix_chave
+                    }
+                  : {})
+              });
+            }}
+          />
+          Preparar PIX
+        </label>
+      </div>
+
+      {draft.preparar_pagamento_pix && (
+        <FormSecao colunas={2}>
+          {context?.loading && (
+            <div className="app-note form-campo--linha">Carregando favorecidos e chaves PIX...</div>
+          )}
+
+          <CampoForm label="Favorecido bancário vinculado">
+            <select
+              className="input"
+              value={draft.payment_beneficiary_id || ''}
+              disabled={Boolean(context?.loading)}
+              onChange={(event) => {
+                const beneficiary = beneficiaries.find((item) => String(item.id) === String(event.target.value));
+                onChange(pagamentoIndex, {
+                  usar_credor_como_favorecido: false,
+                  payment_beneficiary_id: event.target.value,
+                  nome: beneficiary?.nome || parceiro?.nome || draft.nome,
+                  cpf_cnpj: beneficiary?.cpf_cnpj || parceiro?.cpf_cnpj || draft.cpf_cnpj,
+                  pix_tipo_chave: beneficiary?.pix_tipo_chave || draft.pix_tipo_chave,
+                  pix_chave: beneficiary?.pix_chave || draft.pix_chave
+                });
+              }}
+            >
+              <option value="">Novo favorecido</option>
+              {beneficiaries.map((beneficiary) => (
+                <option key={beneficiary.id} value={beneficiary.id}>
+                  {beneficiary.nome} - {beneficiary.pix_chave || 'sem PIX'}
+                </option>
+              ))}
+            </select>
+          </CampoForm>
+
+          <label
+            className="form-group flex items-start gap-2 rounded-xl border px-3 py-2 text-sm text-[var(--c-text)]"
+            style={{ borderColor: 'var(--sem-info-border)', background: 'var(--c-surface)' }}
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(draft.usar_credor_como_favorecido)}
+              disabled={!parceiro}
+              onChange={(event) => {
+                if (event.target.checked) {
+                  onUsePartner(pagamentoIndex, parceiro);
+                } else {
+                  onChange(pagamentoIndex, { usar_credor_como_favorecido: false });
+                }
+              }}
+            />
+            <span>
+              Usar o próprio credor como favorecido
+              <span className="mt-1 block text-xs text-[var(--c-muted)]">
+                Nome, documento e chaves vêm do Cadastro de Pessoas.
+              </span>
+            </span>
+          </label>
+
+          {opcoesChave.length > 0 && (
+            <CampoForm label="Buscar entre as chaves cadastradas" linha>
+              <select
+                className="input"
+                value=""
+                onChange={(event) => {
+                  const opcao = opcoesChave.find((item) => item.id === event.target.value);
+                  if (!opcao) return;
+                  onChange(pagamentoIndex, {
+                    usar_credor_como_favorecido: !opcao.beneficiary,
+                    payment_beneficiary_id: opcao.beneficiary ? String(opcao.beneficiary.id) : '',
+                    nome: opcao.beneficiary?.nome || parceiro?.nome || draft.nome,
+                    cpf_cnpj: opcao.beneficiary?.cpf_cnpj || parceiro?.cpf_cnpj || draft.cpf_cnpj,
+                    pix_tipo_chave: opcao.tipo,
+                    pix_chave: opcao.chave
+                  });
+                }}
+              >
+                <option value="">Selecione uma chave para preencher</option>
+                {opcoesChave.map((opcao) => (
+                  <option key={opcao.id} value={opcao.id}>
+                    {opcao.label} - {opcao.chave}
+                  </option>
+                ))}
+              </select>
+            </CampoForm>
+          )}
+
+          <CampoForm label="Nome do favorecido" obrigatorio>
+            <input
+              className="input"
+              value={draft.nome || ''}
+              onChange={(event) => onChange(pagamentoIndex, { nome: event.target.value })}
+              required
+            />
+          </CampoForm>
+          <CampoForm label="CPF/CNPJ" obrigatorio>
+            <input
+              className="input"
+              value={maskCpfCnpj(draft.cpf_cnpj)}
+              onChange={(event) => onChange(pagamentoIndex, { cpf_cnpj: maskCpfCnpj(event.target.value) })}
+              inputMode="numeric"
+              maxLength={18}
+              required
+            />
+          </CampoForm>
+          <CampoForm label="Tipo da chave PIX">
+            <select
+              className="input"
+              value={draft.pix_tipo_chave || 'CNPJ'}
+              onChange={(event) => onChange(pagamentoIndex, { pix_tipo_chave: event.target.value })}
+            >
+              {PIX_TIPOS_CHAVE.map((tipo) => <option key={tipo} value={tipo}>{tipo}</option>)}
+            </select>
+          </CampoForm>
+          <CampoForm
+            label="Chave PIX"
+            obrigatorio
+            hint="Você pode escolher uma chave cadastrada acima ou editar este campo diretamente."
+          >
+            <input
+              className="input"
+              value={draft.pix_chave || ''}
+              onChange={(event) => onChange(pagamentoIndex, { pix_chave: event.target.value })}
+              required
+            />
+          </CampoForm>
+        </FormSecao>
+      )}
+    </div>
+  );
+}
+
 function getEmpresaNome(empresas, empresaId) {
   return empresas.find((empresa) => String(empresa.id) === String(empresaId))?.nome || '';
 }
@@ -793,13 +1029,15 @@ export default function FinanceiroCard({
   const [obras, setObras] = useState([]);
   const [loadingObras, setLoadingObras] = useState(false);
   const [loadingPagamento, setLoadingPagamento] = useState(false);
+  const [paymentContexts, setPaymentContexts] = useState({});
+  // Mantidos somente enquanto o seletor legado de categoria permanece montado de forma oculta.
+  // O fluxo ativo usa os dados bancarios e a categoria dentro de cada titulo.
   const [beneficiaries, setBeneficiaries] = useState([]);
   const [loadingBeneficiaries, setLoadingBeneficiaries] = useState(false);
   const [paymentDraft, setPaymentDraft] = useState(createPaymentDraft);
   const [geracaoMultiplaTitulos, setGeracaoMultiplaTitulos] = useState(
     () => Boolean(getFreteTerceiroCompraDireta(solicitacao))
   );
-  const parceiroPagamentoId = selectedPartner?.id || form.parceiro_id || null;
   // A tabela de parcelas e a fonte unica do fluxo novo. Solicitacoes comuns e contratos legados
   // continuam usando a relacao generica de titulos abaixo.
   const situacaoPorTitulo = useMemo(() => new Map(
@@ -840,9 +1078,7 @@ export default function FinanceiroCard({
     setPartnerOptions([]);
     setCategoriaSearch('');
     setCategoriaModalOpen(false);
-    setBeneficiaries([]);
-    setLoadingBeneficiaries(false);
-    setPaymentDraft(createPaymentDraft());
+    setPaymentContexts({});
   }
 
   useEffect(() => {
@@ -986,80 +1222,91 @@ export default function FinanceiroCard({
     }));
   }, [modalOpen, selectedPartner, form.tipo]);
 
+  const paymentPartnerSignature = (form.pagamentos || [])
+    .map((pagamento) => `${pagamento.id}:${pagamento.parceiro_id || ''}`)
+    .join('|');
+
   useEffect(() => {
-    if (!modalOpen || form.tipo !== 'PAGAR' || !parceiroPagamentoId || !podeGerenciarDadosPagamento) {
-      setBeneficiaries([]);
-      setLoadingBeneficiaries(false);
-      setPaymentDraft(createPaymentDraft());
+    if (!modalOpen || form.tipo !== 'PAGAR' || !podeGerenciarDadosPagamento) {
+      setPaymentContexts({});
       return undefined;
     }
 
     let active = true;
-    setLoadingBeneficiaries(true);
-
+    const pagamentosAtuais = form.pagamentos || [];
+    const credorOriginalId = solicitacao?.parceiro?.id || solicitacao?.parceiro_id || null;
     const favorecidoId = solicitacao?.favorecido?.id || solicitacao?.favorecido_id || null;
-    const favorecidoEhCredor = favorecidoId && String(favorecidoId) === String(parceiroPagamentoId);
 
-    Promise.all([
-      buscarParceiroPorId(parceiroPagamentoId).catch(() => selectedPartner || null),
-      getPaymentBeneficiaries({ parceiro_id: parceiroPagamentoId }).catch(() => []),
-      favorecidoId && !favorecidoEhCredor
-        ? buscarParceiroPorId(favorecidoId).catch(() => solicitacao?.favorecido || null)
-        : Promise.resolve(null)
-    ])
-      .then(([parceiroCompleto, data, favorecidoCompletoCarregado]) => {
+    setPaymentContexts((current) => Object.fromEntries(
+      pagamentosAtuais.map((pagamento) => [pagamento.id, {
+        ...(current[pagamento.id] || {}),
+        loading: Boolean(pagamento.parceiro_id)
+      }])
+    ));
+
+    Promise.all(pagamentosAtuais.map(async (pagamento) => {
+      const parceiroId = pagamento.parceiro_id || null;
+      if (!parceiroId) {
+        return { pagamentoId: pagamento.id, parceiroId: '', parceiro: null, beneficiaries: [] };
+      }
+
+      const parceiroFallback = String(selectedPartner?.id) === String(parceiroId)
+        ? selectedPartner
+        : null;
+      const usarChaveSolicitacao = Boolean(
+        credorOriginalId && String(credorOriginalId) === String(parceiroId)
+      );
+      const precisaCarregarFavorecido = usarChaveSolicitacao
+        && favorecidoId
+        && String(favorecidoId) !== String(parceiroId)
+        && !solicitacao?.favorecido?.cpf_cnpj;
+      const [parceiroCompleto, beneficiaries, favorecidoCompleto] = await Promise.all([
+        buscarParceiroPorId(parceiroId).catch(() => parceiroFallback),
+        getPaymentBeneficiaries({ parceiro_id: parceiroId }).catch(() => []),
+        precisaCarregarFavorecido
+          ? buscarParceiroPorId(favorecidoId).catch(() => solicitacao?.favorecido || null)
+          : Promise.resolve(solicitacao?.favorecido || null)
+      ]);
+
+      return {
+        pagamentoId: pagamento.id,
+        parceiroId: String(parceiroId),
+        parceiro: parceiroCompleto || parceiroFallback,
+        beneficiaries: Array.isArray(beneficiaries) ? beneficiaries : [],
+        favorecidoCompleto,
+        usarChaveSolicitacao
+      };
+    }))
+      .then((resultados) => {
         if (!active) return;
-        const lista = Array.isArray(data) ? data : [];
-        const chavePixSolicitacao = String(solicitacao?.favorecido_chave_pix || '').trim();
-        const favorecidoCompleto = favorecidoEhCredor
-          ? parceiroCompleto
-          : (favorecidoCompletoCarregado || solicitacao?.favorecido || null);
-        const beneficiaryDaSolicitacao = chavePixSolicitacao
-          ? lista.find((item) => (
-              item.ativo !== false
-              && normalizePixKey(item.pix_chave) === normalizePixKey(chavePixSolicitacao)
-            )) || null
-          : null;
-        const beneficiary = beneficiaryDaSolicitacao
-          || lista.find((item) => item.ativo !== false && item.pix_chave)
-          || lista[0]
-          || null;
-        const pixDaSolicitacao = findPartnerPixOption(favorecidoCompleto, chavePixSolicitacao);
-        const pix = getParceiroPixPrincipal(parceiroCompleto);
-        const possuiDadosPix = Boolean(chavePixSolicitacao || beneficiary?.pix_chave || pix?.chave);
-
-        setBeneficiaries(lista);
-        if (parceiroCompleto?.id) {
-          setSelectedPartner(parceiroCompleto);
-        }
-
-        if (chavePixSolicitacao) {
-          setPaymentDraft({
-            preparar_pagamento_pix: true,
-            usar_credor_como_favorecido: Boolean(favorecidoEhCredor && pixDaSolicitacao),
-            payment_beneficiary_id: beneficiaryDaSolicitacao?.id ? String(beneficiaryDaSolicitacao.id) : '',
-            nome: favorecidoCompleto?.nome || beneficiaryDaSolicitacao?.nome || parceiroCompleto?.nome || '',
-            cpf_cnpj: favorecidoCompleto?.cpf_cnpj || beneficiaryDaSolicitacao?.cpf_cnpj || parceiroCompleto?.cpf_cnpj || '',
-            pix_tipo_chave: pixDaSolicitacao?.tipo
-              || beneficiaryDaSolicitacao?.pix_tipo_chave
-              || inferPixKeyType(chavePixSolicitacao, favorecidoCompleto?.telefone),
-            pix_chave: chavePixSolicitacao
-          });
-          return;
-        }
-
-        setPaymentDraft({
-          preparar_pagamento_pix: possuiDadosPix,
-          usar_credor_como_favorecido: !beneficiary && Boolean(pix?.chave),
-          payment_beneficiary_id: beneficiary?.id ? String(beneficiary.id) : '',
-          nome: beneficiary?.nome || parceiroCompleto?.nome || '',
-          cpf_cnpj: beneficiary?.cpf_cnpj || parceiroCompleto?.cpf_cnpj || '',
-          pix_tipo_chave: beneficiary?.pix_tipo_chave || pix?.tipo || 'CNPJ',
-          pix_chave: beneficiary?.pix_chave || pix?.chave || ''
-        });
-      })
-      .finally(() => {
-        if (active) setLoadingBeneficiaries(false);
+        setPaymentContexts(Object.fromEntries(resultados.map((resultado) => [resultado.pagamentoId, {
+          parceiroId: resultado.parceiroId,
+          parceiro: resultado.parceiro,
+          beneficiaries: resultado.beneficiaries,
+          loading: false
+        }])));
+        setForm((current) => ({
+          ...current,
+          pagamentos: (current.pagamentos || []).map((pagamento) => {
+            const resultado = resultados.find((item) => item.pagamentoId === pagamento.id);
+            if (!resultado || pagamento.dados_pagamento_parceiro_id === resultado.parceiroId) {
+              return pagamento;
+            }
+            const solicitacaoComFavorecido = resultado.favorecidoCompleto
+              ? { ...solicitacao, favorecido: resultado.favorecidoCompleto }
+              : solicitacao;
+            return {
+              ...pagamento,
+              dados_pagamento: buildPaymentDraftForTitle({
+                parceiro: resultado.parceiro,
+                beneficiaries: resultado.beneficiaries,
+                solicitacao: solicitacaoComFavorecido,
+                usarChaveSolicitacao: resultado.usarChaveSolicitacao
+              }),
+              dados_pagamento_parceiro_id: resultado.parceiroId
+            };
+          })
+        }));
       });
 
     return () => {
@@ -1068,9 +1315,13 @@ export default function FinanceiroCard({
   }, [
     modalOpen,
     form.tipo,
-    parceiroPagamentoId,
+    paymentPartnerSignature,
     podeGerenciarDadosPagamento,
+    selectedPartner?.id,
+    solicitacao?.parceiro?.id,
+    solicitacao?.parceiro_id,
     solicitacao?.favorecido?.id,
+    solicitacao?.favorecido?.cpf_cnpj,
     solicitacao?.favorecido_id,
     solicitacao?.favorecido_chave_pix
   ]);
@@ -1190,19 +1441,18 @@ export default function FinanceiroCard({
   }, [modalOpen]);
 
   useEffect(() => {
-    if (selectedCategory && !isCategoriaCompativel(selectedCategory, form.tipo)) {
-      setSelectedCategory(null);
-      setForm((current) => ({
-        ...current,
-        categoria_financeira_id: '',
-        pagamentos: (current.pagamentos || []).map((pagamento) => ({
-          ...pagamento,
-          categoria_financeira_id: ''
-        }))
-      }));
-      setCategoriaSearch('');
-    }
-  }, [form.tipo, selectedCategory]);
+    setForm((current) => ({
+      ...current,
+      pagamentos: (current.pagamentos || []).map((pagamento) => {
+        const categoria = categorias.find(
+          (item) => String(item.id) === String(pagamento.categoria_financeira_id || '')
+        );
+        return categoria && !isCategoriaCompativel(categoria, current.tipo)
+          ? { ...pagamento, categoria_financeira_id: '', competencia_data: '' }
+          : pagamento;
+      })
+    }));
+  }, [form.tipo, categorias]);
 
   const totalTitulos = useMemo(() => {
     return titulos.reduce((acc, item) => acc + Number(item.valor_original || 0), 0);
@@ -1276,6 +1526,7 @@ export default function FinanceiroCard({
     || (Math.abs(totalRateioValor - valorSolicitacao) <= 0.02 && Math.abs(totalRateioPercentual - 100) <= 0.02);
   const parceiroRoleLabel = getParceiroRoleLabel(form.tipo);
   const parceiroRoleTitle = getParceiroRoleTitle(form.tipo);
+  const loadingPaymentContexts = Object.values(paymentContexts).some((context) => context?.loading);
 
   const categoriasAutocomplete = useMemo(() => {
     if (!categoriaSearch.trim() || selectedCategory) {
@@ -1327,7 +1578,9 @@ export default function FinanceiroCard({
   function selecionarParceiroPagamento(index, partner) {
     updatePagamento(index, {
       parceiro_id: partner?.id ? String(partner.id) : '',
-      parceiro_nome: partner?.nome || ''
+      parceiro_nome: partner?.nome || '',
+      dados_pagamento: createPaymentDraft(),
+      dados_pagamento_parceiro_id: ''
     });
   }
 
@@ -1338,22 +1591,38 @@ export default function FinanceiroCard({
       pagamentos: (current.pagamentos || []).map((pagamento) => ({
         ...pagamento,
         parceiro_id: partner?.id ? String(partner.id) : pagamento.parceiro_id,
-        parceiro_nome: partner?.nome || pagamento.parceiro_nome
+        parceiro_nome: partner?.nome || pagamento.parceiro_nome,
+        dados_pagamento: createPaymentDraft(),
+        dados_pagamento_parceiro_id: ''
       }))
     }));
   }
 
-  function preencherFavorecidoComParceiro(partner) {
+  function updateDadosPagamento(index, changes) {
+    setForm((current) => {
+      const pagamentos = [...(current.pagamentos || [])];
+      const pagamento = pagamentos[index] || createPagamento(solicitacao);
+      pagamentos[index] = {
+        ...pagamento,
+        dados_pagamento: {
+          ...(pagamento.dados_pagamento || createPaymentDraft()),
+          ...changes
+        }
+      };
+      return { ...current, pagamentos };
+    });
+  }
+
+  function preencherFavorecidoComParceiro(index, partner) {
     const pix = getParceiroPixPrincipal(partner);
-    setPaymentDraft((current) => ({
-      ...current,
+    updateDadosPagamento(index, {
       usar_credor_como_favorecido: true,
       payment_beneficiary_id: '',
       nome: partner?.nome || '',
       cpf_cnpj: partner?.cpf_cnpj || '',
-      pix_tipo_chave: pix?.tipo || current.pix_tipo_chave || 'CNPJ',
+      pix_tipo_chave: pix?.tipo || 'CNPJ',
       pix_chave: pix?.chave || ''
-    }));
+    });
   }
 
   function updateFormaPagamento(index, formaPagamentoId) {
@@ -1447,7 +1716,7 @@ export default function FinanceiroCard({
         createPagamento(
           { ...solicitacao, parceiro: selectedPartner || solicitacao?.parceiro },
           '',
-          current.categoria_financeira_id
+          current.pagamentos?.[0]?.categoria_financeira_id || ''
         )
       ]
     }));
@@ -1523,30 +1792,6 @@ export default function FinanceiroCard({
       return `Selecione o ${parceiroRoleLabel} antes de gerar a conta.`;
     }
 
-    if (!form.categoria_financeira_id) {
-      return 'Selecione a categoria financeira do titulo.';
-    }
-
-    if (!form.competencia_data) {
-      return 'Informe a competencia DRE real do titulo.';
-    }
-
-    if (form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && paymentDraft.preparar_pagamento_pix) {
-      if (!parceiroPagamentoId) {
-        return 'Selecione o credor antes de informar os dados para pagamento.';
-      }
-      if (!paymentDraft.nome || !paymentDraft.cpf_cnpj || !paymentDraft.pix_tipo_chave || !paymentDraft.pix_chave) {
-        return 'Preencha os dados PIX do favorecido para pagamento em massa.';
-      }
-      const documentoErro = getCpfCnpjError(paymentDraft.cpf_cnpj, {
-        required: true,
-        label: 'CPF/CNPJ do favorecido'
-      });
-      if (documentoErro) return documentoErro;
-      const pixErro = getPixDocumentError(paymentDraft.pix_chave, paymentDraft.pix_tipo_chave);
-      if (pixErro) return pixErro;
-    }
-
     if (valorSolicitacao <= 0) {
       return 'A solicitacao precisa ter valor informado para gerar a conta.';
     }
@@ -1583,8 +1828,32 @@ export default function FinanceiroCard({
         return `Selecione o ${parceiroRoleLabel} do titulo ${pagamentoIndex + 1}.`;
       }
 
-      if (geracaoMultiplaTitulos && !(pagamento.categoria_financeira_id || form.categoria_financeira_id)) {
+      if (!pagamento.categoria_financeira_id) {
         return `Selecione a categoria financeira do titulo ${pagamentoIndex + 1}.`;
+      }
+
+      const categoriaPagamento = categoriasCompativeis.find(
+        (item) => String(item.id) === String(pagamento.categoria_financeira_id)
+      );
+      if (!pagamento.competencia_data) {
+        return `Informe a competencia DRE real do titulo ${pagamentoIndex + 1}.`;
+      }
+
+      const dadosPagamento = pagamento.dados_pagamento || createPaymentDraft();
+      if (form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && dadosPagamento.preparar_pagamento_pix) {
+        if (!pagamento.parceiro_id) {
+          return `Selecione o credor do titulo ${pagamentoIndex + 1} antes de informar os dados para pagamento.`;
+        }
+        if (!dadosPagamento.nome || !dadosPagamento.cpf_cnpj || !dadosPagamento.pix_tipo_chave || !dadosPagamento.pix_chave) {
+          return `Preencha os dados PIX do favorecido do titulo ${pagamentoIndex + 1}.`;
+        }
+        const documentoErro = getCpfCnpjError(dadosPagamento.cpf_cnpj, {
+          required: true,
+          label: `CPF/CNPJ do favorecido do titulo ${pagamentoIndex + 1}`
+        });
+        if (documentoErro) return documentoErro;
+        const pixErro = getPixDocumentError(dadosPagamento.pix_chave, dadosPagamento.pix_tipo_chave);
+        if (pixErro) return `Titulo ${pagamentoIndex + 1}: ${pixErro}`;
       }
 
       if (valorPagamento <= 0) {
@@ -1648,35 +1917,41 @@ export default function FinanceiroCard({
     return '';
   }
 
-  async function salvarDadosPagamentoCredor() {
-    if (form.tipo !== 'PAGAR' || !podeGerenciarDadosPagamento || !paymentDraft.preparar_pagamento_pix) return null;
+  async function salvarDadosPagamentoTitulos() {
+    const idsPorPagamento = new Map();
+    const beneficiaryIdsPorChave = new Map();
+    if (form.tipo !== 'PAGAR' || !podeGerenciarDadosPagamento) return idsPorPagamento;
 
-    const beneficiaryPayload = {
-      parceiro_id: Number(parceiroPagamentoId),
-      nome: paymentDraft.nome,
-      cpf_cnpj: onlyDigits(paymentDraft.cpf_cnpj),
-      metodo_preferencial: 'PIX_CHAVE',
-      pix_tipo_chave: paymentDraft.pix_tipo_chave,
-      pix_chave: paymentDraft.pix_chave,
-      ativo: true
-    };
+    for (const pagamento of form.pagamentos || []) {
+      const draft = pagamento.dados_pagamento || createPaymentDraft();
+      if (!draft.preparar_pagamento_pix) continue;
 
-    const beneficiary = paymentDraft.payment_beneficiary_id
-      ? await atualizarPaymentBeneficiary(paymentDraft.payment_beneficiary_id, beneficiaryPayload)
-      : await criarPaymentBeneficiary(beneficiaryPayload);
+      const beneficiaryPayload = {
+        parceiro_id: Number(pagamento.parceiro_id),
+        nome: draft.nome,
+        cpf_cnpj: onlyDigits(draft.cpf_cnpj),
+        metodo_preferencial: 'PIX_CHAVE',
+        pix_tipo_chave: draft.pix_tipo_chave,
+        pix_chave: draft.pix_chave,
+        ativo: true
+      };
+      const chaveDoCredor = `${beneficiaryPayload.parceiro_id}:${normalizePixKey(beneficiaryPayload.pix_chave)}`;
+      const beneficiaryIdJaSalvo = beneficiaryIdsPorChave.get(chaveDoCredor);
+      if (!draft.payment_beneficiary_id && beneficiaryIdJaSalvo) {
+        idsPorPagamento.set(pagamento.id, beneficiaryIdJaSalvo);
+        continue;
+      }
+      const beneficiary = draft.payment_beneficiary_id
+        ? await atualizarPaymentBeneficiary(draft.payment_beneficiary_id, beneficiaryPayload)
+        : await criarPaymentBeneficiary(beneficiaryPayload);
 
-    if (beneficiary?.id) {
-      setPaymentDraft((current) => ({
-        ...current,
-        payment_beneficiary_id: String(beneficiary.id)
-      }));
-      setBeneficiaries((current) => {
-        const restantes = current.filter((item) => String(item.id) !== String(beneficiary.id));
-        return [beneficiary, ...restantes];
-      });
+      if (beneficiary?.id) {
+        idsPorPagamento.set(pagamento.id, Number(beneficiary.id));
+        beneficiaryIdsPorChave.set(chaveDoCredor, Number(beneficiary.id));
+      }
     }
 
-    return beneficiary;
+    return idsPorPagamento;
   }
 
   async function handleSubmit(event) {
@@ -1701,15 +1976,15 @@ export default function FinanceiroCard({
           }]
         : [];
 
-      await salvarDadosPagamentoCredor();
+      const beneficiaryIds = await salvarDadosPagamentoTitulos();
 
       await gerarContaPorSolicitacao(solicitacao.id, {
         tipo: form.tipo,
         empresa_id: Number(form.empresa_id),
         status: form.status || 'ABERTO',
         parceiro_id: selectedPartner?.id || form.parceiro_id,
-        categoria_financeira_id: form.categoria_financeira_id || undefined,
-        competencia_data: form.competencia_data || undefined,
+        categoria_financeira_id: form.pagamentos?.[0]?.categoria_financeira_id || undefined,
+        competencia_data: form.pagamentos?.[0]?.competencia_data || undefined,
         forma_cobranca: form.tipo === 'PAGAR'
           ? (form.forma_cobranca || resolveFormaCobrancaPagamentos(form.pagamentos, getFormaPagamento))
           : form.forma_cobranca || undefined,
@@ -1720,7 +1995,9 @@ export default function FinanceiroCard({
         valor_bruto: form.valor,
         valor_liquido: formatCurrencyInput(valorLiquidoPrevisto),
         impostos: impostosPayload,
-        considera_dre: isCategoriaClassificadaParaDre(selectedCategory),
+        considera_dre: isCategoriaClassificadaParaDre(
+          categoriasCompativeis.find((item) => String(item.id) === String(form.pagamentos?.[0]?.categoria_financeira_id))
+        ),
         intercompany: Boolean(form.intercompany),
         empresa_contraparte_id: form.intercompany
           ? Number(form.tipo === 'PAGAR' ? form.empresa_origem_id : form.empresa_destino_id) || undefined
@@ -1744,8 +2021,13 @@ export default function FinanceiroCard({
           const forma = getFormaPagamento(pagamento.forma_pagamento_id);
           const usaDetalhe = formaUsaParcelasDetalhadas(forma);
           return {
-            parceiro_id: geracaoMultiplaTitulos ? pagamento.parceiro_id || undefined : undefined,
-            categoria_financeira_id: pagamento.categoria_financeira_id || form.categoria_financeira_id || undefined,
+            parceiro_id: pagamento.parceiro_id || undefined,
+            categoria_financeira_id: pagamento.categoria_financeira_id || undefined,
+            competencia_data: pagamento.competencia_data || undefined,
+            considera_dre: isCategoriaClassificadaParaDre(
+              categoriasCompativeis.find((item) => String(item.id) === String(pagamento.categoria_financeira_id))
+            ),
+            payment_beneficiary_id: beneficiaryIds.get(pagamento.id) || undefined,
             valor: usaDetalhe ? undefined : pagamento.valor,
             forma_pagamento_id: pagamento.forma_pagamento_id || undefined,
             cartao_id: pagamento.cartao_id || undefined,
@@ -2491,7 +2773,7 @@ export default function FinanceiroCard({
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="hidden space-y-2" aria-hidden="true">
                 <span className="block text-sm text-[var(--c-muted)]">Categoria financeira</span>
                 <div className="relative" ref={listaCategoriasRef}>
                   <div className="flex gap-2">
@@ -2578,6 +2860,7 @@ export default function FinanceiroCard({
                 estrutural da R12 le a faixa de filtro como filtro. Viraram
                 `CampoForm`, que e o que eles sao.
               */}
+              <div className="hidden" aria-hidden="true">
               <FormSecao colunas={1}>
                 <CampoForm
                   label="Competência DRE"
@@ -2595,8 +2878,9 @@ export default function FinanceiroCard({
                   />
                 </CampoForm>
               </FormSecao>
+              </div>
 
-              {form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && (
+              {false && form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && (
                 <div
                   className="rounded-2xl border p-3"
                   style={{ borderColor: 'var(--sem-info-border)', background: 'var(--sem-info-bg)' }}
@@ -2997,17 +3281,40 @@ export default function FinanceiroCard({
                         />
                       )}
 
-                      {geracaoMultiplaTitulos && (
-                        <CategoriaFinanceiraAutocomplete
-                          label="Categoria financeira deste título"
-                          value={pagamento.categoria_financeira_id || form.categoria_financeira_id || ''}
-                          options={categoriasCompativeis}
-                          onChange={(categoriaId) => updatePagamento(pagamentoIndex, {
-                            categoria_financeira_id: categoriaId
-                          })}
-                          helperText="A categoria deste titulo sera aplicada a todas as parcelas geradas nele."
+                      {form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && (
+                        <DadosPagamentoTitulo
+                          pagamento={pagamento}
+                          pagamentoIndex={pagamentoIndex}
+                          context={paymentContexts[pagamento.id]}
+                          onChange={updateDadosPagamento}
+                          onUsePartner={preencherFavorecidoComParceiro}
                         />
                       )}
+
+                      <CategoriaFinanceiraAutocomplete
+                        label="Categoria financeira deste título"
+                        value={pagamento.categoria_financeira_id || ''}
+                        options={categoriasCompativeis}
+                        onChange={(categoriaId) => updatePagamento(pagamentoIndex, {
+                          categoria_financeira_id: categoriaId
+                        })}
+                        helperText="A categoria deste título será aplicada a todas as parcelas geradas nele."
+                      />
+
+                      <CampoForm
+                        label="Competência DRE deste título"
+                        obrigatorio
+                        hint="Informe o período econômico real deste título."
+                      >
+                        <DateInputBR
+                          className="input"
+                          value={pagamento.competencia_data || ''}
+                          onChange={(event) => updatePagamento(pagamentoIndex, {
+                            competencia_data: event.target.value
+                          })}
+                          required
+                        />
+                      </CampoForm>
 
                       <div className="grid gap-3 md:grid-cols-2">
                         <label className="text-sm">
@@ -3247,9 +3554,9 @@ export default function FinanceiroCard({
               type="submit"
               form="form-gerar-conta"
               className="btn btn-primary"
-              disabled={saving || loadingBeneficiaries}
+              disabled={saving || loadingPaymentContexts}
             >
-              {saving ? 'Gerando...' : loadingBeneficiaries ? 'Carregando credor...' : 'Confirmar'}
+              {saving ? 'Gerando...' : loadingPaymentContexts ? 'Carregando favorecidos...' : 'Confirmar'}
             </button>
           </div>
         </OverlayModal>

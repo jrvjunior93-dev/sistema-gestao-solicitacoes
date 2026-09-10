@@ -2596,10 +2596,24 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     }
     const parceiroPagamento = await validarParceiro(parceiroIdPagamento);
     validarCompatibilidadeParceiroTitulo(parceiroPagamento, tipo);
+    const beneficiaryId = Number(pagamentoPayload.payment_beneficiary_id || 0);
+    let paymentBeneficiary = null;
+    if (beneficiaryId > 0) {
+      paymentBeneficiary = await PaymentBeneficiary.findOne({
+        where: {
+          id: beneficiaryId,
+          parceiro_id: parceiroIdPagamento,
+          ativo: true
+        }
+      });
+      if (!paymentBeneficiary) {
+        throw createHttpError(400, `Favorecido PIX invalido para o titulo ${pagamentoIndex + 1}.`);
+      }
+    }
     const categoriaPagamento = pagamentoPayload.categoria_financeira_id
       ? await validarCategoriaFinanceira(pagamentoPayload.categoria_financeira_id, tipo)
       : categoriaPadrao;
-    validarCategoriaDreTitulo(categoriaPagamento, payload);
+    validarCategoriaDreTitulo(categoriaPagamento, { ...payload, ...pagamentoPayload });
     const formaPagamento = await validarFormaPagamentoFinanceira(pagamentoPayload.forma_pagamento_id, pagamentoPayload);
     const intercompanyFields = await resolverIntercompanyPagamento({
       formaPagamento,
@@ -2638,6 +2652,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
 
     pagamentos.push({
       parceiro: parceiroPagamento,
+      paymentBeneficiary,
       categoria: categoriaPagamento,
       formaPagamento,
       intercompanyFields,
@@ -2706,6 +2721,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           empresa_id: empresaTituloId,
           ...pagamento.intercompanyFields,
           parceiro_id: pagamento.parceiro.id,
+          payment_beneficiary_id: pagamento.paymentBeneficiary?.id || null,
           categoria_financeira_id: pagamento.categoria?.id || categoriaPadrao?.id || null,
           forma_pagamento_id: pagamento.formaPagamento?.id || null,
           cartao_id: pagamento.payload.cartao_id || null,
@@ -2713,8 +2729,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           numero_parcela: totalParcelasDoGrupo > 1 ? numeroParcela : null,
           total_parcelas: totalParcelasDoGrupo > 1 ? totalParcelasDoGrupo : null,
           data_compra: pagamento.dataCompra,
-          competencia_data: resolverCompetenciaTitulo(payload),
-          considera_dre: payload.considera_dre !== false,
+          competencia_data: resolverCompetenciaTitulo({ ...payload, ...pagamento.payload }),
+          considera_dre: pagamento.payload.considera_dre !== false,
           origem_titulo: 'SOLICITACAO',
           tipo,
           status: statusTitulo,
@@ -2817,6 +2833,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
         pagamentos: pagamentos.map((pagamento) => ({
           valor: pagamento.totalPagamento,
           parceiro_id: pagamento.parceiro.id,
+          payment_beneficiary_id: pagamento.paymentBeneficiary?.id || null,
           quantidade_parcelas: pagamento.quantidadeParcelas,
           grupo_parcelamento_id: pagamento.grupoParcelamentoId,
           forma_pagamento_id: pagamento.formaPagamento?.id || null,

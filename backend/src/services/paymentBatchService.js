@@ -293,11 +293,20 @@ async function createBatchFromTitulos(req, payload = {}) {
     let total = 0;
     let sequencia = 1;
     for (const titulo of titulos) {
-      const beneficiary = await PaymentBeneficiary.findOne({
-        where: { parceiro_id: titulo.parceiro_id, ativo: true },
-        order: [['updatedAt', 'DESC'], ['id', 'DESC']],
-        transaction
-      });
+      const beneficiary = titulo.payment_beneficiary_id
+        ? await PaymentBeneficiary.findOne({
+            where: {
+              id: titulo.payment_beneficiary_id,
+              parceiro_id: titulo.parceiro_id,
+              ativo: true
+            },
+            transaction
+          })
+        : await PaymentBeneficiary.findOne({
+            where: { parceiro_id: titulo.parceiro_id, ativo: true },
+            order: [['updatedAt', 'DESC'], ['id', 'DESC']],
+            transaction
+          });
 
       await validateBeneficiaryComplete(beneficiary);
       await validateTituloEligibleForPayment(titulo, { beneficiary, transaction });
