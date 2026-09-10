@@ -1763,8 +1763,15 @@ export default function SolicitacaoDetalhe() {
         apropriações" dependia de a tela lembrar de rolar o corpo.
       */}
       {modalApropriacoesAberto && (
-        <OverlayModal rotulo="Editar apropriações" onFechar={fecharModalApropriacoes}>
-          <div data-modal="cabecalho" className="app-bloco-head">
+        <OverlayModal
+          largura="var(--modal-max-w-xl, 1120px)"
+          rotulo="Editar apropriações"
+          onFechar={fecharModalApropriacoes}
+        >
+          <div
+            data-modal="cabecalho"
+            className="app-bloco-head border-b border-[var(--c-border)] px-4 py-3"
+          >
             <h2 className="app-bloco-titulo">Editar apropriações</h2>
             <span className="app-bloco-acoes">
               <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalApropriacoes}>
@@ -1772,91 +1779,99 @@ export default function SolicitacaoDetalhe() {
               </button>
             </span>
           </div>
-          <p className="app-bloco-lead" title="A alteração não muda a visibilidade da solicitação e fica registrada no histórico.">
-            A alteração não muda a visibilidade da solicitação e fica registrada no histórico.
-          </p>
+          <div className="min-w-0 space-y-4 p-4" data-testid="editar-apropriacoes-corpo">
+            <p
+              className="app-bloco-lead"
+              title="A alteração não muda a visibilidade da solicitação e fica registrada no histórico."
+            >
+              A alteração não muda a visibilidade da solicitação e fica registrada no histórico.
+            </p>
 
-          <FormSecao colunas={2}>
-            <CampoForm label="Apropriação principal" linha>
-              <ApropriacaoAutocomplete
-                value={apropriacaoPrincipalId}
-                options={apropriacoesCatalogo}
-                onChange={setApropriacaoPrincipalId}
-                placeholder="Digite para buscar a apropriação"
-              />
-            </CampoForm>
-          </FormSecao>
+            <FormSecao colunas={2}>
+              <CampoForm label="Apropriação principal" linha>
+                <ApropriacaoAutocomplete
+                  value={apropriacaoPrincipalId}
+                  options={apropriacoesCatalogo}
+                  onChange={setApropriacaoPrincipalId}
+                  placeholder="Digite para buscar a apropriação"
+                />
+              </CampoForm>
+            </FormSecao>
 
-          <BlocoConteudo
-            titulo="Rateio do contrato"
-            variante="secundario"
-            descricao="Use percentual ou valor em R$. Não misture os dois critérios na mesma alteração."
-            acoes={(
-              <button type="button" className="btn btn-outline btn-sm" onClick={adicionarRateioApropriacao}>
-                Adicionar linha
-              </button>
-            )}
+            <BlocoConteudo
+              titulo="Rateio do contrato"
+              variante="secundario"
+              descricao="Use percentual ou valor em R$. Não misture os dois critérios na mesma alteração."
+              acoes={(
+                <button type="button" className="btn btn-outline btn-sm" onClick={adicionarRateioApropriacao}>
+                  Adicionar linha
+                </button>
+              )}
+            >
+              {rateiosApropriacao.map((rateio, index) => (
+                <FormSecao key={`rateio-solicitacao-${index}`} colunas={4}>
+                  <CampoForm label="Apropriação">
+                    <ApropriacaoAutocomplete
+                      value={rateio.apropriacao_id}
+                      options={apropriacoesCatalogo}
+                      onChange={(valor) => atualizarRateioApropriacao(index, 'apropriacao_id', valor)}
+                      placeholder="Buscar apropriação"
+                    />
+                  </CampoForm>
+                  <CampoForm label="Percentual">
+                    <input
+                      className="input"
+                      value={rateio.percentual}
+                      onChange={(event) => atualizarRateioApropriacao(index, 'percentual', event.target.value)}
+                      placeholder="%"
+                      inputMode="decimal"
+                    />
+                  </CampoForm>
+                  <CampoForm label="Valor R$">
+                    <input
+                      className="input input-moeda"
+                      value={rateio.valor}
+                      onChange={(event) => atualizarRateioApropriacao(index, 'valor', event.target.value)}
+                      placeholder="Valor R$"
+                      inputMode="decimal"
+                    />
+                  </CampoForm>
+                  <CampoForm label="Ações">
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => removerRateioApropriacao(index)}
+                      disabled={rateiosApropriacao.length <= 1}
+                    >
+                      Remover
+                    </button>
+                  </CampoForm>
+                </FormSecao>
+              ))}
+
+              <StatGrid colunas={3}>
+                <StatTile label="Percentual informado" valor={`${resumoRateio.percentual.toFixed(4)}%`} />
+                <StatTile label="Valor informado" valor={formatarMoedaLocal(resumoRateio.valor)} />
+                <StatTile label="Valor da solicitação" valor={formatarMoedaLocal(solicitacao?.valor)} />
+              </StatGrid>
+            </BlocoConteudo>
+
+            <FormSecao colunas={2}>
+              <CampoForm label="Motivo da alteração" obrigatorio tipo="observacao">
+                <textarea
+                  className="input"
+                  value={motivoApropriacoes}
+                  onChange={(event) => setMotivoApropriacoes(event.target.value)}
+                  placeholder="Explique por que a apropriação foi alterada."
+                />
+              </CampoForm>
+            </FormSecao>
+          </div>
+
+          <div
+            data-modal="rodape"
+            className="app-actionbar justify-end border-t border-[var(--c-border)] px-4 py-3"
           >
-            {rateiosApropriacao.map((rateio, index) => (
-              <FormSecao key={`rateio-solicitacao-${index}`} colunas={4}>
-                <CampoForm label="Apropriação" span={2}>
-                  <ApropriacaoAutocomplete
-                    value={rateio.apropriacao_id}
-                    options={apropriacoesCatalogo}
-                    onChange={(valor) => atualizarRateioApropriacao(index, 'apropriacao_id', valor)}
-                    placeholder="Buscar apropriação"
-                  />
-                </CampoForm>
-                <CampoForm label="Percentual">
-                  <input
-                    className="input"
-                    value={rateio.percentual}
-                    onChange={(event) => atualizarRateioApropriacao(index, 'percentual', event.target.value)}
-                    placeholder="%"
-                    inputMode="decimal"
-                  />
-                </CampoForm>
-                <CampoForm label="Valor R$">
-                  <input
-                    className="input input-moeda"
-                    value={rateio.valor}
-                    onChange={(event) => atualizarRateioApropriacao(index, 'valor', event.target.value)}
-                    placeholder="Valor R$"
-                    inputMode="decimal"
-                  />
-                </CampoForm>
-                <CampoForm label="&nbsp;">
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={() => removerRateioApropriacao(index)}
-                    disabled={rateiosApropriacao.length <= 1}
-                  >
-                    Remover
-                  </button>
-                </CampoForm>
-              </FormSecao>
-            ))}
-
-            <StatGrid colunas={3}>
-              <StatTile label="Percentual informado" valor={`${resumoRateio.percentual.toFixed(4)}%`} />
-              <StatTile label="Valor informado" valor={formatarMoedaLocal(resumoRateio.valor)} />
-              <StatTile label="Valor da solicitação" valor={formatarMoedaLocal(solicitacao?.valor)} />
-            </StatGrid>
-          </BlocoConteudo>
-
-          <FormSecao colunas={2}>
-            <CampoForm label="Motivo da alteração" obrigatorio tipo="observacao">
-              <textarea
-                className="input"
-                value={motivoApropriacoes}
-                onChange={(event) => setMotivoApropriacoes(event.target.value)}
-                placeholder="Explique por que a apropriação foi alterada."
-              />
-            </CampoForm>
-          </FormSecao>
-
-          <div data-modal="rodape" className="app-actionbar">
             <button type="button" className="btn btn-outline" onClick={fecharModalApropriacoes}>
               Cancelar
             </button>

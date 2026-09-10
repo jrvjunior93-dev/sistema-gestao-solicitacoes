@@ -38,6 +38,7 @@ import { hasEnabledModule } from '../utils/acessoProduto';
 import {
   applyTipoSolicitacaoModuleAvailability,
   getTipoSolicitacaoBehavior,
+  normalizeTipoToken,
   obterRotuloDataSolicitacao
 } from '../utils/tipoSolicitacao';
 import { obterOpcoesNovaSolicitacaoFrontend, resolverCamposNovaSolicitacaoFrontend } from '../utils/novaSolicitacaoCampos';
@@ -713,6 +714,9 @@ export default function NovaSolicitacao() {
   ), [comportamentoTipo, camposNovaSolicitacaoConfig, form.tipo_solicitacao_id, form.area_responsavel, form.tipo_sub_id, moduloApropriacoesHabilitado]);
   const tipoConfiguradoComoDespesaEventual = Boolean(comportamentoTipo.usa_fluxo_despesa_eventual);
   const tipoConfiguradoComoRecargaCartao = isTipoRecargaCartao(tipoSelecionado, comportamentoTipo);
+  const tipoEhAdmLocalObra = normalizeTipoToken(
+    tipoSelecionado?.codigo_interno || tipoSelecionado?.nome
+  ) === 'ADM_LOCAL_DE_OBRA';
   const tipoSolicitacaoEscolhido = Boolean(form.tipo_solicitacao_id);
   const camposFixosDespesaEventual = new Set([
     'valor',
@@ -927,8 +931,7 @@ export default function NovaSolicitacao() {
   const formaPagamentoObrigatoria = exibirFormaPagamento && campoObrigatorio('forma_pagamento');
   // Em medicao o anexo e regra do fluxo, mesmo que a configuracao visual antiga tenha ocultado o
   // campo: campo invisivel e obrigatorio seria uma tela impossivel de concluir.
-  const exibirAnexos = campoVisivel('anexos') || tipoEhDeMedicao;
-  const anexosObrigatorios = tipoEhDeMedicao || campoObrigatorio('anexos');
+  const exibirAnexosConfigurados = campoVisivel('anexos') || tipoEhDeMedicao;
   const formasPagamentoDisponiveis = useMemo(
     () => usaFluxoDespesaEventual
       ? formasPagamentoSolicitacao.filter(formaPagamentoPermitidaDespesaEventual)
@@ -941,6 +944,18 @@ export default function NovaSolicitacao() {
   );
   const pagamentoViaPix = formaPagamentoEhPix(formaPagamentoSelecionada);
   const pagamentoViaBoleto = formaPagamentoEhBoleto(formaPagamentoSelecionada);
+  // ADM Local de Obra usa o boleto como documento suficiente. Nas demais formas, o comprovante
+  // complementar aparece somente depois da escolha da forma e passa a ser obrigatorio. A regra
+  // fica derivada do codigo interno do tipo, sem depender do nome que o administrador exibe.
+  const exibirAnexosAdmLocal = tipoEhAdmLocalObra
+    && Boolean(formaPagamentoSelecionada)
+    && !pagamentoViaBoleto;
+  const exibirAnexos = tipoEhAdmLocalObra
+    ? exibirAnexosAdmLocal
+    : exibirAnexosConfigurados;
+  const anexosObrigatorios = tipoEhAdmLocalObra
+    ? exibirAnexosAdmLocal
+    : (tipoEhDeMedicao || campoObrigatorio('anexos'));
   const exibirFavorecidoPagamento = exibirFavorecido && Boolean(formaPagamentoSelecionada);
   // Se existe uma forma de pagamento escolhida, precisa existir quem recebera. A configuracao
   // pode controlar a presenca do bloco, mas nao pode tornar anonima uma solicitacao de pagamento.
@@ -1583,7 +1598,12 @@ export default function NovaSolicitacao() {
       return;
     }
     if (!tipoEhDeMedicao && anexosObrigatorios && arquivos.length === 0) {
-      reprovarCampo('anexos', 'Anexe ao menos um comprovante da despesa.');
+      reprovarCampo(
+        'anexos',
+        tipoEhAdmLocalObra
+          ? 'Anexe ao menos um comprovante para esta forma de pagamento.'
+          : 'Anexe ao menos um comprovante da despesa.'
+      );
       return;
     }
 
@@ -3082,13 +3102,10 @@ export default function NovaSolicitacao() {
           </BlocoConteudo>
         )}
 
-        {/* O VALOR VEM ANTES DA APROPRIACAO (item 2 do lote de 23/08). E o valor que a apropriacao
-            reparte: pedir o rateio antes do numero a repartir obrigava a pessoa a voltar. */}
+        {/* O valor permanece antes da apropriacao para preservar a sequencia do preenchimento e
+            permitir que o rateio use um total ja informado. */}
         {(exibirValor || usaFluxoDespesaEventual || exibirCampoApropriacao) && (
-          <BlocoConteudo
-            titulo="Valor e apropriação"
-            descricao="O valor é o número que a apropriação reparte — por isso ele vem primeiro."
-          >
+          <BlocoConteudo titulo="Valor">
             <FormSecao colunas={2}>
               {exibirValor && (
                 <CampoForm
@@ -3406,7 +3423,7 @@ export default function NovaSolicitacao() {
         )}
 
         {tipoSolicitacaoEscolhido && (
-          <BlocoConteudo titulo="Anexos e envio">
+          <BlocoConteudo titulo={exibirAnexos ? 'Anexos e envio' : 'Envio'}>
             {exibirAnexos && !(tipoEhDeMedicao && (pagamentoViaBoleto || medicaoContratoDados?.pagamento?.via_boleto)) && (
               /* Mesmo motivo do boleto: o gatilho do seletor de arquivo é um
                  <label>, então este campo usa as classes `.form-*` direto em
@@ -3416,7 +3433,9 @@ export default function NovaSolicitacao() {
                 <span className={`form-label${(tipoEhDeMedicao || usaFluxoDespesaEventual || anexosObrigatorios) ? ' form-label--required' : ''}`}>
                   {tipoEhDeMedicao
                     ? 'Anexo da medição'
-                    : (usaFluxoDespesaEventual ? 'Comprovante da despesa' : 'Anexos')}
+                    : (usaFluxoDespesaEventual
+                      ? 'Comprovante da despesa'
+                      : (tipoEhAdmLocalObra ? 'Anexo/comprovante' : 'Anexos'))}
                 </span>
                 <div className="flex flex-wrap items-center gap-2 nova-solicitacao-inline-actions">
                   <label className="btn btn-outline btn-sm inline-flex cursor-pointer items-center gap-2">

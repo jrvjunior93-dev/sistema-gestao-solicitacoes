@@ -57,6 +57,7 @@ const {
 const {
   applyTipoSolicitacaoModuleAvailability,
   normalizeTipoSolicitacaoBehavior,
+  normalizeTipoSolicitacaoCodigo,
   obterRotuloDataSolicitacao
 } = require('../services/tipoSolicitacaoBehaviorService');
 const { isModuleEnabled } = require('../services/moduleConfigService');
@@ -2960,6 +2961,10 @@ module.exports = {
       }
       await assertTipoDisponivelNoDestino(obraSelecionada, tipoSelecionado);
       const comportamentoBase = normalizeTipoSolicitacaoBehavior(tipoSelecionado);
+      const tipoEhAdmLocalObra = normalizeTipoSolicitacaoCodigo(
+        tipoSelecionado.codigo_interno,
+        tipoSelecionado.nome
+      ) === 'ADM_LOCAL_DE_OBRA';
       const usaFluxoDespesaEventual = tipoEhDespesaEventual(tipoSelecionado);
       const usaFluxoRecargaCartao = tipoEhRecargaCartao(tipoSelecionado);
       if (
@@ -3075,7 +3080,13 @@ module.exports = {
       if (campoObrigatorio('forma_pagamento') && !forma_pagamento_id) {
         return res.status(400).json({ error: 'Selecione a forma de pagamento.' });
       }
-      if ((tipoEhDeMedicao || campoObrigatorio('anexos')) && nomesAnexosPendentes.length === 0) {
+      // ADM Local possui regra condicional por forma de pagamento, validada depois que a forma
+      // ativa for carregada. Aplicar a exigencia configuravel aqui faria o boleto pedir dois
+      // arquivos: o proprio boleto e um anexo generico redundante.
+      if (
+        (tipoEhDeMedicao || (!tipoEhAdmLocalObra && campoObrigatorio('anexos')))
+        && nomesAnexosPendentes.length === 0
+      ) {
         return res.status(400).json({
           error: tipoEhDeMedicao
             ? 'Anexe ao menos um arquivo para enviar a solicitacao de medicao.'
@@ -3590,6 +3601,16 @@ module.exports = {
       }
       if (formaPagamentoEhBoleto(formaPagamentoSelecionada) && !String(boleto_anexo_nome || '').trim()) {
         return res.status(400).json({ error: 'Anexe o boleto para usar esta forma de pagamento.' });
+      }
+      if (
+        tipoEhAdmLocalObra
+        && formaPagamentoSelecionada
+        && !formaPagamentoEhBoleto(formaPagamentoSelecionada)
+        && nomesAnexosPendentes.length === 0
+      ) {
+        return res.status(400).json({
+          error: 'Anexe ao menos um comprovante para esta forma de pagamento.'
+        });
       }
 
       const valorPersistido = !campoVisivel('valor')

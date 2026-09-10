@@ -61,7 +61,11 @@ function validarCadastroCredorDoContrato() {
 function validarIntegracaoFrontendBackend() {
   const financeiro = read('frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx');
   const detalhe = read('frontend/src/pages/SolicitacaoDetalhe/index.jsx');
+  const novaSolicitacao = read('frontend/src/pages/NovaSolicitacao.jsx');
   const novaCompra = read('frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx');
+  const revisarCompra = read('frontend/src/modules/solicitacao-compra/pages/RevisarSolicitacaoCompra.jsx');
+  const solicitacaoController = read('backend/src/controllers/SolicitacaoController.js');
+  const solicitacaoCompraController = read('backend/src/controllers/SolicitacaoCompraController.js');
   const configBackend = read('backend/src/services/novaSolicitacaoCamposConfig.js');
   const configFrontend = read('frontend/src/utils/novaSolicitacaoCampos.js');
   const tituloFinanceiro = read('backend/src/services/tituloFinanceiroService.js');
@@ -85,6 +89,32 @@ function validarIntegracaoFrontendBackend() {
   assert(novaCompra.includes('apropriacoes: rateiosItemManual'));
   assert(novaCompra.includes('const validacaoRateios = validarRateiosItem(itemNovo)'));
   assert(novaCompra.includes('titulo="Apropriação do item"'));
+
+  // ADM Local: boleto tem seu proprio upload; as demais formas exibem e exigem o comprovante.
+  assert(novaSolicitacao.includes("=== 'ADM_LOCAL_DE_OBRA'"));
+  assert(novaSolicitacao.includes('const exibirAnexosAdmLocal'));
+  assert(novaSolicitacao.includes('? exibirAnexosAdmLocal'));
+  assert(solicitacaoController.includes('tipoEhAdmLocalObra'));
+  assert(solicitacaoController.includes('!formaPagamentoEhBoleto(formaPagamentoSelecionada)'));
+  assert(solicitacaoController.includes('Anexe ao menos um comprovante para esta forma de pagamento.'));
+
+  // Os dois PDFs usam o mesmo renderizador e devem receber a descricao carregada da apropriacao.
+  assert(solicitacaoCompraController.includes('const compraDireta = isSolicitacaoCompraDireta(solicitacao)'));
+  assert.strictEqual(
+    (solicitacaoCompraController.match(/apropriacao: construirResumoApropriacoes\(item\)\.linhas\.join\('\\n'\)/g) || []).length,
+    2
+  );
+  assert(revisarCompra.includes("modoCompraDireta ? 'Compra Direta' : 'Solicitacao de Compra'"));
+  assert(revisarCompra.includes('montarLinhasResumoApropriacao(item)'));
+
+  // O modal usa a casca responsiva comum, largura ampla e corpo rolante sem largura minima.
+  assert(detalhe.includes('largura="var(--modal-max-w-xl, 1120px)"'));
+  assert(detalhe.includes('data-testid="editar-apropriacoes-corpo"'));
+  assert(detalhe.includes('className="min-w-0 space-y-4 p-4"'));
+
+  assert(novaSolicitacao.includes('<BlocoConteudo titulo="Valor">'));
+  assert(!novaSolicitacao.includes('titulo="Valor e apropriação"'));
+  assert(!novaSolicitacao.includes('O valor é o número que a apropriação reparte'));
 }
 
 function run() {
