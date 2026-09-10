@@ -94,6 +94,7 @@ import {
   canAccessContratos,
   canAccessFinanceiro,
   canAccessFinanceiroDda,
+  canAccessFilaPagamentos,
   canAccessBancosEnterprise,
   canAccessFiscal,
   canAccessPagamentos,
@@ -369,6 +370,7 @@ export const NAV_MODULES = [
     gate: (user) => (
       canAccessFinanceiro(user)
       || canAccessFinanceiroDda(user)
+      || canAccessFilaPagamentos(user)
       || canViewFinanceiroRelatorios(user)
       || canAccessBancosEnterprise(user)
       || canAccessPagamentos(user)
@@ -390,6 +392,7 @@ export const NAV_MODULES = [
       { id: 'fin-receber', ordem: 20, label: 'Contas a Receber', desc: 'Títulos a receber em aberto e baixados.', icon: HiOutlineArrowDownCircle, to: '/financeiro/titulos?tipo=receber', can: (user) => canAccessFinanceiro(user) },
       { id: 'fin-titulo-novo', fixavel: 'acao', ordem: 60, label: 'Novo Título', desc: 'Cadastre um título a pagar ou a receber.', icon: HiOutlinePlusCircle, to: '/financeiro/titulos/novo', can: (user) => canAccessFinanceiro(user) },
       { id: 'fin-pagar', ordem: 10, label: 'Contas a Pagar', desc: 'Títulos a pagar por vencimento.', icon: HiOutlineArrowUpCircle, to: '/financeiro/titulos?tipo=pagar', can: (user) => canAccessFinanceiro(user) },
+      { id: 'fin-fila-pagamentos', ordem: 15, label: 'Fila de Pagamentos', desc: 'Prepare e registre pagamentos autorizados.', icon: HiOutlineTableCells, to: '/financeiro/fila-pagamentos', can: (user) => canAccessFilaPagamentos(user) },
       { id: 'fin-cheques', ordem: 110, label: 'Cheques de Terceiros', desc: 'Custódia e movimentação de cheques.', icon: HiOutlineCreditCard, to: '/financeiro/cheques-terceiros', can: (user) => canAccessFinanceiro(user) && hasPermissao(user, 'financeiro.cheques.visualizar') },
       { id: 'fin-baixas-compostas', ordem: 100, label: 'Baixas com Múltiplas Fontes', desc: 'Baixas compostas por várias origens de fundo.', icon: HiOutlineReceiptRefund, to: '/financeiro/baixas-compostas', can: (user) => canAccessFinanceiro(user) && hasPermissao(user, 'financeiro.baixas_compostas.visualizar') },
       { id: 'fin-bancos', ordem: 160, label: 'Bancos Enterprise', desc: 'Integrações bancárias corporativas.', icon: HiOutlineBuildingLibrary, to: '/financeiro/bancos', can: (user) => canAccessBancosEnterprise(user) },

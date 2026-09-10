@@ -28,6 +28,65 @@ export async function getTitulosFinanceiros(params = {}) {
   return parseJson(response, 'Erro ao buscar titulos financeiros');
 }
 
+function buildFilaPagamentosQuery(params = {}) {
+  return new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  ).toString();
+}
+
+export async function getFilaPagamentos(params = {}) {
+  const query = buildFilaPagamentosQuery(params);
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos${query ? `?${query}` : ''}`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  });
+  return parseJson(response, 'Erro ao carregar a fila de pagamentos');
+}
+
+export async function getContasFilaPagamentos() {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/contas`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  });
+  return parseJson(response, 'Erro ao carregar as contas pagadoras');
+}
+
+export async function enviarTitulosFilaPagamentos(tituloIds, idempotencyKey) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ titulo_ids: tituloIds, idempotency_key: idempotencyKey })
+  });
+  return parseJson(response, 'Erro ao enviar os titulos para pagamento');
+}
+
+export async function registrarBaixasFilaPagamentos(itens, idempotencyKey) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/baixar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ itens, idempotency_key: idempotencyKey })
+  });
+  return parseJson(response, 'Erro ao registrar as baixas da fila');
+}
+
+export async function informarNaoPagamentoFila(id, motivo) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${id}/resultado`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ status: 'NAO_PAGO', motivo })
+  });
+  return parseJson(response, 'Erro ao informar que o titulo nao foi pago');
+}
+
+export async function resolverFilaPagamento(id, acao, motivo = '') {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${id}/resolver`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ acao, motivo })
+  });
+  return parseJson(response, 'Erro ao resolver a pendencia de pagamento');
+}
+
 export async function gerarRelatorioTitulosFinanceirosPdf(params = {}) {
   const query = new URLSearchParams(
     Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')

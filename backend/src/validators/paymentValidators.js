@@ -31,6 +31,18 @@ function parseDateOnly(value, fieldName, { required = false } = {}) {
   return sanitizeString(value, fieldName, { required: true, max: 10, pattern: /^\d{4}-\d{2}-\d{2}$/ });
 }
 
+function parseDecimal(value, fieldName, { required = false, min = null } = {}) {
+  if (isBlank(value)) {
+    if (required) throw new ValidationError(`${fieldName} e obrigatorio.`);
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || (min !== null && parsed < min)) {
+    throw new ValidationError(`${fieldName} invalido.`);
+  }
+  return Math.round((parsed + Number.EPSILON) * 100) / 100;
+}
+
 function parseEnum(value, fieldName, allowedValues, { required = false } = {}) {
   if (isBlank(value)) {
     if (required) throw new ValidationError(`${fieldName} e obrigatorio.`);
@@ -192,12 +204,82 @@ function validatePaymentAccountBody(payload = {}) {
   });
 }
 
+function validateManualPaymentQueueCreateBody(payload = {}) {
+  ensureAllowedKeys(payload, ['titulo_ids', 'idempotency_key'], 'Envio para fila de pagamentos');
+  const tituloIds = Array.isArray(payload.titulo_ids)
+    ? Array.from(new Set(payload.titulo_ids.map((id) => parseInteger(id, 'Titulo')).filter(Boolean)))
+    : [];
+  if (tituloIds.length === 0) throw new ValidationError('Selecione ao menos um titulo para pagamento.');
+  if (tituloIds.length > 200) throw new ValidationError('Envie no maximo 200 titulos por operacao.');
+  return cleanUndefined({
+    titulo_ids: tituloIds,
+    idempotency_key: parseOptionalText(payload.idempotency_key, 'Chave de idempotencia', 80)
+  });
+}
+
+function validateManualPaymentQueueQuery(payload = {}) {
+  ensureAllowedKeys(payload, ['status', 'q'], 'Consulta da fila de pagamentos');
+  return cleanUndefined({
+    status: parseEnum(payload.status, 'Status', ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE', 'BAIXADO', 'RESOLVIDO', 'TODOS']),
+    q: parseOptionalText(payload.q, 'Busca', 120)
+  });
+}
+
+function validateManualPaymentQueueProcessBody(payload = {}) {
+  ensureAllowedKeys(payload, ['itens', 'idempotency_key'], 'Baixa da fila de pagamentos');
+  if (!Array.isArray(payload.itens) || payload.itens.length === 0) {
+    throw new ValidationError('Selecione ao menos um item da fila para registrar a baixa.');
+  }
+  if (payload.itens.length > 200) throw new ValidationError('Registre no maximo 200 baixas por operacao.');
+
+  const ids = new Set();
+  const itens = payload.itens.map((item, index) => {
+    ensureAllowedKeys(item, ['fila_id', 'data_baixa', 'conta_bancaria_id', 'valor_pago', 'motivo'], `Item ${index + 1}`);
+    const filaId = parseInteger(item.fila_id, `Item ${index + 1}`, { required: true });
+    if (ids.has(filaId)) throw new ValidationError(`O item ${filaId} foi informado mais de uma vez.`);
+    ids.add(filaId);
+    return cleanUndefined({
+      fila_id: filaId,
+      data_baixa: parseDateOnly(item.data_baixa, `Data da baixa do item ${index + 1}`, { required: true }),
+      conta_bancaria_id: parseInteger(item.conta_bancaria_id, `Conta pagadora do item ${index + 1}`, { required: true }),
+      valor_pago: parseDecimal(item.valor_pago, `Valor pago do item ${index + 1}`, { required: true, min: 0.01 }),
+      motivo: parseOptionalText(item.motivo, `Observacao do item ${index + 1}`, 500)
+    });
+  });
+
+  return cleanUndefined({
+    itens,
+    idempotency_key: parseOptionalText(payload.idempotency_key, 'Chave de idempotencia', 80)
+  });
+}
+
+function validateManualPaymentQueueResultBody(payload = {}) {
+  ensureAllowedKeys(payload, ['status', 'motivo'], 'Resultado do pagamento');
+  return {
+    status: parseEnum(payload.status, 'Status', ['NAO_PAGO'], { required: true }),
+    motivo: parseRequiredText(payload.motivo, 'Justificativa', 500)
+  };
+}
+
+function validateManualPaymentQueueResolveBody(payload = {}) {
+  ensureAllowedKeys(payload, ['acao', 'motivo'], 'Resolucao da fila de pagamentos');
+  return cleanUndefined({
+    acao: parseEnum(payload.acao, 'Acao', ['REABRIR', 'ENCERRAR'], { required: true }),
+    motivo: parseOptionalText(payload.motivo, 'Observacao', 500)
+  });
+}
+
 module.exports = {
   validatePaymentAccountBody,
   validatePaymentBatchItemParams,
   validatePaymentBatchCreateBody,
   validatePaymentBeneficiaryCreateBody,
   validatePaymentBeneficiaryUpdateBody,
+  validateManualPaymentQueueCreateBody,
+  validateManualPaymentQueueProcessBody,
+  validateManualPaymentQueueQuery,
+  validateManualPaymentQueueResolveBody,
+  validateManualPaymentQueueResultBody,
   validatePaymentCancelBody,
   validatePaymentRejectBody,
   validatePaymentMfaBody

@@ -51,6 +51,22 @@ Detalhes tecnicos e cenarios de aceite estao em [`PLANO_IMPORTACAO_TITULOS_PAGAR
 - nova baixa depois do estorno e uma nova operacao auditada;
 - comprovantes e conciliacoes vinculados precisam ser revistos.
 
+## Fila manual de pagamentos
+
+A Fila de Pagamentos separa a preparacao da carteira da execucao no banco. Em Contas a Pagar, quem possui `financeiro.fila_pagamentos.preparar` seleciona titulos abertos e os encaminha para a fila; o operador pode ter acesso somente a essa tela pelas permissoes do grupo `financeiro.fila_pagamentos`.
+
+- a tela operacional e uma tabela responsiva com rolagem horizontal, sem modal de baixa;
+- cada linha mostra titulo, credor/favorecido, documento, PIX ou codigo do boleto, vencimento, saldo e forma de pagamento;
+- o operador informa data da baixa, conta pagadora e valor efetivamente pago; a empresa e derivada da conta bancaria e validada contra a empresa do titulo;
+- valor exato registra baixa total, valor menor registra baixa parcial e cria alerta de divergencia, valor maior nao baixa e permanece divergente;
+- `NAO_PAGO` mantem o titulo aberto e exige motivo;
+- a grade de Contas a Pagar mostra na propria linha os estados `Em fila de pagamento`, `Pagamento nao realizado` e `Pagamento divergente`;
+- titulos de cartao continuam no fluxo da fatura e nao entram nesta fila;
+- o lote usa uma unica transacao e locks por titulo/item: se uma linha falhar, nenhuma baixa do lote e confirmada;
+- uma chave de idempotencia protege criacao e processamento contra clique ou envio repetido.
+
+Permissoes independentes: `visualizar`, `preparar`, `baixar`, `reportar` e `resolver`. Elas nao liberam as demais telas do Financeiro.
+
 ## Cheques de terceiros e baixa com multiplas fontes
 
 Cheques recebidos de terceiros sao controlados em carteira de custodia, sem simular uma conta bancaria. O financeiro pode registrar/importar saldo legado, transferir a custodia entre empresas, depositar em conta da mesma empresa ou utilizar o cheque integralmente como um componente de uma baixa composta.

@@ -23,6 +23,7 @@ const {
   PaymentBatchItem,
   PaymentBeneficiary,
   PaymentIntent,
+  PagamentoManualFilaItem,
   PedidoCompraTitulo,
   PedidoCompraFrete,
   SecurityEventLog,
@@ -1130,6 +1131,24 @@ function buildTituloInclude({ includeMovimentos = false } = {}) {
         'external_title_id',
         'updatedAt'
       ]
+    },
+    {
+      model: PagamentoManualFilaItem,
+      as: 'filaPagamentosManuais',
+      where: { status: { [Op.in]: ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'] } },
+      required: false,
+      separate: true,
+      attributes: [
+        'id',
+        'status',
+        'valor_previsto',
+        'valor_informado',
+        'data_baixa',
+        'motivo',
+        'selecionado_em',
+        'processado_em'
+      ],
+      order: [['createdAt', 'DESC']]
     }
   ];
 
@@ -1927,8 +1946,10 @@ async function carregarTituloPorId(req, tituloId, { includeMovimentos = false } 
   return titulo;
 }
 
-async function carregarTituloParaBaixaComLock(req, tituloId, transaction) {
-  await assertFinanceAccess(req);
+async function carregarTituloParaBaixaComLock(req, tituloId, transaction, options = {}) {
+  if (!options.autorizadoPorFilaPagamento) {
+    await assertFinanceAccess(req);
+  }
 
   const titulo = await TituloFinanceiro.findByPk(tituloId, {
     transaction,
@@ -1940,13 +1961,15 @@ async function carregarTituloParaBaixaComLock(req, tituloId, transaction) {
   }
   assertTituloDisponivelParaBaixa(titulo);
 
-  await assertObraScope(
-    req,
-    titulo.obra_id,
-    'TITULO_FINANCEIRO',
-    titulo.id,
-    'Usuario tentou acessar titulo financeiro fora do seu escopo de obra'
-  );
+  if (!options.autorizadoPorFilaPagamento) {
+    await assertObraScope(
+      req,
+      titulo.obra_id,
+      'TITULO_FINANCEIRO',
+      titulo.id,
+      'Usuario tentou acessar titulo financeiro fora do seu escopo de obra'
+    );
+  }
 
   return titulo;
 }
@@ -3634,7 +3657,9 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
   const ownTransaction = !options.transaction;
   const transaction = options.transaction || await sequelize.transaction();
   try {
-    const titulo = await carregarTituloParaBaixaComLock(req, tituloId, transaction);
+    const titulo = await carregarTituloParaBaixaComLock(req, tituloId, transaction, {
+      autorizadoPorFilaPagamento: options.autorizadoPorFilaPagamento === true
+    });
     const statusAtual = String(titulo.status || '').trim().toUpperCase();
 
     if (!['ABERTO', 'PARCIAL'].includes(statusAtual)) {

@@ -161,6 +161,7 @@ db.PaymentTransaction = require('./PaymentTransaction')(sequelize, Sequelize);
 db.PaymentEvent = require('./PaymentEvent')(sequelize, Sequelize);
 db.PaymentReconciliation = require('./PaymentReconciliation')(sequelize, Sequelize);
 db.PaymentJob = require('./PaymentJob')(sequelize, Sequelize);
+db.PagamentoManualFilaItem = require('./PagamentoManualFilaItem')(sequelize, Sequelize);
 db.FinanceiroDdaSincronizacao = require('./FinanceiroDdaSincronizacao')(sequelize, Sequelize);
 db.FinanceiroDdaBoleto = require('./FinanceiroDdaBoleto')(sequelize, Sequelize);
 db.FinanceiroDdaEvento = require('./FinanceiroDdaEvento')(sequelize, Sequelize);
@@ -4536,6 +4537,66 @@ db.PaymentIntent.hasOne(db.PaymentReconciliation, {
 db.PaymentReconciliation.belongsTo(db.PaymentIntent, {
   foreignKey: 'payment_intent_id',
   as: 'intent'
+});
+
+db.TituloFinanceiro.hasMany(db.PagamentoManualFilaItem, {
+  foreignKey: 'titulo_financeiro_id',
+  as: 'filaPagamentosManuais'
+});
+
+db.PagamentoManualFilaItem.belongsTo(db.TituloFinanceiro, {
+  foreignKey: 'titulo_financeiro_id',
+  as: 'titulo'
+});
+
+db.ContaBancaria.hasMany(db.PagamentoManualFilaItem, {
+  foreignKey: 'conta_bancaria_id',
+  as: 'pagamentosManuaisFila'
+});
+
+db.PagamentoManualFilaItem.belongsTo(db.ContaBancaria, {
+  foreignKey: 'conta_bancaria_id',
+  as: 'contaBancaria'
+});
+
+db.MovimentoFinanceiro.hasOne(db.PagamentoManualFilaItem, {
+  foreignKey: 'movimento_financeiro_id',
+  as: 'origemFilaPagamentoManual'
+});
+
+db.PagamentoManualFilaItem.belongsTo(db.MovimentoFinanceiro, {
+  foreignKey: 'movimento_financeiro_id',
+  as: 'movimentoFinanceiro'
+});
+
+db.User.hasMany(db.PagamentoManualFilaItem, {
+  foreignKey: 'selecionado_por',
+  as: 'pagamentosManuaisSelecionados'
+});
+
+db.PagamentoManualFilaItem.belongsTo(db.User, {
+  foreignKey: 'selecionado_por',
+  as: 'selecionadoPor'
+});
+
+db.User.hasMany(db.PagamentoManualFilaItem, {
+  foreignKey: 'processado_por',
+  as: 'pagamentosManuaisProcessados'
+});
+
+db.PagamentoManualFilaItem.belongsTo(db.User, {
+  foreignKey: 'processado_por',
+  as: 'processadoPor'
+});
+
+db.User.hasMany(db.PagamentoManualFilaItem, {
+  foreignKey: 'resolvido_por',
+  as: 'pagamentosManuaisResolvidos'
+});
+
+db.PagamentoManualFilaItem.belongsTo(db.User, {
+  foreignKey: 'resolvido_por',
+  as: 'resolvidoPor'
 });
 
 db.MovimentoFinanceiro.hasMany(db.PaymentReconciliation, {

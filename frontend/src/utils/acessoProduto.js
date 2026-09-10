@@ -865,6 +865,33 @@ export function canAccessPagamentos(user) {
   return canAccessFinanceiro(user) || userHasPaymentApprovalDirectorate(user);
 }
 
+function canFilaPagamentos(user, permissionKey) {
+  if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) return hasPermissao(user, permissionKey);
+  return userHasSetorCapability(user, 'eh_setor_financeiro') || normalizeToken(user?.perfil) === 'FINANCEIRO';
+}
+
+export function canAccessFilaPagamentos(user) {
+  if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) {
+    return hasAnyPermissao(user, [
+      'financeiro.fila_pagamentos.visualizar',
+      'financeiro.fila_pagamentos.preparar',
+      'financeiro.fila_pagamentos.baixar',
+      'financeiro.fila_pagamentos.reportar',
+      'financeiro.fila_pagamentos.resolver'
+    ]);
+  }
+  return userHasSetorCapability(user, 'eh_setor_financeiro') || normalizeToken(user?.perfil) === 'FINANCEIRO';
+}
+
+export const canPrepareFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.preparar');
+export const canBaixarFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.baixar');
+export const canReportarFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.reportar');
+export const canResolverFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.resolver');
+
 export function canAccessFinanceiroDda(user) {
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
   if (isBusinessAdmin(user)) return true;

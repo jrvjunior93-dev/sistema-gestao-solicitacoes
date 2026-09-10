@@ -234,6 +234,11 @@ const {
   validatePaymentBatchCreateBody,
   validatePaymentBeneficiaryCreateBody,
   validatePaymentBeneficiaryUpdateBody,
+  validateManualPaymentQueueCreateBody,
+  validateManualPaymentQueueProcessBody,
+  validateManualPaymentQueueQuery,
+  validateManualPaymentQueueResolveBody,
+  validateManualPaymentQueueResultBody,
   validatePaymentCancelBody,
   validatePaymentRejectBody,
   validatePaymentMfaBody
@@ -247,15 +252,16 @@ const {
 const { env } = require('./config/env');
 const {
   canAccessBoletos,
-    canAccessPagamentos,
-    canAccessProvisoes,
-    canAlterarQuantidadeSolicitacaoCompra,
-    canAlterarStatusComprasPedidos,
-    canAnexarDocumentoPedidoCompraFinanceiro,
-    canAprovarReaberturaPedidoCompraFinanceiro,
-    canApprovePagamentos,
-    canRejectPagamentos,
-    canAuditPaymentBeneficiaries,
+  canAccessFilaPagamentos,
+  canAccessPagamentos,
+  canAccessProvisoes,
+  canAlterarQuantidadeSolicitacaoCompra,
+  canAlterarStatusComprasPedidos,
+  canAnexarDocumentoPedidoCompraFinanceiro,
+  canAprovarReaberturaPedidoCompraFinanceiro,
+  canApprovePagamentos,
+  canRejectPagamentos,
+  canAuditPaymentBeneficiaries,
   canAuditPagamentos,
   canConfigurePagamentos,
   canCancelarComprasPedidos,
@@ -264,6 +270,7 @@ const {
   canAnexarEspelhoComprasPedidos,
   canCatalogarItensManuaisCompras,
   canConfirmarBaixaPagamento,
+  canBaixarFilaPagamentos,
   canCreateCompraSolicitacao,
   canCreateProvisoes,
   canAccessFinanceiro,
@@ -324,6 +331,9 @@ const {
   canRegistrarFreteComprasPedidos,
   canRemanejarComprasPedidos,
   canPreparePagamentos,
+  canPrepareFilaPagamentos,
+  canReportarFilaPagamentos,
+  canResolverFilaPagamentos,
   canSendPagamentosBanco,
   canSyncPagamentosBanco,
   canViewProvisoes,
@@ -458,6 +468,7 @@ const BoletoController = require('./controllers/BoletoController');
 const BoletoCaixaCnabController = require('./controllers/BoletoCaixaCnabController');
 const PaymentBeneficiaryController = require('./controllers/PaymentBeneficiaryController');
 const PaymentController = require('./controllers/PaymentController');
+const PagamentoManualFilaController = require('./controllers/PagamentoManualFilaController');
 const FinanceiroDdaController = require('./controllers/FinanceiroDdaController');
 const CrmLeadsController = require('./controllers/CrmLeadsController');
 const CrmPipelineController = require('./controllers/CrmPipelineController');
@@ -881,6 +892,31 @@ const allowPagamentosAudit = allowPaymentAction(
   'FINANCEIRO_PAGAMENTOS_AUDIT',
   canAuditPagamentos,
   'Acesso negado para auditar pagamentos bancarios'
+);
+const allowFilaPagamentosRead = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_READ',
+  canAccessFilaPagamentos,
+  'Acesso negado para visualizar a fila de pagamentos'
+);
+const allowFilaPagamentosPrepare = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_PREPARE',
+  canPrepareFilaPagamentos,
+  'Acesso negado para enviar titulos para pagamento'
+);
+const allowFilaPagamentosBaixa = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_BAIXA',
+  canBaixarFilaPagamentos,
+  'Acesso negado para registrar baixas da fila'
+);
+const allowFilaPagamentosReportar = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_REPORTAR',
+  canReportarFilaPagamentos,
+  'Acesso negado para informar o resultado do pagamento'
+);
+const allowFilaPagamentosResolver = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_RESOLVER',
+  canResolverFilaPagamentos,
+  'Acesso negado para resolver divergencias de pagamento'
 );
 const allowFavorecidosRead = allowPaymentAction(
   'FINANCEIRO_FAVORECIDOS',
@@ -1963,6 +1999,12 @@ router.put('/financeiro/favorecidos/:id', allowFavorecidosManage, criticalRateLi
 router.delete('/financeiro/favorecidos/:id', allowFavorecidosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.destroy);
 router.post('/financeiro/favorecidos/:id/validar', allowFavorecidosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.validate);
 router.get('/financeiro/favorecidos/:id/auditoria', allowFavorecidosAudit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.auditoria);
+router.get('/financeiro/fila-pagamentos', allowFilaPagamentosRead, validateRequest({ query: validateManualPaymentQueueQuery }), PagamentoManualFilaController.index);
+router.get('/financeiro/fila-pagamentos/contas', allowFilaPagamentosRead, PagamentoManualFilaController.contas);
+router.post('/financeiro/fila-pagamentos', allowFilaPagamentosPrepare, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueCreateBody }), PagamentoManualFilaController.create);
+router.post('/financeiro/fila-pagamentos/baixar', allowFilaPagamentosBaixa, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueProcessBody }), PagamentoManualFilaController.baixar);
+router.post('/financeiro/fila-pagamentos/:id/resultado', allowFilaPagamentosReportar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Item da fila'), body: validateManualPaymentQueueResultBody }), PagamentoManualFilaController.resultado);
+router.post('/financeiro/fila-pagamentos/:id/resolver', allowFilaPagamentosResolver, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Item da fila'), body: validateManualPaymentQueueResolveBody }), PagamentoManualFilaController.resolver);
 router.get('/financeiro/pagamentos/titulos-elegiveis', allowPagamentosPrepare, PaymentController.titulosElegiveis);
 router.get('/financeiro/pagamentos/bb/health', allowPagamentosRead, PaymentController.bbHealth);
 router.post('/financeiro/pagamentos/lotes', allowPagamentosPrepare, criticalRateLimit, validateRequest({ body: validatePaymentBatchCreateBody }), PaymentController.criarLote);

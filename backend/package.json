@@ -22,6 +22,7 @@
     "test:compras-performance-fases": "node scripts/validarComprasPerformanceFases.js",
     "perf:compras:resumo": "node scripts/resumirComprasPerformance.js",
     "test:payments": "node scripts/validarPagamentosEngine.js",
+    "test:fila-pagamentos": "node scripts/validarFilaPagamentosManuais.js",
     "test:ultimo-preco": "node scripts/testarUltimoPrecoInsumo.js",
     "test:importacao-titulos": "node scripts/validarImportacaoTitulos.js",
     "test:baixa-massa-formas": "node scripts/validarBaixaMassaFormasPagamento.js",

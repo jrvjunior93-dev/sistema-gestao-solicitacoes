@@ -25,6 +25,7 @@ import {
   getFretesPedidosPendentesFinanceiro,
   getFormasPagamentoFinanceiras,
   getTitulosFinanceiros,
+  enviarTitulosFilaPagamentos,
   gerarRelatorioTitulosFinanceirosPdf,
   excluirTitulosFinanceirosEmMassa,
   exportarModeloImportacaoTitulosPagar,
@@ -34,7 +35,12 @@ import { getMinhasObras } from '../services/obras';
 import { buscarParceiros } from '../services/parceiros';
 import { getEmpresasGrupo } from '../services/empresasGrupo';
 import { normalizeCurrencyTyping } from '../utils/formatters';
-import { canDeleteTitulosFinanceiros, canImportTitulosFinanceiros, hasPermissao } from '../utils/acessoProduto';
+import {
+  canDeleteTitulosFinanceiros,
+  canImportTitulosFinanceiros,
+  canPrepareFilaPagamentos,
+  hasPermissao
+} from '../utils/acessoProduto';
 import FinanceiroTitulosImportacaoPanel from '../components/financeiro/FinanceiroTitulosImportacaoPanel';
 import BaixaCompostaModal from '../components/financeiro/BaixaCompostaModal';
 import ChequePagamentoFields from '../components/financeiro/ChequePagamentoFields';
@@ -849,8 +855,14 @@ function getCartaoLabel(cartao) {
 
 function isTituloBaixavel(titulo) {
   return !isTituloBloqueadoRetornoObra(titulo)
+    && !getFilaPagamentoAtiva(titulo)
     && ['ABERTO', 'PARCIAL'].includes(String(titulo?.status || '').trim().toUpperCase())
     && Number(titulo?.valor_saldo || 0) > 0;
+}
+
+function getFilaPagamentoAtiva(titulo) {
+  const items = Array.isArray(titulo?.filaPagamentosManuais) ? titulo.filaPagamentosManuais : [];
+  return items.find((item) => ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'].includes(String(item?.status || '').toUpperCase())) || null;
 }
 
 function isTituloBloqueadoRetornoObra(titulo) {
@@ -964,6 +976,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const canDeleteTitulos = canDeleteTitulosFinanceiros(user);
   const canImportTitulos = canImportTitulosFinanceiros(user);
+  const canPrepareFila = canPrepareFilaPagamentos(user);
   // `financeiro.cadastros.visualizar` só existia aqui para pintar um link
   // de "ir para Cadastros" — link que a R11 tirou da barra de ações. A
   // permissão continua sendo cobrada onde a tela de cadastros mora
@@ -1094,6 +1107,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [modalBaixaCompostaOpen, setModalBaixaCompostaOpen] = useState(false);
   const [baixaMassaForm, setBaixaMassaForm] = useState(() => buildBaixaMassaForm([]));
   const [savingBaixaMassa, setSavingBaixaMassa] = useState(false);
+  const [sendingFilaPagamentos, setSendingFilaPagamentos] = useState(false);
   const [importandoCodigos, setImportandoCodigos] = useState(false);
   const [fretesPendentes, setFretesPendentes] = useState([]);
   const [loadingFretesPendentes, setLoadingFretesPendentes] = useState(false);
@@ -1779,6 +1793,44 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     setError('');
     setBaixaMassaForm(buildBaixaMassaForm(contasBancarias, selectedSaldo));
     setModalBaixaMassaOpen(true);
+  }
+
+  async function enviarSelecionadosParaPagamento() {
+    if (!canPrepareFila || tipoReferencia !== 'PAGAR') return;
+    if (selectedTitulosBaixaveis.length === 0) {
+      setError('Selecione ao menos um titulo em aberto ou parcial para enviar ao pagamento.');
+      return;
+    }
+    const { ok } = await confirmar({
+      titulo: 'Enviar títulos para pagamento?',
+      mensagem: `${selectedTitulosBaixaveis.length} título(s), no total de ${formatCurrency(selectedSaldo)}, ficarão disponíveis na Fila de Pagamentos.`,
+      rotuloConfirmar: 'Enviar para pagamento'
+    });
+    if (!ok) return;
+
+    const random = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setSendingFilaPagamentos(true);
+    setError('');
+    try {
+      const result = await enviarTitulosFilaPagamentos(
+        selectedTitulosBaixaveis.map((titulo) => Number(titulo.id)),
+        `titulos-${random}`
+      );
+      avisar.sucesso(`${result?.quantidade || selectedTitulosBaixaveis.length} título(s) enviado(s) para a Fila de Pagamentos.`);
+      const data = await getTitulosFinanceiros({
+        ...compactFilters(appliedFilters),
+        paginated: 1,
+        page: pagination.page,
+        limit: pagination.limit
+      });
+      setTitulos(Array.isArray(data) ? data : Array.isArray(data?.data) ? data.data : []);
+      if (data?.pagination) setPagination((current) => ({ ...current, ...data.pagination }));
+      setSelectedTituloIds([]);
+    } catch (err) {
+      setError(err?.message || 'Erro ao enviar os títulos para pagamento.');
+    } finally {
+      setSendingFilaPagamentos(false);
+    }
   }
 
   async function excluirTitulosSelecionados() {
@@ -2974,6 +3026,18 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               Baixar selecionados
               {selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}
             </button>
+            {canPrepareFila && tipoReferencia === 'PAGAR' ? (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={enviarSelecionadosParaPagamento}
+                disabled={selectedTitulosBaixaveis.length === 0 || savingBaixaMassa || sendingFilaPagamentos}
+                title="Disponibilizar os títulos na fila operacional de pagamento"
+              >
+                {sendingFilaPagamentos ? 'Enviando...' : 'Enviar para pagamento'}
+                {!sendingFilaPagamentos && selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}
+              </button>
+            ) : null}
             {canCreateBaixaComposta && baixaMassaTipoSelecionado === 'PAGAR' ? (
               <button
                 type="button"
@@ -3098,6 +3162,18 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                         Retorno solicitado pela Obra
                       </span>
                     ) : null}
+                    {getFilaPagamentoAtiva(titulo) ? (
+                      <span
+                        className={`badge ${getFilaPagamentoAtiva(titulo).status === 'DIVERGENTE' ? 'badge-danger' : getFilaPagamentoAtiva(titulo).status === 'NAO_PAGO' ? 'badge-warning' : 'badge-info'}`}
+                        title={getFilaPagamentoAtiva(titulo).motivo || 'Título encaminhado para a fila de pagamentos'}
+                      >
+                        {getFilaPagamentoAtiva(titulo).status === 'DIVERGENTE'
+                          ? 'Pagamento divergente'
+                          : getFilaPagamentoAtiva(titulo).status === 'NAO_PAGO'
+                            ? 'Pagamento não realizado'
+                            : 'Em fila de pagamento'}
+                      </span>
+                    ) : null}
                   </div>
                 )
               },
@@ -3205,7 +3281,15 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 title: 'Nenhum filtro aplicado',
                 message: 'A tabela fica vazia ate voce consultar os titulos com os filtros desejados.'
               }}
-            urgencia={(titulo) => (isTituloBloqueadoRetornoObra(titulo) ? 'warning' : isOverdue(titulo) ? 'danger' : null)}
+            urgencia={(titulo) => (
+              getFilaPagamentoAtiva(titulo)?.status === 'DIVERGENTE'
+                ? 'danger'
+                : ['NAO_PAGO', 'PENDENTE'].includes(getFilaPagamentoAtiva(titulo)?.status)
+                  ? 'warning'
+                  : isTituloBloqueadoRetornoObra(titulo)
+                    ? 'warning'
+                    : isOverdue(titulo) ? 'danger' : null
+            )}
             colunasConfiguraveis
             aoMudarColunas={aoMudarColunas}
             storageKey={tabelaStorageKey}

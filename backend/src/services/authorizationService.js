@@ -90,6 +90,14 @@ const FINANCEIRO_PAGAMENTOS_PERMISSION_KEYS = [
   'financeiro.pagamentos.configurar'
 ];
 
+const FINANCEIRO_FILA_PAGAMENTOS_PERMISSION_KEYS = [
+  'financeiro.fila_pagamentos.visualizar',
+  'financeiro.fila_pagamentos.preparar',
+  'financeiro.fila_pagamentos.baixar',
+  'financeiro.fila_pagamentos.reportar',
+  'financeiro.fila_pagamentos.resolver'
+];
+
 const FINANCEIRO_FAVORECIDOS_PERMISSION_KEYS = [
   'financeiro.favorecidos.visualizar',
   'financeiro.favorecidos.gerenciar',
@@ -1551,6 +1559,46 @@ async function canAccessPagamentos(user) {
   }
 
   return (await userHasFinanceiroSector(user)) || userHasPaymentApprovalDirectorate(user);
+}
+
+async function canAccessFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, FINANCEIRO_FILA_PAGAMENTOS_PERMISSION_KEYS);
+  }
+  return userHasFinanceiroSector(user);
+}
+
+async function canPrepareFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['financeiro.fila_pagamentos.preparar']);
+  }
+  return userHasFinanceiroSector(user);
+}
+
+async function canBaixarFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['financeiro.fila_pagamentos.baixar']);
+  }
+  return userHasFinanceiroSector(user);
+}
+
+async function canReportarFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['financeiro.fila_pagamentos.reportar']);
+  }
+  return userHasFinanceiroSector(user);
+}
+
+async function canResolverFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['financeiro.fila_pagamentos.resolver']);
+  }
+  return userHasFinanceiroSector(user);
 }
 
 async function canPreparePagamentos(user) {
@@ -3301,10 +3349,12 @@ module.exports = {
   canAccessConfiguracoes,
   canCancelPrioridadeDiretoriaLote,
   canAccessPagamentos,
+  canAccessFilaPagamentos,
   canApprovePagamentos,
   canAuditPaymentBeneficiaries,
   canConfigurePagamentos,
   canConfirmarBaixaPagamento,
+  canBaixarFilaPagamentos,
   canCreatePrioridadeDiretoriaLote,
   canDeleteComprovante,
   canDeletePrioridadeDiretoriaLote,
@@ -3371,6 +3421,9 @@ module.exports = {
   canRunFiscalSync,
   canUploadFiscalDocuments,
   canPreparePagamentos,
+  canPrepareFilaPagamentos,
+  canReportarFilaPagamentos,
+  canResolverFilaPagamentos,
   canManageIntegracaoSiengeConfig,
   canManageProvisoesCategorias,
   canManageProvisoesStatus,

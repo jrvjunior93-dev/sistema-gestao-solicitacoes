@@ -404,6 +404,17 @@ const MODULO_PERMISSION_GROUPS = [
         ]
       },
       {
+        key: 'financeiro.fila_pagamentos',
+        label: 'Fila de Pagamentos',
+        permissoes: [
+          { key: 'financeiro.fila_pagamentos.visualizar', label: 'Visualizar fila', descricao: 'Acessar somente os titulos encaminhados para pagamento manual.' },
+          { key: 'financeiro.fila_pagamentos.preparar', label: 'Enviar titulos para a fila', descricao: 'Selecionar contas a pagar e encaminha-las ao operador de pagamentos.' },
+          { key: 'financeiro.fila_pagamentos.baixar', label: 'Registrar baixas da fila', descricao: 'Informar conta, data e valor efetivamente pago e registrar baixas individuais ou em massa.' },
+          { key: 'financeiro.fila_pagamentos.reportar', label: 'Informar nao pagamento', descricao: 'Registrar que um titulo da fila nao foi pago, com justificativa.' },
+          { key: 'financeiro.fila_pagamentos.resolver', label: 'Resolver divergencias', descricao: 'Reabrir ou encerrar pendencias de pagamento divergente e nao realizado.' }
+        ]
+      },
+      {
         key: 'financeiro.dda',
         label: 'DDA Bancario',
         permissoes: [

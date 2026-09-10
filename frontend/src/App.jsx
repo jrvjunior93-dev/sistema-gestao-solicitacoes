@@ -15,6 +15,7 @@ import {
   canAccessContratos,
   canAccessFinanceiro,
   canAccessFinanceiroDda,
+  canAccessFilaPagamentos,
   canAccessFiscal,
   canAccessConfiguracoes,
   canAccessPagamentos,
@@ -92,6 +93,7 @@ const NovaSolicitacao = lazy(() => import('./pages/NovaSolicitacao'));
 const UploadComprovantes = lazy(() => import('./pages/UploadComprovantes'));
 const ComprovantesPendentes = lazy(() => import('./pages/ComprovantesPendentes'));
 const FinanceiroTitulos = lazy(() => import('./pages/FinanceiroTitulos'));
+const FinanceiroFilaPagamentos = lazy(() => import('./pages/FinanceiroFilaPagamentos'));
 const FinanceiroTituloNovo = lazy(() => import('./pages/FinanceiroTituloNovo'));
 const FinanceiroTituloDetalhe = lazy(() => import('./pages/FinanceiroTituloDetalhe'));
 const FinanceiroTituloEditar = lazy(() => import('./pages/FinanceiroTituloEditar'));
@@ -469,6 +471,14 @@ function FinanceiroRoute({ children }) {
 function FinanceiroPagamentosRoute({ children }) {
   const { user } = useAuth();
   if (!canAccessPagamentos(user)) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
+function FinanceiroFilaPagamentosRoute({ children }) {
+  const { user } = useAuth();
+  if (!canAccessFilaPagamentos(user)) {
     return <Navigate to="/" replace />;
   }
   return children;
@@ -1069,6 +1079,7 @@ export default function App() {
         <Route path="financeiro/contas-a-receber" element={<Navigate to="/financeiro/titulos?tipo=receber" replace />} />
         <Route path="financeiro/contas-a-pagar" element={<Navigate to="/financeiro/titulos?tipo=pagar" replace />} />
         <Route path="financeiro/titulos" element={<FinanceiroRoute><FinanceiroTitulos /></FinanceiroRoute>} />
+        <Route path="financeiro/fila-pagamentos" element={<FinanceiroFilaPagamentosRoute><FinanceiroFilaPagamentos /></FinanceiroFilaPagamentosRoute>} />
         <Route path="financeiro/titulos/novo" element={<FinanceiroRoute><FinanceiroTituloNovo /></FinanceiroRoute>} />
         <Route path="financeiro/titulos/:id/editar" element={<FinanceiroRoute><FinanceiroTituloEditar /></FinanceiroRoute>} />
         <Route path="financeiro/titulos/:id" element={<FinanceiroRoute><FinanceiroTituloDetalhe /></FinanceiroRoute>} />
