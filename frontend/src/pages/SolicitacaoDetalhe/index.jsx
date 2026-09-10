@@ -171,6 +171,35 @@ function normalizarRateiosSolicitacao(solicitacao) {
   }];
 }
 
+function montarResumoApropriacoesSolicitacao(solicitacao) {
+  const rateios = Array.isArray(solicitacao?.apropriacoes) ? solicitacao.apropriacoes : [];
+  if (rateios.length) {
+    return rateios.map((item) => {
+      const apropriacao = item?.apropriacao || null;
+      const nome = apropriacao?.descricao || apropriacao?.nome || apropriacao?.codigo || 'Apropriação';
+      const percentual = parseNumeroLocal(item?.percentual);
+      const valor = parseNumeroLocal(item?.valor);
+      const criterio = percentual
+        ? `${percentual.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}%`
+        : valor
+          ? formatarMoedaLocal(valor)
+          : '';
+      return criterio ? `${nome} · ${criterio}` : nome;
+    });
+  }
+
+  if (solicitacao?.apropriacao) {
+    return [
+      solicitacao.apropriacao.descricao
+      || solicitacao.apropriacao.nome
+      || solicitacao.apropriacao.codigo
+      || 'Apropriação principal'
+    ];
+  }
+
+  return [];
+}
+
 function mapearItemManualCompraDireta(item) {
   const insumoOficial = item?.insumoCatalogado || null;
   const descricaoOficial = String(insumoOficial?.descricao || '').trim()
@@ -284,7 +313,9 @@ export default function SolicitacaoDetalhe() {
   }, []);
   const moduloContratosHabilitado = hasEnabledModule(user, 'CONTRATOS');
   const moduloComprasHabilitado = hasEnabledModule(user, 'COMPRAS');
-  const podeEditarApropriacoes = moduloComprasHabilitado && canEditarApropriacoesSolicitacao(user);
+  // Apropriações da solicitação pertencem ao módulo Solicitações. Vincular essa
+  // permissão ao módulo Compras ocultava o card de tipos como Despesa Eventual.
+  const podeEditarApropriacoes = canEditarApropriacoesSolicitacao(user);
   const podeEditarItensCompraDiretaBase = moduloComprasHabilitado && canEditarApropriacoesItemCompraDireta(user);
   const podeEditarApropriacoesItensSolicitacaoCompraBase = moduloComprasHabilitado
     && canEditarApropriacoesItemSolicitacaoCompra(user);
@@ -1264,18 +1295,34 @@ export default function SolicitacaoDetalhe() {
 
   // Cada bloco: condições de permissão/tipo continuam decidindo se PODE
   // aparecer; a configuração decide onde e se aparece quando pode.
+  const resumoApropriacoesSolicitacao = montarResumoApropriacoesSolicitacao(solicitacao);
   const conteudoBlocos = {
     apropriacoes: podeEditarApropriacoesSolicitacaoNormal ? (
       <BlocoConteudo
         titulo="Apropriações da solicitação"
         variante="secundario"
-        descricao="Ajuste a apropriação principal ou o rateio do contrato com motivo e auditoria."
+        descricao="Confira a distribuição atual e ajuste a apropriação com motivo e auditoria."
         acoes={(
           <button type="button" className="btn btn-outline btn-sm" onClick={abrirModalApropriacoes}>
             Editar apropriações
           </button>
         )}
-      />
+      >
+        {resumoApropriacoesSolicitacao.length ? (
+          <div className="flex flex-wrap gap-2" aria-label="Apropriações atuais da solicitação">
+            {resumoApropriacoesSolicitacao.map((linha, index) => (
+              <span
+                key={`${linha}-${index}`}
+                className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm"
+              >
+                {linha}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="text-sm text-[var(--c-muted)]">Nenhuma apropriação informada.</span>
+        )}
+      </BlocoConteudo>
     ) : null,
 
     itens_compra_direta: podeGerenciarItensCompra ? (

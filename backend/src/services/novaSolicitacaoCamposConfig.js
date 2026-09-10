@@ -38,7 +38,7 @@ const CAMPOS_NOVA_SOLICITACAO = [
     id: 'cadastro_credor',
     label: 'Cadastro de credor',
     descricao: 'Permite cadastrar um novo credor durante a abertura da solicitacao.',
-    visivelPadrao: false,
+    visivelPadrao: (behavior) => Boolean(behavior.usa_fluxo_contrato_novo),
     obrigatorioPadrao: false,
     permiteObrigatorio: false
   },

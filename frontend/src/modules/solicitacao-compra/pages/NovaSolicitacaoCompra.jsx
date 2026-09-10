@@ -130,6 +130,16 @@ function criarNovoCredorPadrao() {
   };
 }
 
+function criarItemManualFormPadrao() {
+  return {
+    nome_manual: '',
+    unidade_id: '',
+    unidade_sigla_manual: '',
+    quantidade: '1',
+    especificacao: ''
+  };
+}
+
 function calcularValorTotalItem(item) {
   return arredondarMoeda(parseQuantidade(item?.quantidade) * parseValorMonetario(item?.valor_unitario));
 }
@@ -158,7 +168,7 @@ function criarItemBase(insumo) {
 }
 
 function criarItemManualBase(dados, necessarioParaPadrao) {
-  return {
+  return sincronizarItemComRateios({
     insumo_id: null,
     insumo_nome: dados.nome_manual,
     unidade_id: dados.unidade_id || null,
@@ -167,8 +177,8 @@ function criarItemManualBase(dados, necessarioParaPadrao) {
     valor_unitario: dados.valor_unitario || '',
     valor_total: dados.valor_total || '',
     especificacao: dados.especificacao || '',
-    apropriacao_id: '',
-    apropriacoes: [],
+    apropriacao_id: dados.apropriacoes?.[0]?.apropriacao_id || '',
+    apropriacoes: Array.isArray(dados.apropriacoes) ? dados.apropriacoes : [],
     necessario_para: necessarioParaPadrao || '',
     link_produto: '',
     arquivo_url: '',
@@ -176,7 +186,7 @@ function criarItemManualBase(dados, necessarioParaPadrao) {
     manual: true,
     nome_manual: dados.nome_manual,
     unidade_sigla_manual: dados.unidade_sigla_manual
-  };
+  });
 }
 
 function sincronizarQuantidadeRateioUnico(item, quantidade) {
@@ -316,6 +326,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [errosCampo, setErrosCampo] = useState({});
   const [errosItem, setErrosItem] = useState({});
   const [erroRateiosModal, setErroRateiosModal] = useState('');
+  const [erroRateiosItemManual, setErroRateiosItemManual] = useState('');
   const [novoCredor, setNovoCredor] = useState(criarNovoCredorPadrao);
   const [salvandoCredor, setSalvandoCredor] = useState(false);
   const [buscaInsumo, setBuscaInsumo] = useState('');
@@ -328,13 +339,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [modalApropriacaoIndex, setModalApropriacaoIndex] = useState(null);
   const [rateiosModal, setRateiosModal] = useState([]);
   const [previewArquivo, setPreviewArquivo] = useState(null);
-  const [itemManual, setItemManual] = useState({
-    nome_manual: '',
-    unidade_id: '',
-    unidade_sigla_manual: '',
-    quantidade: '1',
-    especificacao: ''
-  });
+  const [itemManual, setItemManual] = useState(criarItemManualFormPadrao);
+  const [rateiosItemManual, setRateiosItemManual] = useState(() => [criarRateioBase('1')]);
 
   // O erro do campo sai assim que a pessoa mexe nele — mensagem de validação
   // que sobrevive à correção vira ruído e ensina a ignorar a próxima.
@@ -517,6 +523,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       fechado: Math.abs(saldo) <= 0.01 && total > 0
     };
   }, [itemModalAtual, rateiosModal]);
+
+  const resumoApropriacaoItemManual = useMemo(() => calcularResumoRateios({
+    quantidade: itemManual.quantidade,
+    apropriacoes: rateiosItemManual
+  }), [itemManual.quantidade, rateiosItemManual]);
 
   useEffect(() => {
     if (draftCarregadoRef.current) {
@@ -1084,6 +1095,47 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     }
   }
 
+  function abrirModalItemManual() {
+    const formulario = criarItemManualFormPadrao();
+    setItemManual(formulario);
+    setRateiosItemManual([criarRateioBase(formulario.quantidade)]);
+    setErroRateiosItemManual('');
+    setErrosCampo((atual) => ({ ...atual, item_manual: '' }));
+    setModalManualAberto(true);
+  }
+
+  function fecharModalItemManual() {
+    setModalManualAberto(false);
+    setErroRateiosItemManual('');
+  }
+
+  function atualizarQuantidadeItemManual(quantidade) {
+    setItemManual((atual) => ({ ...atual, quantidade }));
+    setErroRateiosItemManual('');
+    setRateiosItemManual((atuais) => (
+      atuais.length === 1
+        ? [{ ...atuais[0], quantidade_apropriada: quantidade }]
+        : atuais
+    ));
+  }
+
+  function atualizarRateioItemManual(index, campo, valor) {
+    setErroRateiosItemManual('');
+    setRateiosItemManual((atuais) => atuais.map((rateio, rateioIndex) => (
+      rateioIndex === index ? { ...rateio, [campo]: valor } : rateio
+    )));
+  }
+
+  function adicionarRateioItemManual() {
+    setErroRateiosItemManual('');
+    setRateiosItemManual((atuais) => [...atuais, criarRateioBase('')]);
+  }
+
+  function removerRateioItemManual(index) {
+    setErroRateiosItemManual('');
+    setRateiosItemManual((atuais) => atuais.filter((_, rateioIndex) => rateioIndex !== index));
+  }
+
   function adicionarItemManual() {
     if (!obraId) {
       /*
@@ -1100,17 +1152,24 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       return;
     }
 
-    setItens((atual) => [
-      ...atual,
-      criarItemManualBase(
-        {
-          ...itemManual,
-          quantidade: itemManual.quantidade || '1'
-        },
-        necessarioPara
-      )
-    ]);
-    setItemManual({ nome_manual: '', unidade_id: '', unidade_sigla_manual: '', quantidade: '1', especificacao: '' });
+    const itemNovo = criarItemManualBase(
+      {
+        ...itemManual,
+        quantidade: itemManual.quantidade || '1',
+        apropriacoes: rateiosItemManual
+      },
+      necessarioPara
+    );
+    const validacaoRateios = validarRateiosItem(itemNovo);
+    if (!validacaoRateios.ok) {
+      setErroRateiosItemManual(validacaoRateios.mensagem);
+      return;
+    }
+
+    setItens((atual) => [...atual, itemNovo]);
+    setItemManual(criarItemManualFormPadrao());
+    setRateiosItemManual([criarRateioBase('1')]);
+    setErroRateiosItemManual('');
     setErrosCampo({});
     setModalManualAberto(false);
   }
@@ -2090,7 +2149,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           titulo="Insumos"
           className="compra-insumos-card"
           acoes={(
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => setModalManualAberto(true)}>
+            <button type="button" className="btn btn-outline btn-sm" onClick={abrirModalItemManual}>
               Item manual
             </button>
           )}
@@ -2479,13 +2538,13 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       <OverlayModal
         aberto={modalManualAberto}
         rotulo="Novo item manual"
-        largura="var(--modal-max-w-md, 680px)"
-        onFechar={() => setModalManualAberto(false)}
+        largura="var(--modal-max-w-lg, 960px)"
+        onFechar={fecharModalItemManual}
       >
         <div data-modal="cabecalho" className="app-bloco-head">
           <h2 className="app-bloco-titulo">Novo item manual</h2>
           <span className="app-bloco-acoes">
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => setModalManualAberto(false)}>Fechar</button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalItemManual}>Fechar</button>
           </span>
         </div>
 
@@ -2534,7 +2593,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                 step="0.01"
                 className="input"
                 value={itemManual.quantidade}
-                onChange={(event) => setItemManual((atual) => ({ ...atual, quantidade: event.target.value }))}
+                onChange={(event) => atualizarQuantidadeItemManual(event.target.value)}
               />
             </CampoForm>
             {!modoCompraDireta && (
@@ -2548,11 +2607,72 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
               </CampoForm>
             )}
           </FormSecao>
+
+          <BlocoConteudo
+            titulo="Apropriação do item"
+            variante="secundario"
+            descricao="Distribua toda a quantidade do item antes de adicioná-lo à solicitação."
+            acoes={(
+              <button type="button" className="btn btn-outline btn-sm" onClick={adicionarRateioItemManual}>
+                Adicionar apropriação
+              </button>
+            )}
+          >
+            <StatGrid colunas={3}>
+              <StatTile label="Total" valor={formatarQuantidade(resumoApropriacaoItemManual.total)} />
+              <StatTile label="Distribuído" valor={formatarQuantidade(resumoApropriacaoItemManual.distribuido)} />
+              <StatTile
+                label="Saldo"
+                valor={formatarQuantidade(resumoApropriacaoItemManual.saldo)}
+                tom={resumoApropriacaoItemManual.fechado ? 'success' : 'warning'}
+              />
+            </StatGrid>
+
+            <div className="mt-3 grid gap-3">
+              {rateiosItemManual.map((rateio, index) => (
+                <div
+                  key={`rateio-item-manual-${index}`}
+                  className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3"
+                >
+                  <FormSecao colunas={3}>
+                    <CampoForm label="Apropriação" span={2}>
+                      <ApropriacaoAutocomplete
+                        value={rateio.apropriacao_id}
+                        options={apropriacoes}
+                        onChange={(id) => atualizarRateioItemManual(index, 'apropriacao_id', id)}
+                      />
+                    </CampoForm>
+                    <CampoForm label="Quantidade apropriada">
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        className="input"
+                        value={rateio.quantidade_apropriada}
+                        onChange={(event) => atualizarRateioItemManual(index, 'quantidade_apropriada', event.target.value)}
+                      />
+                    </CampoForm>
+                  </FormSecao>
+                  <div className="app-actionbar">
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm btn-perigo-suave"
+                      onClick={() => removerRateioItemManual(index)}
+                      disabled={rateiosItemManual.length <= 1}
+                    >
+                      Remover
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <ErroCampo mensagem={erroRateiosItemManual} />
+          </BlocoConteudo>
         </div>
 
         <div data-modal="rodape" className="app-actionbar p-4">
           <span className="app-actionbar-apartada">
-            <button type="button" className="btn btn-outline" onClick={() => setModalManualAberto(false)}>Cancelar</button>
+            <button type="button" className="btn btn-outline" onClick={fecharModalItemManual}>Cancelar</button>
             <button type="button" className="btn btn-primary" onClick={adicionarItemManual}>Adicionar</button>
           </span>
         </div>

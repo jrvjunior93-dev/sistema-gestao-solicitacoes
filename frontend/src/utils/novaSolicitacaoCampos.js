@@ -116,7 +116,7 @@ function padraoCampo(id, behavior = {}, contexto = {}) {
     case 'credor':
       return { visivel: behavior.mostrar_credor !== false, obrigatorio: Boolean(behavior.exige_credor) };
     case 'cadastro_credor':
-      return { visivel: false, obrigatorio: false };
+      return { visivel: Boolean(behavior.usa_fluxo_contrato_novo), obrigatorio: false };
     case 'favorecido':
       return { visivel: Boolean(behavior.mostrar_favorecido), obrigatorio: Boolean(behavior.exige_favorecido) };
     case 'forma_pagamento':

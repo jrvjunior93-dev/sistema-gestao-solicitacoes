@@ -19,7 +19,15 @@ import { buscarParceiroPorId, buscarParceiros } from '../../services/parceiros';
 import { cadastrarCredorSolicitacao, updateCredorSolicitacao } from '../../services/solicitacoes';
 import { getEmpresasGrupo } from '../../services/empresasGrupo';
 import { getObras } from '../../services/obras';
-import { formatCurrencyInput, getCpfCnpjError, getPixDocumentError, maskCpfCnpj, normalizeCurrencyTyping } from '../../utils/formatters';
+import {
+  formatCurrencyInput,
+  getCpfCnpjError,
+  getPixDocumentError,
+  isValidCnpj,
+  isValidCpf,
+  maskCpfCnpj,
+  normalizeCurrencyTyping
+} from '../../utils/formatters';
 import {
   categoriaFinanceiraMatchesAutocomplete,
   categoriaFinanceiraMatchesSearch
@@ -146,6 +154,40 @@ function getParceiroPixOptions(parceiro) {
 
 function getParceiroPixPrincipal(parceiro) {
   return getParceiroPixOptions(parceiro)[0] || null;
+}
+
+function normalizePixKey(value) {
+  const texto = String(value || '').trim();
+  if (!texto) return '';
+  if (texto.includes('@')) return texto.toLowerCase();
+  const somenteDigitos = texto.replace(/\D/g, '');
+  return somenteDigitos.length >= 10 ? somenteDigitos : texto.toLowerCase();
+}
+
+function inferPixKeyType(value, telefone = '') {
+  const texto = String(value || '').trim();
+  const digitos = texto.replace(/\D/g, '');
+  const telefoneDigitos = String(telefone || '').replace(/\D/g, '');
+  const telefoneSemPais = telefoneDigitos.startsWith('55') && telefoneDigitos.length > 11
+    ? telefoneDigitos.slice(2)
+    : telefoneDigitos;
+  const chaveSemPais = digitos.startsWith('55') && digitos.length > 11 ? digitos.slice(2) : digitos;
+
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(texto)) return 'EMAIL';
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(texto)) {
+    return 'ALEATORIA';
+  }
+  if (telefoneSemPais && chaveSemPais === telefoneSemPais) return 'TELEFONE';
+  if (isValidCpf(digitos)) return 'CPF';
+  if (isValidCnpj(digitos)) return 'CNPJ';
+  if (digitos.length >= 10 && digitos.length <= 13) return 'TELEFONE';
+  return 'ALEATORIA';
+}
+
+function findPartnerPixOption(partner, pixKey) {
+  const normalized = normalizePixKey(pixKey);
+  if (!normalized) return null;
+  return getParceiroPixOptions(partner).find((item) => normalizePixKey(item.chave) === normalized) || null;
 }
 
 function createPaymentDraft() {
@@ -955,21 +997,57 @@ export default function FinanceiroCard({
     let active = true;
     setLoadingBeneficiaries(true);
 
+    const favorecidoId = solicitacao?.favorecido?.id || solicitacao?.favorecido_id || null;
+    const favorecidoEhCredor = favorecidoId && String(favorecidoId) === String(parceiroPagamentoId);
+
     Promise.all([
       buscarParceiroPorId(parceiroPagamentoId).catch(() => selectedPartner || null),
-      getPaymentBeneficiaries({ parceiro_id: parceiroPagamentoId }).catch(() => [])
+      getPaymentBeneficiaries({ parceiro_id: parceiroPagamentoId }).catch(() => []),
+      favorecidoId && !favorecidoEhCredor
+        ? buscarParceiroPorId(favorecidoId).catch(() => solicitacao?.favorecido || null)
+        : Promise.resolve(null)
     ])
-      .then(([parceiroCompleto, data]) => {
+      .then(([parceiroCompleto, data, favorecidoCompletoCarregado]) => {
         if (!active) return;
         const lista = Array.isArray(data) ? data : [];
-        const beneficiary = lista.find((item) => item.ativo !== false && item.pix_chave) || lista[0] || null;
+        const chavePixSolicitacao = String(solicitacao?.favorecido_chave_pix || '').trim();
+        const favorecidoCompleto = favorecidoEhCredor
+          ? parceiroCompleto
+          : (favorecidoCompletoCarregado || solicitacao?.favorecido || null);
+        const beneficiaryDaSolicitacao = chavePixSolicitacao
+          ? lista.find((item) => (
+              item.ativo !== false
+              && normalizePixKey(item.pix_chave) === normalizePixKey(chavePixSolicitacao)
+            )) || null
+          : null;
+        const beneficiary = beneficiaryDaSolicitacao
+          || lista.find((item) => item.ativo !== false && item.pix_chave)
+          || lista[0]
+          || null;
+        const pixDaSolicitacao = findPartnerPixOption(favorecidoCompleto, chavePixSolicitacao);
         const pix = getParceiroPixPrincipal(parceiroCompleto);
-        const possuiDadosPix = Boolean(beneficiary?.pix_chave || pix?.chave);
+        const possuiDadosPix = Boolean(chavePixSolicitacao || beneficiary?.pix_chave || pix?.chave);
 
         setBeneficiaries(lista);
         if (parceiroCompleto?.id) {
           setSelectedPartner(parceiroCompleto);
         }
+
+        if (chavePixSolicitacao) {
+          setPaymentDraft({
+            preparar_pagamento_pix: true,
+            usar_credor_como_favorecido: Boolean(favorecidoEhCredor && pixDaSolicitacao),
+            payment_beneficiary_id: beneficiaryDaSolicitacao?.id ? String(beneficiaryDaSolicitacao.id) : '',
+            nome: favorecidoCompleto?.nome || beneficiaryDaSolicitacao?.nome || parceiroCompleto?.nome || '',
+            cpf_cnpj: favorecidoCompleto?.cpf_cnpj || beneficiaryDaSolicitacao?.cpf_cnpj || parceiroCompleto?.cpf_cnpj || '',
+            pix_tipo_chave: pixDaSolicitacao?.tipo
+              || beneficiaryDaSolicitacao?.pix_tipo_chave
+              || inferPixKeyType(chavePixSolicitacao, favorecidoCompleto?.telefone),
+            pix_chave: chavePixSolicitacao
+          });
+          return;
+        }
+
         setPaymentDraft({
           preparar_pagamento_pix: possuiDadosPix,
           usar_credor_como_favorecido: !beneficiary && Boolean(pix?.chave),
@@ -987,7 +1065,15 @@ export default function FinanceiroCard({
     return () => {
       active = false;
     };
-  }, [modalOpen, form.tipo, parceiroPagamentoId, podeGerenciarDadosPagamento]);
+  }, [
+    modalOpen,
+    form.tipo,
+    parceiroPagamentoId,
+    podeGerenciarDadosPagamento,
+    solicitacao?.favorecido?.id,
+    solicitacao?.favorecido_id,
+    solicitacao?.favorecido_chave_pix
+  ]);
 
   useEffect(() => {
     if (!modalOpen) return undefined;

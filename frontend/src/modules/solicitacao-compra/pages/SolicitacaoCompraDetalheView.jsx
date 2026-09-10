@@ -86,7 +86,11 @@ function combinarItensSolicitacaoCompra(solicitacao, apropriacoes = []) {
     quantidade: item.quantidade,
     especificacao: item.especificacao || '-',
     apropriacao_id: item.apropriacao_id || '',
-    apropriacao: montarLinhasResumoApropriacao(item, apropriacoes).join(' | ') || item.apropriacao?.codigo || '-',
+    apropriacao: montarLinhasResumoApropriacao(item, apropriacoes).join(' | ')
+      || item.apropriacao?.descricao
+      || item.apropriacao?.nome
+      || item.apropriacao?.codigo
+      || '-',
     apropriacoes: Array.isArray(item.apropriacoes) ? item.apropriacoes : [],
     apropriacao_linhas: item.apropriacao_linhas || [],
     necessario_para: item.necessario_para,
@@ -113,7 +117,11 @@ function combinarItensSolicitacaoCompra(solicitacao, apropriacoes = []) {
       nome_original: item.nome_manual || '-',
       especificacao_original: item.especificacao || '-',
       apropriacao_id: item.apropriacao_id || '',
-      apropriacao: montarLinhasResumoApropriacao(item, apropriacoes).join(' | ') || item.apropriacao?.codigo || '-',
+      apropriacao: montarLinhasResumoApropriacao(item, apropriacoes).join(' | ')
+        || item.apropriacao?.descricao
+        || item.apropriacao?.nome
+        || item.apropriacao?.codigo
+        || '-',
       apropriacoes: Array.isArray(item.apropriacoes) ? item.apropriacoes : [],
       apropriacao_linhas: item.apropriacao_linhas || [],
       necessario_para: item.necessario_para,
