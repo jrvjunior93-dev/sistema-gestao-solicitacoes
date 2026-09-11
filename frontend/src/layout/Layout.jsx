@@ -19,6 +19,8 @@ import {
 import { isSuperadmin } from '../utils/acessoProduto';
 import { findActiveNode, getVisibleModule, resolveLabel } from '../navigation/navigationConfig';
 import CommandPalette from '../navigation/CommandPalette';
+import WorkspaceTabs from '../navigation/WorkspaceTabs';
+import useWorkspaceTabs, { routeFromInternalAnchor } from '../navigation/useWorkspaceTabs';
 import { AtalhosProvider } from '../navigation/AtalhosContext';
 import AtalhosTopbar from '../navigation/AtalhosTopbar';
 import { isNativeApp, registerNativeBackButtonHandler } from '../mobile/runtime';
@@ -113,6 +115,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
   const [buscaAberta, setBuscaAberta] = useState(false);
+  const [buscaModo, setBuscaModo] = useState('navigate');
   const [comunicacaoNovasCount, setComunicacaoNovasCount] = useState(0);
   const [instalacao, setInstalacao] = useState({
     product_name: 'Fluxy',
@@ -124,6 +127,14 @@ export default function Layout() {
   const superadmin = isSuperadmin(user);
   const comprasResponsiveRoute = isComprasResponsiveRoute(location.pathname);
   const custosRecebiveisResponsiveRoute = location.pathname.startsWith('/custos-recebiveis');
+  const {
+    tabs: workspaceTabs,
+    activeId: activeWorkspaceTabId,
+    canOpen: canOpenWorkspaceTab,
+    activateTab: activateWorkspaceTab,
+    openTab: openWorkspaceTab,
+    closeTab: closeWorkspaceTab
+  } = useWorkspaceTabs(user);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -139,6 +150,7 @@ export default function Layout() {
     const onKeyDown = (event) => {
       if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === 'k') {
         event.preventDefault();
+        setBuscaModo('navigate');
         setBuscaAberta((atual) => !atual);
       }
     };
@@ -227,6 +239,46 @@ export default function Layout() {
   const brandLabel = instalacao.product_name || 'Fluxy';
   const toggleTheme = () => setTheme((current) => (current === 'light' ? 'dark' : 'light'));
   const fecharBusca = useCallback(() => setBuscaAberta(false), []);
+  const abrirBuscaAtual = useCallback(() => {
+    setBuscaModo('navigate');
+    setBuscaAberta(true);
+  }, []);
+  const abrirBuscaNovaAba = useCallback(() => {
+    if (!canOpenWorkspaceTab) return;
+    setBuscaModo('new-tab');
+    setBuscaAberta(true);
+  }, [canOpenWorkspaceTab]);
+  const navegarDaBusca = useCallback((link, { title = '' } = {}) => {
+    if (buscaModo === 'new-tab') {
+      openWorkspaceTab(link, title);
+      return;
+    }
+    navigate(link);
+  }, [buscaModo, navigate, openWorkspaceTab]);
+
+  // Ctrl/Cmd+clique, clique do meio e links internos com target="_blank"
+  // abrem uma aba do Fluxy. Downloads e destinos externos preservam o
+  // comportamento nativo do navegador.
+  const abrirLinkEmAbaInterna = useCallback((event) => {
+    if (event.defaultPrevented || event.shiftKey || event.altKey) return;
+
+    const anchor = event.target?.closest?.('a[href]');
+    if (!anchor) return;
+
+    const cliqueModificado = event.ctrlKey || event.metaKey;
+    const cliqueDoMeio = event.type === 'auxclick' && event.button === 1;
+    const novaAbaDeclarada = anchor.getAttribute('target') === '_blank';
+    if (!cliqueModificado && !cliqueDoMeio && !novaAbaDeclarada) return;
+
+    const route = routeFromInternalAnchor(anchor);
+    if (!route) return;
+
+    const title = anchor.dataset.workspaceTitle || anchor.textContent || '';
+    if (!openWorkspaceTab(route, title)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+  }, [openWorkspaceTab]);
 
   const perfilUpper = String(user?.perfil || '').toUpperCase();
   const tituloDocumento = useMemo(() => {
@@ -246,7 +298,11 @@ export default function Layout() {
       {/* overflow-x-CLIP, não hidden: hidden acopla overflow-y:auto e o shell
           vira um scrollport que nunca rola — a topbar e o cabeçalho fixo
           (R13) "grudavam" nele em vez de grudar na janela (defeito 02/09). */}
-      <div className={`layout-shell fluxy-app-shell flex min-h-screen overflow-x-clip ${nativeApp ? 'layout-shell-native' : ''} ${custosRecebiveisResponsiveRoute ? 'custos-recebiveis-layout-scope' : ''}`}>
+      <div
+        className={`layout-shell fluxy-app-shell flex min-h-screen overflow-x-clip ${nativeApp ? 'layout-shell-native' : ''} ${custosRecebiveisResponsiveRoute ? 'custos-recebiveis-layout-scope' : ''}`}
+        onClickCapture={abrirLinkEmAbaInterna}
+        onAuxClickCapture={abrirLinkEmAbaInterna}
+      >
         <OperationalAuditTracker />
         <div className="layout-shell-backdrop" aria-hidden="true" />
 
@@ -272,7 +328,7 @@ export default function Layout() {
                 <button
                   type="button"
                   className="fx-search-btn"
-                  onClick={() => setBuscaAberta(true)}
+                  onClick={abrirBuscaAtual}
                   aria-label="Buscar tela (Ctrl+K)"
                   aria-haspopup="dialog"
                 >
@@ -407,6 +463,15 @@ export default function Layout() {
                   <span className="hidden lg:inline">Sair</span>
                 </button>
               </div>
+
+              <WorkspaceTabs
+                tabs={workspaceTabs}
+                activeId={activeWorkspaceTabId}
+                canOpen={canOpenWorkspaceTab}
+                onActivate={activateWorkspaceTab}
+                onClose={closeWorkspaceTab}
+                onNewTab={abrirBuscaNovaAba}
+              />
             </header>
 
             <Suspense fallback={<AppRouteFallback />}>
@@ -415,7 +480,12 @@ export default function Layout() {
           </div>
         </main>
 
-        <CommandPalette open={buscaAberta} onClose={fecharBusca} />
+        <CommandPalette
+          open={buscaAberta}
+          onClose={fecharBusca}
+          mode={buscaModo}
+          onNavigate={navegarDaBusca}
+        />
       </div>
     </div>
     </AtalhosProvider>

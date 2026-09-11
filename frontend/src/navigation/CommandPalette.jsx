@@ -39,7 +39,7 @@ function Realce({ texto, termo }) {
 // usuários) agrupados por tipo. Cada grupo vem do backend já filtrado
 // pela MESMA regra de visibilidade da tela correspondente: o usuário só
 // encontra aqui o que já poderia ver nas listas.
-export default function CommandPalette({ open, onClose }) {
+export default function CommandPalette({ open, onClose, mode = 'navigate', onNavigate }) {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
@@ -152,8 +152,12 @@ export default function CommandPalette({ open, onClose }) {
 
   if (!open) return null;
 
-  const abrir = (link) => {
+  const abrir = (link, title = '') => {
     onClose();
+    if (typeof onNavigate === 'function') {
+      onNavigate(link, { title });
+      return;
+    }
     navigate(link);
   };
 
@@ -170,7 +174,7 @@ export default function CommandPalette({ open, onClose }) {
     } else if (event.key === 'Enter') {
       event.preventDefault();
       const alvo = navegaveis[selecionado];
-      if (alvo) abrir(alvo.item.link);
+      if (alvo) abrir(alvo.item.link, alvo.item.titulo);
     }
   };
 
@@ -188,7 +192,7 @@ export default function CommandPalette({ open, onClose }) {
         className="fx-cmdk"
         role="dialog"
         aria-modal="true"
-        aria-label="Busca universal"
+        aria-label={mode === 'new-tab' ? 'Buscar tela para abrir em nova aba' : 'Busca universal'}
         onKeyDown={onKeyDown}
       >
         <div className="fx-cmdk-input-wrap">
@@ -199,13 +203,16 @@ export default function CommandPalette({ open, onClose }) {
             type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar telas, solicitações, obras, contratos, títulos, pessoas…"
-            aria-label="Busca universal"
+            placeholder={mode === 'new-tab'
+              ? 'Buscar a tela ou registro para abrir em nova aba…'
+              : 'Buscar telas, solicitações, obras, contratos, títulos, pessoas…'}
+            aria-label={mode === 'new-tab' ? 'Buscar tela para abrir em nova aba' : 'Busca universal'}
             role="combobox"
             aria-expanded="true"
             aria-controls="fx-cmdk-resultados"
           />
           {buscando && <span className="fx-cmdk-buscando" aria-hidden="true" />}
+          {mode === 'new-tab' && <span className="fx-cmdk-mode">Nova aba</span>}
           <kbd className="fx-search-kbd">Esc</kbd>
         </div>
 
@@ -229,7 +236,7 @@ export default function CommandPalette({ open, onClose }) {
                           style={item.tela ? { '--fx-cmdk-accent': `var(--module-${item.tela.moduleId})` } : undefined}
                           onMouseEnter={() => setSelecionado(idx)}
                         >
-                          <button type="button" className="fx-cmdk-item-main" onClick={() => abrir(item.link)}>
+                          <button type="button" className="fx-cmdk-item-main" onClick={() => abrir(item.link, item.titulo)}>
                             {Icone && <Icone aria-hidden="true" />}
                             <span className="fx-cmdk-item-titulo">
                               <Realce texto={item.titulo} termo={query} />
@@ -248,7 +255,7 @@ export default function CommandPalette({ open, onClose }) {
                                   key={acao.rotulo}
                                   type="button"
                                   className="fx-cmdk-acao"
-                                  onClick={() => abrir(acao.link)}
+                                  onClick={() => abrir(acao.link, acao.rotulo)}
                                 >
                                   {acao.rotulo}
                                 </button>
@@ -271,7 +278,7 @@ export default function CommandPalette({ open, onClose }) {
                           role="option"
                           aria-selected={idx === selecionado}
                           onMouseEnter={() => setSelecionado(idx)}
-                          onClick={() => abrir(grupo.verTodos)}
+                          onClick={() => abrir(grupo.verTodos, `Ver todos em ${grupo.rotulo}`)}
                         >
                           <HiOutlineArrowRight aria-hidden="true" />
                           ver todos em {grupo.rotulo}
@@ -293,7 +300,7 @@ export default function CommandPalette({ open, onClose }) {
 
         <div className="fx-cmdk-hint">
           <span>↑↓ navegar</span>
-          <span>Enter abrir</span>
+          <span>{mode === 'new-tab' ? 'Enter abrir em nova aba' : 'Enter abrir'}</span>
           <span>Esc fechar</span>
         </div>
       </div>

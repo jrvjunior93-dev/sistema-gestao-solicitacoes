@@ -805,6 +805,165 @@
   justify-content: flex-end;
 }
 
+/* =====================================================================
+   ABAS INTERNAS: contexto de trabalho persistente na sessão
+   ===================================================================== */
+.fx-workspace-tabs {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 0 calc(clamp(14px, 3vw, 28px) * -1) -10px;
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-surface-soft);
+}
+
+.fx-workspace-tabs-scroll {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border-strong) transparent;
+}
+
+.fx-workspace-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 1 220px;
+  min-width: 140px;
+  max-width: 260px;
+  min-height: 40px;
+  padding: 7px 10px 7px 16px;
+  border: 0;
+  border-right: 1px solid var(--ui-border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--app-muted-color);
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.fx-workspace-tab::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: transparent;
+}
+
+.fx-workspace-tab:hover {
+  background: var(--ui-surface);
+  color: var(--app-body-color);
+}
+
+.fx-workspace-tab.is-active {
+  background: var(--ui-surface);
+  color: var(--app-heading-color);
+  font-weight: 700;
+}
+
+.fx-workspace-tab.is-active::after {
+  background: var(--c-primary);
+}
+
+.fx-workspace-tab:focus-visible,
+.fx-workspace-tab-new:focus-visible {
+  z-index: var(--z-conteudo);
+  outline: 2px solid var(--c-primary);
+  outline-offset: -3px;
+}
+
+.fx-workspace-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fx-workspace-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  color: var(--app-subtle-color);
+}
+
+.fx-workspace-tab-close svg {
+  width: 15px;
+  height: 15px;
+}
+
+.fx-workspace-tab:hover .fx-workspace-tab-close,
+.fx-workspace-tab.is-active .fx-workspace-tab-close {
+  color: var(--app-muted-color);
+}
+
+.fx-workspace-tab-close:hover {
+  background: var(--ui-surface-soft);
+  color: var(--app-heading-color);
+}
+
+.fx-workspace-tab-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  min-height: 40px;
+  border: 0;
+  border-right: 1px solid var(--ui-border);
+  border-radius: 0;
+  background: var(--ui-surface);
+  color: var(--app-muted-color);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.fx-workspace-tab-new:hover:not(:disabled) {
+  background: var(--btn-outline-hover);
+  color: var(--c-primary);
+}
+
+.fx-workspace-tab-new:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.fx-workspace-tab-new svg {
+  width: 19px;
+  height: 19px;
+}
+
+@media (max-width: 640px) {
+  .fx-workspace-tab {
+    flex-basis: 180px;
+    min-width: 128px;
+    max-width: 190px;
+    padding-left: 12px;
+  }
+}
+
+@media (pointer: coarse) {
+  .fx-workspace-tab,
+  .fx-workspace-tab-new {
+    min-height: 44px;
+  }
+}
+
 
 /* =====================================================================
    BUSCA GLOBAL (Ctrl+K)
@@ -846,6 +1005,17 @@
   background: transparent;
   font-size: var(--fonte-corpo);
   color: var(--app-body-color);
+}
+
+.fx-cmdk-mode {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-primary) 10%, var(--ui-surface));
+  color: var(--c-primary);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .fx-cmdk-list {

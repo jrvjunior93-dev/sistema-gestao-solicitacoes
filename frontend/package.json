@@ -8,7 +8,7 @@
     "gerar:navegacao": "node scripts/gerarCatalogoNavegacaoBackend.mjs",
     "prebuild": "npm run gerar:navegacao",
     "build": "vite build",
-    "test:responsive": "node scripts/validarResponsividadeFrontend.mjs && node scripts/validarNavegacao.mjs && node scripts/varreduraCancelamento.mjs && npm run provas",
+    "test:responsive": "node scripts/validarResponsividadeFrontend.mjs && node scripts/validarNavegacao.mjs && node scripts/validarAbasInternas.mjs && node scripts/varreduraCancelamento.mjs && npm run provas",
     "verificar": "node scripts/validarLayout.mjs && node scripts/varreduraAlcance.mjs && npm run build && npm run test:responsive",
     "preview": "vite preview",
     "mobile:sync": "npm run build && npx cap sync",
@@ -16,7 +16,7 @@
     "mobile:android:open": "npx cap open android",
     "mobile:ios:add": "npx cap add ios",
     "mobile:ios:open": "npx cap open ios",
-    "test:navegacao": "node scripts/validarNavegacao.mjs",
+    "test:navegacao": "node scripts/validarNavegacao.mjs && node scripts/validarAbasInternas.mjs",
     "provas": "node scripts/provas/acentoNoCodigo.mjs && node scripts/provas/ordemDeDeclaracao.mjs && node scripts/provas/larguraDeColuna.mjs && node scripts/provas/contagemDeLinhas.mjs && node scripts/provas/contrasteDosTokens.mjs && node scripts/provas/regrasMordem.mjs && node scripts/provas/itensDaDoDMordem.mjs && node scripts/provas/itensDoRunnerMordem.mjs && node scripts/provas/tokensExistem.mjs && node scripts/provas/filtrosVisiveisMordem.mjs && node scripts/provas/paginaCabeNoCelular.mjs && node scripts/qa-preview/provaLarguraCabe.mjs && node scripts/qa-preview/provaEtiquetaCabe.mjs && node scripts/qa-preview/provaVisaoAtivaAparece.mjs && node scripts/provas/erroNaoVazaCru.mjs && node scripts/qa-preview/provaCamadasCabem.mjs && node scripts/qa-preview/provaModaisCabem.mjs && node scripts/qa-preview/provaBarraDoTopo.mjs && node scripts/qa-preview/provaTextoInteiroAparece.mjs && node scripts/provas/escSemCliqueFora.mjs",
     "cancelamento": "node scripts/varreduraCancelamento.mjs"
   },
