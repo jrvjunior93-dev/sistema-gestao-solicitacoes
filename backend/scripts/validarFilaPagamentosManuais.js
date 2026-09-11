@@ -35,6 +35,13 @@ const titlePage = readRepository('frontend/src/pages/FinanceiroTitulos.jsx');
   'idempotency_key'
 ].forEach((contract) => assert(migration.includes(contract), `Contrato ausente na migration: ${contract}`));
 
+assert(
+  !migration.includes(
+    'FOREIGN KEY (titulo_financeiro_id) REFERENCES titulos_financeiros(id) ON DELETE RESTRICT ON UPDATE CASCADE'
+  ),
+  'A FK do titulo nao pode usar ON UPDATE CASCADE porque alimenta uma coluna gerada armazenada.'
+);
+
 [
   'sequelize.transaction',
   'lock: transaction.LOCK.UPDATE',

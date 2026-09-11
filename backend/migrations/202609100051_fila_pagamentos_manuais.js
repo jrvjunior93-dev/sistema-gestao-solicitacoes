@@ -65,7 +65,7 @@ module.exports = {
         ) STORED,
         createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        CONSTRAINT fk_pagamentos_manuais_fila_titulo FOREIGN KEY (titulo_financeiro_id) REFERENCES titulos_financeiros(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+        CONSTRAINT fk_pagamentos_manuais_fila_titulo FOREIGN KEY (titulo_financeiro_id) REFERENCES titulos_financeiros(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
         CONSTRAINT fk_pagamentos_manuais_fila_conta FOREIGN KEY (conta_bancaria_id) REFERENCES contas_bancarias(id) ON DELETE RESTRICT ON UPDATE CASCADE,
         CONSTRAINT fk_pagamentos_manuais_fila_movimento FOREIGN KEY (movimento_financeiro_id) REFERENCES movimentos_financeiros(id) ON DELETE RESTRICT ON UPDATE CASCADE,
         CONSTRAINT fk_pagamentos_manuais_fila_selecionado_por FOREIGN KEY (selecionado_por) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
