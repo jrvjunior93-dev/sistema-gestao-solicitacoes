@@ -16,6 +16,7 @@
     "test:compra-catalogacao-insumos": "node scripts/validarCatalogacaoItensManuais.js",
     "test:compra-unidade-item": "node scripts/validarUnidadeItemCompra.js",
     "test:solicitacao-pix-apropriacoes": "node scripts/validarFluxosPixApropriacoesSolicitacao.js",
+    "test:competencia-dre-titulos": "node scripts/validarCompetenciaDreCriacaoTitulo.js",
     "test:compra-catalogacao-insumos:local": "node scripts/testarCatalogacaoItensManuaisBancoLocal.js",
     "test:compra-direta-frete": "node scripts/validarCompraDiretaFrete.js",
     "test:compras-performance": "node scripts/validarComprasPerformance.js",

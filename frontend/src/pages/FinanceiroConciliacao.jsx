@@ -572,7 +572,6 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
     descricao: item?.descricao_banco || '',
     valor: valorAbs ? formatCurrencyInput(valorAbs) : '',
     data_vencimento: item?.data_movimento || today(),
-    competencia_data: item?.data_movimento || '',
     considera_dre: true,
     conta_bancaria_id: contaInicialId,
     empresa_id: String(contaInicial?.empresa_id || ''),
@@ -640,7 +639,6 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
     if (!form.obra_id) { setErro('Selecione a obra.'); return; }
     if (!form.parceiro_id) { setErro('Selecione um parceiro (obrigatório).'); return; }
     if (!form.categoria_financeira_id) { setErro('Selecione a categoria financeira do título.'); return; }
-    if (!form.competencia_data) { setErro('Informe a competência DRE real do título.'); return; }
     if (form.considera_dre && !categoriaClassificadaDre) { setErro('Para considerar na DRE, selecione uma categoria financeira com grupo DRE classificado.'); return; }
 
     try {
@@ -652,7 +650,6 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
         descricao: form.descricao.trim(),
         valor,
         data_vencimento: form.data_vencimento,
-        competencia_data: form.competencia_data || undefined,
         considera_dre: Boolean(form.considera_dre),
         conta_bancaria_id: Number(form.conta_bancaria_id),
         empresa_id: Number(form.empresa_id),
@@ -748,21 +745,6 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
                 onChange={(e) => setForm((c) => ({ ...c, data_pagamento: e.target.value }))} />
             </label>
           </div>
-
-          <label className="app-filter-field">
-            <span className="app-filter-label">Competência DRE</span>
-            <DateInputBR
-              className="input w-full"
-              value={form.competencia_data}
-              onChange={(e) => setForm((c) => ({ ...c, competencia_data: e.target.value }))}
-              required={Boolean(form.considera_dre)}
-            />
-            <span className="mt-1 block text-xs text-[var(--c-muted)]">
-              {form.considera_dre
-                ? 'Obrigatoria para DRE. Informe o periodo economico real.'
-                : 'Opcional quando o titulo nao entra na DRE.'}
-            </span>
-          </label>
 
           <label className="app-filter-field">
             <span className="app-filter-label">Categoria</span>

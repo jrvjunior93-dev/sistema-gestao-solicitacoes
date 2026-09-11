@@ -1711,6 +1711,12 @@ function resolverCompetenciaTitulo(payload = {}) {
   return competenciaData;
 }
 
+function resolverCompetenciaCriacaoTitulo() {
+  // A competencia de novos titulos acompanha o dia em que o registro e criado.
+  // Nao usa vencimento, emissao ou um valor enviado pela interface.
+  return getHoje();
+}
+
 async function validarIntercompanyTitulo(payload = {}) {
   const isIntercompany = Boolean(payload.intercompany);
 
@@ -2752,7 +2758,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           numero_parcela: totalParcelasDoGrupo > 1 ? numeroParcela : null,
           total_parcelas: totalParcelasDoGrupo > 1 ? totalParcelasDoGrupo : null,
           data_compra: pagamento.dataCompra,
-          competencia_data: resolverCompetenciaTitulo({ ...payload, ...pagamento.payload }),
+          competencia_data: resolverCompetenciaCriacaoTitulo(),
           considera_dre: pagamento.payload.considera_dre !== false,
           origem_titulo: 'SOLICITACAO',
           tipo,
@@ -3102,7 +3108,7 @@ async function criarTituloManual(req, payload = {}, options = {}) {
           numero_parcela: pagamento.quantidadeParcelas > 1 ? numeroParcela : null,
           total_parcelas: pagamento.quantidadeParcelas > 1 ? pagamento.quantidadeParcelas : null,
           data_compra: pagamento.dataCompra,
-          competencia_data: resolverCompetenciaTitulo(payload),
+          competencia_data: resolverCompetenciaCriacaoTitulo(),
           considera_dre: payload.considera_dre !== false,
           origem_titulo: origemTitulo,
           tipo,
@@ -3413,7 +3419,7 @@ async function criarTituloManualComBaixaAtomica(req, payload = {}, { transaction
       valor_baixado: 0,
       data_emissao: payload.data_emissao || getHoje(),
       data_compra: payload.data_compra || payload.data_movimento || null,
-      competencia_data: resolverCompetenciaTitulo(payload),
+      competencia_data: resolverCompetenciaCriacaoTitulo(),
       considera_dre: payload.considera_dre !== false,
       data_vencimento: dataVencimento,
       data_quitacao: null,

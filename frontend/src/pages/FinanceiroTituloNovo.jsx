@@ -220,7 +220,6 @@ function buildDefaultForm(tipo = 'PAGAR') {
     valor: '',
     desconto_financeiro: '',
     data_emissao: today(),
-    competencia_data: today(),
     considera_dre: true,
     intercompany: false,
     empresa_contraparte_id: '',
@@ -547,7 +546,6 @@ export default function FinanceiroTituloNovo() {
       valor: valor ? formatCurrencyInput(Number(valor)) : current.valor,
       data_vencimento: vencimento,
       data_emissao: current.data_emissao || today(),
-      competencia_data: current.competencia_data || vencimento,
       descricao,
       numero_documento: numeroDocumento,
       observacoes,
@@ -1225,10 +1223,6 @@ export default function FinanceiroTituloNovo() {
       return 'Selecione a categoria financeira do titulo: digite no campo Categoria financeira e clique na sugestao, ou abra a lupa para ver a lista inteira. E ela que define se o titulo entra na DRE.';
     }
 
-    if (!form.competencia_data) {
-      return 'Informe a competencia DRE no campo Competencia DRE. Use o mes do fato gerador (quando a despesa/receita aconteceu), nao a data de vencimento.';
-    }
-
     const pagamentos = Array.isArray(form.pagamentos) ? form.pagamentos : [];
     if (pagamentos.length === 0) {
       return 'O titulo precisa de pelo menos uma forma de pagamento. Use o botao Adicionar forma, no bloco Formas de pagamento.';
@@ -1407,7 +1401,6 @@ export default function FinanceiroTituloNovo() {
       payload.considera_dre = isCategoriaClassificadaParaDre(categoriaSelecionada);
       payload.status = form.status || 'ABERTO';
       payload.intercompany = Boolean(form.intercompany);
-      payload.competencia_data = form.competencia_data || undefined;
       payload.forma_cobranca = form.tipo === 'PAGAR'
         ? (form.forma_cobranca || resolveFormaCobrancaPagamentos(form.pagamentos, getFormaPagamento))
         : form.forma_cobranca || undefined;
@@ -1863,21 +1856,6 @@ export default function FinanceiroTituloNovo() {
                     className="input w-full"
                     value={form.data_emissao}
                     onChange={(event) => updateField('data_emissao', event.target.value)}
-                  />
-                </CampoForm>
-
-                <CampoForm
-                  label="Competência DRE"
-                  obrigatorio={isCategoriaClassificadaParaDre(categoriaSelecionada)}
-                  hint={isCategoriaClassificadaParaDre(categoriaSelecionada)
-                    ? 'Obrigatoria para DRE. Use o mes do fato gerador, nao o vencimento.'
-                    : 'Opcional quando o titulo nao entra na DRE.'}
-                >
-                  <DateInputBR
-                    className="input w-full"
-                    value={form.competencia_data}
-                    onChange={(event) => updateField('competencia_data', event.target.value)}
-                    required={isCategoriaClassificadaParaDre(categoriaSelecionada)}
                   />
                 </CampoForm>
 

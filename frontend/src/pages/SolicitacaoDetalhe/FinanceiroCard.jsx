@@ -410,7 +410,6 @@ function createPagamento(solicitacao, valor = '', categoriaFinanceiraId = '', op
     valor,
     data_vencimento: options.data_vencimento || solicitacao?.data_vencimento || today(),
     observacoes: options.observacoes || '',
-    competencia_data: '',
     forma_pagamento_id: options.forma_pagamento_id || (solicitacao?.forma_pagamento_id ? String(solicitacao.forma_pagamento_id) : ''),
     cartao_id: '',
     quantidade_parcelas: '1',
@@ -1008,7 +1007,7 @@ export default function FinanceiroCard({
 
     Nenhuma das duas tinha estado de aberta: apareciam por texto digitado
     e sumiam só ao ESCOLHER uma categoria ou apagar a busca. Ficavam
-    sobre a "Competência DRE" logo abaixo. Clicar fora não fazia nada;
+    sobre o campo seguinte. Clicar fora não fazia nada;
     `Esc` não fazia nada.
 
     Um estado só governa as duas, porque as duas são a MESMA camada em
@@ -1448,7 +1447,7 @@ export default function FinanceiroCard({
           (item) => String(item.id) === String(pagamento.categoria_financeira_id || '')
         );
         return categoria && !isCategoriaCompativel(categoria, current.tipo)
-          ? { ...pagamento, categoria_financeira_id: '', competencia_data: '' }
+          ? { ...pagamento, categoria_financeira_id: '' }
           : pagamento;
       })
     }));
@@ -1832,13 +1831,6 @@ export default function FinanceiroCard({
         return `Selecione a categoria financeira do titulo ${pagamentoIndex + 1}.`;
       }
 
-      const categoriaPagamento = categoriasCompativeis.find(
-        (item) => String(item.id) === String(pagamento.categoria_financeira_id)
-      );
-      if (!pagamento.competencia_data) {
-        return `Informe a competencia DRE real do titulo ${pagamentoIndex + 1}.`;
-      }
-
       const dadosPagamento = pagamento.dados_pagamento || createPaymentDraft();
       if (form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && dadosPagamento.preparar_pagamento_pix) {
         if (!pagamento.parceiro_id) {
@@ -1984,7 +1976,6 @@ export default function FinanceiroCard({
         status: form.status || 'ABERTO',
         parceiro_id: selectedPartner?.id || form.parceiro_id,
         categoria_financeira_id: form.pagamentos?.[0]?.categoria_financeira_id || undefined,
-        competencia_data: form.pagamentos?.[0]?.competencia_data || undefined,
         forma_cobranca: form.tipo === 'PAGAR'
           ? (form.forma_cobranca || resolveFormaCobrancaPagamentos(form.pagamentos, getFormaPagamento))
           : form.forma_cobranca || undefined,
@@ -2023,7 +2014,6 @@ export default function FinanceiroCard({
           return {
             parceiro_id: pagamento.parceiro_id || undefined,
             categoria_financeira_id: pagamento.categoria_financeira_id || undefined,
-            competencia_data: pagamento.competencia_data || undefined,
             considera_dre: isCategoriaClassificadaParaDre(
               categoriasCompativeis.find((item) => String(item.id) === String(pagamento.categoria_financeira_id))
             ),
@@ -2853,33 +2843,6 @@ export default function FinanceiroCard({
                 </div>
               </div>
 
-              {/*
-                Estes campos usavam `app-filter-field`/`app-filter-label`, que
-                sao a faixa de FILTRO do sistema — e eles nao filtram nada:
-                escrevem o titulo. Alem de dizer a coisa errada no DOM, a marca
-                estrutural da R12 le a faixa de filtro como filtro. Viraram
-                `CampoForm`, que e o que eles sao.
-              */}
-              <div className="hidden" aria-hidden="true">
-              <FormSecao colunas={1}>
-                <CampoForm
-                  label="Competência DRE"
-                  obrigatorio={isCategoriaClassificadaParaDre(selectedCategory)}
-                  hint={isCategoriaClassificadaParaDre(selectedCategory)
-                    ? 'Obrigatoria para DRE. Informe o periodo economico real.'
-                    : 'Opcional quando o titulo nao entra na DRE.'}
-                  linha
-                >
-                  <DateInputBR
-                    className="input"
-                    value={form.competencia_data}
-                    onChange={(event) => setForm((current) => ({ ...current, competencia_data: event.target.value }))}
-                    required={isCategoriaClassificadaParaDre(selectedCategory)}
-                  />
-                </CampoForm>
-              </FormSecao>
-              </div>
-
               {false && form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && (
                 <div
                   className="rounded-2xl border p-3"
@@ -3300,21 +3263,6 @@ export default function FinanceiroCard({
                         })}
                         helperText="A categoria deste título será aplicada a todas as parcelas geradas nele."
                       />
-
-                      <CampoForm
-                        label="Competência DRE deste título"
-                        obrigatorio
-                        hint="Informe o período econômico real deste título."
-                      >
-                        <DateInputBR
-                          className="input"
-                          value={pagamento.competencia_data || ''}
-                          onChange={(event) => updatePagamento(pagamentoIndex, {
-                            competencia_data: event.target.value
-                          })}
-                          required
-                        />
-                      </CampoForm>
 
                       <div className="grid gap-3 md:grid-cols-2">
                         <label className="text-sm">
