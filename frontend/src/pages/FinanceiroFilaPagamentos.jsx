@@ -133,6 +133,29 @@ function valorParaInput(value) {
   return Number.isFinite(parsed) ? parsed.toFixed(2) : '';
 }
 
+function valorEmCentavos(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.round((parsed + Number.EPSILON) * 100) : null;
+}
+
+function tipoDivergenciaPagamento(row, draft = {}) {
+  const valorPago = valorEmCentavos(draft.valor_pago);
+  const saldo = valorEmCentavos(row?.titulo?.valor_saldo);
+  const previsto = valorEmCentavos(row?.valor_previsto);
+  if (!valorPago || saldo === null || previsto === null) return '';
+  if (valorPago < saldo) return 'PARCIAL';
+  if (valorPago > saldo) return 'ACIMA_SALDO';
+  if (valorPago !== previsto) return 'DIFERENTE_PREVISTO';
+  return '';
+}
+
+function mensagemJustificativaDivergencia(tipo) {
+  if (tipo === 'PARCIAL') return 'Justifique por que o pagamento será parcial.';
+  if (tipo === 'ACIMA_SALDO') return 'Justifique por que o pagamento será maior que o saldo.';
+  if (tipo === 'DIFERENTE_PREVISTO') return 'Justifique a diferença em relação ao valor previsto.';
+  return 'Opcional quando o valor pago corresponde ao saldo e ao previsto.';
+}
+
 export default function FinanceiroFilaPagamentos() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -189,7 +212,7 @@ export default function FinanceiroFilaPagamentos() {
               data_baixa: row.data_baixa || hojeISO(),
               conta_bancaria_id: row.conta_bancaria_id || '',
               valor_pago: valorParaInput(row.valor_informado || row?.titulo?.valor_saldo || row.valor_previsto),
-              motivo: ''
+              motivo: row.motivo || ''
             };
           }
         });
@@ -224,6 +247,10 @@ export default function FinanceiroFilaPagamentos() {
       if (!draft.data_baixa) return `Informe a data da baixa do título ${row.titulo?.codigo || row.id}.`;
       if (!Number(draft.conta_bancaria_id)) return `Selecione a conta pagadora do título ${row.titulo?.codigo || row.id}.`;
       if (!(Number(draft.valor_pago) > 0)) return `Informe um valor pago válido para o título ${row.titulo?.codigo || row.id}.`;
+      const tipoDivergencia = tipoDivergenciaPagamento(row, draft);
+      if (tipoDivergencia && !String(draft.motivo || '').trim()) {
+        return `Informe a justificativa do valor divergente para o título ${row.titulo?.codigo || row.id}.`;
+      }
     }
     return '';
   }
@@ -237,7 +264,7 @@ export default function FinanceiroFilaPagamentos() {
     const total = targetRows.reduce((sum, row) => sum + Number(drafts[row.id]?.valor_pago || 0), 0);
     const { ok } = await confirmar({
       titulo: targetRows.length === 1 ? 'Registrar baixa deste título?' : 'Registrar baixas selecionadas?',
-      mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. Valores menores registram baixa parcial; valores maiores seguem para autorização antes da baixa.`,
+      mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. Valores divergentes exigem justificativa: pagamentos parciais registram a baixa parcial e valores acima do saldo aguardam autorização.`,
       rotuloConfirmar: targetRows.length === 1 ? 'Registrar baixa' : 'Registrar baixas',
       destrutiva: false
     });
@@ -346,7 +373,7 @@ export default function FinanceiroFilaPagamentos() {
   );
   const approvingDivergences = status === 'DIVERGENTE';
   const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (status === 'PENDENTE' && canSettle);
-  const showReasonColumn = status === 'DIVERGENTE';
+  const showReasonColumn = status === 'DIVERGENTE' || status === 'PENDENTE';
   const busy = Boolean(actionKey);
 
   return (
@@ -417,7 +444,7 @@ export default function FinanceiroFilaPagamentos() {
         )}
       >
         <div className="overflow-x-auto rounded-xl border border-[var(--c-border)]" aria-label="Tabela da fila de pagamentos">
-          <table className="w-full min-w-[1520px] border-collapse text-sm">
+          <table className="w-full min-w-[1760px] border-collapse text-sm">
             <thead className="bg-[var(--ui-surface-2)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
               <tr>
                 <th className="w-10 px-3 py-3">
@@ -455,6 +482,7 @@ export default function FinanceiroFilaPagamentos() {
                 const selectable = selectableRows.some((item) => Number(item.id) === Number(row.id));
                 const accountOptions = compatibleAccounts(row);
                 const reasonVisible = reasonOpenId === row.id;
+                const tipoDivergencia = editable ? tipoDivergenciaPagamento(row, drafts[row.id]) : '';
                 return (
                   <tr key={row.id} className={row.status === 'DIVERGENTE' ? 'bg-[var(--sem-danger-bg)]' : row.status === 'NAO_PAGO' ? 'bg-[var(--sem-warning-bg)]' : ''}>
                     <td className="px-3 py-3 align-top">
@@ -530,9 +558,26 @@ export default function FinanceiroFilaPagamentos() {
                     </td>
                     {showReasonColumn ? (
                       <td className="px-3 py-3 align-top">
-                        <div className="max-w-[300px] whitespace-pre-wrap text-xs text-[var(--c-text)]" title={row.motivo || ''}>
-                          {row.motivo || 'Sem justificativa informada.'}
-                        </div>
+                        {editable ? (
+                          <div className="w-[280px]">
+                            <textarea
+                              className={`input min-h-[72px] w-full ${tipoDivergencia && !String(drafts[row.id]?.motivo || '').trim() ? 'border-[var(--sem-danger)]' : ''}`}
+                              value={drafts[row.id]?.motivo || ''}
+                              onChange={(event) => updateDraft(row.id, { motivo: event.target.value })}
+                              placeholder={tipoDivergencia ? 'Justificativa obrigatória' : 'Observação opcional'}
+                              required={Boolean(tipoDivergencia)}
+                              aria-label={`Justificativa do pagamento de ${title.codigo || row.id}`}
+                              disabled={busy}
+                            />
+                            <div className={`mt-1 text-xs ${tipoDivergencia ? 'font-semibold text-[var(--sem-danger)]' : 'text-[var(--c-muted)]'}`}>
+                              {mensagemJustificativaDivergencia(tipoDivergencia)}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="max-w-[300px] whitespace-pre-wrap text-xs text-[var(--c-text)]" title={row.motivo || ''}>
+                            {row.motivo || 'Sem justificativa informada.'}
+                          </div>
+                        )}
                       </td>
                     ) : null}
                     <td className="px-3 py-3 align-top">

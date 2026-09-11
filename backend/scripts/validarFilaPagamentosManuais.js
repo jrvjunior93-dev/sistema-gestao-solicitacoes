@@ -4,6 +4,9 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const {
+  classificarDivergenciaPagamento
+} = require('../src/services/pagamentoManualFilaService');
+const {
   validateManualPaymentQueueApproveBody,
   validateManualPaymentQueueCreateBody,
   validateManualPaymentQueueProcessBody,
@@ -84,9 +87,12 @@ assert(titleService.includes('options.autorizarValorAcimaSaldo !== true'), 'Valo
 
 assert(app.includes('path="financeiro/fila-pagamentos"'), 'Rota da tela da fila ausente.');
 assert(navigation.includes("to: '/financeiro/fila-pagamentos'"), 'Fila ausente da fonte unica de navegacao.');
-assert(page.includes('min-w-[1520px]'), 'A grade operacional deve preservar colunas com rolagem horizontal.');
+assert(page.includes('min-w-[1760px]'), 'A grade operacional deve preservar colunas com rolagem horizontal.');
 assert(page.includes('O processamento em massa é atômico'), 'A tela deve explicar o contrato transacional do lote.');
 assert(page.includes('Justificativa da aprovação'), 'A autorizacao de divergencia deve exigir justificativa.');
+assert(page.includes('Justifique por que o pagamento será parcial.'), 'Pagamento parcial deve solicitar justificativa na linha.');
+assert(page.includes('Justifique por que o pagamento será maior que o saldo.'), 'Pagamento acima do saldo deve solicitar justificativa na linha.');
+assert(page.includes('tipoDivergencia && !String(draft.motivo'), 'A interface deve bloquear divergencia sem justificativa.');
 assert(page.includes('Autorizar baixa'), 'A fila deve oferecer aprovacao individual da divergencia.');
 assert(page.includes('aria-pressed={active}'), 'Os cards de resumo devem funcionar como filtros acessiveis.');
 assert(titlePage.includes('Enviar para pagamento'), 'Contas a Pagar deve permitir preparar a fila.');
@@ -122,5 +128,12 @@ assert.throws(
   () => validateManualPaymentQueueProcessBody({ itens: [{ fila_id: 1, data_baixa: '', conta_bancaria_id: 2, valor_pago: 10 }] }),
   /Data da baixa/
 );
+
+assert.strictEqual(classificarDivergenciaPagamento(80, 100, 100), 'PARCIAL');
+assert.strictEqual(classificarDivergenciaPagamento(120, 100, 100), 'ACIMA_SALDO');
+assert.strictEqual(classificarDivergenciaPagamento(100, 100, 120), 'DIFERENTE_PREVISTO');
+assert.strictEqual(classificarDivergenciaPagamento(100, 100, 100), '');
+assert(service.includes('if (divergente && !motivo)'));
+assert(service.includes('Informe a justificativa do ${descricaoDivergencia}'));
 
 console.log('Fila manual de pagamentos validada com sucesso.');

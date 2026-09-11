@@ -217,6 +217,16 @@ async function carregarEmpresaTitulo(titulo, transaction) {
   return obra?.empresa_grupo_id ? Number(obra.empresa_grupo_id) : null;
 }
 
+function classificarDivergenciaPagamento(valorPago, saldoAtual, valorPrevisto) {
+  const pago = roundCurrency(valorPago);
+  const saldo = roundCurrency(saldoAtual);
+  const previsto = roundCurrency(valorPrevisto);
+  if (pago < saldo) return 'PARCIAL';
+  if (pago > saldo) return 'ACIMA_SALDO';
+  if (pago !== previsto) return 'DIFERENTE_PREVISTO';
+  return '';
+}
+
 async function processarItemFila(req, itemPayload, requestKey, transaction) {
   const filaItem = await PagamentoManualFilaItem.findByPk(itemPayload.fila_id, {
     transaction,
@@ -258,6 +268,22 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   const valorPago = roundCurrency(itemPayload.valor_pago);
   const saldoAtual = roundCurrency(titulo.valor_saldo);
   const valorPrevisto = roundCurrency(filaItem.valor_previsto);
+  const tipoDivergencia = classificarDivergenciaPagamento(valorPago, saldoAtual, valorPrevisto);
+  const divergente = Boolean(tipoDivergencia);
+  const motivo = String(itemPayload.motivo || '').trim();
+
+  if (divergente && !motivo) {
+    const descricaoDivergencia = tipoDivergencia === 'PARCIAL'
+      ? 'pagamento parcial'
+      : tipoDivergencia === 'ACIMA_SALDO'
+        ? 'pagamento acima do saldo'
+        : 'valor diferente do previsto na fila';
+    throw createHttpError(
+      400,
+      `Informe a justificativa do ${descricaoDivergencia} para o titulo ${titulo.codigo || titulo.id}.`
+    );
+  }
+
   const commonUpdate = {
     valor_informado: valorPago,
     data_baixa: itemPayload.data_baixa,
@@ -268,7 +294,6 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   };
 
   if (valorPago > saldoAtual) {
-    const motivo = itemPayload.motivo || `Valor informado (${valorPago.toFixed(2)}) maior que o saldo atual (${saldoAtual.toFixed(2)}).`;
     await filaItem.update({ ...commonUpdate, status: 'DIVERGENTE', motivo }, { transaction });
     return { filaItem, titulo, baixaRegistrada: false, divergente: true };
   }
@@ -283,21 +308,17 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
     multa: 0,
     desconto: 0,
     data_movimento: itemPayload.data_baixa,
-    observacoes: itemPayload.motivo || `Baixa registrada pela fila de pagamentos #${filaItem.id}.`
+    observacoes: motivo || `Baixa registrada pela fila de pagamentos #${filaItem.id}.`
   }, {
     transaction,
     autorizadoPorFilaPagamento: true,
     skipSecurityEvent: true
   });
 
-  const divergente = valorPago !== valorPrevisto || valorPago < saldoAtual;
-  const motivo = divergente
-    ? (itemPayload.motivo || `Pagamento divergente: previsto na fila ${valorPrevisto.toFixed(2)}, saldo antes da baixa ${saldoAtual.toFixed(2)} e pago ${valorPago.toFixed(2)}.`)
-    : (itemPayload.motivo || null);
   await filaItem.update({
     ...commonUpdate,
     status: divergente ? 'DIVERGENTE' : 'BAIXADO',
-    motivo,
+    motivo: motivo || null,
     movimento_financeiro_id: baixa.movimento_financeiro_id || baixa.movimento?.id || null
   }, { transaction });
 
@@ -545,6 +566,7 @@ async function resolverItemFila(req, id, payload = {}) {
 
 module.exports = {
   aprovarDivergenciasFila,
+  classificarDivergenciaPagamento,
   enfileirarTitulos,
   informarNaoPagamento,
   listarContasPagadorasFila,
