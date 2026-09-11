@@ -530,7 +530,7 @@ async function resolverItemFila(req, id, payload = {}) {
     }
     await current.update({
       status: 'RESOLVIDO',
-      motivo: payload.motivo || current.motivo,
+      motivo: current.motivo,
       resolvido_por: req.user?.id || null,
       resolvido_em: new Date()
     }, { transaction });
@@ -538,7 +538,7 @@ async function resolverItemFila(req, id, payload = {}) {
       titulo_financeiro_id: titulo.id,
       status: 'PENDENTE',
       valor_previsto: roundCurrency(titulo.valor_saldo),
-      motivo: payload.motivo || null,
+      motivo: null,
       data_vencimento_prevista: titulo.data_vencimento || null,
       selecionado_por: req.user?.id || null,
       selecionado_em: new Date()
@@ -558,7 +558,7 @@ async function resolverItemFila(req, id, payload = {}) {
     metadata: {
       titulo_financeiro_id: item.titulo_financeiro_id,
       novo_item_fila_id: result.reaberto?.id || null,
-      motivo: payload.motivo || null
+      motivo: payload.acao === 'REABRIR' ? null : (payload.motivo || null)
     }
   });
   return { item, reaberto: result.reaberto };

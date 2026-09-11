@@ -94,6 +94,8 @@ assert(page.includes('Justifique por que o pagamento será parcial.'), 'Pagament
 assert(page.includes('Justifique por que o pagamento será maior que o saldo.'), 'Pagamento acima do saldo deve solicitar justificativa na linha.');
 assert(page.includes('tipoDivergencia && !String(draft.motivo'), 'A interface deve bloquear divergencia sem justificativa.');
 assert(page.includes('Autorizar baixa'), 'A fila deve oferecer aprovacao individual da divergencia.');
+assert(page.includes("campo: reabrir ? undefined"), 'Reabrir uma divergencia nao deve solicitar nova justificativa.');
+assert(page.includes("reabrir ? '' : String(texto"), 'Reabertura nao deve enviar observacao substituta.');
 assert(page.includes('aria-pressed={active}'), 'Os cards de resumo devem funcionar como filtros acessiveis.');
 assert(titlePage.includes('Enviar para pagamento'), 'Contas a Pagar deve permitir preparar a fila.');
 assert(titlePage.includes('Pagamento divergente'), 'Contas a Pagar deve sinalizar divergencias na linha.');
@@ -135,5 +137,7 @@ assert.strictEqual(classificarDivergenciaPagamento(100, 100, 120), 'DIFERENTE_PR
 assert.strictEqual(classificarDivergenciaPagamento(100, 100, 100), '');
 assert(service.includes('if (divergente && !motivo)'));
 assert(service.includes('Informe a justificativa do ${descricaoDivergencia}'));
+assert(service.includes('motivo: current.motivo,'), 'A justificativa original deve permanecer no registro divergente.');
+assert(service.includes("motivo: payload.acao === 'REABRIR' ? null"), 'A auditoria de reabertura nao deve registrar justificativa substituta.');
 
 console.log('Fila manual de pagamentos validada com sucesso.');

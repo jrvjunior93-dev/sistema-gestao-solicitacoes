@@ -341,19 +341,20 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   async function resolve(row, action) {
+    const reabrir = action === 'REABRIR';
     const { ok, texto } = await confirmar({
-      titulo: action === 'REABRIR' ? 'Devolver título para pagamento?' : 'Encerrar esta pendência?',
-      mensagem: action === 'REABRIR'
+      titulo: reabrir ? 'Devolver título para pagamento?' : 'Encerrar esta pendência?',
+      mensagem: reabrir
         ? 'O saldo atual do título volta para a fila operacional.'
         : 'A pendência deixa de aparecer como ativa. O saldo financeiro do título não será alterado.',
-      rotuloConfirmar: action === 'REABRIR' ? 'Devolver para fila' : 'Encerrar pendência',
-      campo: { rotulo: 'Observação', obrigatorio: false, multilinha: true }
+      rotuloConfirmar: reabrir ? 'Devolver para fila' : 'Encerrar pendência',
+      campo: reabrir ? undefined : { rotulo: 'Observação', obrigatorio: false, multilinha: true }
     });
     if (!ok) return;
     setActionKey(`resolve-${row.id}`);
     try {
-      await resolverFilaPagamento(row.id, action, String(texto || '').trim());
-      avisar.sucesso(action === 'REABRIR' ? 'Título devolvido para pagamento.' : 'Pendência encerrada.');
+      await resolverFilaPagamento(row.id, action, reabrir ? '' : String(texto || '').trim());
+      avisar.sucesso(reabrir ? 'Título devolvido para pagamento.' : 'Pendência encerrada.');
       await load();
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao resolver a pendência.');
