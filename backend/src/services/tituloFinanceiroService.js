@@ -3667,7 +3667,10 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
     }
 
     const saldoAtual = roundCurrency(titulo.valor_saldo);
-    if (valorBaixa > saldoAtual) {
+    // A fila manual pode liberar pontualmente um valor divergente depois de uma
+    // segunda pessoa autorizar a baixa com justificativa. Fora desse fluxo, a
+    // protecao original continua valendo integralmente.
+    if (valorBaixa > saldoAtual && options.autorizarValorAcimaSaldo !== true) {
       // A trava de pagar mais que o saldo cai SO para parcela de contrato do fluxo novo (item 33,
       // 23/08): la o excedente e descontado da ultima parcela. Para todo o resto do Financeiro ela
       // continua exatamente como estava — e quem decide isso e a propria regra do contrato.

@@ -337,6 +337,123 @@ async function registrarBaixasFila(req, payload = {}) {
   };
 }
 
+function motivoComAprovacao(motivoAtual, justificativa) {
+  const original = String(motivoAtual || '').trim();
+  const aprovacao = `Aprovacao da divergencia: ${String(justificativa || '').trim()}`;
+  return [original, aprovacao].filter(Boolean).join('\n').slice(0, 1000);
+}
+
+async function aprovarDivergenciasFila(req, payload = {}) {
+  const requestKey = payload.idempotency_key || crypto.randomUUID();
+  const orderedIds = [...payload.fila_ids].sort((a, b) => Number(a) - Number(b));
+  const resultados = await sequelize.transaction(async (transaction) => {
+    const processed = [];
+
+    for (const filaId of orderedIds) {
+      const current = await PagamentoManualFilaItem.findByPk(filaId, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!current) throw createHttpError(404, `Item da fila ${filaId} nao encontrado.`);
+
+      const itemKey = `${requestKey}:${current.id}`.slice(0, 120);
+      if (String(current.status || '').toUpperCase() === 'RESOLVIDO' && current.idempotency_key === itemKey) {
+        processed.push({ item: current, baixaRegistrada: Boolean(current.movimento_financeiro_id), idempotente: true });
+        continue;
+      }
+      if (String(current.status || '').toUpperCase() !== 'DIVERGENTE') {
+        throw createHttpError(409, `O item ${current.id} nao possui divergencia pendente de aprovacao.`);
+      }
+
+      const titulo = await TituloFinanceiro.findByPk(current.titulo_financeiro_id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!titulo) throw createHttpError(404, 'Titulo financeiro nao encontrado.');
+
+      let movimentoId = current.movimento_financeiro_id || null;
+      let baixaRegistrada = false;
+
+      if (!movimentoId) {
+        if (!['ABERTO', 'PARCIAL'].includes(String(titulo.status || '').toUpperCase()) || roundCurrency(titulo.valor_saldo) <= 0) {
+          throw createHttpError(409, `O titulo ${titulo.codigo || titulo.id} nao esta mais disponivel para baixa.`);
+        }
+        assertTituloDisponivelParaBaixa(titulo);
+
+        const conta = await ContaBancaria.findByPk(current.conta_bancaria_id, {
+          transaction,
+          lock: transaction.LOCK.UPDATE
+        });
+        if (!conta || conta.ativo === false || !conta.empresa_id) {
+          throw createHttpError(400, `A conta pagadora do titulo ${titulo.codigo || titulo.id} e invalida ou nao possui empresa.`);
+        }
+        const empresaTituloId = await carregarEmpresaTitulo(titulo, transaction);
+        if (empresaTituloId && Number(conta.empresa_id) !== empresaTituloId) {
+          throw createHttpError(400, `A conta pagadora do titulo ${titulo.codigo || titulo.id} deve pertencer a empresa do titulo.`);
+        }
+
+        const valorPago = roundCurrency(current.valor_informado);
+        if (valorPago <= 0 || !current.data_baixa) {
+          throw createHttpError(409, `A divergencia do titulo ${titulo.codigo || titulo.id} nao possui dados completos para a baixa.`);
+        }
+
+        const baixa = await baixarTitulo(req, titulo.id, {
+          empresa_id: conta.empresa_id,
+          conta_bancaria_id: conta.id,
+          forma_pagamento_id: titulo.forma_pagamento_id || undefined,
+          forma_recebimento: titulo.forma_pagamento_id ? undefined : 'TRANSFERENCIA',
+          valor: valorPago,
+          juros: 0,
+          multa: 0,
+          desconto: 0,
+          data_movimento: current.data_baixa,
+          observacoes: `Baixa divergente autorizada na fila #${current.id}. ${payload.justificativa}`
+        }, {
+          transaction,
+          autorizadoPorFilaPagamento: true,
+          autorizarValorAcimaSaldo: true,
+          skipSecurityEvent: true
+        });
+        movimentoId = baixa.movimento_financeiro_id || baixa.movimento?.id || null;
+        baixaRegistrada = true;
+      }
+
+      await current.update({
+        status: 'RESOLVIDO',
+        movimento_financeiro_id: movimentoId,
+        motivo: motivoComAprovacao(current.motivo, payload.justificativa),
+        resolvido_por: req.user?.id || null,
+        resolvido_em: new Date(),
+        idempotency_key: itemKey
+      }, { transaction });
+      processed.push({ item: current, baixaRegistrada, idempotente: false });
+    }
+
+    return processed;
+  });
+
+  await registrarEventoSeguranca({
+    req,
+    usuarioId: req.user?.id || null,
+    tipoEvento: 'MANUAL_PAYMENT_DIVERGENCE_APPROVED',
+    recursoTipo: 'PAGAMENTO_MANUAL_FILA',
+    recursoId: requestKey,
+    status: 'SUCCESS',
+    descricao: 'Divergencias de pagamento autorizadas',
+    metadata: {
+      fila_ids: orderedIds,
+      quantidade: resultados.length,
+      baixas_registradas: resultados.filter((item) => item.baixaRegistrada && !item.idempotente).length,
+      justificativa: payload.justificativa
+    }
+  });
+
+  return {
+    quantidade: resultados.length,
+    baixas_registradas: resultados.filter((item) => item.baixaRegistrada && !item.idempotente).length
+  };
+}
+
 async function informarNaoPagamento(req, id, payload = {}) {
   const item = await sequelize.transaction(async (transaction) => {
     const current = await PagamentoManualFilaItem.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
@@ -427,6 +544,7 @@ async function resolverItemFila(req, id, payload = {}) {
 }
 
 module.exports = {
+  aprovarDivergenciasFila,
   enfileirarTitulos,
   informarNaoPagamento,
   listarContasPagadorasFila,

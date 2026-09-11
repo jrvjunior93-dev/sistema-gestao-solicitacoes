@@ -269,6 +269,20 @@ function validateManualPaymentQueueResolveBody(payload = {}) {
   });
 }
 
+function validateManualPaymentQueueApproveBody(payload = {}) {
+  ensureAllowedKeys(payload, ['fila_ids', 'justificativa', 'idempotency_key'], 'Aprovacao de divergencias da fila');
+  const filaIds = Array.isArray(payload.fila_ids)
+    ? Array.from(new Set(payload.fila_ids.map((id) => parseInteger(id, 'Item da fila')).filter(Boolean)))
+    : [];
+  if (filaIds.length === 0) throw new ValidationError('Selecione ao menos uma divergencia para aprovar.');
+  if (filaIds.length > 200) throw new ValidationError('Aprove no maximo 200 divergencias por operacao.');
+  return cleanUndefined({
+    fila_ids: filaIds,
+    justificativa: parseRequiredText(payload.justificativa, 'Justificativa da aprovacao', 500),
+    idempotency_key: parseOptionalText(payload.idempotency_key, 'Chave de idempotencia', 80)
+  });
+}
+
 module.exports = {
   validatePaymentAccountBody,
   validatePaymentBatchItemParams,
@@ -276,6 +290,7 @@ module.exports = {
   validatePaymentBeneficiaryCreateBody,
   validatePaymentBeneficiaryUpdateBody,
   validateManualPaymentQueueCreateBody,
+  validateManualPaymentQueueApproveBody,
   validateManualPaymentQueueProcessBody,
   validateManualPaymentQueueQuery,
   validateManualPaymentQueueResolveBody,

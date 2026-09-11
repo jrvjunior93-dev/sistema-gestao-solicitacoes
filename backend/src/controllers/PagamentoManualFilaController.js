@@ -1,4 +1,5 @@
 const {
+  aprovarDivergenciasFila,
   enfileirarTitulos,
   informarNaoPagamento,
   listarContasPagadorasFila,
@@ -42,6 +43,14 @@ module.exports = {
       return res.json(await registrarBaixasFila(req, req.body || {}));
     } catch (error) {
       return responderErro(res, error, 'Erro ao registrar baixas da fila');
+    }
+  },
+
+  async aprovarDivergencias(req, res) {
+    try {
+      return res.json(await aprovarDivergenciasFila(req, req.body || {}));
+    } catch (error) {
+      return responderErro(res, error, 'Erro ao aprovar divergencias de pagamento');
     }
   },
 

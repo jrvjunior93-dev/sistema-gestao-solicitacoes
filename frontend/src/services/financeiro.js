@@ -69,6 +69,15 @@ export async function registrarBaixasFilaPagamentos(itens, idempotencyKey) {
   return parseJson(response, 'Erro ao registrar as baixas da fila');
 }
 
+export async function aprovarDivergenciasFilaPagamentos(filaIds, justificativa, idempotencyKey) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/aprovar-divergencias`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ fila_ids: filaIds, justificativa, idempotency_key: idempotencyKey })
+  });
+  return parseJson(response, 'Erro ao aprovar as divergencias da fila');
+}
+
 export async function informarNaoPagamentoFila(id, motivo) {
   const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${id}/resultado`, {
     method: 'POST',

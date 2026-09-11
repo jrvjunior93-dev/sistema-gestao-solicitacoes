@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   HiOutlineArrowPath,
   HiOutlineCheckCircle,
@@ -7,6 +7,7 @@ import {
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  aprovarDivergenciasFilaPagamentos,
   getContasFilaPagamentos,
   getFilaPagamentos,
   informarNaoPagamentoFila,
@@ -26,8 +27,6 @@ import {
   BlocoConteudo,
   PageHeader,
   Pagina,
-  StatGrid,
-  StatTile,
   useAvisos,
   useConfirmacao
 } from '../components/padrao';
@@ -40,6 +39,37 @@ const STATUS_OPTIONS = [
   ['RESOLVIDO', 'Resolvidos'],
   ['TODOS', 'Todos']
 ];
+
+const STATUS_VALUES = new Set(STATUS_OPTIONS.map(([value]) => value));
+const SUMMARY_FILTERS = [
+  { status: 'PENDENTE', label: 'Pendentes', tone: 'info' },
+  { status: 'NAO_PAGO', label: 'Não pagos', tone: 'warning' },
+  { status: 'DIVERGENTE', label: 'Divergentes', tone: 'danger' },
+  { status: 'BAIXADO', label: 'Baixados', tone: 'success' },
+  { status: 'RESOLVIDO', label: 'Resolvidos', tone: 'neutral' }
+];
+
+function SummaryFilter({ item, value, active, onClick, disabled }) {
+  const toneClass = {
+    info: 'text-[var(--sem-info)]',
+    warning: 'text-[var(--sem-warning)]',
+    danger: 'text-[var(--sem-danger)]',
+    success: 'text-[var(--sem-success)]',
+    neutral: 'text-[var(--c-text)]'
+  }[item.tone];
+  return (
+    <button
+      type="button"
+      className={`rounded-xl border bg-[var(--c-surface)] px-4 py-4 text-left transition hover:-translate-y-px hover:border-[var(--module-financeiro)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--module-financeiro)] ${active ? 'border-[var(--module-financeiro)] shadow-sm ring-1 ring-[var(--module-financeiro)]' : 'border-[var(--c-border)]'}`}
+      onClick={onClick}
+      aria-pressed={active}
+      disabled={disabled}
+    >
+      <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">{item.label}</span>
+      <span className={`mt-2 block text-lg font-semibold ${toneClass}`}>{Number(value || 0)}</span>
+    </button>
+  );
+}
 
 function hojeISO() {
   const now = new Date();
@@ -105,11 +135,16 @@ function valorParaInput(value) {
 
 export default function FinanceiroFilaPagamentos() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { avisos, avisar, fechar: fecharAviso, limpar: limparAvisos } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
-  const [status, setStatus] = useState('PENDENTE');
-  const [search, setSearch] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
+  const initialStatus = STATUS_VALUES.has(String(searchParams.get('status') || '').toUpperCase())
+    ? String(searchParams.get('status')).toUpperCase()
+    : 'PENDENTE';
+  const initialSearch = String(searchParams.get('q') || '');
+  const [status, setStatus] = useState(initialStatus);
+  const [search, setSearch] = useState(initialSearch);
+  const [appliedSearch, setAppliedSearch] = useState(initialSearch);
   const [rows, setRows] = useState([]);
   const [summary, setSummary] = useState({});
   const [accounts, setAccounts] = useState([]);
@@ -123,6 +158,16 @@ export default function FinanceiroFilaPagamentos() {
   const canOpenTitle = canAccessFinanceiro(user);
   const canReport = canReportarFilaPagamentos(user);
   const canResolve = canResolverFilaPagamentos(user);
+
+  function applyFilters(nextStatus = status, nextSearch = appliedSearch) {
+    setStatus(nextStatus);
+    setAppliedSearch(nextSearch);
+    setSelected([]);
+    const nextParams = new URLSearchParams();
+    if (nextStatus !== 'PENDENTE') nextParams.set('status', nextStatus);
+    if (nextSearch) nextParams.set('q', nextSearch);
+    setSearchParams(nextParams, { replace: true });
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -192,7 +237,7 @@ export default function FinanceiroFilaPagamentos() {
     const total = targetRows.reduce((sum, row) => sum + Number(drafts[row.id]?.valor_pago || 0), 0);
     const { ok } = await confirmar({
       titulo: targetRows.length === 1 ? 'Registrar baixa deste título?' : 'Registrar baixas selecionadas?',
-      mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. Valores menores registram baixa parcial; valores maiores ficam como divergência sem baixa.`,
+      mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. Valores menores registram baixa parcial; valores maiores seguem para autorização antes da baixa.`,
       rotuloConfirmar: targetRows.length === 1 ? 'Registrar baixa' : 'Registrar baixas',
       destrutiva: false
     });
@@ -213,6 +258,36 @@ export default function FinanceiroFilaPagamentos() {
       await load();
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao registrar as baixas. Nenhum item do lote foi alterado.');
+    } finally {
+      setActionKey('');
+    }
+  }
+
+  async function approveDivergences(targetRows) {
+    if (targetRows.length === 0) return;
+    const total = targetRows.reduce((sum, row) => sum + Number(row.valor_informado || 0), 0);
+    const { ok, texto } = await confirmar({
+      titulo: targetRows.length === 1 ? 'Autorizar baixa divergente?' : 'Autorizar baixas divergentes?',
+      mensagem: `${targetRows.length} título(s), total informado ${currency(total)}. A autorização registra as baixas ainda pendentes e conclui as divergências já processadas.`,
+      rotuloConfirmar: targetRows.length === 1 ? 'Autorizar baixa' : 'Autorizar selecionados',
+      destrutiva: false,
+      campo: { rotulo: 'Justificativa da aprovação', obrigatorio: true, multilinha: true }
+    });
+    if (!ok) return;
+
+    const key = idempotencyKey('fila-aprovar-divergencia');
+    setActionKey(`approve-${key}`);
+    try {
+      const result = await aprovarDivergenciasFilaPagamentos(
+        targetRows.map((row) => Number(row.id)),
+        String(texto || '').trim(),
+        key
+      );
+      avisar.sucesso(`${result?.quantidade || 0} divergência(s) aprovada(s). ${result?.baixas_registradas || 0} baixa(s) registrada(s) agora.`);
+      setSelected([]);
+      await load();
+    } catch (error) {
+      avisar.erro(error?.message || 'Erro ao aprovar as divergências. Nenhum item do lote foi alterado.');
     } finally {
       setActionKey('');
     }
@@ -261,10 +336,17 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   const pendingRows = useMemo(() => rows.filter((row) => row.status === 'PENDENTE'), [rows]);
+  const divergentRows = useMemo(() => rows.filter((row) => row.status === 'DIVERGENTE'), [rows]);
+  const selectableRows = status === 'DIVERGENTE' && canResolve
+    ? divergentRows
+    : (status === 'PENDENTE' && canSettle ? pendingRows : []);
   const selectedRows = useMemo(
-    () => pendingRows.filter((row) => selected.includes(Number(row.id))),
-    [pendingRows, selected]
+    () => selectableRows.filter((row) => selected.includes(Number(row.id))),
+    [selectableRows, selected]
   );
+  const approvingDivergences = status === 'DIVERGENTE';
+  const hasBulkAction = status === 'DIVERGENTE' ? canResolve : (status === 'PENDENTE' && canSettle);
+  const showReasonColumn = status === 'DIVERGENTE';
   const busy = Boolean(actionKey);
 
   return (
@@ -273,9 +355,11 @@ export default function FinanceiroFilaPagamentos() {
         titulo="Fila de Pagamentos"
         contagem={`${rows.length} título(s) à vista`}
         descricao="Confira os dados bancários e registre as baixas diretamente na tabela."
-        acaoPrincipal={canSettle ? {
-          rotulo: busy ? 'Processando...' : `Registrar selecionados${selectedRows.length ? ` (${selectedRows.length})` : ''}`,
-          onClick: () => settle(selectedRows),
+        acaoPrincipal={hasBulkAction ? {
+          rotulo: busy
+            ? 'Processando...'
+            : `${approvingDivergences ? 'Autorizar' : 'Registrar'} selecionados${selectedRows.length ? ` (${selectedRows.length})` : ''}`,
+          onClick: () => approvingDivergences ? approveDivergences(selectedRows) : settle(selectedRows),
           desabilitada: busy || selectedRows.length === 0,
           icone: <HiOutlineCheckCircle aria-hidden="true" />
         } : undefined}
@@ -289,13 +373,18 @@ export default function FinanceiroFilaPagamentos() {
 
       <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
-      <StatGrid colunas={5}>
-        <StatTile label="Pendentes" valor={Number(summary.PENDENTE || 0)} tom="info" />
-        <StatTile label="Não pagos" valor={Number(summary.NAO_PAGO || 0)} tom="warning" />
-        <StatTile label="Divergentes" valor={Number(summary.DIVERGENTE || 0)} tom="danger" />
-        <StatTile label="Baixados" valor={Number(summary.BAIXADO || 0)} tom="success" />
-        <StatTile label="Resolvidos" valor={Number(summary.RESOLVIDO || 0)} />
-      </StatGrid>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5" aria-label="Filtros rápidos da fila">
+        {SUMMARY_FILTERS.map((item) => (
+          <SummaryFilter
+            key={item.status}
+            item={item}
+            value={summary[item.status]}
+            active={status === item.status}
+            onClick={() => applyFilters(item.status, appliedSearch)}
+            disabled={busy}
+          />
+        ))}
+      </div>
 
       <BlocoConteudo
         titulo="Pagamentos preparados"
@@ -306,13 +395,13 @@ export default function FinanceiroFilaPagamentos() {
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-sm">
               <span className="sr-only">Status</span>
-              <select className="input input-sm" value={status} onChange={(event) => setStatus(event.target.value)} disabled={busy}>
+              <select className="input input-sm" value={status} onChange={(event) => applyFilters(event.target.value, appliedSearch)} disabled={busy}>
                 {STATUS_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </label>
             <form
               className="flex min-w-[260px] items-center gap-2"
-              onSubmit={(event) => { event.preventDefault(); setAppliedSearch(search.trim()); }}
+              onSubmit={(event) => { event.preventDefault(); applyFilters(status, search.trim()); }}
             >
               <input
                 className="input input-sm min-w-0 flex-1"
@@ -329,15 +418,15 @@ export default function FinanceiroFilaPagamentos() {
       >
         <div className="overflow-x-auto rounded-xl border border-[var(--c-border)]" aria-label="Tabela da fila de pagamentos">
           <table className="w-full min-w-[1520px] border-collapse text-sm">
-            <thead className="bg-[var(--c-surface-2)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
+            <thead className="bg-[var(--ui-surface-2)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
               <tr>
                 <th className="w-10 px-3 py-3">
                   <input
                     type="checkbox"
-                    aria-label="Selecionar todos os títulos pendentes"
-                    checked={pendingRows.length > 0 && selectedRows.length === pendingRows.length}
-                    onChange={(event) => setSelected(event.target.checked ? pendingRows.map((row) => Number(row.id)) : [])}
-                    disabled={!canSettle || busy}
+                    aria-label={approvingDivergences ? 'Selecionar todas as divergências' : 'Selecionar todos os títulos pendentes'}
+                    checked={selectableRows.length > 0 && selectedRows.length === selectableRows.length}
+                    onChange={(event) => setSelected(event.target.checked ? selectableRows.map((row) => Number(row.id)) : [])}
+                    disabled={selectableRows.length === 0 || busy}
                   />
                 </th>
                 <th className="px-3 py-3">Título / documento</th>
@@ -349,23 +438,25 @@ export default function FinanceiroFilaPagamentos() {
                 <th className="px-3 py-3">Conta pagadora</th>
                 <th className="px-3 py-3">Empresa</th>
                 <th className="px-3 py-3">Valor pago</th>
+                {showReasonColumn ? <th className="px-3 py-3">Justificativa</th> : null}
                 <th className="px-3 py-3">Status / ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
               {loading ? (
-                <tr><td colSpan="11" className="px-4 py-10 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
+                <tr><td colSpan={showReasonColumn ? 12 : 11} className="px-4 py-10 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan="11" className="px-4 py-10 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
+                <tr><td colSpan={showReasonColumn ? 12 : 11} className="px-4 py-10 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
               ) : rows.map((row) => {
                 const title = row.titulo || {};
                 const beneficiary = beneficiaryData(title);
                 const account = selectedAccount(row);
                 const editable = row.status === 'PENDENTE' && canSettle;
+                const selectable = selectableRows.some((item) => Number(item.id) === Number(row.id));
                 const accountOptions = compatibleAccounts(row);
                 const reasonVisible = reasonOpenId === row.id;
                 return (
-                  <tr key={row.id} className={row.status === 'DIVERGENTE' ? 'bg-red-50/60 dark:bg-red-950/10' : row.status === 'NAO_PAGO' ? 'bg-amber-50/60 dark:bg-amber-950/10' : ''}>
+                  <tr key={row.id} className={row.status === 'DIVERGENTE' ? 'bg-[var(--sem-danger-bg)]' : row.status === 'NAO_PAGO' ? 'bg-[var(--sem-warning-bg)]' : ''}>
                     <td className="px-3 py-3 align-top">
                       <input
                         type="checkbox"
@@ -374,7 +465,7 @@ export default function FinanceiroFilaPagamentos() {
                         onChange={(event) => setSelected((current) => event.target.checked
                           ? [...new Set([...current, Number(row.id)])]
                           : current.filter((id) => id !== Number(row.id)))}
-                        disabled={!editable || busy}
+                        disabled={!selectable || busy}
                       />
                     </td>
                     <td className="px-3 py-3 align-top">
@@ -420,7 +511,7 @@ export default function FinanceiroFilaPagamentos() {
                           <option key={item.id} value={item.id}>{item.nome} · {item.banco || 'Banco'} {item.conta || ''}</option>
                         ))}
                       </select>
-                      {editable && accountOptions.length === 0 ? <div className="mt-1 text-xs text-red-600">Nenhuma conta da empresa.</div> : null}
+                      {editable && accountOptions.length === 0 ? <div className="mt-1 text-xs text-[var(--sem-danger)]">Nenhuma conta da empresa.</div> : null}
                     </td>
                     <td className="px-3 py-3 align-top">
                       <div className="max-w-[180px] text-xs font-medium">{account?.empresa?.nome || account?.empresa?.razao_social || title.empresa?.nome || 'Definida pela conta'}</div>
@@ -437,15 +528,25 @@ export default function FinanceiroFilaPagamentos() {
                         aria-label={`Valor pago de ${title.codigo || row.id}`}
                       />
                     </td>
+                    {showReasonColumn ? (
+                      <td className="px-3 py-3 align-top">
+                        <div className="max-w-[300px] whitespace-pre-wrap text-xs text-[var(--c-text)]" title={row.motivo || ''}>
+                          {row.motivo || 'Sem justificativa informada.'}
+                        </div>
+                      </td>
+                    ) : null}
                     <td className="px-3 py-3 align-top">
                       <StatusBadge status={String(row.status || '').replace('_', ' ')} kind={statusKind(row.status)} />
-                      {row.motivo ? <div className="mt-2 max-w-[260px] text-xs text-[var(--c-muted)]" title={row.motivo}>{row.motivo}</div> : null}
+                      {!showReasonColumn && row.motivo ? <div className="mt-2 max-w-[260px] text-xs text-[var(--c-muted)]" title={row.motivo}>{row.motivo}</div> : null}
                       <div className="mt-2 flex flex-wrap gap-1">
                         {editable && canSettle ? (
                           <button className="btn btn-primary btn-sm" type="button" onClick={() => settle([row])} disabled={busy}>Registrar baixa</button>
                         ) : null}
                         {row.status === 'PENDENTE' && canReport ? (
                           <button className="btn btn-outline btn-sm" type="button" onClick={() => setReasonOpenId(reasonVisible ? null : row.id)} disabled={busy}>Não pago</button>
+                        ) : null}
+                        {row.status === 'DIVERGENTE' && canResolve ? (
+                          <button className="btn btn-primary btn-sm" type="button" onClick={() => approveDivergences([row])} disabled={busy}>Autorizar baixa</button>
                         ) : null}
                         {['NAO_PAGO', 'DIVERGENTE'].includes(row.status) && canResolve ? (
                           <>

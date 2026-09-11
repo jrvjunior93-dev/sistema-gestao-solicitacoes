@@ -7,6 +7,7 @@ import {
   HiOutlineArrowUpTray,
   HiOutlineDocumentText,
   HiOutlineEye,
+  HiOutlineExclamationTriangle,
   HiOutlineMagnifyingGlass,
   HiOutlinePencilSquare,
   HiOutlinePlus,
@@ -39,6 +40,7 @@ import {
   canDeleteTitulosFinanceiros,
   canImportTitulosFinanceiros,
   canPrepareFilaPagamentos,
+  canResolverFilaPagamentos,
   hasPermissao
 } from '../utils/acessoProduto';
 import FinanceiroTitulosImportacaoPanel from '../components/financeiro/FinanceiroTitulosImportacaoPanel';
@@ -3300,7 +3302,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               aoAlternar: (id, titulo) => toggleTituloSelecionado(titulo, !selectedTituloSet.has(Number(id))),
               aoAlternarTodos: (marcar) => toggleTodosBaixaveis(marcar)
             }}
-            larguraAcoes={120}
+            larguraAcoes={160}
             acoesLinha={(titulo) => (
               <>
                 <Link
@@ -3310,6 +3312,16 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 >
                   <HiOutlineEye className="h-4 w-4" />
                 </Link>
+                {getFilaPagamentoAtiva(titulo)?.status === 'DIVERGENTE' && canResolverFilaPagamentos(user) ? (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm text-[var(--sem-danger)]"
+                    onClick={() => navigate(`/financeiro/fila-pagamentos?status=DIVERGENTE&q=${encodeURIComponent(getTituloCodigo(titulo))}`)}
+                    title="Revisar e autorizar divergência de pagamento"
+                  >
+                    <HiOutlineExclamationTriangle className="h-4 w-4" />
+                  </button>
+                ) : null}
                 {isTituloEditavel(titulo) ? (
                   <Link
                     className="btn btn-outline btn-sm"
