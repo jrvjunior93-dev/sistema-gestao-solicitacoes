@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   HiOutlineArrowPath,
   HiOutlineCheckCircle,
+  HiOutlineExclamationTriangle,
   HiOutlineMagnifyingGlass
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,6 +23,7 @@ import {
 } from '../utils/acessoProduto';
 import DateInputBR from '../components/DateInputBR';
 import StatusBadge from '../components/StatusBadge';
+import OverlayModal from '../components/ui/OverlayModal';
 import {
   Avisos,
   BlocoConteudo,
@@ -156,6 +158,83 @@ function mensagemJustificativaDivergencia(tipo) {
   return 'Opcional quando o valor pago corresponde ao saldo e ao previsto.';
 }
 
+function orientarErroRegistroBaixa(error) {
+  const mensagem = String(error?.message || error || '').trim()
+    || 'O sistema não conseguiu concluir o registro da baixa.';
+  const normalizada = mensagem.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  if (normalizada.includes('data da baixa')) {
+    return { mensagem, correcao: 'Preencha uma data válida na coluna Data da baixa e tente novamente.', campo: 'data_baixa' };
+  }
+  if (normalizada.includes('justificativa')) {
+    return { mensagem, correcao: 'Preencha a justificativa na linha do título. Ela é obrigatória quando o valor pago é diferente do saldo ou do valor previsto.', campo: 'motivo' };
+  }
+  if (normalizada.includes('conta pagadora') && normalizada.includes('empresa do titulo')) {
+    return { mensagem, correcao: 'Selecione uma conta pagadora vinculada à mesma empresa do título e tente novamente.', campo: 'conta_bancaria_id' };
+  }
+  if (normalizada.includes('conta pagadora')) {
+    return { mensagem, correcao: 'Selecione uma conta pagadora ativa e vinculada a uma empresa. Se não houver opção válida, solicite a correção do cadastro bancário.', campo: 'conta_bancaria_id' };
+  }
+  if (normalizada.includes('valor') || normalizada.includes('saldo')) {
+    return { mensagem, correcao: 'Confira o Valor pago informado. Para valor parcial ou acima do saldo, informe também a justificativa da divergência.', campo: 'valor_pago' };
+  }
+  if (normalizada.includes('nao esta mais pendente') || normalizada.includes('nao esta mais disponivel')) {
+    return { mensagem, correcao: 'Clique em Atualizar para carregar a situação atual do título antes de tentar novamente.' };
+  }
+  if (normalizada.includes('permiss')) {
+    return { mensagem, correcao: 'Solicite a um administrador a permissão de registrar baixas na Fila de Pagamentos.' };
+  }
+
+  return {
+    mensagem,
+    correcao: 'Confira a data, a conta pagadora, o valor e a justificativa da linha. Se os dados estiverem corretos, atualize a fila e tente novamente.'
+  };
+}
+
+function ErroRegistroBaixaModal({ erro, onFechar }) {
+  if (!erro) return null;
+  return (
+    <OverlayModal
+      rotulo="Não foi possível registrar a baixa"
+      largura="var(--modal-max-w-sm, 520px)"
+      onFechar={onFechar}
+    >
+      <div className="p-6">
+        <div className="flex items-start gap-3">
+          <HiOutlineExclamationTriangle
+            className="mt-0.5 h-6 w-6 shrink-0 text-[var(--sem-danger)]"
+            aria-hidden="true"
+          />
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-[var(--c-text)]">Não foi possível registrar a baixa</h2>
+            <p className="mt-1 text-sm text-[var(--c-muted)]">O botão foi acionado, mas o registro não foi concluído.</p>
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">O que aconteceu</p>
+            <p className="mt-1 text-sm leading-6 text-[var(--c-text)]">{erro.mensagem}</p>
+          </div>
+          <div className="rounded-lg bg-[var(--sem-warning-bg)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--sem-warning)]">Como corrigir</p>
+            <p className="mt-1 text-sm leading-6 text-[var(--c-text)]">{erro.correcao}</p>
+          </div>
+          {erro.lote ? (
+            <p className="text-xs text-[var(--c-muted)]">Nenhuma baixa deste lote foi registrada.</p>
+          ) : null}
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button type="button" className="btn btn-primary" onClick={onFechar} autoFocus>
+            Voltar e corrigir
+          </button>
+        </div>
+      </div>
+    </OverlayModal>
+  );
+}
+
 export default function FinanceiroFilaPagamentos() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -176,6 +255,7 @@ export default function FinanceiroFilaPagamentos() {
   const [loading, setLoading] = useState(true);
   const [actionKey, setActionKey] = useState('');
   const [reasonOpenId, setReasonOpenId] = useState(null);
+  const [erroBaixa, setErroBaixa] = useState(null);
 
   const canSettle = canBaixarFilaPagamentos(user);
   const canOpenTitle = canAccessFinanceiro(user);
@@ -244,21 +324,29 @@ export default function FinanceiroFilaPagamentos() {
   function validateRows(targetRows) {
     for (const row of targetRows) {
       const draft = drafts[row.id] || {};
-      if (!draft.data_baixa) return `Informe a data da baixa do título ${row.titulo?.codigo || row.id}.`;
-      if (!Number(draft.conta_bancaria_id)) return `Selecione a conta pagadora do título ${row.titulo?.codigo || row.id}.`;
-      if (!(Number(draft.valor_pago) > 0)) return `Informe um valor pago válido para o título ${row.titulo?.codigo || row.id}.`;
+      if (!draft.data_baixa) return { mensagem: `A data da baixa do título ${row.titulo?.codigo || row.id} não foi informada.`, correcao: 'Preencha uma data válida na coluna Data da baixa.', filaId: row.id, campo: 'data_baixa' };
+      if (!Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
+      if (!(Number(draft.valor_pago) > 0)) return { mensagem: `O valor pago do título ${row.titulo?.codigo || row.id} é inválido.`, correcao: 'Informe um valor maior que zero na coluna Valor pago.', filaId: row.id, campo: 'valor_pago' };
       const tipoDivergencia = tipoDivergenciaPagamento(row, draft);
       if (tipoDivergencia && !String(draft.motivo || '').trim()) {
-        return `Informe a justificativa do valor divergente para o título ${row.titulo?.codigo || row.id}.`;
+        return { mensagem: `O valor do título ${row.titulo?.codigo || row.id} é divergente e está sem justificativa.`, correcao: mensagemJustificativaDivergencia(tipoDivergencia), filaId: row.id, campo: 'motivo' };
       }
     }
-    return '';
+    return null;
+  }
+
+  function fecharErroRegistroBaixa() {
+    const alvo = erroBaixa?.filaId && erroBaixa?.campo
+      ? `[data-fila-id="${erroBaixa.filaId}"][data-fila-campo="${erroBaixa.campo}"]`
+      : '';
+    setErroBaixa(null);
+    if (alvo) requestAnimationFrame(() => document.querySelector(alvo)?.focus());
   }
 
   async function settle(targetRows) {
     const problem = validateRows(targetRows);
     if (problem) {
-      avisar.alerta(problem);
+      setErroBaixa({ ...problem, lote: targetRows.length > 1 });
       return;
     }
     const total = targetRows.reduce((sum, row) => sum + Number(drafts[row.id]?.valor_pago || 0), 0);
@@ -284,7 +372,12 @@ export default function FinanceiroFilaPagamentos() {
       setSelected([]);
       await load();
     } catch (error) {
-      avisar.erro(error?.message || 'Erro ao registrar as baixas. Nenhum item do lote foi alterado.');
+      const detalhe = orientarErroRegistroBaixa(error);
+      const linhaRelacionada = targetRows.find((row) => {
+        const codigo = String(row.titulo?.codigo || '').trim();
+        return codigo && detalhe.mensagem.includes(codigo);
+      }) || (targetRows.length === 1 ? targetRows[0] : null);
+      setErroBaixa({ ...detalhe, filaId: linhaRelacionada?.id, lote: targetRows.length > 1 });
     } finally {
       setActionKey('');
     }
@@ -521,6 +614,8 @@ export default function FinanceiroFilaPagamentos() {
                     <td className="px-3 py-3 align-top">
                       <DateInputBR
                         className="input input-sm w-[128px]"
+                        data-fila-id={row.id}
+                        data-fila-campo="data_baixa"
                         value={drafts[row.id]?.data_baixa || row.data_baixa || ''}
                         onChange={(event) => updateDraft(row.id, { data_baixa: event.target.value })}
                         disabled={!editable || busy}
@@ -530,6 +625,8 @@ export default function FinanceiroFilaPagamentos() {
                     <td className="px-3 py-3 align-top">
                       <select
                         className="input input-sm w-[230px]"
+                        data-fila-id={row.id}
+                        data-fila-campo="conta_bancaria_id"
                         value={drafts[row.id]?.conta_bancaria_id || row.conta_bancaria_id || ''}
                         onChange={(event) => updateDraft(row.id, { conta_bancaria_id: event.target.value })}
                         disabled={!editable || busy}
@@ -548,6 +645,8 @@ export default function FinanceiroFilaPagamentos() {
                     <td className="px-3 py-3 align-top">
                       <input
                         className="input input-sm w-[130px] text-right"
+                        data-fila-id={row.id}
+                        data-fila-campo="valor_pago"
                         type="number"
                         min="0.01"
                         step="0.01"
@@ -563,6 +662,8 @@ export default function FinanceiroFilaPagamentos() {
                           <div className="w-[280px]">
                             <textarea
                               className={`input min-h-[72px] w-full ${tipoDivergencia && !String(drafts[row.id]?.motivo || '').trim() ? 'border-[var(--sem-danger)]' : ''}`}
+                              data-fila-id={row.id}
+                              data-fila-campo="motivo"
                               value={drafts[row.id]?.motivo || ''}
                               onChange={(event) => updateDraft(row.id, { motivo: event.target.value })}
                               placeholder={tipoDivergencia ? 'Justificativa obrigatória' : 'Observação opcional'}
@@ -624,6 +725,7 @@ export default function FinanceiroFilaPagamentos() {
           O processamento em massa é atômico: se uma linha falhar na validação, nenhuma baixa do lote é gravada.
         </p>
       </BlocoConteudo>
+      <ErroRegistroBaixaModal erro={erroBaixa} onFechar={fecharErroRegistroBaixa} />
       {elementoConfirmacao}
     </Pagina>
   );

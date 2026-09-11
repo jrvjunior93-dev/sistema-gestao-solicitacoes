@@ -96,6 +96,11 @@ assert(page.includes('tipoDivergencia && !String(draft.motivo'), 'A interface de
 assert(page.includes('Autorizar baixa'), 'A fila deve oferecer aprovacao individual da divergencia.');
 assert(page.includes("campo: reabrir ? undefined"), 'Reabrir uma divergencia nao deve solicitar nova justificativa.');
 assert(page.includes("reabrir ? '' : String(texto"), 'Reabertura nao deve enviar observacao substituta.');
+assert(page.includes('Não foi possível registrar a baixa'), 'Erro de baixa deve abrir um dialogo explicito.');
+assert(page.includes('O botão foi acionado, mas o registro não foi concluído.'), 'Dialogo deve confirmar que a acao foi recebida.');
+assert(page.includes('Como corrigir'), 'Dialogo de erro deve orientar a correcao necessaria.');
+assert(page.includes('setErroBaixa({ ...problem'), 'Validacao local da baixa deve usar o dialogo, nao uma faixa distante.');
+assert(page.includes('orientarErroRegistroBaixa(error)'), 'Falha da API deve ser traduzida em orientacao no dialogo.');
 assert(page.includes('aria-pressed={active}'), 'Os cards de resumo devem funcionar como filtros acessiveis.');
 assert(titlePage.includes('Enviar para pagamento'), 'Contas a Pagar deve permitir preparar a fila.');
 assert(titlePage.includes('Pagamento divergente'), 'Contas a Pagar deve sinalizar divergencias na linha.');
