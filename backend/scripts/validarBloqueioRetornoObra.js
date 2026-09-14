@@ -49,4 +49,30 @@ const frontendSource = read('../frontend/src/pages/FinanceiroTitulos.jsx');
 assert(frontendSource.includes('Retorno solicitado pela Obra'), 'consulta financeira nao identifica titulo bloqueado');
 assert(frontendSource.includes('!isTituloBloqueadoRetornoObra(titulo)'), 'consulta financeira ainda permite selecionar titulo bloqueado');
 
+const solicitacaoControllerSource = read('src/controllers/SolicitacaoController.js');
+assert(
+  solicitacaoControllerSource.includes('ordenacaoRetornoPendente'),
+  'lista de solicitacoes nao prioriza pedidos de retorno antes da paginacao'
+);
+assert(
+  solicitacaoControllerSource.includes('retorno_solicitado_pendente'),
+  'resumo da solicitacao nao informa o pedido de retorno pendente'
+);
+
+const solicitacoesFrontendSource = read('../frontend/src/pages/Solicitacoes/index.jsx');
+assert(
+  solicitacoesFrontendSource.includes("item.retorno_solicitado_pendente\n              ? 'retorno'"),
+  'lista de solicitacoes nao aplica o estado visual de retorno pendente'
+);
+assert(
+  solicitacoesFrontendSource.includes("action.startsWith('RETORNO_')"),
+  'eventos de retorno nao atualizam a prioridade da fila em tempo real'
+);
+
+const listaCssSource = read('../frontend/src/components/lista-avancada/lista-avancada.css');
+assert(
+  listaCssSource.includes('.la-linha.la-urgencia-retorno td { background: var(--sem-danger-bg); }'),
+  'linha com retorno solicitado nao recebe fundo vermelho completo'
+);
+
 console.log('Validacao do bloqueio financeiro por retorno solicitado pela Obra concluida com sucesso.');

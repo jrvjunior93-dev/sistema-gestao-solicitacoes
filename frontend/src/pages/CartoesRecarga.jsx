@@ -60,6 +60,8 @@ const FORM_VAZIO = {
   ultimos_quatro: '',
   parceiro_id: '',
   parceiro_nome: '',
+  empresa_id: '',
+  categoria_financeira_id: '',
   usuario_ids: [],
   observacoes: '',
   ativo: true
@@ -71,7 +73,7 @@ function normalizarLista(data) {
 }
 
 export default function CartoesRecarga() {
-  const [dados, setDados] = useState({ cartoes: [], usuarios: [] });
+  const [dados, setDados] = useState({ cartoes: [], usuarios: [], empresas: [], categorias: [] });
   const [form, setForm] = useState(FORM_VAZIO);
   const [editandoId, setEditandoId] = useState(null);
   const [buscaFornecedor, setBuscaFornecedor] = useState('');
@@ -210,6 +212,8 @@ export default function CartoesRecarga() {
       ultimos_quatro: cartao.ultimos_quatro || '',
       parceiro_id: cartao.parceiro_id || cartao.parceiro?.id || '',
       parceiro_nome: cartao.parceiro?.nome || '',
+      empresa_id: cartao.empresa_id || cartao.empresa?.id || '',
+      categoria_financeira_id: cartao.categoria_financeira_id || cartao.categoriaFinanceira?.id || '',
       usuario_ids: (cartao.vinculosUsuarios || []).filter((item) => item.ativo !== false).map((item) => Number(item.user_id || item.usuario?.id)),
       observacoes: cartao.observacoes || '',
       ativo: cartao.ativo !== false
@@ -378,6 +382,47 @@ export default function CartoesRecarga() {
             </CampoForm>
           </FormSecao>
 
+          <FormSecao legenda="Classificação financeira" colunas={2}>
+            <CampoForm
+              label="Empresa responsável"
+              obrigatorio
+              hint="Será gravada automaticamente no título de cada nova recarga."
+            >
+              <select
+                className="input w-full"
+                value={form.empresa_id}
+                onChange={(e) => setForm((v) => ({ ...v, empresa_id: e.target.value }))}
+                required
+              >
+                <option value="">Selecione</option>
+                {(dados.empresas || []).map((empresa) => (
+                  <option key={empresa.id} value={empresa.id}>
+                    {empresa.codigo ? `${empresa.codigo} - ` : ''}{empresa.nome}
+                  </option>
+                ))}
+              </select>
+            </CampoForm>
+            <CampoForm
+              label="Categoria financeira"
+              obrigatorio
+              hint="Classifica o título; a obra e a apropriação reais serão definidas na prestação de contas."
+            >
+              <select
+                className="input w-full"
+                value={form.categoria_financeira_id}
+                onChange={(e) => setForm((v) => ({ ...v, categoria_financeira_id: e.target.value }))}
+                required
+              >
+                <option value="">Selecione</option>
+                {(dados.categorias || []).map((categoria) => (
+                  <option key={categoria.id} value={categoria.id}>
+                    {categoria.nome}{categoria.dre_grupo ? ` · ${categoria.dre_grupo}` : ''}
+                  </option>
+                ))}
+              </select>
+            </CampoForm>
+          </FormSecao>
+
           <FormSecao legenda="Usuários vinculados" colunas={2}>
             <CampoForm
               label="Filtrar usuários"
@@ -457,6 +502,16 @@ export default function CartoesRecarga() {
                 <CelulaDupla
                   principal={cartao.nome}
                   sub={`${cartao.identificador} · final ${cartao.ultimos_quatro}`}
+                />
+              )
+            },
+            {
+              id: 'classificacao',
+              titulo: 'Classificação financeira',
+              render: (cartao) => (
+                <CelulaDupla
+                  principal={cartao.empresa?.nome || 'Empresa não configurada'}
+                  sub={cartao.categoriaFinanceira?.nome || 'Categoria não configurada'}
                 />
               )
             },

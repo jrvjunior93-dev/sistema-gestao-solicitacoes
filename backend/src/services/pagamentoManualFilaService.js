@@ -261,9 +261,7 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   }
 
   const empresaTituloId = await carregarEmpresaTitulo(titulo, transaction);
-  if (empresaTituloId && Number(conta.empresa_id) !== empresaTituloId) {
-    throw createHttpError(400, `A conta pagadora do titulo ${titulo.codigo || titulo.id} deve pertencer a empresa do titulo.`);
-  }
+  const baixaEntreEmpresas = Boolean(empresaTituloId && Number(conta.empresa_id) !== empresaTituloId);
 
   const valorPago = roundCurrency(itemPayload.valor_pago);
   const saldoAtual = roundCurrency(titulo.valor_saldo);
@@ -308,7 +306,13 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
     multa: 0,
     desconto: 0,
     data_movimento: itemPayload.data_baixa,
-    observacoes: motivo || `Baixa registrada pela fila de pagamentos #${filaItem.id}.`
+    observacoes: motivo || `Baixa registrada pela fila de pagamentos #${filaItem.id}.`,
+    intercompany: baixaEntreEmpresas,
+    natureza_intercompany_baixa: baixaEntreEmpresas ? 'OPERACIONAL_TERCEIRO' : undefined,
+    tipo_intercompany: baixaEntreEmpresas ? 'TRANSFERENCIA_OPERACIONAL' : undefined,
+    motivo_intercompany: baixaEntreEmpresas
+      ? `Conta pagadora definida na fila manual #${filaItem.id}.`
+      : undefined
   }, {
     transaction,
     autorizadoPorFilaPagamento: true,
@@ -409,9 +413,7 @@ async function aprovarDivergenciasFila(req, payload = {}) {
           throw createHttpError(400, `A conta pagadora do titulo ${titulo.codigo || titulo.id} e invalida ou nao possui empresa.`);
         }
         const empresaTituloId = await carregarEmpresaTitulo(titulo, transaction);
-        if (empresaTituloId && Number(conta.empresa_id) !== empresaTituloId) {
-          throw createHttpError(400, `A conta pagadora do titulo ${titulo.codigo || titulo.id} deve pertencer a empresa do titulo.`);
-        }
+        const baixaEntreEmpresas = Boolean(empresaTituloId && Number(conta.empresa_id) !== empresaTituloId);
 
         const valorPago = roundCurrency(current.valor_informado);
         if (valorPago <= 0 || !current.data_baixa) {
@@ -428,7 +430,13 @@ async function aprovarDivergenciasFila(req, payload = {}) {
           multa: 0,
           desconto: 0,
           data_movimento: current.data_baixa,
-          observacoes: `Baixa divergente autorizada na fila #${current.id}. ${payload.justificativa}`
+          observacoes: `Baixa divergente autorizada na fila #${current.id}. ${payload.justificativa}`,
+          intercompany: baixaEntreEmpresas,
+          natureza_intercompany_baixa: baixaEntreEmpresas ? 'OPERACIONAL_TERCEIRO' : undefined,
+          tipo_intercompany: baixaEntreEmpresas ? 'TRANSFERENCIA_OPERACIONAL' : undefined,
+          motivo_intercompany: baixaEntreEmpresas
+            ? `Conta pagadora definida na fila manual #${current.id}. ${payload.justificativa}`
+            : undefined
         }, {
           transaction,
           autorizadoPorFilaPagamento: true,

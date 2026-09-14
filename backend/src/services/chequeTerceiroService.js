@@ -572,12 +572,14 @@ async function validarBaixaComposta(payload, transaction, { lock = false } = {})
       if (Math.abs(round(cheque.valor) - item.valor) >= 0.01) throw httpError(400, `O cheque da operacao ${item.ordem} deve ser utilizado integralmente.`);
     }
 
-    const empresasFonte = [
-      Number(item.empresa_id) || null,
+    const empresasFonteVinculadas = [
       conta?.empresa_id ? Number(conta.empresa_id) : null,
       cartao?.contaBancaria?.empresa_id ? Number(cartao.contaBancaria.empresa_id) : null,
       cheque?.empresa_id ? Number(cheque.empresa_id) : null
     ].filter(Boolean);
+    const empresasFonte = empresasFonteVinculadas.length
+      ? empresasFonteVinculadas
+      : [Number(item.empresa_id) || null].filter(Boolean);
     const empresaFonteIds = [...new Set(empresasFonte)];
     if (!empresaFonteIds.length) throw httpError(400, `Informe a empresa da fonte na operacao ${item.ordem}.`);
     if (empresaFonteIds.length > 1) throw httpError(400, `Conta, cartao ou cheque da operacao ${item.ordem} pertencem a empresas diferentes.`);

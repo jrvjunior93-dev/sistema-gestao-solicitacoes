@@ -28,7 +28,10 @@ function validateContracts() {
   assert(frontend.includes("buscarParceiros({ ativo: true, incluir_fornecedores_compra: 1, limit: 'all' })"));
   assert(frontend.includes("browseTitle={draftFilters.tipo === 'PAGAR' ? 'Selecionar credor'"));
   assert(frontend.includes('Lista unificada de credores cadastrados e fornecedores vinculados'));
-  assert(frontend.includes('browseListClassName="min-w-[620px]"'));
+  assert(frontend.includes('browseListClassName="min-w-full"'));
+  assert(!frontend.includes('Selecione a empresa pagadora'));
+  assert(frontend.includes('aplicarEmpresaFonteBaixaMassa'));
+  assert(frontend.includes('conta?.empresa_id'));
   assert(partnerService.includes("as: 'fornecedoresCompra'"));
   assert(partnerService.includes('incluir_fornecedores_compra'));
   assert(!frontend.includes('const FORMAS_RECEBIMENTO ='));

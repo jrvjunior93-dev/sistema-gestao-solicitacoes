@@ -23,7 +23,6 @@ import {
   useConfirmacao
 } from '../components/padrao';
 import { buscarParceiros } from '../services/parceiros';
-import { getEmpresasGrupo } from '../services/empresasGrupo';
 import {
   atualizarParcelaFinanciamentoBancario,
   criarFinanciamentoBancario,
@@ -208,7 +207,6 @@ export default function FinanceiroFinanciamentosBancarios() {
   const [financiamentos, setFinanciamentos] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [contas, setContas] = useState([]);
-  const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [parceiros, setParceiros] = useState([]);
   const [categorias, setCategorias] = useState([]);
   const [filtrosAtivos, setFiltrosAtivos] = useState({ status: new Set() });
@@ -252,14 +250,12 @@ export default function FinanceiroFinanciamentosBancarios() {
     let active = true;
     Promise.all([
       getContasBancarias(),
-      getEmpresasGrupo({ ativo: true }),
       buscarParceiros({ fornecedor: '1', ativo: '1', limit: 200 }),
       getCategoriasFinanceiras()
     ])
-      .then(([contasData, empresasData, parceirosData, categoriasData]) => {
+      .then(([contasData, parceirosData, categoriasData]) => {
         if (!active) return;
         setContas(Array.isArray(contasData) ? contasData : []);
-        setEmpresasGrupo(Array.isArray(empresasData) ? empresasData : []);
         setParceiros(Array.isArray(parceirosData) ? parceirosData : []);
         setCategorias(Array.isArray(categoriasData) ? categoriasData : []);
       })
@@ -653,7 +649,7 @@ export default function FinanceiroFinanciamentosBancarios() {
             <div>
               <h2 className="text-lg font-semibold text-[var(--c-text)]">Novo financiamento</h2>
               <p className="text-sm text-[var(--c-muted)]">
-                A empresa do título será a empresa do grupo selecionada para o contrato.
+                A empresa do título será identificada pela conta que recebeu o crédito.
               </p>
             </div>
             <button type="button" className="btn btn-outline" onClick={() => setModalCadastro(false)} aria-label="Fechar">
@@ -666,20 +662,17 @@ export default function FinanceiroFinanciamentosBancarios() {
                 linha de base: quem mede é o form-grid, não a tela. */}
             <FormSecao legenda="Contrato" colunas={2}>
               <CampoForm label="Conta que recebeu o crédito" obrigatorio>
-                <select className="input" value={form.conta_bancaria_id} onChange={(event) => updateForm('conta_bancaria_id', event.target.value)} required>
+                <select className="input" value={form.conta_bancaria_id} onChange={(event) => {
+                  const conta = contas.find((item) => String(item.id) === String(event.target.value));
+                  setForm((current) => ({
+                    ...current,
+                    conta_bancaria_id: event.target.value,
+                    empresa_id: String(conta?.empresa_id || '')
+                  }));
+                }} required>
                   <option value="">Selecione</option>
                   {contas.map((conta) => (
-                    <option key={conta.id} value={conta.id}>{conta.nome} - {conta.banco || 'Conta'}</option>
-                  ))}
-                </select>
-              </CampoForm>
-              <CampoForm label="Empresa do grupo" obrigatorio>
-                <select className="input" value={form.empresa_id} onChange={(event) => updateForm('empresa_id', event.target.value)} required>
-                  <option value="">Selecione</option>
-                  {empresasGrupo.map((empresa) => (
-                    <option key={empresa.id} value={empresa.id}>
-                      {empresa.codigo ? `${empresa.codigo} - ` : ''}{empresa.nome || empresa.razao_social}
-                    </option>
+                    <option key={conta.id} value={conta.id}>{conta.nome} - {conta.banco || 'Conta'}{conta.empresa?.nome ? ` - ${conta.empresa.nome}` : ''}</option>
                   ))}
                 </select>
               </CampoForm>

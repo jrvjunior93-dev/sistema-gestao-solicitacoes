@@ -102,9 +102,9 @@ function validateFrontend() {
   assert(detail.includes('finance-operation-modal--detail'), 'Detalhe da baixa deve usar a superficie financeira opaca.');
   assert(!detail.includes('var(--c-card)'), 'Detalhe da baixa nao pode depender de token de fundo inexistente.');
   assert(styles.includes('.finance-operation-notice--warning'), 'Avisos financeiros devem possuir contraste tematico.');
-  assert(modal.includes('Empresa da fonte'), 'Cada fonte deve permitir selecionar sua propria empresa.');
+  assert(!modal.includes('Empresa da fonte'), 'A empresa da fonte nao deve ser solicitada separadamente da conta.');
   assert(modal.includes('Natureza entre empresas'), 'Rateio entre empresas deve exigir classificacao operacional.');
-  assert(modal.includes('empresasDisponiveis'), 'Modal deve listar todas as empresas permitidas como fonte.');
+  assert(modal.includes("next.empresa_id = String(conta?.empresa_id"), 'A conta selecionada deve definir automaticamente a empresa da fonte.');
   assert(modal.includes('Cheque de terceiro em carteira'), 'Modal deve identificar claramente os cheques cadastrados em carteira.');
   assert(modal.includes('Selecione um cheque cadastrado'), 'Opcao vazia do cheque nao pode sugerir uma origem ambigua.');
   assert(modal.includes('ChequePagamentoFields'), 'Baixa composta deve coletar os dados do cheque proprio em cada fonte.');
@@ -116,7 +116,7 @@ function validateFrontend() {
   assert(custody.includes('Importar cheques'));
   assert(custody.includes('Confirmar importação'));
   assert(
-    custody.includes('min-h-0 flex-1 overflow-y-auto p-5'),
+    custody.includes('min-h-0 overflow-y-auto p-4'),
     'O corpo do modal de importacao deve permitir rolagem sem ultrapassar a viewport.'
   );
   assert(

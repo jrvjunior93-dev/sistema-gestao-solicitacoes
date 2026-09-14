@@ -4,6 +4,41 @@
 
 Antes de trabalho paralelo, registrar agente, escopo, arquivos reservados e horario de inicio. Remover a reserva ao concluir o handoff.
 
+Ownership ativo da sessao `/root` iniciado em 2026-09-14 para corrigir o fluxo de aprovacao
+por tipo e a classificacao financeira automatica da recarga de cartao. Arquivos reservados:
+
+- `backend/src/controllers/ConfiguracaoSistemaController.js`
+- `backend/src/controllers/SolicitacaoController.js`
+- `backend/src/models/CartaoRecarga.js`
+- `backend/src/models/index.js`
+- `backend/src/services/recargaCartaoService.js`
+- `backend/src/services/solicitacao/aprovacaoTipoConfig.js`
+- `backend/scripts/validarRecargaCartao.js`
+- `backend/scripts/validarFluxosPixApropriacoesSolicitacao.js`
+- `backend/migrations/202609140001_cartao_recarga_classificacao_financeira.js`
+- `frontend/src/pages/AprovacaoSolicitacaoPorTipo.jsx`
+- `frontend/src/pages/CartoesRecarga.jsx`
+- `docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`
+- `docs/handoffs/RECARGA_APROVACAO_E_CLASSIFICACAO_2026-09-14.md`
+
+Escopo adicional da sessao `/root` iniciado em 2026-09-14 para priorizar e destacar
+solicitacoes com pedido de retorno pendente. Arquivos reservados:
+
+- `backend/src/controllers/SolicitacaoController.js`
+- `backend/scripts/validarBloqueioRetornoObra.js`
+- `frontend/src/pages/Solicitacoes/index.jsx`
+- `frontend/src/pages/Solicitacoes/LinhaSolicitacao.jsx`
+- `frontend/src/components/lista-avancada/lista-avancada.css`
+- `docs/handoffs/SOLICITACAO_RETORNO_PRIORIDADE_VISUAL_2026-09-14.md`
+
+Escopo adicional de prioridade visual do retorno liberado em 2026-09-14 após validação estática,
+build do frontend e registro do handoff
+`docs/handoffs/SOLICITACAO_RETORNO_PRIORIDADE_VISUAL_2026-09-14.md`.
+
+Ownership da sessao `/root` liberado em 2026-09-12 apos remover a selecao redundante de empresa
+dos fluxos em que a conta bancaria define a empresa, concluir build e validacoes financeiras e
+registrar `docs/handoffs/FINANCEIRO_EMPRESA_DEFINIDA_PELA_CONTA_2026-09-12.md`.
+
 Ownership da sessao `codex-snapshot-sanitizado-dev-v2-2026-08-29` liberado apos configurar
 `export-ignore` para QA, ambientes, uploads, artefatos locais e scripts de dados no pacote de deploy.
 

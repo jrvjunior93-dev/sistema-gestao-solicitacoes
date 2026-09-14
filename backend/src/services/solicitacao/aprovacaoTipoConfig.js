@@ -5,6 +5,7 @@ const {
   TipoSolicitacao
 } = require('../../models');
 const { normalizeTipoSolicitacaoCodigo } = require('../tipoSolicitacaoBehaviorService');
+const { hasSetorCapability } = require('../setorCapabilityService');
 
 const CHAVE_APROVACAO_SOLICITACAO_POR_TIPO = 'APROVACAO_SOLICITACAO_POR_TIPO';
 const CODIGO_SOLICITACAO_COMPRA = 'SOLICITACAO_DE_COMPRA';
@@ -74,6 +75,17 @@ async function obterSetorComprasAtivo() {
   });
 }
 
+async function obterSetorGeoAtivo(options = {}) {
+  const setores = await Setor.findAll({
+    where: { ativo: true },
+    attributes: ['id', 'codigo', 'nome', 'eh_setor_geo'],
+    transaction: options.transaction
+  });
+  return setores.find((setor) => (
+    hasSetorCapability(setor, 'eh_setor_geo')
+  )) || null;
+}
+
 async function obterRegrasAprovacaoSolicitacaoPorTipo({ incluirPadraoCompra = true } = {}) {
   const item = await ConfiguracaoSistema.findOne({
     where: { chave: CHAVE_APROVACAO_SOLICITACAO_POR_TIPO },
@@ -84,11 +96,12 @@ async function obterRegrasAprovacaoSolicitacaoPorTipo({ incluirPadraoCompra = tr
 
   if (!incluirPadraoCompra) return regras;
 
-  const [tipoCompra, setorCompras] = await Promise.all([
+  const [tipoCompra, setorCompras, setorGeo] = await Promise.all([
     obterTipoSolicitacaoCompra(),
-    obterSetorComprasAtivo()
+    obterSetorComprasAtivo(),
+    obterSetorGeoAtivo()
   ]);
-  if (!tipoCompra || !setorCompras) return regras;
+  if (!tipoCompra || !setorCompras || !setorGeo) return regras;
 
   const porTipo = new Map(regras.map((regra) => [String(regra.tipo_solicitacao_id), regra]));
   const tokensSetorCompras = new Set(
@@ -103,17 +116,20 @@ async function obterRegrasAprovacaoSolicitacaoPorTipo({ incluirPadraoCompra = tr
   );
   if (regraCompraExistente && !regraCompraUsaPadrao) return regras;
 
-  const etapasCompras = await EtapaSetor.findAll({
+  const etapasGeo = await EtapaSetor.findAll({
     where: { ativo: true },
     attributes: ['setor', 'nome']
   });
-  const statusPadraoAtivo = etapasCompras.some((etapa) => (
-    tokensSetorCompras.has(normalizarToken(etapa.setor)) &&
+  const tokensSetorGeo = new Set(
+    [setorGeo.codigo, setorGeo.nome].map(normalizarToken).filter(Boolean)
+  );
+  const statusPadraoAtivo = etapasGeo.some((etapa) => (
+    tokensSetorGeo.has(normalizarToken(etapa.setor)) &&
     normalizarToken(etapa.nome) === REGRA_PADRAO_SOLICITACAO_COMPRA.status_destino
   ));
 
   // A regra de Compra e apenas um fallback operacional. Se o status padrao nao existir no
-  // setor, nao devolvemos uma configuracao virtual invalida que bloquearia o salvamento das
+  // GEO, nao devolvemos uma configuracao virtual invalida que bloquearia o salvamento das
   // demais regras. A tela continua sugerindo Compras e permite escolher um status ativo.
   if (statusPadraoAtivo) {
     porTipo.set(chaveTipoCompra, {
@@ -123,7 +139,7 @@ async function obterRegrasAprovacaoSolicitacaoPorTipo({ incluirPadraoCompra = tr
     });
   } else if (regraCompraUsaPadrao) {
     // Tambem neutraliza uma regra padrao que tenha sido salva antes de LIBERADO ser
-    // desativado no setor Compras. O proximo salvamento remove o valor obsoleto da configuracao.
+    // desativado no GEO. O proximo salvamento remove o valor obsoleto da configuracao.
     porTipo.delete(chaveTipoCompra);
   }
 
@@ -180,12 +196,19 @@ async function resolverContextoAprovacaoPorTipo(solicitacao, options = {}) {
     return { configurada: true, valida: false, regra, erro: 'Setor destino inativo ou inexistente.' };
   }
 
+  const setorGeo = setores.find((item) => (
+    hasSetorCapability(item, 'eh_setor_geo')
+  ));
+  if (!setorGeo) {
+    return { configurada: true, valida: false, regra, setor, erro: 'Setor GEO inativo ou inexistente.' };
+  }
+
   const etapas = await EtapaSetor.findAll({
     where: { ativo: true },
     attributes: ['id', 'setor', 'nome'],
     transaction: options.transaction
   });
-  const tokensSetor = new Set([setor.codigo, setor.nome].map(normalizarToken).filter(Boolean));
+  const tokensSetor = new Set([setorGeo.codigo, setorGeo.nome].map(normalizarToken).filter(Boolean));
   const etapa = etapas.find((item) => (
     tokensSetor.has(normalizarToken(item.setor)) &&
     normalizarToken(item.nome) === normalizarToken(regra.status_destino)
@@ -196,7 +219,7 @@ async function resolverContextoAprovacaoPorTipo(solicitacao, options = {}) {
       valida: false,
       regra,
       setor,
-      erro: 'Status de chegada inativo ou nao vinculado ao setor destino.'
+      erro: 'Status de chegada inativo ou nao vinculado ao setor GEO.'
     };
   }
 
@@ -205,6 +228,7 @@ async function resolverContextoAprovacaoPorTipo(solicitacao, options = {}) {
     valida: true,
     regra,
     setor,
+    setorGeo,
     setorDestino: String(setor.codigo || setor.nome).trim(),
     setorDestinoNome: setor.nome || setor.codigo,
     statusDestino: normalizarToken(etapa.nome),

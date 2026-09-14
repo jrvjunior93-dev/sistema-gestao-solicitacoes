@@ -531,7 +531,19 @@ export function construirColunas({
       titulo: 'Código',
       tipo: 'identidade',
       noCard: 'titulo',
-      render: (item) => item.codigo || `#${item.id}`
+      render: (item) => (
+        <span className="sol-codigo-retorno">
+          <span>{item.codigo || `#${item.id}`}</span>
+          {item.retorno_solicitado_pendente && (
+            <span
+              className="sol-retorno-pendente"
+              title={item.pedido_retorno_pendente?.motivo || 'Esta solicitação precisa de atenção do setor atual.'}
+            >
+              Retorno solicitado
+            </span>
+          )}
+        </span>
+      )
     },
     {
       id: 'numero_sienge',

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { HiOutlinePlus, HiOutlineTrash, HiOutlineXMark } from 'react-icons/hi2';
 import { confirmarBaixaFinanceiraComposta, previewBaixaFinanceiraComposta } from '../../services/financeiro';
 import { TabelaPadrao } from '../padrao';
@@ -61,7 +61,7 @@ function distribute(value, titulos, alreadyByTitle = {}) {
 }
 
 export default function BaixaCompostaModal({
-  titulos = [], formas = [], contas = [], cartoes = [], cheques = [], empresas = [], onClose, onConfirmed
+  titulos = [], formas = [], contas = [], cartoes = [], cheques = [], onClose, onConfirmed
 }) {
   const [dataMovimento, setDataMovimento] = useState(today());
   const [observacoes, setObservacoes] = useState('');
@@ -72,15 +72,6 @@ export default function BaixaCompostaModal({
   const empresaId = Number(titulos[0]?.empresa_id || 0);
   const parceiroId = Number(titulos[0]?.parceiro_id || 0);
   const compatible = titulos.length > 0 && titulos.every((item) => Number(item.parceiro_id) === parceiroId);
-  const empresasDisponiveis = useMemo(() => {
-    const map = new Map();
-    empresas.filter((item) => item?.ativo !== false).forEach((item) => map.set(Number(item.id), item));
-    titulos.forEach((item) => {
-      const id = Number(item.empresa_id || 0);
-      if (id && !map.has(id)) map.set(id, { id, nome: item.empresa?.nome || `Empresa #${id}` });
-    });
-    return Array.from(map.values());
-  }, [empresas, titulos]);
   const totalSaldo = titulos.reduce((sum, item) => sum + Number(item.valor_saldo || 0), 0);
   const totalComponents = components.reduce((sum, item) => sum + Number(item.valor || 0), 0);
 
@@ -103,12 +94,9 @@ export default function BaixaCompostaModal({
       if (field === 'forma_pagamento_id') {
         next.conta_bancaria_id = ''; next.cartao_id = ''; next.cheque_terceiro_id = '';
       }
-      if (field === 'empresa_id') {
-        next.conta_bancaria_id = ''; next.cartao_id = ''; next.cheque_terceiro_id = '';
-      }
       if (field === 'conta_bancaria_id') {
         const conta = contas.find((item) => Number(item.id) === Number(value));
-        if (conta?.empresa_id) next.empresa_id = String(conta.empresa_id);
+        next.empresa_id = String(conta?.empresa_id || titulos[0]?.empresa_id || '');
       }
       if (field === 'cartao_id') {
         const cartao = cartoes.find((item) => Number(item.id) === Number(value));
@@ -205,27 +193,22 @@ export default function BaixaCompostaModal({
           <div className="space-y-3">{components.map((component, index) => {
             const forma = formas.find((item) => Number(item.id) === Number(component.forma_pagamento_id));
             const type = operationalType(forma);
-            const contasEmpresa = contas.filter((item) => item.ativo !== false && (!component.empresa_id || Number(item.empresa_id) === Number(component.empresa_id)));
+            const contasAtivas = contas.filter((item) => item.ativo !== false);
             const contasCompativeis = type === 'DINHEIRO'
-              ? contasEmpresa.filter((item) => contaExigeControleDiario(item))
-              : contasEmpresa;
-            const chequesEmpresa = cheques.filter((item) => String(item.status).toUpperCase() === 'EM_CARTEIRA' && (!component.empresa_id || Number(item.empresa_id) === Number(component.empresa_id)));
-            const cartoesEmpresa = cartoes.filter((item) => {
-              if (item.ativo === false || !component.empresa_id) return item.ativo !== false;
-              const contaCartao = contas.find((conta) => Number(conta.id) === Number(item.conta_bancaria_id));
-              return Number(contaCartao?.empresa_id) === Number(component.empresa_id);
-            });
+              ? contasAtivas.filter((item) => contaExigeControleDiario(item))
+              : contasAtivas;
+            const chequesDisponiveis = cheques.filter((item) => String(item.status).toUpperCase() === 'EM_CARTEIRA');
+            const cartoesDisponiveis = cartoes.filter((item) => item.ativo !== false);
             const temRateioIntercompany = Object.entries(component.alocacoes || {}).some(([tituloId, value]) => {
               const titulo = titulos.find((item) => Number(item.id) === Number(tituloId));
               return Number(value) > 0 && Number(titulo?.empresa_id) !== Number(component.empresa_id);
             });
             const componentAllocated = Object.values(component.alocacoes || {}).reduce((sum, value) => sum + Number(value || 0), 0);
-            return <section key={index} className="finance-operation-panel p-4"><div className="mb-3 flex items-center justify-between"><h3 className="font-semibold text-[var(--c-text)]">Fonte {index + 1}</h3>{components.length > 1 ? <button type="button" className="btn btn-outline btn-sm text-[var(--status-rejected-text)]" onClick={() => { setComponents((rows) => rows.filter((_, rowIndex) => rowIndex !== index)); setPreview(null); }}><HiOutlineTrash /></button> : null}</div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              <label className="form-control"><span>Empresa da fonte *</span><select className="select" value={component.empresa_id} onChange={(e) => updateComponent(index, 'empresa_id', e.target.value)}><option value="">Selecione</option>{empresasDisponiveis.map((item) => <option key={item.id} value={item.id}>{item.nome || item.razao_social || `Empresa #${item.id}`}</option>)}</select></label>
+            return <section key={index} className="finance-operation-panel p-4"><div className="mb-3 flex items-center justify-between"><h3 className="font-semibold text-[var(--c-text)]">Fonte {index + 1}</h3>{components.length > 1 ? <button type="button" className="btn btn-outline btn-sm text-[var(--status-rejected-text)]" onClick={() => { setComponents((rows) => rows.filter((_, rowIndex) => rowIndex !== index)); setPreview(null); }}><HiOutlineTrash /></button> : null}</div><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <label className="form-control"><span>Forma *</span><select className="select" value={component.forma_pagamento_id} onChange={(e) => updateComponent(index, 'forma_pagamento_id', e.target.value)}><option value="">Selecione</option>{formas.filter((item) => item.ativo !== false && !item.gera_fatura).map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}</select></label>
-              {type === 'CHEQUE' ? <label className="form-control"><span>Cheque de terceiro em carteira</span><select className="select" value={component.cheque_terceiro_id} onChange={(e) => updateComponent(index, 'cheque_terceiro_id', e.target.value)}><option value="">Selecione um cheque cadastrado</option>{chequesEmpresa.map((item) => <option key={item.id} value={item.id}>{item.codigo} · Nº {item.numero_cheque} · {money(item.valor)}</option>)}</select>{!component.cheque_terceiro_id ? <small className="mt-1 text-xs text-[var(--c-muted)]">Sem seleção, informe a conta e o número do cheque emitido pela empresa.</small> : null}</label> : null}
-              {!['PERMUTA', 'OUTROS'].includes(type) && !(type === 'CHEQUE' && component.cheque_terceiro_id) ? <label className="form-control"><span>{type === 'DINHEIRO' ? 'Caixa físico *' : 'Conta financeira *'}</span><select className="select" value={component.conta_bancaria_id} onChange={(e) => updateComponent(index, 'conta_bancaria_id', e.target.value)}><option value="">{type === 'DINHEIRO' ? 'Selecione o caixa físico' : 'Selecione'}</option>{contasCompativeis.map((item) => <option key={item.id} value={item.id}>{item.nome || item.banco_nome || `Conta #${item.id}`}</option>)}</select>{type === 'DINHEIRO' ? <small className="mt-1 text-xs text-[var(--c-muted)]">O caixa deve estar aberto e abranger a data do pagamento.{component.empresa_id && contasCompativeis.length === 0 ? ' Nenhum caixa físico ativo foi encontrado para esta empresa.' : ''}</small> : null}</label> : null}
-              {type === 'CARTAO' ? <label className="form-control"><span>Cartão *</span><select className="select" value={component.cartao_id} onChange={(e) => updateComponent(index, 'cartao_id', e.target.value)}><option value="">Selecione</option>{cartoesEmpresa.map((item) => <option key={item.id} value={item.id}>{item.nome || item.descricao || `Cartão #${item.id}`}</option>)}</select></label> : null}
+              {type === 'CHEQUE' ? <label className="form-control"><span>Cheque de terceiro em carteira</span><select className="select" value={component.cheque_terceiro_id} onChange={(e) => updateComponent(index, 'cheque_terceiro_id', e.target.value)}><option value="">Selecione um cheque cadastrado</option>{chequesDisponiveis.map((item) => <option key={item.id} value={item.id}>{item.codigo} · Nº {item.numero_cheque} · {money(item.valor)}{item.empresa?.nome ? ` · ${item.empresa.nome}` : ''}</option>)}</select>{!component.cheque_terceiro_id ? <small className="mt-1 text-xs text-[var(--c-muted)]">Sem seleção, informe a conta e o número do cheque emitido.</small> : null}</label> : null}
+              {!['PERMUTA', 'OUTROS'].includes(type) && !(type === 'CHEQUE' && component.cheque_terceiro_id) ? <label className="form-control"><span>{type === 'DINHEIRO' ? 'Caixa físico *' : 'Conta financeira *'}</span><select className="select" value={component.conta_bancaria_id} onChange={(e) => updateComponent(index, 'conta_bancaria_id', e.target.value)}><option value="">{type === 'DINHEIRO' ? 'Selecione o caixa físico' : 'Selecione uma conta'}</option>{contasCompativeis.map((item) => <option key={item.id} value={item.id}>{item.nome || item.banco_nome || `Conta #${item.id}`}{item.empresa?.nome ? ` · ${item.empresa.nome}` : ''}</option>)}</select>{type === 'DINHEIRO' ? <small className="mt-1 text-xs text-[var(--c-muted)]">O caixa deve estar aberto e abranger a data do pagamento.{contasCompativeis.length === 0 ? ' Nenhum caixa físico ativo foi encontrado.' : ''}</small> : null}</label> : null}
+              {type === 'CARTAO' ? <label className="form-control"><span>Cartão *</span><select className="select" value={component.cartao_id} onChange={(e) => updateComponent(index, 'cartao_id', e.target.value)}><option value="">Selecione</option>{cartoesDisponiveis.map((item) => <option key={item.id} value={item.id}>{item.nome || item.descricao || `Cartão #${item.id}`}</option>)}</select></label> : null}
               <label className="form-control"><span>Valor da fonte *</span><input className="input" type="number" min="0.01" step="0.01" value={component.valor} readOnly={Boolean(component.cheque_terceiro_id)} onChange={(e) => updateComponent(index, 'valor', e.target.value)} /></label>
               {type !== 'CHEQUE' ? <label className="form-control"><span>Documento</span><input className="input" value={component.documento_referencia} onChange={(e) => updateComponent(index, 'documento_referencia', e.target.value)} /></label> : null}
               {temRateioIntercompany ? <label className="form-control xl:col-span-2"><span>Natureza entre empresas *</span><select className="select" value={component.natureza_intercompany_baixa} onChange={(e) => updateComponent(index, 'natureza_intercompany_baixa', e.target.value)}>{NATUREZAS_INTERCOMPANY.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label> : null}

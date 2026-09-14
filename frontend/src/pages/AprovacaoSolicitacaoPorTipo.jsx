@@ -35,6 +35,15 @@ function encontrarSetorCompras(setores = []) {
   ));
 }
 
+function encontrarSetorGeo(setores = []) {
+  return setores.find((setor) => (
+    setor?.eh_setor_geo === true ||
+    [setor?.codigo, setor?.nome]
+      .filter(Boolean)
+      .some((valor) => ['GEO', 'GERENCIA_DE_PROCESSOS', 'GERENCIA_PROCESSOS'].includes(normalizar(valor)))
+  ));
+}
+
 function sugerirDestinoCompra(regrasAtuais = {}, tiposAtivos = [], setoresAtivos = []) {
   const tipoCompra = tiposAtivos.find(tipoEhSolicitacaoCompra);
   const setorCompras = encontrarSetorCompras(setoresAtivos);
@@ -49,7 +58,7 @@ function sugerirDestinoCompra(regrasAtuais = {}, tiposAtivos = [], setoresAtivos
   };
 }
 
-const DESCRICAO = 'Defina para onde cada tipo segue depois da aprovação do GEO e com qual status ele entra no setor destino.';
+const DESCRICAO = 'Defina para onde cada tipo segue depois da aprovação e qual status do GEO será aplicado na chegada.';
 
 export default function AprovacaoSolicitacaoPorTipo() {
   const [tipos, setTipos] = useState([]);
@@ -101,21 +110,15 @@ export default function AprovacaoSolicitacaoPorTipo() {
     [...setores].sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'))
   ), [setores]);
 
-  function encontrarSetor(token) {
-    const chave = normalizar(token);
-    return setoresOrdenados.find((setor) => (
-      [setor.codigo, setor.nome].filter(Boolean).map(normalizar).includes(chave)
-    ));
-  }
+  const setorGeo = useMemo(() => encontrarSetorGeo(setoresOrdenados), [setoresOrdenados]);
 
-  function statusDoSetor(tokenSetor) {
-    const setor = encontrarSetor(tokenSetor);
-    if (!setor) return [];
-    const tokens = new Set([setor.codigo, setor.nome].filter(Boolean).map(normalizar));
+  const statusDoGeo = useMemo(() => {
+    if (!setorGeo) return [];
+    const tokens = new Set([setorGeo.codigo, setorGeo.nome].filter(Boolean).map(normalizar));
     return etapas
       .filter((etapa) => tokens.has(normalizar(etapa.setor)))
       .sort((a, b) => Number(a.ordem || 0) - Number(b.ordem || 0));
-  }
+  }, [etapas, setorGeo]);
 
   function alterarSetor(tipo, setorDestino) {
     const tipoId = String(tipo.id);
@@ -201,7 +204,7 @@ export default function AprovacaoSolicitacaoPorTipo() {
 
       <BlocoConteudo
         titulo="Destino após aprovação"
-        descricao="O botão Aprovar solicitação aparece no detalhe enquanto o registro está no GEO. Tipos sem configuração continuam sem aprovação automática."
+        descricao="O botão Aprovar solicitação aparece no detalhe enquanto o registro está no GEO. O destino define para onde ela segue; o status é escolhido entre os status ativos do GEO."
         variante="primario"
         cor="var(--c-primary)"
       >
@@ -212,7 +215,7 @@ export default function AprovacaoSolicitacaoPorTipo() {
             {tiposOrdenados.map((tipo) => {
               const regra = regras[String(tipo.id)] || {};
               const compra = tipoEhSolicitacaoCompra(tipo);
-              const opcoesStatus = statusDoSetor(regra.setor_destino);
+              const opcoesStatus = statusDoGeo;
               return (
                 <div
                   key={tipo.id}
@@ -249,7 +252,7 @@ export default function AprovacaoSolicitacaoPorTipo() {
                   </label>
 
                   <label className="form-field">
-                    <span className="form-label">Status de chegada</span>
+                    <span className="form-label">Status de chegada (GEO)</span>
                     <select
                       className="input w-full"
                       value={regra.status_destino || ''}

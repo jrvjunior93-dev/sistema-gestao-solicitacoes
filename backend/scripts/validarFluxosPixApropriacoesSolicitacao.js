@@ -124,19 +124,21 @@ function validarIntegracaoFrontendBackend() {
   assert(!novaSolicitacao.includes('titulo="Valor e apropriação"'));
   assert(!novaSolicitacao.includes('O valor é o número que a apropriação reparte'));
 
-  // O fallback de Solicitacao de Compra so pode ser efetivado quando LIBERADO esta ativo em
-  // Compras. Sem isso, a tela sugere o setor com status vazio e nao bloqueia outras regras.
-  assert(aprovacaoTipo.includes('const statusPadraoAtivo = etapasCompras.some'));
+  // O destino continua sendo Compras, mas o status aplicado na chegada e escolhido e validado
+  // contra o catalogo do GEO, que e o setor responsavel pela aprovacao.
+  assert(aprovacaoTipo.includes('const statusPadraoAtivo = etapasGeo.some'));
+  assert(aprovacaoTipo.includes('tokensSetorGeo.has(normalizarToken(etapa.setor))'));
   assert(aprovacaoTipo.includes('if (statusPadraoAtivo)'));
   assert(aprovacaoTipo.includes('porTipo.delete(chaveTipoCompra)'));
   assert(telaAprovacaoTipo.includes('function sugerirDestinoCompra'));
+  assert(telaAprovacaoTipo.includes('const statusDoGeo = useMemo'));
+  assert(telaAprovacaoTipo.includes('Status de chegada (GEO)'));
   assert(telaAprovacaoTipo.includes('tipoEhSolicitacaoCompra(tipo) && regra.setor_destino && !regra.status_destino'));
 
-  // Aprovar pelo fluxo configurado deve acionar a mesma sincronizacao da troca manual de status;
-  // para Recarga de Cartao isso transforma o titulo PREVISAO em ABERTO na mesma transacao.
-  assert(solicitacaoController.includes(`await sincronizarTituloComStatusSolicitacao(
+  // A abertura do titulo de Recarga decorre do evento de aprovacao, sem depender do texto do
+  // status escolhido para a chegada no setor destino.
+  assert(solicitacaoController.includes(`await liberarTituloRecargaAposAprovacao(
         solicitacao.id,
-        contexto.statusDestino,
         req.user.id,
         transaction
       );`));

@@ -550,25 +550,17 @@ export default function FinanceiroCadastros() {
       setSavingPaymentAccount(true);
       limpar();
       const { id, ...payload } = pickPaymentAccountFormData(paymentAccountForm);
-      if (!payload.empresa_id) {
-        avisar.erro('Informe a empresa pagadora real da conta pagadora.');
-        return;
-      }
       const contaSelecionada = contas.find((item) => String(item.id) === String(payload.conta_bancaria_id));
       const empresaContaId = getContaEmpresaId(contaSelecionada);
       if (!empresaContaId) {
         avisar.erro('A conta bancária interna precisa estar vinculada a uma empresa do grupo antes de virar conta pagadora.');
         return;
       }
-      if (String(payload.empresa_id) !== empresaContaId) {
-        avisar.erro('A empresa pagadora deve ser a mesma vinculada a conta bancária interna.');
-        return;
-      }
       const cleanPayload = {
         ...payload,
         cnpj_pagador: onlyDigits(payload.cnpj_pagador),
         conta_bancaria_id: Number(payload.conta_bancaria_id),
-        empresa_id: Number(payload.empresa_id)
+        empresa_id: Number(empresaContaId)
       };
       if (paymentAccountForm.id) {
         await atualizarPaymentAccount(paymentAccountForm.id, cleanPayload);
@@ -992,7 +984,7 @@ export default function FinanceiroCadastros() {
             titulo="Contas pagadoras"
             descricao={paymentAccountForm.id
               ? 'Edite a conta pagadora selecionada.'
-              : 'Vincule uma conta bancaria interna ao CNPJ pagador, convenio bancario e empresa do grupo.'}
+              : 'Vincule uma conta bancaria interna ao CNPJ e ao convenio bancario. A empresa vem automaticamente da conta.'}
             variante="secundario"
           >
             <form onSubmit={handleSalvarPaymentAccount}>
@@ -1024,19 +1016,6 @@ export default function FinanceiroCadastros() {
                   />
                 </CampoForm>
 
-                <CampoForm label="Empresa pagadora" obrigatorio hint="Precisa ser a mesma empresa vinculada a conta bancaria interna.">
-                  <select
-                    className="input w-full"
-                    value={paymentAccountForm.empresa_id}
-                    onChange={(e) => setPaymentAccountForm((c) => ({ ...c, empresa_id: e.target.value }))}
-                    required
-                  >
-                    <option value="">Selecione a empresa pagadora</option>
-                    {empresasGrupo.map((empresa) => (
-                      <option key={empresa.id} value={empresa.id}>{empresa.nome}</option>
-                    ))}
-                  </select>
-                </CampoForm>
               </FormSecao>
 
               <FormSecao legenda="Dados bancários do pagador" colunas={3}>

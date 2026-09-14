@@ -640,6 +640,35 @@
 }
 .la-linha.la-urgencia-danger td:first-child::before { background: var(--sem-danger); }
 .la-linha.la-urgencia-warning td:first-child::before { background: var(--sem-warning); }
+.la-linha.la-urgencia-retorno td { background: var(--sem-danger-bg); }
+.la-linha.la-urgencia-retorno:hover td {
+  background: color-mix(in srgb, var(--sem-danger) 15%, var(--ui-surface));
+}
+.la-linha.la-urgencia-retorno td:first-child::before { background: var(--sem-danger); }
+
+.sol-codigo-retorno,
+.sol-card-compacto-codigo {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.sol-retorno-pendente {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border: 1px solid var(--sem-danger-border);
+  border-radius: 999px;
+  background: var(--ui-surface);
+  color: var(--sem-danger);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
 
 .la-grupo-linha td {
   padding: 8px 12px;
@@ -782,6 +811,15 @@
 }
 .la-card.la-urgencia-danger::before { background: var(--sem-danger); }
 .la-card.la-urgencia-warning::before { background: var(--sem-warning); }
+.la-card.la-urgencia-retorno {
+  border-color: var(--sem-danger-border);
+  background: var(--sem-danger-bg);
+}
+.la-card.la-urgencia-retorno:hover {
+  border-color: var(--sem-danger);
+  background: color-mix(in srgb, var(--sem-danger) 15%, var(--ui-surface));
+}
+.la-card.la-urgencia-retorno::before { background: var(--sem-danger); }
 
 .la-card-check {
   position: absolute;

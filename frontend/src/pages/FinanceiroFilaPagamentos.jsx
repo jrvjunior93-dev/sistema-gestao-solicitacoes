@@ -126,10 +126,6 @@ function beneficiaryData(titulo) {
   };
 }
 
-function empresaIdTitulo(titulo) {
-  return Number(titulo?.empresa_id || titulo?.empresa?.id || titulo?.obra?.empresa_grupo_id || 0) || null;
-}
-
 function valorParaInput(value) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed.toFixed(2) : '';
@@ -170,7 +166,7 @@ function orientarErroRegistroBaixa(error) {
     return { mensagem, correcao: 'Preencha a justificativa na linha do título. Ela é obrigatória quando o valor pago é diferente do saldo ou do valor previsto.', campo: 'motivo' };
   }
   if (normalizada.includes('conta pagadora') && normalizada.includes('empresa do titulo')) {
-    return { mensagem, correcao: 'Selecione uma conta pagadora vinculada à mesma empresa do título e tente novamente.', campo: 'conta_bancaria_id' };
+    return { mensagem, correcao: 'Selecione outra conta pagadora ativa e tente novamente. A empresa será identificada automaticamente pela conta.', campo: 'conta_bancaria_id' };
   }
   if (normalizada.includes('conta pagadora')) {
     return { mensagem, correcao: 'Selecione uma conta pagadora ativa e vinculada a uma empresa. Se não houver opção válida, solicite a correção do cadastro bancário.', campo: 'conta_bancaria_id' };
@@ -312,8 +308,7 @@ export default function FinanceiroFilaPagamentos() {
   }
 
   function compatibleAccounts(row) {
-    const companyId = empresaIdTitulo(row.titulo);
-    return companyId ? accounts.filter((account) => Number(account.empresa_id) === companyId) : accounts;
+    return accounts.filter((account) => account.ativo !== false && account.empresa_id);
   }
 
   function selectedAccount(row) {
@@ -637,7 +632,7 @@ export default function FinanceiroFilaPagamentos() {
                           <option key={item.id} value={item.id}>{item.nome} · {item.banco || 'Banco'} {item.conta || ''}</option>
                         ))}
                       </select>
-                      {editable && accountOptions.length === 0 ? <div className="mt-1 text-xs text-[var(--sem-danger)]">Nenhuma conta da empresa.</div> : null}
+                      {editable && accountOptions.length === 0 ? <div className="mt-1 text-xs text-[var(--sem-danger)]">Nenhuma conta bancária ativa com empresa vinculada.</div> : null}
                     </td>
                     <td className="px-3 py-3 align-top">
                       <div className="max-w-[180px] text-xs font-medium">{account?.empresa?.nome || account?.empresa?.razao_social || title.empresa?.nome || 'Definida pela conta'}</div>

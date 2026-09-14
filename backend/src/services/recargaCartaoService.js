@@ -5,6 +5,8 @@ const {
   CartaoRecargaPrestacao,
   CartaoRecargaPrestacaoRateio,
   CartaoRecargaUsuario,
+  CategoriaFinanceira,
+  EmpresaGrupo,
   Historico,
   Obra,
   Parceiro,
@@ -115,6 +117,24 @@ async function assertCartaoVinculado(cartaoId, userId, { transaction = null, loc
   if (!cartao.parceiro || cartao.parceiro.ativo === false || cartao.parceiro.fornecedor === false) {
     throw erro(400, 'O cartao precisa estar vinculado a um fornecedor ativo.');
   }
+  if (!cartao.empresa_id || !cartao.categoria_financeira_id) {
+    throw erro(409, 'Configure a empresa e a categoria financeira deste cartao antes de solicitar uma nova recarga.');
+  }
+
+  const [empresa, categoria] = await Promise.all([
+    EmpresaGrupo.findOne({ where: { id: cartao.empresa_id, ativo: true }, attributes: ['id'], transaction }),
+    CategoriaFinanceira.findOne({
+      where: {
+        id: cartao.categoria_financeira_id,
+        ativo: true,
+        tipo: { [Op.in]: ['PAGAR', 'AMBOS'] }
+      },
+      attributes: ['id'],
+      transaction
+    })
+  ]);
+  if (!empresa) throw erro(409, 'A empresa configurada no cartao esta inativa ou nao existe.');
+  if (!categoria) throw erro(409, 'A categoria financeira configurada no cartao nao aceita titulos a pagar ou esta inativa.');
 
   const vinculo = await CartaoRecargaUsuario.findOne({
     where: { cartao_recarga_id: cartao.id, user_id: Number(userId), ativo: true },
@@ -313,14 +333,6 @@ async function executarCriacaoRecargaComControle({ cartaoId, user, dadosSolicita
     if (valor <= 0) throw erro(400, 'Informe um valor de recarga maior que zero.');
     if (!dadosSolicitacao.data_vencimento) throw erro(400, 'Informe a data prevista para recarga.');
 
-    const obra = await Obra.findByPk(dadosSolicitacao.obra_id, {
-      attributes: ['id', 'empresa_grupo_id'],
-      transaction
-    });
-    if (!obra?.empresa_grupo_id) {
-      throw erro(400, 'A obra de origem precisa ter uma empresa do grupo vinculada para gerar o titulo.');
-    }
-
     const solicitacao = await Solicitacao.create({
       ...dadosSolicitacao,
       parceiro_id: cartao.parceiro_id,
@@ -332,11 +344,11 @@ async function executarCriacaoRecargaComControle({ cartaoId, user, dadosSolicita
       solicitacao_id: solicitacao.id,
       obra_id: null,
       apropriacao_id: null,
-      empresa_id: obra.empresa_grupo_id,
+      empresa_id: cartao.empresa_id,
       parceiro_id: cartao.parceiro_id,
-      categoria_financeira_id: null,
+      categoria_financeira_id: cartao.categoria_financeira_id,
       forma_pagamento_id: null,
-      competencia_data: dadosSolicitacao.data_vencimento,
+      competencia_data: hojeEmSaoPaulo(),
       considera_dre: false,
       possui_rateio: false,
       origem_titulo: 'RECARGA_CARTAO',
@@ -399,6 +411,15 @@ async function sincronizarTituloComStatusSolicitacao(solicitacaoId, status, user
     return null;
   };
   return externalTransaction ? executar(externalTransaction) : sequelize.transaction(executar);
+}
+
+async function liberarTituloRecargaAposAprovacao(solicitacaoId, userId = null, externalTransaction = null) {
+  return sincronizarTituloComStatusSolicitacao(
+    solicitacaoId,
+    'APROVADA',
+    userId,
+    externalTransaction
+  );
 }
 
 async function editarRecargaPendente(solicitacaoId, payload, user, externalTransaction = null) {
@@ -857,6 +878,11 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
       where: { solicitacao_id: Number(solicitacaoId) },
       include: [
         { model: TituloFinanceiro, as: 'titulo' },
+        {
+          model: CartaoRecarga,
+          as: 'cartao',
+          attributes: ['id', 'empresa_id', 'categoria_financeira_id']
+        },
         { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'area_responsavel', 'status_global'] },
         {
           model: CartaoRecargaPrestacao,
@@ -891,6 +917,26 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
     } else {
       const rateios = recarga.prestacao.rateios || [];
       if (rateios.length === 0) throw erro(409, 'A prestacao nao possui rateios para validar.');
+      const categoriaFinanceiraId = recarga.titulo.categoria_financeira_id
+        || recarga.cartao?.categoria_financeira_id;
+      const empresaId = recarga.titulo.empresa_id || recarga.cartao?.empresa_id;
+      const categoria = categoriaFinanceiraId
+        ? await CategoriaFinanceira.findOne({
+            where: {
+              id: categoriaFinanceiraId,
+              ativo: true,
+              tipo: { [Op.in]: ['PAGAR', 'AMBOS'] }
+            },
+            attributes: ['id', 'considera_dre', 'dre_grupo'],
+            transaction
+          })
+        : null;
+      const empresa = empresaId
+        ? await EmpresaGrupo.findOne({ where: { id: empresaId, ativo: true }, attributes: ['id'], transaction })
+        : null;
+      if (!empresa || !categoria) {
+        throw erro(409, 'Configure a empresa e a categoria financeira do cartao antes de validar esta prestacao.');
+      }
       await TituloFinanceiroRateio.destroy({ where: { titulo_financeiro_id: recarga.titulo_financeiro_id }, transaction });
       await TituloFinanceiroRateio.bulkCreate(rateios.map((item) => ({
         titulo_financeiro_id: recarga.titulo_financeiro_id,
@@ -906,8 +952,10 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
       await recarga.titulo.update({
         obra_id: null,
         apropriacao_id: null,
+        empresa_id: empresa.id,
+        categoria_financeira_id: categoria.id,
         possui_rateio: true,
-        considera_dre: true,
+        considera_dre: categoria.considera_dre !== false && Boolean(String(categoria.dre_grupo || '').trim()),
         atualizado_por: user.id
       }, { transaction });
       await recarga.prestacao.update({ status: 'VALIDADA', motivo_rejeicao: null, validado_por: user.id, validado_em: new Date() }, { transaction });
@@ -958,17 +1006,25 @@ async function decidirPrestacao(solicitacaoId, payload, user, externalTransactio
 
 async function listarAdmin(user) {
   assertSuperadmin(user);
-  const [cartoes, usuarios] = await Promise.all([
+  const [cartoes, usuarios, empresas, categorias] = await Promise.all([
     CartaoRecarga.findAll({
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj'] },
+        { model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'codigo', 'nome'] },
+        { model: CategoriaFinanceira, as: 'categoriaFinanceira', attributes: ['id', 'nome', 'tipo', 'dre_grupo', 'considera_dre'] },
         { model: CartaoRecargaUsuario, as: 'vinculosUsuarios', required: false, include: [{ model: User, as: 'usuario', attributes: ['id', 'nome', 'email', 'ativo'] }] }
       ],
       order: [['nome', 'ASC']]
     }),
-    User.findAll({ where: { ativo: true }, attributes: ['id', 'nome', 'email'], order: [['nome', 'ASC']] })
+    User.findAll({ where: { ativo: true }, attributes: ['id', 'nome', 'email'], order: [['nome', 'ASC']] }),
+    EmpresaGrupo.findAll({ where: { ativo: true }, attributes: ['id', 'codigo', 'nome'], order: [['nome', 'ASC']] }),
+    CategoriaFinanceira.findAll({
+      where: { ativo: true, tipo: { [Op.in]: ['PAGAR', 'AMBOS'] } },
+      attributes: ['id', 'nome', 'tipo', 'dre_grupo', 'considera_dre'],
+      order: [['nome', 'ASC']]
+    })
   ]);
-  return { cartoes, usuarios };
+  return { cartoes, usuarios, empresas, categorias };
 }
 
 function validarCartaoPayload(payload = {}) {
@@ -976,13 +1032,25 @@ function validarCartaoPayload(payload = {}) {
   const identificador = String(payload.identificador || '').trim().toUpperCase();
   const ultimosQuatro = String(payload.ultimos_quatro || '').replace(/\D/g, '');
   const parceiroId = Number(payload.parceiro_id);
+  const empresaId = Number(payload.empresa_id);
+  const categoriaFinanceiraId = Number(payload.categoria_financeira_id);
   const usuarioIds = [...new Set((Array.isArray(payload.usuario_ids) ? payload.usuario_ids : []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
   if (!nome) throw erro(400, 'Informe o nome de identificacao do cartao.');
   if (!identificador) throw erro(400, 'Informe o identificador interno do cartao.');
   if (ultimosQuatro.length !== 4) throw erro(400, 'Informe os quatro ultimos digitos do cartao.');
   if (!Number.isInteger(parceiroId) || parceiroId <= 0) throw erro(400, 'Selecione o fornecedor do cartao.');
+  if (!Number.isInteger(empresaId) || empresaId <= 0) throw erro(400, 'Selecione a empresa responsavel pela recarga.');
+  if (!Number.isInteger(categoriaFinanceiraId) || categoriaFinanceiraId <= 0) throw erro(400, 'Selecione a categoria financeira da recarga.');
   if (usuarioIds.length === 0) throw erro(400, 'Vincule o cartao a pelo menos um usuario.');
-  return { nome, identificador, ultimos_quatro: ultimosQuatro, parceiro_id: parceiroId, usuario_ids: usuarioIds };
+  return {
+    nome,
+    identificador,
+    ultimos_quatro: ultimosQuatro,
+    parceiro_id: parceiroId,
+    empresa_id: empresaId,
+    categoria_financeira_id: categoriaFinanceiraId,
+    usuario_ids: usuarioIds
+  };
 }
 
 async function salvarCartao(cartaoId, payload, user, externalTransaction = null) {
@@ -990,8 +1058,14 @@ async function salvarCartao(cartaoId, payload, user, externalTransaction = null)
   const dados = validarCartaoPayload(payload);
   const { usuario_ids: usuarioIds, ...dadosCartao } = dados;
   const executar = async (transaction) => {
-    const [parceiro, usuarios, cartaoDuplicado] = await Promise.all([
+    const [parceiro, empresa, categoria, usuarios, cartaoDuplicado] = await Promise.all([
       Parceiro.findOne({ where: { id: dados.parceiro_id, ativo: true, fornecedor: true }, transaction }),
+      EmpresaGrupo.findOne({ where: { id: dados.empresa_id, ativo: true }, attributes: ['id'], transaction }),
+      CategoriaFinanceira.findOne({
+        where: { id: dados.categoria_financeira_id, ativo: true, tipo: { [Op.in]: ['PAGAR', 'AMBOS'] } },
+        attributes: ['id'],
+        transaction
+      }),
       User.findAll({ where: { id: { [Op.in]: usuarioIds }, ativo: true }, attributes: ['id'], transaction }),
       CartaoRecarga.findOne({
         where: {
@@ -1004,6 +1078,8 @@ async function salvarCartao(cartaoId, payload, user, externalTransaction = null)
       })
     ]);
     if (!parceiro) throw erro(400, 'Selecione um fornecedor ativo para o cartao.');
+    if (!empresa) throw erro(400, 'Selecione uma empresa ativa para o cartao.');
+    if (!categoria) throw erro(400, 'Selecione uma categoria ativa que aceite titulos a pagar.');
     if (usuarios.length !== usuarioIds.length) throw erro(400, 'Um ou mais usuarios informados estao inativos ou nao existem.');
     if (cartaoDuplicado) throw erro(409, 'Ja existe um cartao com este identificador interno.');
 
@@ -1051,6 +1127,7 @@ module.exports = {
   isGerenciaProcessos,
   listarAdmin,
   listarMeusCartoes,
+  liberarTituloRecargaAposAprovacao,
   obterContextoCartao,
   obterContextoSolicitacao,
   salvarCartao,

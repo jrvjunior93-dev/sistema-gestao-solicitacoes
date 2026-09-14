@@ -1151,6 +1151,17 @@ module.exports = {
           if (token) setoresPorToken.set(token, setor);
         });
       });
+      const setorGeo = setores.find((setor) => (
+        hasSetorCapability(setor, 'eh_setor_geo')
+      ));
+      if (!setorGeo) {
+        return res.status(400).json({
+          error: 'O setor GEO nao existe ou esta inativo.'
+        });
+      }
+      const tokensSetorGeo = new Set(
+        [setorGeo.codigo, setorGeo.nome].map(normalizarTokenAprovacao).filter(Boolean)
+      );
 
       const regras = [];
       for (const regra of regrasRecebidas) {
@@ -1168,16 +1179,13 @@ module.exports = {
           });
         }
 
-        const tokensSetor = new Set(
-          [setor.codigo, setor.nome].map(normalizarTokenAprovacao).filter(Boolean)
-        );
         const etapa = etapas.find((item) => (
-          tokensSetor.has(normalizarTokenAprovacao(item.setor)) &&
+          tokensSetorGeo.has(normalizarTokenAprovacao(item.setor)) &&
           normalizarTokenAprovacao(item.nome) === normalizarTokenAprovacao(regra.status_destino)
         ));
         if (!etapa) {
           return res.status(400).json({
-            error: `O status ${regra.status_destino} nao esta ativo no setor ${setor.nome}.`
+            error: `O status ${regra.status_destino} nao esta ativo no setor GEO.`
           });
         }
 

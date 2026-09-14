@@ -714,15 +714,6 @@ function NovoTituloRapidoModal({ item, contas, onClose, onConciliar }) {
           </label>
 
           <label className="app-filter-field">
-            <span className="app-filter-label">Empresa pagadora *</span>
-            <input
-              className="input w-full"
-              value={contas.find((ct) => String(ct.id) === String(form.conta_bancaria_id))?.empresa?.nome || form.empresa_id || ''}
-              disabled
-            />
-          </label>
-
-          <label className="app-filter-field">
             <span className="app-filter-label">Descrição *</span>
             <input className="input w-full" type="text" value={form.descricao}
               onChange={(e) => setForm((c) => ({ ...c, descricao: e.target.value }))}

@@ -498,6 +498,8 @@ db.UsuarioObra.belongsTo(db.Obra, {
 
 /* ===== Cartoes pre-pagos de recarga ===== */
 db.CartaoRecarga.belongsTo(db.Parceiro, { foreignKey: 'parceiro_id', as: 'parceiro' });
+db.CartaoRecarga.belongsTo(db.EmpresaGrupo, { foreignKey: 'empresa_id', as: 'empresa' });
+db.CartaoRecarga.belongsTo(db.CategoriaFinanceira, { foreignKey: 'categoria_financeira_id', as: 'categoriaFinanceira' });
 db.CartaoRecarga.hasMany(db.CartaoRecargaUsuario, { foreignKey: 'cartao_recarga_id', as: 'vinculosUsuarios' });
 db.CartaoRecargaUsuario.belongsTo(db.CartaoRecarga, { foreignKey: 'cartao_recarga_id', as: 'cartao' });
 db.CartaoRecargaUsuario.belongsTo(db.User, { foreignKey: 'user_id', as: 'usuario' });

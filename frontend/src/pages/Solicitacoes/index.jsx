@@ -1537,6 +1537,14 @@ export default function Solicitacoes({ arquivadas = false }) {
         return;
       }
 
+      if (action.startsWith('RETORNO_')) {
+        // O pedido pendente altera a prioridade global da fila. Rebuscar a janela garante
+        // que uma solicitacao que estava em outra pagina apareca imediatamente no topo e
+        // que o destaque suma assim que o pedido for decidido ou cancelado.
+        await carregarEmSegundoPlano();
+        return;
+      }
+
       await atualizarSolicitacaoDaLista(recordId, {
         permitirInsercao: ['CREATED', 'SENT_TO_SECTOR', 'APPROVED_DIRETORIA'].includes(action)
       });
@@ -1879,7 +1887,17 @@ export default function Solicitacoes({ arquivadas = false }) {
   const renderCardSolicitacao = (item) => (
     <div className="sol-card-compacto">
       <div className="sol-card-compacto-topo">
-        <span className="sol-card-compacto-codigo">{formatarMaiusculas(item.codigo || `#${item.id}`)}</span>
+        <span className="sol-card-compacto-codigo">
+          {formatarMaiusculas(item.codigo || `#${item.id}`)}
+          {item.retorno_solicitado_pendente && (
+            <span
+              className="sol-retorno-pendente"
+              title={item.pedido_retorno_pendente?.motivo || 'Esta solicitação precisa de atenção do setor atual.'}
+            >
+              Retorno solicitado
+            </span>
+          )}
+        </span>
         <StatusBadge
           status={item.status_global}
           setor={item.setor_status_atual || item.area_responsavel}
@@ -2082,7 +2100,11 @@ export default function Solicitacoes({ arquivadas = false }) {
             { id: 'faixa_valor', rotulo: 'faixa de valor', valor: (item) => faixaDeValor(item.valor_exibicao ?? item.valor), ordenarGrupos: compararFaixaValor }
           ]}
           renderCard={renderCardSolicitacao}
-          urgencia={(item) => urgenciaVencimento(item.data_vencimento)}
+          urgencia={(item) => (
+            item.retorno_solicitado_pendente
+              ? 'retorno'
+              : urgenciaVencimento(item.data_vencimento)
+          )}
           acoesLote={acoesLoteLista}
           aoAbrirItem={(item) => navigate(`/solicitacoes/${item.id}`)}
           onSelecaoChange={(ids) => setSelecionadasIds(ids.map(Number))}

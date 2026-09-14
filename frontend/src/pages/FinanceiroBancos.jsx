@@ -16,7 +16,6 @@ import {
   getContasBancarias,
   salvarCaixaPagamentoConvenio
 } from '../services/financeiro';
-import { getEmpresasGrupo } from '../services/empresasGrupo';
 import OverlayModal from '../components/ui/OverlayModal';
 import {
   Pagina,
@@ -155,7 +154,6 @@ const convenioInicial = {
 };
 
 function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
-  const [empresas, setEmpresas] = useState([]);
   const [contas, setContas] = useState([]);
   const [convenios, setConvenios] = useState([]);
   const [remessas, setRemessas] = useState([]);
@@ -169,13 +167,11 @@ function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
 
   async function loadBase() {
     try {
-      const [empresasData, contasData, conveniosData, remessasData] = await Promise.all([
-        getEmpresasGrupo({ ativo: true }),
+      const [contasData, conveniosData, remessasData] = await Promise.all([
         getContasBancarias(),
         getCaixaPagamentoConvenios(),
         getCaixaPagamentoRemessas()
       ]);
-      setEmpresas(normalizeList(empresasData));
       setContas(normalizeList(contasData));
       const conveniosList = normalizeList(conveniosData);
       setConvenios(conveniosList);
@@ -215,21 +211,15 @@ function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConvenioId]);
 
-  function onEmpresaChange(value) {
-    const empresa = empresas.find((item) => String(item.id) === String(value));
-    setForm((current) => ({
-      ...current,
-      empresa_id: value,
-      empresa_nome: empresa?.razao_social || empresa?.nome || current.empresa_nome,
-      empresa_cpf_cnpj: empresa?.cnpj || current.empresa_cpf_cnpj
-    }));
-  }
-
   function onContaChange(value) {
     const conta = contas.find((item) => String(item.id) === String(value));
+    const empresa = conta?.empresa || {};
     setForm((current) => ({
       ...current,
       conta_bancaria_id: value,
+      empresa_id: String(conta?.empresa_id || empresa.id || ''),
+      empresa_nome: empresa.razao_social || empresa.nome || current.empresa_nome,
+      empresa_cpf_cnpj: empresa.cnpj || current.empresa_cpf_cnpj,
       agencia: conta?.agencia || current.agencia,
       conta: conta?.conta || current.conta
     }));
@@ -470,7 +460,7 @@ function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
             <div>
               <h2 className="text-lg font-semibold text-[var(--c-text)]">Cadastrar convênio Caixa</h2>
               <p className="text-sm text-[var(--c-muted)]">
-                Cada empresa do grupo pode ter seu próprio convênio Caixa.
+                A empresa do convênio será identificada pela conta de débito.
               </p>
             </div>
             <button type="button" className="btn btn-outline" onClick={() => setModalConvenio(false)} aria-label="Fechar">
@@ -484,19 +474,11 @@ function CaixaPagamentosPanel({ avisar, limparAvisos, confirmar }) {
                 `<input>`/`<select>` crus do navegador (ver o comentário da
                 classe fantasma no topo do arquivo). */}
             <FormSecao legenda="Empresa e conta" colunas={2}>
-              <CampoForm label="Empresa" obrigatorio>
-                <select className="input" value={form.empresa_id} onChange={(e) => onEmpresaChange(e.target.value)} required>
-                  <option value="">Selecione</option>
-                  {empresas.map((empresa) => (
-                    <option key={empresa.id} value={empresa.id}>{empresa.razao_social || empresa.nome}</option>
-                  ))}
-                </select>
-              </CampoForm>
               <CampoForm label="Conta de débito" obrigatorio>
                 <select className="input" value={form.conta_bancaria_id} onChange={(e) => onContaChange(e.target.value)} required>
                   <option value="">Selecione</option>
                   {contas.map((conta) => (
-                    <option key={conta.id} value={conta.id}>{conta.nome || conta.banco} - {conta.agencia}/{conta.conta}</option>
+                    <option key={conta.id} value={conta.id}>{conta.nome || conta.banco} - {conta.agencia}/{conta.conta}{conta.empresa?.nome ? ` - ${conta.empresa.nome}` : ''}</option>
                   ))}
                 </select>
               </CampoForm>

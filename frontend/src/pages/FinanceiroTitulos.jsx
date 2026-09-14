@@ -34,7 +34,6 @@ import {
 } from '../services/financeiro';
 import { getMinhasObras } from '../services/obras';
 import { buscarParceiros } from '../services/parceiros';
-import { getEmpresasGrupo } from '../services/empresasGrupo';
 import { normalizeCurrencyTyping } from '../utils/formatters';
 import {
   canDeleteTitulosFinanceiros,
@@ -938,9 +937,9 @@ function buildBaixaMassaParcelas(total = 0, quantidade = 2, dataInicial = today(
   });
 }
 
-function buildBaixaMassaForm(contasBancarias = [], total = 0) {
+function buildBaixaMassaForm(total = 0, empresaId = '') {
   return {
-    empresa_id: '',
+    empresa_id: String(empresaId || ''),
     conta_bancaria_id: '',
     cartao_id: '',
     forma_pagamento_id: '',
@@ -1098,7 +1097,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [contasBancarias, setContasBancarias] = useState([]);
   const [cartoes, setCartoes] = useState([]);
   const [chequesTerceiros, setChequesTerceiros] = useState([]);
-  const [empresasGrupo, setEmpresasGrupo] = useState([]);
   const [titulos, setTitulos] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: '25', total: 0, total_pages: 0 });
   const [loading, setLoading] = useState(false);
@@ -1107,7 +1105,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [selectedTituloIds, setSelectedTituloIds] = useState([]);
   const [modalBaixaMassaOpen, setModalBaixaMassaOpen] = useState(false);
   const [modalBaixaCompostaOpen, setModalBaixaCompostaOpen] = useState(false);
-  const [baixaMassaForm, setBaixaMassaForm] = useState(() => buildBaixaMassaForm([]));
+  const [baixaMassaForm, setBaixaMassaForm] = useState(() => buildBaixaMassaForm());
   const [savingBaixaMassa, setSavingBaixaMassa] = useState(false);
   const [sendingFilaPagamentos, setSendingFilaPagamentos] = useState(false);
   const [importandoCodigos, setImportandoCodigos] = useState(false);
@@ -1134,10 +1132,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       getFormasPagamentoFinanceiras().catch(() => []),
       getContasBancarias().catch(() => []),
       getCartoesFinanceiros().catch(() => []),
-      getChequesTerceiros({ status: 'EM_CARTEIRA', limit: 300 }).catch(() => []),
-      getEmpresasGrupo({ ativo: true }).catch(() => [])
+      getChequesTerceiros({ status: 'EM_CARTEIRA', limit: 300 }).catch(() => [])
     ])
-      .then(([obrasData, parceirosData, categoriasData, formasData, contasData, cartoesData, chequesData, empresasData]) => {
+      .then(([obrasData, parceirosData, categoriasData, formasData, contasData, cartoesData, chequesData]) => {
         if (!active) return;
         setObras(normalizeOptionList(obrasData));
         setParceiros(normalizeOptionList(parceirosData));
@@ -1147,7 +1144,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         setContasBancarias(contasNormalizadas);
         setCartoes(normalizeOptionList(cartoesData));
         setChequesTerceiros(normalizeOptionList(chequesData));
-        setEmpresasGrupo(normalizeOptionList(empresasData));
       })
       .finally(() => {
         if (active) {
@@ -1551,9 +1547,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }, [baixaMassaForm.empresa_id, selectedTitulosBaixaveis]);
   const baixaMassaMostrarIntercompany = baixaMassaTemEmpresaDiferente || baixaMassaForm.intercompany;
   const contasBancariasBaixaMassa = useMemo(() => {
-    if (!baixaMassaForm.empresa_id) return [];
-    return contasBancarias.filter((conta) => String(conta.empresa_id || '') === String(baixaMassaForm.empresa_id));
-  }, [baixaMassaForm.empresa_id, contasBancarias]);
+    return contasBancarias.filter((conta) => conta.ativo !== false);
+  }, [contasBancarias]);
   const baixaMassaUsaDinheiro = String(baixaMassaForm.forma_recebimento || '').toUpperCase() === 'DINHEIRO';
   const contasFinanceirasCompativeisBaixaMassa = useMemo(
     () => baixaMassaUsaDinheiro
@@ -1572,12 +1567,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     [cartoes, baixaMassaForm.cartao_id]
   );
   const cartoesBaixaMassa = useMemo(() => cartoes.filter((cartao) => {
-    if (cartao.ativo === false) return false;
-    if (!baixaMassaForm.empresa_id) return true;
-    if (!isCartaoDebito(cartao)) return true;
-    const contaCartao = contasBancarias.find((conta) => String(conta.id) === String(cartao.conta_bancaria_id));
-    return String(contaCartao?.empresa_id || '') === String(baixaMassaForm.empresa_id);
-  }), [baixaMassaForm.empresa_id, cartoes, contasBancarias]);
+    return cartao.ativo !== false;
+  }), [cartoes]);
   const baixaMassaUsaCartao = isCartaoForma(baixaMassaForm.forma_recebimento);
   const baixaMassaCartaoDebito = baixaMassaUsaCartao && isCartaoDebito(selectedCartaoBaixaMassa);
   const baixaMassaFormaParcelavel = baixaMassaUsaCartao || isChequeForma(baixaMassaForm.forma_recebimento);
@@ -1599,6 +1590,30 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     (baixaMassaForm.parcelas || []).reduce((total, parcela) => total + parseCurrencyInput(parcela.valor), 0)
   ), [baixaMassaForm.parcelas]);
   const baixaMassaDiferencaParcelas = roundValue(selectedSaldo - baixaMassaTotalParcelas);
+
+  function aplicarEmpresaFonteBaixaMassa(current, empresaFonteId) {
+    const empresaResolvidaId = String(empresaFonteId || baixaMassaEmpresasTitulo[0] || '');
+    const empresaDiferente = Boolean(empresaResolvidaId && selectedTitulosBaixaveis.some((titulo) => {
+      const empresaTituloId = getEmpresaTituloId(titulo);
+      return empresaTituloId && String(empresaTituloId) !== empresaResolvidaId;
+    }));
+    const base = {
+      ...current,
+      empresa_id: empresaResolvidaId,
+      intercompany: empresaDiferente || current.intercompany
+    };
+    return empresaDiferente
+      ? applyNaturezaBaixaIntercompany(base, current.natureza_intercompany_baixa || 'OPERACIONAL_TERCEIRO')
+      : base;
+  }
+
+  function selecionarContaBaixaMassa(contaBancariaId) {
+    const conta = contasBancarias.find((item) => String(item.id) === String(contaBancariaId));
+    setBaixaMassaForm((current) => aplicarEmpresaFonteBaixaMassa({
+      ...current,
+      conta_bancaria_id: contaBancariaId
+    }, conta?.empresa_id));
+  }
 
   useEffect(() => {
     if (!mostrarFretesPendentes) {
@@ -1793,7 +1808,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     }
 
     setError('');
-    setBaixaMassaForm(buildBaixaMassaForm(contasBancarias, selectedSaldo));
+    setBaixaMassaForm(buildBaixaMassaForm(selectedSaldo, baixaMassaEmpresasTitulo[0]));
     setModalBaixaMassaOpen(true);
   }
 
@@ -1956,11 +1971,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
     if (!baixaMassaForm.forma_pagamento_id || !baixaMassaForm.forma_recebimento) {
       setError(`Informe a ${baixaMassaFormaLabel.toLowerCase()} da baixa em massa.`);
-      return;
-    }
-
-    if (!baixaMassaForm.empresa_id) {
-      setError('Informe a empresa pagadora da baixa em massa.');
       return;
     }
 
@@ -3565,41 +3575,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                   ) : null}
                 </label>
 
-                <label className="app-filter-field md:col-span-2">
-                  <span className="app-filter-label">Empresa pagadora</span>
-                  <select
-                    className="input w-full input-sm"
-                    value={baixaMassaForm.empresa_id}
-                    onChange={(event) => {
-                      const empresaSelecionada = event.target.value;
-                      const empresaDiferente = Boolean(empresaSelecionada && selectedTitulosBaixaveis.some((titulo) => {
-                        const empresaTituloId = getEmpresaTituloId(titulo);
-                        return empresaTituloId && String(empresaTituloId) !== String(empresaSelecionada);
-                      }));
-                      setBaixaMassaForm((current) => {
-                        const base = {
-                          ...current,
-                          empresa_id: empresaSelecionada,
-                          conta_bancaria_id: '',
-                          cartao_id: '',
-                          intercompany: empresaDiferente || current.intercompany
-                        };
-                        return empresaDiferente
-                          ? applyNaturezaBaixaIntercompany(base, current.natureza_intercompany_baixa || 'OPERACIONAL_TERCEIRO')
-                          : base;
-                      });
-                    }}
-                    required
-                  >
-                    <option value="">Selecione</option>
-                    {empresasGrupo.map((empresa) => (
-                      <option key={empresa.id} value={empresa.id}>
-                        {empresa.nome || empresa.razao_social || `Empresa #${empresa.id}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
                 {baixaMassaUsaCartao ? (
                   <label className="app-filter-field md:col-span-2">
                     <span className="app-filter-label">Cartão utilizado</span>
@@ -3608,12 +3583,17 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                       value={baixaMassaForm.cartao_id}
                       onChange={(event) => {
                         const cartaoSelecionado = cartoes.find((cartao) => String(cartao.id) === String(event.target.value));
-                        const contaCartao = isCartaoDebito(cartaoSelecionado) ? String(cartaoSelecionado?.conta_bancaria_id || '') : '';
-                        setBaixaMassaForm((current) => ({
-                          ...current,
-                          cartao_id: event.target.value,
-                          conta_bancaria_id: current.parcelado ? current.conta_bancaria_id : contaCartao
-                        }));
+                        const contaCartao = contasBancarias.find((conta) => String(conta.id) === String(cartaoSelecionado?.conta_bancaria_id));
+                        const contaCartaoId = isCartaoDebito(cartaoSelecionado) ? String(contaCartao?.id || '') : '';
+                        setBaixaMassaForm((current) => {
+                          const contaEfetivaId = current.parcelado ? current.conta_bancaria_id : contaCartaoId;
+                          const contaEfetiva = contasBancarias.find((conta) => String(conta.id) === String(contaEfetivaId));
+                          return aplicarEmpresaFonteBaixaMassa({
+                            ...current,
+                            cartao_id: event.target.value,
+                            conta_bancaria_id: contaEfetivaId
+                          }, contaEfetiva?.empresa_id || contaCartao?.empresa_id);
+                        });
                       }}
                       required
                     >
@@ -3637,10 +3617,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                   <select
                     className="input w-full input-sm"
                     value={baixaMassaForm.conta_bancaria_id}
-                    onChange={(event) => setBaixaMassaForm((current) => ({ ...current, conta_bancaria_id: event.target.value }))}
+                    onChange={(event) => selecionarContaBaixaMassa(event.target.value)}
                     required={baixaMassaParcelada || (contaBancariaObrigatoria(baixaMassaForm.forma_recebimento) && !baixaMassaUsaChequeTerceiro) || baixaMassaCartaoDebito}
                     disabled={
-                      !baixaMassaForm.empresa_id ||
                       (!baixaMassaParcelada && (baixaMassaUsaCartao || !contaBancariaObrigatoria(baixaMassaForm.forma_recebimento)))
                     }
                   >
@@ -3651,20 +3630,21 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                         ? (baixaMassaCartaoDebito ? 'Conta vinculada ao cartao' : 'Cartao de credito sem baixa bancaria imediata')
                         : baixaMassaUsaDinheiro
                         ? 'Selecione o caixa fisico'
-                        : (baixaMassaForm.empresa_id ? 'Sem conta bancaria' : 'Selecione a empresa pagadora')}
+                        : 'Selecione uma conta bancaria'}
                     </option>
                     {contasFinanceirasCompativeisBaixaMassa.map((conta) => (
                       <option key={conta.id} value={conta.id}>
                         {conta.nome}
                         {conta.banco ? ` - ${conta.banco}` : ''}
+                        {conta.empresa?.nome ? ` - ${conta.empresa.nome}` : ''}
                       </option>
                     ))}
                   </select>
                   {baixaMassaUsaDinheiro ? (
                     <span className="mt-1 block text-xs text-[var(--c-muted)]">
                       O caixa deve estar aberto e abranger a data informada para o pagamento.
-                      {baixaMassaForm.empresa_id && contasFinanceirasCompativeisBaixaMassa.length === 0
-                        ? ' Nenhum caixa fisico ativo foi encontrado para esta empresa.'
+                      {contasFinanceirasCompativeisBaixaMassa.length === 0
+                        ? ' Nenhum caixa fisico ativo foi encontrado.'
                         : ''}
                     </span>
                   ) : null}
@@ -3810,7 +3790,13 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                     <select
                       className="input w-full input-sm"
                       value={baixaMassaForm.cheque_terceiro_id || ''}
-                      onChange={(event) => setBaixaMassaForm((current) => ({ ...current, cheque_terceiro_id: event.target.value }))}
+                      onChange={(event) => {
+                        const cheque = chequesTerceirosDisponiveis.find((item) => String(item.id) === String(event.target.value));
+                        setBaixaMassaForm((current) => aplicarEmpresaFonteBaixaMassa({
+                          ...current,
+                          cheque_terceiro_id: event.target.value
+                        }, cheque?.empresa_id));
+                      }}
                       required
                     >
                       <option value="">Selecione um cheque disponível</option>
@@ -4000,7 +3986,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                   className="btn btn-primary"
                   disabled={
                     savingBaixaMassa ||
-                    !baixaMassaForm.empresa_id ||
                     (baixaMassaUsaCartao && !baixaMassaForm.cartao_id) ||
                     (baixaMassaParcelada && !baixaMassaForm.conta_bancaria_id) ||
                     (!baixaMassaParcelada && baixaMassaCartaoDebito && !baixaMassaForm.conta_bancaria_id) ||
@@ -4026,7 +4011,6 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
           contas={contasBancarias}
           cartoes={cartoes}
           cheques={chequesTerceirosDisponiveis}
-          empresas={empresasGrupo}
           onClose={() => setModalBaixaCompostaOpen(false)}
           onConfirmed={() => {
             setSelectedTituloIds([]);

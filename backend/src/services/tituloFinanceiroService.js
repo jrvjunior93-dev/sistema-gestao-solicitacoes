@@ -1638,20 +1638,20 @@ async function validarEmpresaGrupo(empresaId) {
 }
 
 async function validarEmpresaBaixa({ empresaId, conta }) {
-  const empresa = await validarEmpresaGrupo(empresaId);
-  if (!empresa) {
-    throw createHttpError(400, 'Empresa pagadora e obrigatoria para registrar a baixa.');
-  }
-
-  const empresaBaixaId = Number(empresa.id);
   if (conta && !conta.empresa_id) {
     throw createHttpError(400, 'A conta bancaria selecionada nao possui empresa vinculada.');
   }
 
-  if (conta?.empresa_id && Number(conta.empresa_id) !== empresaBaixaId) {
-    throw createHttpError(400, 'A empresa pagadora deve ser a mesma vinculada a conta bancaria selecionada.');
+  // A conta bancaria e a fonte de verdade da empresa que movimenta o caixa.
+  // `empresaId` permanece como fallback apenas para formas sem conta (permuta,
+  // bens e outros) e para compatibilidade com clientes anteriores.
+  const empresaResolvidaId = conta?.empresa_id || empresaId;
+  const empresa = await validarEmpresaGrupo(empresaResolvidaId);
+  if (!empresa) {
+    throw createHttpError(400, 'Nao foi possivel identificar a empresa da baixa pela conta bancaria selecionada.');
   }
 
+  const empresaBaixaId = Number(empresa.id);
   return empresaBaixaId;
 }
 

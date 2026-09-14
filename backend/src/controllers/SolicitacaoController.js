@@ -23,6 +23,7 @@ const {
   Setor,
   ConfiguracaoSistema,
   SolicitacaoVisibilidadeUsuario,
+  SolicitacaoPedidoRetorno,
   Comprovante,
   TituloFinanceiro,
   SolicitacaoPagamento,
@@ -99,6 +100,7 @@ const {
 } = require('../services/despesaEventualService');
 const {
   executarCriacaoRecargaComControle,
+  liberarTituloRecargaAposAprovacao,
   sincronizarTituloComStatusSolicitacao,
   tipoEhRecargaCartao
 } = require('../services/recargaCartaoService');
@@ -320,8 +322,11 @@ async function montarResumoSolicitacoesLista(solicitacoes) {
 
   const idsSolicitacoes = solicitacoes.map((item) => Number(item.id)).filter(Boolean);
   const ordemIds = new Map(idsSolicitacoes.map((id, index) => [id, index]));
+  const areaPorSolicitacao = new Map(
+    solicitacoes.map((item) => [Number(item.id), item.area_responsavel || null])
+  );
 
-  const [historicosResponsavel, historicosStatus] = await Promise.all([
+  const [historicosResponsavel, historicosStatus, pedidosRetornoPendentes] = await Promise.all([
     Historico.findAll({
       where: {
         solicitacao_id: { [Op.in]: idsSolicitacoes },
@@ -353,6 +358,24 @@ async function montarResumoSolicitacoesLista(solicitacoes) {
         ['solicitacao_id', 'ASC'],
         ['createdAt', 'DESC']
       ]
+    }),
+    SolicitacaoPedidoRetorno.findAll({
+      where: {
+        solicitacao_id: { [Op.in]: idsSolicitacoes },
+        status: 'PENDENTE'
+      },
+      attributes: [
+        'id',
+        'solicitacao_id',
+        'setor_solicitante',
+        'setor_atual_pedido',
+        'motivo',
+        'createdAt'
+      ],
+      order: [
+        ['solicitacao_id', 'ASC'],
+        ['createdAt', 'DESC']
+      ]
     })
   ]);
 
@@ -376,6 +399,19 @@ async function montarResumoSolicitacoesLista(solicitacoes) {
     }
   });
 
+  const pedidoRetornoPorSolicitacao = new Map();
+  pedidosRetornoPendentes.forEach((item) => {
+    const solicitacaoId = Number(item.solicitacao_id);
+    if (
+      !pedidoRetornoPorSolicitacao.has(solicitacaoId)
+      && areaPorSolicitacao.has(solicitacaoId)
+      && normalizarTokenComparacao(item.setor_atual_pedido)
+        === normalizarTokenComparacao(areaPorSolicitacao.get(solicitacaoId))
+    ) {
+      pedidoRetornoPorSolicitacao.set(solicitacaoId, item);
+    }
+  });
+
   return solicitacoes
     .map((item) => {
       const solicitacao = item.toJSON();
@@ -387,6 +423,16 @@ async function montarResumoSolicitacoesLista(solicitacoes) {
       solicitacao.valor_pago_acumulado = resumoFinanceiro.valorPagoAcumulado;
       solicitacao.saldo_pagamento = resumoFinanceiro.saldoPagamento;
       solicitacao.valor_exibicao = resumoFinanceiro.valorExibicao;
+      const pedidoRetorno = pedidoRetornoPorSolicitacao.get(Number(item.id)) || null;
+      solicitacao.retorno_solicitado_pendente = Boolean(pedidoRetorno);
+      solicitacao.pedido_retorno_pendente = pedidoRetorno
+        ? {
+          id: pedidoRetorno.id,
+          setor_solicitante: pedidoRetorno.setor_solicitante,
+          motivo: pedidoRetorno.motivo,
+          createdAt: pedidoRetorno.createdAt
+        }
+        : null;
       return solicitacao;
     })
     .sort((a, b) => (ordemIds.get(Number(a.id)) || 0) - (ordemIds.get(Number(b.id)) || 0));
@@ -2264,9 +2310,32 @@ module.exports = {
         'createdAt', 'codigo', 'descricao', 'valor', 'status_global',
         'area_responsavel', 'data_vencimento', 'numero_sienge'
       ]);
-      const ordenacaoEfetiva = CAMPOS_ORDENAVEIS.has(String(ordenar || '').trim())
-        ? [[String(ordenar).trim(), String(direcao || '').trim().toLowerCase() === 'asc' ? 'ASC' : 'DESC'], ['id', 'DESC']]
-        : ordenacaoLista;
+      // Pedido de retorno e uma interrupcao operacional: precisa aparecer antes das demais
+      // solicitacoes, inclusive quando estiver fora da pagina que o usuario tinha carregado.
+      // A prioridade entra no banco antes de limit/offset e continua valendo quando ha uma
+      // ordenacao de coluna escolhida na interface.
+      const ordenacaoRetornoPendente = [
+        [Sequelize.literal(`CASE WHEN EXISTS (
+          SELECT 1
+          FROM solicitacao_pedidos_retorno spr
+          WHERE spr.solicitacao_id = Solicitacao.id
+            AND spr.status = 'PENDENTE'
+            AND spr.setor_atual_pedido = Solicitacao.area_responsavel
+        ) THEN 0 ELSE 1 END`), 'ASC'],
+        [Sequelize.literal(`(
+          SELECT MAX(spr.createdAt)
+          FROM solicitacao_pedidos_retorno spr
+          WHERE spr.solicitacao_id = Solicitacao.id
+            AND spr.status = 'PENDENTE'
+            AND spr.setor_atual_pedido = Solicitacao.area_responsavel
+        )`), 'DESC']
+      ];
+      const ordenacaoEfetiva = [
+        ...ordenacaoRetornoPendente,
+        ...(CAMPOS_ORDENAVEIS.has(String(ordenar || '').trim())
+          ? [[String(ordenar).trim(), String(direcao || '').trim().toLowerCase() === 'asc' ? 'ASC' : 'DESC'], ['id', 'DESC']]
+          : ordenacaoLista)
+      ];
 
       // Visões "Minhas pendências" e "Fila do setor" (condições AND).
       const querMinhas = ['1', 'true', 'sim'].includes(String(minhas || '').trim().toLowerCase());
@@ -5328,12 +5397,10 @@ module.exports = {
         status_global: contexto.statusDestino
       }, { transaction });
 
-      // A aprovacao configurada por tipo precisa produzir os mesmos efeitos financeiros da
-      // troca manual de status. No fluxo de Recarga de Cartao, LIBERADO/APROVADA e o marco que
-      // converte o titulo atomico de PREVISAO para ABERTO.
-      await sincronizarTituloComStatusSolicitacao(
+      // A abertura do titulo de recarga decorre da aprovacao, nao do nome escolhido para o
+      // status de chegada. Assim a configuracao pode usar qualquer status ativo do GEO.
+      await liberarTituloRecargaAposAprovacao(
         solicitacao.id,
-        contexto.statusDestino,
         req.user.id,
         transaction
       );

@@ -330,9 +330,19 @@ async function listarConveniosCaixaPagamento() {
 }
 
 async function salvarConvenioCaixaPagamento(data, userId, id = null) {
+  const contaBancaria = await db.ContaBancaria.findByPk(data.conta_bancaria_id, {
+    include: [{ model: db.EmpresaGrupo, as: 'empresa' }]
+  });
+  if (!contaBancaria || contaBancaria.ativo === false) {
+    throw createHttpError(400, 'Conta bancaria do convenio invalida ou inativa.');
+  }
+  if (!contaBancaria.empresa_id || !contaBancaria.empresa || contaBancaria.empresa.ativo === false) {
+    throw createHttpError(400, 'A conta bancaria do convenio precisa estar vinculada a uma empresa ativa.');
+  }
+
   const payload = {
-    empresa_id: data.empresa_id,
-    conta_bancaria_id: data.conta_bancaria_id,
+    empresa_id: Number(contaBancaria.empresa_id),
+    conta_bancaria_id: Number(contaBancaria.id),
     banco_codigo: '104',
     banco_nome: data.banco_nome || NOME_CAIXA,
     agencia: data.agencia,
@@ -343,8 +353,8 @@ async function salvarConvenioCaixaPagamento(data, userId, id = null) {
     convenio_nome: data.convenio_nome || null,
     compromisso_codigo: data.compromisso_codigo || null,
     compromisso_nome: data.compromisso_nome || null,
-    empresa_nome: data.empresa_nome,
-    empresa_cpf_cnpj: data.empresa_cpf_cnpj,
+    empresa_nome: data.empresa_nome || contaBancaria.empresa.razao_social || contaBancaria.empresa.nome,
+    empresa_cpf_cnpj: data.empresa_cpf_cnpj || contaBancaria.empresa.cnpj,
     layout_arquivo_versao: data.layout_arquivo_versao || '080',
     layout_lote_versao: data.layout_lote_versao || '045',
     ambiente: data.ambiente || 'HOMOLOGACAO',

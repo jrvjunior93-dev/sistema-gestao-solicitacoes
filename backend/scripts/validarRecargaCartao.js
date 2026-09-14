@@ -20,9 +20,9 @@ const {
   editarRecargaPendente,
   editarRateiosPrestacaoGeo,
   executarCriacaoRecargaComControle,
+  liberarTituloRecargaAposAprovacao,
   salvarCartao,
-  salvarPrestacao,
-  sincronizarTituloComStatusSolicitacao
+  salvarPrestacao
 } = require('../src/services/recargaCartaoService');
 const {
   sincronizarStatusSolicitacaoPorBaixaTitulos
@@ -63,8 +63,22 @@ async function obterBase(transaction) {
     `SELECT id, nome FROM parceiros WHERE ativo = 1 AND fornecedor = 1 ORDER BY id LIMIT 1`,
     { type: QueryTypes.SELECT, transaction }
   );
-  if (!base || !parceiro) throw new Error('QA requer usuario/obra/apropriacao e fornecedor ativos no banco local.');
-  return { ...base, parceiro_id: parceiro.id };
+  const [categoria] = await sequelize.query(
+    `SELECT id
+       FROM categorias_financeiras
+      WHERE ativo = 1
+        AND tipo IN ('PAGAR', 'AMBOS')
+        AND considera_dre = 1
+        AND dre_grupo IS NOT NULL
+        AND TRIM(dre_grupo) <> ''
+      ORDER BY id
+      LIMIT 1`,
+    { type: QueryTypes.SELECT, transaction }
+  );
+  if (!base || !parceiro || !categoria) {
+    throw new Error('QA requer usuario/obra/apropriacao, fornecedor e categoria financeira ativos no banco local.');
+  }
+  return { ...base, parceiro_id: parceiro.id, categoria_financeira_id: categoria.id };
 }
 
 async function executar() {
@@ -86,6 +100,8 @@ async function executar() {
       identificador,
       ultimos_quatro: '9090',
       parceiro_id: base.parceiro_id,
+      empresa_id: base.empresa_grupo_id,
+      categoria_financeira_id: base.categoria_financeira_id,
       ativo: true,
       criado_por: base.user_id,
       atualizado_por: base.user_id
@@ -106,6 +122,8 @@ async function executar() {
       identificador: cartao.identificador,
       ultimos_quatro: cartao.ultimos_quatro,
       parceiro_id: base.parceiro_id,
+      empresa_id: base.empresa_grupo_id,
+      categoria_financeira_id: base.categoria_financeira_id,
       usuario_ids: [base.user_id],
       observacoes: 'Edicao QA transacional',
       ativo: true
@@ -132,6 +150,8 @@ async function executar() {
 
     assert.strictEqual(criacao.titulo.status, 'PREVISAO');
     assert.strictEqual(criacao.titulo.obra_id, null);
+    assert.strictEqual(Number(criacao.titulo.empresa_id), Number(base.empresa_grupo_id));
+    assert.strictEqual(Number(criacao.titulo.categoria_financeira_id), Number(base.categoria_financeira_id));
     assert.strictEqual(criacao.titulo.considera_dre, false);
 
     await Historico.create({
@@ -142,7 +162,7 @@ async function executar() {
       status_novo: 'PENDENTE'
     }, { transaction });
 
-    await sincronizarTituloComStatusSolicitacao(ids.solicitacao, 'LIBERADO', base.user_id, transaction);
+    await liberarTituloRecargaAposAprovacao(ids.solicitacao, base.user_id, transaction);
     await criacao.titulo.reload({ transaction });
     assert.strictEqual(criacao.titulo.status, 'ABERTO');
 
@@ -166,7 +186,7 @@ async function executar() {
     assert.strictEqual(Number(criacao.recarga.valor_solicitado), 90);
     assert(isGeoToken(criacao.resultado.area_responsavel), 'A edicao deve reenviar a recarga para a Gerencia de Processos.');
 
-    await sincronizarTituloComStatusSolicitacao(ids.solicitacao, 'LIBERADO', base.user_id, transaction);
+    await liberarTituloRecargaAposAprovacao(ids.solicitacao, base.user_id, transaction);
     await criacao.resultado.update({ area_responsavel: 'FINANCEIRO' }, { transaction });
 
     await criacao.titulo.update({ status: 'PARCIAL', valor_baixado: 60, valor_saldo: 30 }, { transaction });

@@ -1,5 +1,13 @@
 # Migração do Fluxy V4 para produção
 
+> **Atenção — referência histórica.** Este arquivo preserva o plano original da
+> consolidação V4, cuja fotografia principal termina em 25/08/2026. Para promover a
+> branch `refactor/frontend` atual para `main`, configurar a produção e preparar o
+> treinamento, use o documento vigente
+> [`docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`](docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md).
+> Ele compara as branches por commit, registra as migrations, permissões, configurações
+> administrativas, testes, validação pós-deploy e mudanças que precisam ser comunicadas.
+
 Processo para levar o trabalho feito em `Fluxy-V4` (ambiente local) para a produção em
 `main`, sem regressão e sem quebrar o sistema em uso.
 
@@ -8,7 +16,9 @@ Processo para levar o trabalho feito em `Fluxy-V4` (ambiente local) para a produ
 > cada mudança que exija ação manual sua. Consulte-as imediatamente antes de migrar — elas são
 > o contrato entre o que foi desenvolvido aqui e o que precisa ser preparado lá.
 
-Última atualização: **2026-08-25**
+Última atualização do conteúdo histórico: **2026-08-25**
+
+Referência operacional atual adicionada em: **2026-09-11**
 
 ---
 
