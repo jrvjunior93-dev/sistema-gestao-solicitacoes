@@ -141,6 +141,7 @@ const TiposSolicitacao = lazy(() => import('./pages/TiposSolicitacao'));
 const GestaoContratos = lazy(() => import('./pages/GestaoContratos'));
 const ContratosRelatorioOperacional = lazy(() => import('./pages/ContratosRelatorioOperacional'));
 const Configuracoes = lazy(() => import('./pages/Configuracoes'));
+const ConfiguracaoUsuariosTesteRapido = lazy(() => import('./pages/ConfiguracaoUsuariosTesteRapido'));
 const ConfiguracoesSuporte = lazy(() => import('./pages/ConfiguracoesSuporte'));
 const ConfiguracoesVisibilidadeUi = lazy(() => import('./pages/ConfiguracoesVisibilidadeUi'));
 const EmpresasGrupo = lazy(() => import('./pages/EmpresasGrupo'));
@@ -287,6 +288,14 @@ function GestaoUsuariosRoute({ children }) {
 function SuperadminRoute({ children }) {
   const { user } = useAuth();
   if (!isSuperadmin(user)) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
+function DevOnlySuperadminRoute({ children }) {
+  const { user } = useAuth();
+  if (!isSuperadmin(user) || !user?.dev_user_switch_enabled) {
     return <Navigate to="/" replace />;
   }
   return children;
@@ -914,6 +923,7 @@ export default function App() {
         <Route path="tipos-solicitacao" element={<ConfiguracoesAreaRoute area="cadastros"><TiposSolicitacao /></ConfiguracoesAreaRoute>} />
         <Route path="gestao-contratos" element={<ContratosRoute><GestaoContratos /></ContratosRoute>} />
         <Route path="configuracoes" element={<ConfiguracoesRoute><Configuracoes /></ConfiguracoesRoute>} />
+        <Route path="configuracoes-usuarios-teste" element={<DevOnlySuperadminRoute><ConfiguracaoUsuariosTesteRapido /></DevOnlySuperadminRoute>} />
         <Route path="configuracoes-suporte" element={<ConfiguracoesAreaRoute area="aparencia"><ConfiguracoesSuporte /></ConfiguracoesAreaRoute>} />
         <Route path="configuracoes-visibilidade-ui" element={<ConfiguracoesAreaRoute area="aparencia"><ConfiguracoesVisibilidadeUi /></ConfiguracoesAreaRoute>} />
         {/*

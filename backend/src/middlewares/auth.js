@@ -8,6 +8,10 @@ const {
 } = require('../services/authorizationService');
 const { registrarEventoSeguranca } = require('../services/securityLogService');
 const { marcarAtividadeUsuario } = require('../services/userActivityService');
+const {
+  isDevUserSwitchRuntimeEnabled,
+  isSuperadmin
+} = require('../services/devUserSwitchService');
 
 const SETOR_ATTRIBUTES = [
   'id',
@@ -104,6 +108,39 @@ module.exports = async (req, res, next) => {
       return res.status(401).json({ error: 'Sessao revogada. Entre novamente.' });
     }
 
+    if (decoded.dev_user_switch) {
+      const actorId = Number(decoded.dev_user_switch.actor_id);
+      const targetId = Number(decoded.dev_user_switch.target_id);
+      if (!isDevUserSwitchRuntimeEnabled() || !Number.isInteger(actorId) || targetId !== Number(user.id)) {
+        return res.status(401).json({ error: 'Sessao de teste invalida ou indisponivel.' });
+      }
+
+      const actor = await User.findByPk(actorId, {
+        attributes: {
+          exclude: ['senha', 'mfa_totp_secret', 'mfa_totp_temp_secret']
+        },
+        include: [{
+          model: Setor,
+          as: 'setor',
+          attributes: SETOR_ATTRIBUTES
+        }]
+      });
+      if (
+        !actor ||
+        actor.ativo === false ||
+        !isSuperadmin(actor) ||
+        Number(decoded.dev_user_switch.actor_token_version || 0) !== Number(actor.token_version || 0)
+      ) {
+        return res.status(401).json({ error: 'Sessao original do SUPERADMIN revogada ou invalida.' });
+      }
+      req.dev_user_switch = {
+        actor,
+        actor_id: Number(actor.id),
+        target_id: Number(user.id),
+        started_at: decoded.dev_user_switch.started_at || null
+      };
+    }
+
     const [financeiroLiberado, capacidadesRhDp, areasPermissionState] = await Promise.all([
       canAccessFinanceiro(user),
       getRhDpCapabilitiesForUser(user),
@@ -124,6 +161,9 @@ module.exports = async (req, res, next) => {
     };
 
     marcarAtividadeUsuario(user.id).catch(() => {});
+    if (req.dev_user_switch?.actor_id) {
+      marcarAtividadeUsuario(req.dev_user_switch.actor_id).catch(() => {});
+    }
 
     return next();
   } catch (error) {

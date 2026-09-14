@@ -44,6 +44,11 @@ const {
   calcularEstadoGuardUsuario
 } = require('../modules/custosRecebiveis/services/obrigacaoService');
 const { obterTelaInicialValidada } = require('../services/telaInicialService');
+const {
+  buildDevUserSwitchSessionState,
+  isDevUserSwitchRuntimeEnabled,
+  isSuperadmin
+} = require('../services/devUserSwitchService');
 
 const SETOR_ATTRIBUTES = [
   'id',
@@ -133,6 +138,8 @@ async function buildSessionUser(user) {
     custos_recebiveis_pendencia: custosRecebiveisPendencia
   };
 
+  sessionUser.dev_user_switch_enabled = isDevUserSwitchRuntimeEnabled() && isSuperadmin(user);
+
   // Tela inicial escolhida pelo usuário, validada no backend contra as
   // permissões ATUAIS (mesma fonte única do frontend). Inválida = null
   // (o login cai na Home) e a preferência já foi limpa pelo serviço.
@@ -174,7 +181,8 @@ async function issueAuthenticatedSession(req, res, user, options = {}) {
   return {
     token,
     session_expires_at: decodeTokenExpiry(token),
-    user: await buildSessionUser(user)
+    user: await buildSessionUser(user),
+    dev_user_switch: await buildDevUserSwitchSessionState({ currentUser: user })
   };
 }
 
@@ -414,7 +422,12 @@ module.exports = {
 
       return res.json({
         user: await buildSessionUser(req.user),
-        session_expires_at: Number(req.auth?.exp || 0) > 0 ? Number(req.auth.exp) * 1000 : null
+        session_expires_at: Number(req.auth?.exp || 0) > 0 ? Number(req.auth.exp) * 1000 : null,
+        dev_user_switch: await buildDevUserSwitchSessionState({
+          currentUser: req.user,
+          auth: req.auth,
+          actor: req.dev_user_switch?.actor
+        })
       });
     } catch (err) {
       console.error(err);
@@ -424,18 +437,20 @@ module.exports = {
 
   async logout(req, res) {
     try {
-      if (req.user?.id) {
+      if (req.user?.id && !req.dev_user_switch) {
         await User.increment('token_version', { by: 1, where: { id: req.user.id } });
       }
       clearAuthCookies(res);
       await registrarEventoSeguranca({
         req,
-        usuarioId: req.user?.id || null,
+        usuarioId: req.dev_user_switch?.actor_id || req.user?.id || null,
         tipoEvento: 'AUTH_LOGOUT',
         recursoTipo: 'AUTH',
         recursoId: req.user?.id || null,
         status: 'SUCCESS',
-        descricao: 'Logout efetuado com sucesso'
+        descricao: req.dev_user_switch
+          ? 'Logout efetuado durante sessao de teste de usuario'
+          : 'Logout efetuado com sucesso'
       });
       return res.json({ ok: true });
     } catch (err) {

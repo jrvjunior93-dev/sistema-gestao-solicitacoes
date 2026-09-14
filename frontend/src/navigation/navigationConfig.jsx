@@ -75,6 +75,7 @@ import {
   HiOutlineArrowTrendingUp,
   HiOutlineArrowDownCircle,
   HiOutlineArrowUpCircle,
+  HiOutlineArrowsRightLeft,
   HiOutlineIdentification,
   HiOutlineMapPin,
   HiOutlineTableCells,
@@ -572,6 +573,7 @@ export const NAV_MODULES = [
     gate: (user) => canAccessConfiguracoes(user),
     children: [
       { id: 'cfg-central', ordem: 10, label: 'Configurações', desc: 'Central de configurações do sistema.', icon: HiOutlineCog6Tooth, to: '/configuracoes', can: SEMPRE },
+      { id: 'cfg-usuarios-teste-dev', ordem: 15, secaoConfig: 'instalacao', ordemConfig: 5, label: 'Usuários para Teste Rápido', desc: 'Perfis disponíveis na troca rápida exclusiva do ambiente de desenvolvimento.', icon: HiOutlineArrowsRightLeft, to: '/configuracoes-usuarios-teste', can: (user) => isSuperadmin(user) && Boolean(user?.dev_user_switch_enabled) },
       { id: 'cfg-acesso-prioridades', ordem: 20, secaoConfig: 'status-vinculos', ordemConfig: 160, label: 'Acesso Prioridades', desc: 'Usuários com acesso às prioridades.', icon: HiOutlineUsers, to: '/usuarios-acesso-prioridade-diretoria', can: (user) => canManageConfiguracoesArea(user, 'status_vinculos') },
       { id: 'cfg-envio-livre', ordem: 30, secaoConfig: 'status-vinculos', ordemConfig: 190, label: 'Envio Livre por Usuário', desc: 'Usuários que enviam a qualquer setor.', icon: HiOutlineUsers, to: '/usuarios-envio-qualquer-setor', can: (user) => canManageConfiguracoesArea(user, 'status_vinculos') },
       { id: 'cfg-tipos-compartilhados', ordem: 40, secaoConfig: 'status-vinculos', ordemConfig: 170, label: 'Tipos Compartilhados', desc: 'Tipos de solicitação compartilhados.', icon: HiOutlineClipboardDocumentList, to: '/tipos-compartilhados-setor', can: (user) => canManageConfiguracoesArea(user, 'status_vinculos') },

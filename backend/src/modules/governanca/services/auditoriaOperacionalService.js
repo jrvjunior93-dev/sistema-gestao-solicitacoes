@@ -345,6 +345,11 @@ function recordHttpEvent(req, statusCode, responseResource = null) {
       method: req.method,
       status_code: statusCode,
       rota: normalized,
+      ...(req.dev_user_switch ? {
+        dev_user_switch: true,
+        actor_id: Number(req.dev_user_switch.actor_id) || null,
+        target_id: Number(req.dev_user_switch.target_id) || null
+      } : {}),
       ...fieldsMetadata,
       ...operationalContext.metadata
     }
@@ -374,7 +379,14 @@ async function recordNavigation(req, body = {}) {
     origem: 'FRONTEND',
     ip_hash: hashIp(req),
     user_agent_resumo: clampText(req.headers?.['user-agent'], 160),
-    metadata: { pagina_nome: pageName }
+    metadata: {
+      pagina_nome: pageName,
+      ...(req.dev_user_switch ? {
+        dev_user_switch: true,
+        actor_id: Number(req.dev_user_switch.actor_id) || null,
+        target_id: Number(req.dev_user_switch.target_id) || null
+      } : {})
+    }
   });
 }
 

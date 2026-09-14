@@ -4,6 +4,36 @@
 
 Antes de trabalho paralelo, registrar agente, escopo, arquivos reservados e horario de inicio. Remover a reserva ao concluir o handoff.
 
+Ownership da sessao `/root` iniciado em 2026-09-14 para corrigir a validacao Linux da
+recarga e implementar troca rapida de usuario exclusiva do ambiente de desenvolvimento. Arquivos trabalhados:
+
+- `backend/scripts/validarRecargaCartao.js`
+- `backend/.env.example`
+- `backend/src/config/env.js`
+- `backend/src/controllers/AuthController.js`
+- `backend/src/controllers/DevUserSwitchController.js`
+- `backend/src/generated/navegacaoFonteUnica.cjs`
+- `backend/src/middlewares/auth.js`
+- `backend/src/modules/governanca/services/auditoriaOperacionalService.js`
+- `backend/src/routes.js`
+- `backend/src/services/devUserSwitchService.js`
+- `backend/src/services/securityLogService.js`
+- `backend/scripts/validarDevUserSwitch.js`
+- `backend/package.json`
+- `frontend/src/App.jsx`
+- `frontend/src/components/DevUserSwitcher.jsx`
+- `frontend/src/contexts/AuthContext.jsx`
+- `frontend/src/index.css`
+- `frontend/src/layout/Layout.jsx`
+- `frontend/src/navigation/navigationConfig.jsx`
+- `frontend/src/pages/ConfiguracaoUsuariosTesteRapido.jsx`
+- `frontend/src/services/auth.js`
+- `docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`
+- `docs/handoffs/TROCA_RAPIDA_USUARIOS_DEV_2026-09-14.md`
+
+Ownership deste escopo liberado em 2026-09-14 apos validacoes de seguranca, auditoria,
+compilacao do frontend e registro do handoff.
+
 Ownership ativo da sessao `/root` iniciado em 2026-09-14 para corrigir o fluxo de aprovacao
 por tipo e a classificacao financeira automatica da recarga de cartao. Arquivos reservados:
 

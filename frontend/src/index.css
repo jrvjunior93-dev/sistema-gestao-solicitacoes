@@ -1520,6 +1520,168 @@ a:hover {
   border-color: var(--ui-border-strong);
 }
 
+/* Troca de usuário para QA: o backend decide se o recurso existe. Estas
+   classes só cuidam do encaixe compacto na topbar e nunca habilitam o fluxo. */
+.dev-user-switcher {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.dev-user-switcher-trigger.is-active {
+  color: var(--c-warning-strong, #92400e);
+  border-color: var(--c-warning, #f59e0b);
+  background: var(--c-warning-soft, #fffbeb);
+}
+
+.dev-user-switcher-label {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-user-switcher-menu {
+  position: absolute;
+  z-index: var(--z-dropdown-portal);
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100vh - 6rem));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--ui-surface);
+  box-shadow: var(--shadow-lg, 0 18px 45px rgba(15, 23, 42, 0.18));
+  color: var(--c-text);
+}
+
+.dev-user-switcher-head,
+.dev-user-switcher-actions {
+  padding: 0.8rem;
+}
+
+.dev-user-switcher-head {
+  display: grid;
+  gap: 0.2rem;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.dev-user-switcher-head span,
+.dev-user-switcher-list small,
+.dev-user-switcher-empty,
+.dev-user-config-email {
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+}
+
+.dev-user-switcher-list {
+  overflow-y: auto;
+  padding: 0.35rem;
+}
+
+.dev-user-switcher-list > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem;
+  border: 0;
+  border-radius: var(--radius-md, 8px);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.dev-user-switcher-list > button:hover:not(:disabled) {
+  background: var(--ui-surface-soft);
+}
+
+.dev-user-switcher-list > button.is-current {
+  background: var(--nav-active-bg, var(--ui-surface-soft));
+}
+
+.dev-user-switcher-list > button > span {
+  min-width: 0;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.dev-user-switcher-list strong,
+.dev-user-switcher-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-user-switcher-actions {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid var(--ui-border);
+}
+
+.dev-user-switcher-error,
+.dev-user-switcher-empty {
+  margin: 0.45rem 0.65rem;
+}
+
+.dev-user-switcher-error {
+  color: var(--c-danger, #b91c1c);
+  font-size: var(--fonte-detalhe);
+}
+
+.dev-user-config-search {
+  width: min(100%, 38rem);
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.75rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md, 8px);
+  background: var(--ui-surface);
+  color: var(--c-muted);
+}
+
+.dev-user-config-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0 !important;
+  padding-inline: 0 !important;
+  box-shadow: none !important;
+}
+
+.dev-user-config-page .col-checkbox {
+  width: 4.5rem;
+  text-align: center;
+}
+
+.dev-user-config-page tbody tr.is-selected {
+  background: var(--nav-active-bg, var(--ui-surface-soft));
+}
+
+.dev-user-config-email {
+  display: block;
+  margin-top: 0.15rem;
+}
+
+@media (max-width: 1024px) {
+  .dev-user-switcher-label {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .dev-user-switcher-menu {
+    position: fixed;
+    top: var(--topbar-height, 4.5rem);
+    right: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+  }
+}
+
 .chevron-btn {
   display: inline-flex;
   align-items: center;

@@ -43,7 +43,7 @@ async function obterBase(transaction) {
             ts.id AS tipo_id
        FROM users u
        JOIN usuarios_obras uo ON uo.user_id = u.id
-       JOIN obras o ON o.id = uo.obra_id AND o.ativo = 1 AND o.empresa_grupo_id IS NOT NULL
+       JOIN Obras o ON o.id = uo.obra_id AND o.ativo = 1 AND o.empresa_grupo_id IS NOT NULL
        JOIN apropriacoes a ON a.obra_id = o.id AND a.ativo = 1 AND a.somadora = 0
       JOIN tipo_solicitacao ts ON ts.codigo_interno = 'RECARGA_DE_CARTAO' AND ts.ativo = 1
       WHERE u.ativo = 1

@@ -27,6 +27,7 @@ import { isNativeApp, registerNativeBackButtonHandler } from '../mobile/runtime'
 import { getFallbackRoute, hasSafeBrowserHistory } from '../utils/navigation';
 import { nomeProprio } from '../utils/texto';
 import OperationalAuditTracker from '../modules/governanca/components/OperationalAuditTracker';
+import DevUserSwitcher from '../components/DevUserSwitcher';
 import cscLogo from '../assets/CSC_logo_lockup_cropped.png';
 import fluxyMark from '../assets/fluxy_mark_cropped.png';
 
@@ -377,6 +378,8 @@ export default function Layout() {
               />
 
               <div className="fx-topbar-tray">
+                <DevUserSwitcher />
+
                 <button
                   onClick={toggleTheme}
                   className="theme-toggle"

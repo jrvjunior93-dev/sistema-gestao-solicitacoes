@@ -9,7 +9,7 @@ Guia operacional para comparar a produção atual (`main`) com a linha de homolo
 
 ## 1. Fotografia usada nesta revisão
 
-Documento atualizado em **11/09/2026** com as referências remotas disponíveis naquele
+Documento atualizado em **14/09/2026** com as referências remotas disponíveis naquele
 momento:
 
 | Referência | Commit |
@@ -129,6 +129,28 @@ para produção: refaça conscientemente as escolhas na interface de produção.
 
 Bookmarks antigos precisam ser incluídos no smoke. Entradas consolidadas podem redirecionar
 para o novo hub em vez de manter uma página duplicada.
+
+### 3.6 Troca rápida de usuário — somente desenvolvimento
+
+O SUPERADMIN do ambiente de desenvolvimento pode definir até 20 usuários em
+**Configurações → Usuários para Teste Rápido**. O seletor exibido no topo permite assumir
+temporariamente as permissões, o setor e a visibilidade reais de um desses usuários, trocar
+diretamente para outro perfil configurado e retornar ao SUPERADMIN sem conhecer ou alterar a
+senha do usuário testado.
+
+O recurso é uma ferramenta de QA e **não pode ser habilitado em produção**. O backend só o
+expõe quando as duas condições abaixo são verdadeiras ao mesmo tempo:
+
+```text
+DEPLOYMENT_ENV=development
+DEV_USER_SWITCH_ENABLED=true
+```
+
+Com qualquer outro valor, as rotas recusam a operação, a tela de configuração fica
+inacessível e o seletor não aparece. A sessão assumida também deixa de ser aceita se a
+funcionalidade for desativada, se o SUPERADMIN original for inativado ou se as sessões dele
+forem revogadas. A auditoria preserva o usuário simulado e registra separadamente o
+SUPERADMIN que iniciou o teste.
 
 ## 4. Solicitações
 
@@ -624,16 +646,20 @@ analisar o schema real.
 
 ## 12. Variáveis de ambiente
 
-O delta de `backend/.env.example` adiciona apenas:
+O delta de `backend/.env.example` inclui variáveis de proteção para DEV/QA:
 
 ```text
 DEV_TEST_ALLOWED_DB_HOST
 DEV_TEST_ALLOWED_DB_NAME
+DEPLOYMENT_ENV
+DEV_USER_SWITCH_ENABLED
 ```
 
-Essas variáveis são exclusivas de DEV/QA para proteger scripts com escrita. **Não devem ser
-configuradas em produção.** Não há nova variável obrigatória de runtime de produção neste
-intervalo.
+As duas primeiras protegem scripts com escrita. Para a troca rápida de usuário, configure
+`DEPLOYMENT_ENV=development` e `DEV_USER_SWITCH_ENABLED=true` somente no processo
+`backend-dev`. Em produção, mantenha `DEPLOYMENT_ENV` com identificação de produção (ou em
+branco) e `DEV_USER_SWITCH_ENABLED=false`. Não há nova variável obrigatória de runtime de
+produção neste intervalo.
 
 Preserve integralmente os `.env` atuais da EC2 e da Vercel. Nunca copie `.env` do ambiente
 de desenvolvimento para produção.
@@ -722,6 +748,9 @@ ação:
 12. **RH/DP** — cargos, documentos exigidos e responsáveis.
 13. **Compras** — catálogo/unidades e permissões financeiras do pedido.
 14. **Fila de Pagamentos** — separar quem prepara, quem baixa e quem resolve divergência.
+
+Não configure usuários para teste rápido em produção e não habilite as variáveis exclusivas
+de desenvolvimento no processo `backend-solicitacoes`.
 
 Registre em evidência a configuração final de cada item e o responsável pela validação.
 

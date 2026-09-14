@@ -397,6 +397,7 @@ const DashboardController = require('./controllers/DashboardController');
 const DashboardPendenciasController = require('./controllers/DashboardPendenciasController');
 const HomeBlocosController = require('./controllers/HomeBlocosController');
 const AuthController = require('./controllers/AuthController');
+const DevUserSwitchController = require('./controllers/DevUserSwitchController');
 const LiveUpdatesController = require('./controllers/LiveUpdatesController');
 const InstalacaoController = require('./controllers/InstalacaoController');
 const ContratoController = require('./controllers/ContratoController');
@@ -614,6 +615,9 @@ router.use(auditoriaOperacional);
 router.get('/auth/me', AuthController.me);
 router.post('/auth/logout', AuthController.logout);
 router.post('/auth/heartbeat', AuthController.heartbeat);
+router.get('/auth/dev-user-switch', requireMfaCompletion, requireCustosRecebiveisCompletion, DevUserSwitchController.status);
+router.post('/auth/dev-user-switch/assume', requireMfaCompletion, requireCustosRecebiveisCompletion, criticalRateLimit, DevUserSwitchController.assume);
+router.post('/auth/dev-user-switch/restore', criticalRateLimit, DevUserSwitchController.restore);
 router.post('/auth/mfa/setup', AuthController.mfaSetup);
 router.post('/auth/mfa/enable', validateRequest({ body: validateMfaCodeBody }), AuthController.mfaEnable);
 router.post('/auth/mfa/disable', validateRequest({ body: validateMfaCodeBody }), AuthController.mfaDisable);
@@ -2386,6 +2390,8 @@ router.get('/configuracoes/automacao-status-setor', ConfiguracaoSistemaControlle
 router.patch('/configuracoes/automacao-status-setor', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.updateAutomacaoStatusSetor);
 router.get('/configuracoes/aprovacao-solicitacao-por-tipo', ConfiguracaoSistemaController.getAprovacaoSolicitacaoPorTipo);
 router.patch('/configuracoes/aprovacao-solicitacao-por-tipo', allowConfiguracoesStatusVinculos, ConfiguracaoSistemaController.updateAprovacaoSolicitacaoPorTipo);
+router.get('/configuracoes/dev-user-switch', permit(['SUPERADMIN']), DevUserSwitchController.config);
+router.patch('/configuracoes/dev-user-switch', permit(['SUPERADMIN']), criticalRateLimit, DevUserSwitchController.updateConfig);
 
 // Preferencias e filtros salvos das listas (ListaAvancada) — sempre do
 // proprio usuario autenticado; nao ha como ler ou escrever registro de

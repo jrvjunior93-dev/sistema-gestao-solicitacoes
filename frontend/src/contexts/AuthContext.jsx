@@ -5,7 +5,10 @@ import {
   getTimeoutInatividade
 } from '../services/configuracoesSistema';
 import {
+  assumeDevUserRequest,
   getCurrentSession,
+  getDevUserSwitchStatus,
+  restoreDevUserRequest,
   logoutRequest
 } from '../services/auth';
 import { clearAuthToken, getAuthToken, setAuthToken } from '../services/api';
@@ -26,6 +29,7 @@ export function AuthProvider({ children }) {
   const [sessionExpiresAt, setSessionExpiresAt] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [authRestoreError, setAuthRestoreError] = useState(null);
+  const [devUserSwitch, setDevUserSwitch] = useState(null);
   const [idleTimeoutMinutes, setIdleTimeoutMinutes] = useState(() => {
     const value = Number(localStorage.getItem(IDLE_TIMEOUT_STORAGE_KEY));
     return Number.isNaN(value) || value <= 0 ? DEFAULT_IDLE_TIMEOUT_MINUTES : value;
@@ -47,6 +51,9 @@ export function AuthProvider({ children }) {
     setToken(nextToken);
     setSessionExpiresAt(nextExpiresAt);
     setAuthToken(nextToken);
+    if (Object.prototype.hasOwnProperty.call(data || {}, 'dev_user_switch')) {
+      setDevUserSwitch(data?.dev_user_switch || { enabled: false });
+    }
     tokenExpireHandledRef.current = false;
   }
 
@@ -73,6 +80,24 @@ export function AuthProvider({ children }) {
         ...(patch || {})
       };
     });
+  }
+
+  async function loadDevUserSwitch() {
+    const data = await getDevUserSwitchStatus();
+    setDevUserSwitch(data || { enabled: false });
+    return data;
+  }
+
+  async function assumeDevUser(userId) {
+    const data = await assumeDevUserRequest(userId);
+    applySession(data);
+    return data;
+  }
+
+  async function restoreDevUser() {
+    const data = await restoreDevUserRequest();
+    applySession(data);
+    return data;
   }
 
   async function logout({ skipRequest = false } = {}) {
@@ -104,6 +129,7 @@ export function AuthProvider({ children }) {
     clearAuthToken();
     tokenExpireHandledRef.current = false;
     setAuthRestoreError(null);
+    setDevUserSwitch(null);
   }
 
   function handleTokenExpired() {
@@ -147,6 +173,7 @@ export function AuthProvider({ children }) {
         setToken(null);
         setSessionExpiresAt(null);
         clearAuthToken();
+        setDevUserSwitch(null);
         setAuthRestoreError(null);
         tokenExpireHandledRef.current = false;
       } else {
@@ -296,7 +323,11 @@ export function AuthProvider({ children }) {
         login,
         refreshSession,
         logout,
-        updateUser
+        updateUser,
+        devUserSwitch,
+        loadDevUserSwitch,
+        assumeDevUser,
+        restoreDevUser
       }}
     >
       {children}
