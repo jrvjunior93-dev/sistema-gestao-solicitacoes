@@ -49,6 +49,51 @@ function normalizarRegrasAprovacao(raw = []) {
   );
 }
 
+function normalizarAlteracoesAprovacao(raw = []) {
+  const alteracoes = new Map();
+  (Array.isArray(raw) ? raw : []).forEach((item) => {
+    const tipoSolicitacaoId = normalizarIdPositivo(item?.tipo_solicitacao_id);
+    if (!tipoSolicitacaoId) return;
+
+    alteracoes.set(String(tipoSolicitacaoId), {
+      tipo_solicitacao_id: tipoSolicitacaoId,
+      setor_destino: normalizarToken(item?.setor_destino),
+      status_destino: normalizarToken(item?.status_destino),
+      remover: item?.remover === true
+    });
+  });
+
+  return Array.from(alteracoes.values()).sort(
+    (a, b) => a.tipo_solicitacao_id - b.tipo_solicitacao_id
+  );
+}
+
+function mesclarAlteracoesAprovacao(regrasAtuais = [], alteracoes = []) {
+  const porTipo = new Map(
+    normalizarRegrasAprovacao(regrasAtuais)
+      .map((regra) => [String(regra.tipo_solicitacao_id), regra])
+  );
+
+  normalizarAlteracoesAprovacao(alteracoes).forEach((alteracao) => {
+    const chave = String(alteracao.tipo_solicitacao_id);
+    if (alteracao.remover) {
+      porTipo.delete(chave);
+      return;
+    }
+    if (!alteracao.setor_destino || !alteracao.status_destino) return;
+
+    porTipo.set(chave, {
+      tipo_solicitacao_id: alteracao.tipo_solicitacao_id,
+      setor_destino: alteracao.setor_destino,
+      status_destino: alteracao.status_destino
+    });
+  });
+
+  return Array.from(porTipo.values()).sort(
+    (a, b) => a.tipo_solicitacao_id - b.tipo_solicitacao_id
+  );
+}
+
 function parseJsonOrDefault(valor, fallback) {
   if (!valor) return fallback;
   try {
@@ -242,6 +287,8 @@ module.exports = {
   REGRA_PADRAO_SOLICITACAO_COMPRA,
   normalizarToken,
   normalizarRegrasAprovacao,
+  normalizarAlteracoesAprovacao,
+  mesclarAlteracoesAprovacao,
   obterRegrasAprovacaoSolicitacaoPorTipo,
   obterRegraAprovacaoPorTipo,
   resolverContextoAprovacaoPorTipo,

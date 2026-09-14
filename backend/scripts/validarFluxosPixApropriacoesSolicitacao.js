@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { construirResumoApropriacoes } = require('../src/services/compraApropriacao');
 const { resolverCamposNovaSolicitacao } = require('../src/services/novaSolicitacaoCamposConfig');
+const { mesclarAlteracoesAprovacao } = require('../src/services/solicitacao/aprovacaoTipoConfig');
 
 const root = path.resolve(__dirname, '..', '..');
 
@@ -56,6 +57,28 @@ function validarCadastroCredorDoContrato() {
     { areaResponsavel: 'GEO' }
   ).cadastro_credor;
   assert.strictEqual(campoDesabilitadoPelaConfiguracao.visivel, false);
+}
+
+function validarEdicaoParcialAprovacaoPorTipo() {
+  const regrasAtuais = [
+    { tipo_solicitacao_id: 7, setor_destino: 'FINANCEIRO', status_destino: 'PENDENTE' },
+    { tipo_solicitacao_id: 8, setor_destino: 'FINANCEIRO', status_destino: 'EM_ANALISE' }
+  ];
+  const resultado = mesclarAlteracoesAprovacao(regrasAtuais, [
+    { tipo_solicitacao_id: 8, setor_destino: 'FINANCEIRO', status_destino: 'LIBERADO' },
+    { tipo_solicitacao_id: 9, setor_destino: 'COMPRAS', status_destino: 'LIBERADO_PARA_COMPRA' }
+  ]);
+
+  assert.deepStrictEqual(resultado, [
+    { tipo_solicitacao_id: 7, setor_destino: 'FINANCEIRO', status_destino: 'PENDENTE' },
+    { tipo_solicitacao_id: 8, setor_destino: 'FINANCEIRO', status_destino: 'LIBERADO' },
+    { tipo_solicitacao_id: 9, setor_destino: 'COMPRAS', status_destino: 'LIBERADO_PARA_COMPRA' }
+  ]);
+
+  assert.deepStrictEqual(
+    mesclarAlteracoesAprovacao(resultado, [{ tipo_solicitacao_id: 7, remover: true }]),
+    resultado.filter((regra) => regra.tipo_solicitacao_id !== 7)
+  );
 }
 
 function validarIntegracaoFrontendBackend() {
@@ -134,6 +157,9 @@ function validarIntegracaoFrontendBackend() {
   assert(telaAprovacaoTipo.includes('const statusDoGeo = useMemo'));
   assert(telaAprovacaoTipo.includes('Status de chegada (GEO)'));
   assert(telaAprovacaoTipo.includes('tipoEhSolicitacaoCompra(tipo) && regra.setor_destino && !regra.status_destino'));
+  assert(telaAprovacaoTipo.includes('const [tiposAlterados, setTiposAlterados]'));
+  assert(telaAprovacaoTipo.includes('salvarAprovacaoSolicitacaoPorTipo({ alteracoes })'));
+  assert(telaAprovacaoTipo.includes('(inativo no GEO)'));
 
   // A abertura do titulo de Recarga decorre do evento de aprovacao, sem depender do texto do
   // status escolhido para a chegada no setor destino.
@@ -147,6 +173,7 @@ function validarIntegracaoFrontendBackend() {
 function run() {
   validarNomeDaApropriacao();
   validarCadastroCredorDoContrato();
+  validarEdicaoParcialAprovacaoPorTipo();
   validarIntegracaoFrontendBackend();
   console.log('Fluxos de PIX e apropriacoes da solicitacao validados com sucesso.');
 }

@@ -65,6 +65,7 @@ export default function AprovacaoSolicitacaoPorTipo() {
   const [setores, setSetores] = useState([]);
   const [etapas, setEtapas] = useState([]);
   const [regras, setRegras] = useState({});
+  const [tiposAlterados, setTiposAlterados] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const { avisos, avisar, fechar } = useAvisos();
@@ -92,6 +93,7 @@ export default function AprovacaoSolicitacaoPorTipo() {
         setSetores(setoresAtivos);
         setEtapas((Array.isArray(etapasData) ? etapasData : []).filter((etapa) => etapa?.ativo !== false));
         setRegras(sugerirDestinoCompra(regrasCarregadas, tiposAtivos, setoresAtivos));
+        setTiposAlterados(new Set());
       } catch (error) {
         console.error(error);
         avisar.erro(error?.message || 'Erro ao carregar os fluxos de aprovação.');
@@ -122,6 +124,7 @@ export default function AprovacaoSolicitacaoPorTipo() {
 
   function alterarSetor(tipo, setorDestino) {
     const tipoId = String(tipo.id);
+    setTiposAlterados((atuais) => new Set(atuais).add(tipoId));
     setRegras((atual) => ({
       ...atual,
       [tipoId]: {
@@ -133,6 +136,7 @@ export default function AprovacaoSolicitacaoPorTipo() {
 
   function alterarStatus(tipoId, statusDestino) {
     const chave = String(tipoId);
+    setTiposAlterados((atuais) => new Set(atuais).add(chave));
     setRegras((atual) => ({
       ...atual,
       [chave]: {
@@ -143,7 +147,13 @@ export default function AprovacaoSolicitacaoPorTipo() {
   }
 
   async function salvar() {
-    const incompletos = tiposOrdenados.filter((tipo) => {
+    const tiposEditados = tiposOrdenados.filter((tipo) => tiposAlterados.has(String(tipo.id)));
+    if (tiposEditados.length === 0) {
+      avisar.informacao('Nenhuma alteração para salvar.');
+      return;
+    }
+
+    const incompletos = tiposEditados.filter((tipo) => {
       const regra = regras[String(tipo.id)] || {};
       if (tipoEhSolicitacaoCompra(tipo) && regra.setor_destino && !regra.status_destino) {
         return false;
@@ -155,17 +165,22 @@ export default function AprovacaoSolicitacaoPorTipo() {
       return;
     }
 
-    const payload = tiposOrdenados
-      .map((tipo) => ({
+    const alteracoes = tiposEditados.map((tipo) => {
+      const regra = regras[String(tipo.id)] || {};
+      const remover = tipoEhSolicitacaoCompra(tipo)
+        ? !regra.status_destino
+        : !regra.setor_destino && !regra.status_destino;
+      return {
         tipo_solicitacao_id: Number(tipo.id),
-        setor_destino: regras[String(tipo.id)]?.setor_destino || '',
-        status_destino: regras[String(tipo.id)]?.status_destino || ''
-      }))
-      .filter((regra) => regra.setor_destino && regra.status_destino);
+        setor_destino: regra.setor_destino || '',
+        status_destino: regra.status_destino || '',
+        remover
+      };
+    });
 
     try {
       setSalvando(true);
-      const resposta = await salvarAprovacaoSolicitacaoPorTipo({ regras: payload });
+      const resposta = await salvarAprovacaoSolicitacaoPorTipo({ alteracoes });
       const regrasSalvas = {};
       (Array.isArray(resposta?.regras) ? resposta.regras : []).forEach((regra) => {
         regrasSalvas[String(regra.tipo_solicitacao_id)] = {
@@ -174,6 +189,7 @@ export default function AprovacaoSolicitacaoPorTipo() {
         };
       });
       setRegras(sugerirDestinoCompra(regrasSalvas, tipos, setores));
+      setTiposAlterados(new Set());
       avisar.sucesso('Fluxos de aprovação salvos com sucesso.');
     } catch (error) {
       console.error(error);
@@ -194,9 +210,13 @@ export default function AprovacaoSolicitacaoPorTipo() {
         contagem={`${configurados} tipo(s) configurado(s)`}
         descricao={DESCRICAO}
         acaoPrincipal={{
-          rotulo: salvando ? 'Salvando...' : 'Salvar configuração',
+          rotulo: salvando
+            ? 'Salvando...'
+            : tiposAlterados.size > 0
+              ? `Salvar ${tiposAlterados.size} alteração(ões)`
+              : 'Salvar configuração',
           onClick: salvar,
-          desabilitada: loading || salvando
+          desabilitada: loading || salvando || tiposAlterados.size === 0
         }}
       />
 
@@ -216,6 +236,9 @@ export default function AprovacaoSolicitacaoPorTipo() {
               const regra = regras[String(tipo.id)] || {};
               const compra = tipoEhSolicitacaoCompra(tipo);
               const opcoesStatus = statusDoGeo;
+              const statusAtualEstaAtivo = !regra.status_destino || opcoesStatus.some(
+                (etapa) => normalizar(etapa.nome) === normalizar(regra.status_destino)
+              );
               return (
                 <div
                   key={tipo.id}
@@ -232,6 +255,11 @@ export default function AprovacaoSolicitacaoPorTipo() {
                           ? 'Aprovação configurada.'
                           : 'Sem aprovação configurada.'}
                     </p>
+                    {!statusAtualEstaAtivo && (
+                      <p className="mt-1 text-sm font-medium text-[var(--c-danger)]">
+                        O status salvo não está mais ativo no GEO. Altere este tipo quando quiser corrigir o fluxo.
+                      </p>
+                    )}
                   </div>
 
                   <label className="form-field">
@@ -260,6 +288,11 @@ export default function AprovacaoSolicitacaoPorTipo() {
                       disabled={!regra.setor_destino}
                     >
                       <option value="">Selecione</option>
+                      {!statusAtualEstaAtivo && (
+                        <option value={regra.status_destino}>
+                          {String(regra.status_destino).replaceAll('_', ' ')} (inativo no GEO)
+                        </option>
+                      )}
                       {opcoesStatus.map((etapa) => (
                         <option key={etapa.id} value={normalizar(etapa.nome)}>{etapa.nome}</option>
                       ))}

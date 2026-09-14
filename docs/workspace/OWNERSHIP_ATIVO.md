@@ -4,6 +4,19 @@
 
 Antes de trabalho paralelo, registrar agente, escopo, arquivos reservados e horario de inicio. Remover a reserva ao concluir o handoff.
 
+Ownership da sessao `/root` iniciado em 2026-09-14 para permitir a edicao parcial da
+configuracao de Aprovacao por Tipo sem revalidar regras antigas nao alteradas. Arquivos trabalhados:
+
+- `backend/src/controllers/ConfiguracaoSistemaController.js`
+- `backend/src/services/solicitacao/aprovacaoTipoConfig.js`
+- `backend/scripts/validarFluxosPixApropriacoesSolicitacao.js`
+- `frontend/src/pages/AprovacaoSolicitacaoPorTipo.jsx`
+- `docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`
+- `docs/handoffs/APROVACAO_TIPO_EDICAO_PARCIAL_2026-09-14.md`
+
+Ownership deste escopo liberado em 2026-09-14 apos teste automatizado do fluxo, compilacao
+do frontend e registro do handoff.
+
 Ownership da sessao `/root` iniciado em 2026-09-14 para corrigir a validacao Linux da
 recarga e implementar troca rapida de usuario exclusiva do ambiente de desenvolvimento. Arquivos trabalhados:
 

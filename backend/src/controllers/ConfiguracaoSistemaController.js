@@ -49,6 +49,8 @@ const {
   CODIGO_SOLICITACAO_COMPRA,
   normalizarToken: normalizarTokenAprovacao,
   normalizarRegrasAprovacao,
+  normalizarAlteracoesAprovacao,
+  mesclarAlteracoesAprovacao,
   obterRegrasAprovacaoSolicitacaoPorTipo
 } = require('../services/solicitacao/aprovacaoTipoConfig');
 const { normalizeTipoSolicitacaoCodigo } = require('../services/tipoSolicitacaoBehaviorService');
@@ -1117,7 +1119,11 @@ module.exports = {
 
   async updateAprovacaoSolicitacaoPorTipo(req, res) {
     try {
-      const regrasRecebidas = normalizarRegrasAprovacao(req.body?.regras);
+      const edicaoParcial = Array.isArray(req.body?.alteracoes);
+      const alteracoesRecebidas = edicaoParcial
+        ? normalizarAlteracoesAprovacao(req.body.alteracoes)
+        : normalizarRegrasAprovacao(req.body?.regras).map((regra) => ({ ...regra, remover: false }));
+      const regrasRecebidas = alteracoesRecebidas.filter((regra) => !regra.remover);
       const tipoIds = [...new Set(regrasRecebidas.map((regra) => regra.tipo_solicitacao_id))];
       const [tipos, setores, etapas] = await Promise.all([
         TipoSolicitacao.findAll({
@@ -1154,17 +1160,25 @@ module.exports = {
       const setorGeo = setores.find((setor) => (
         hasSetorCapability(setor, 'eh_setor_geo')
       ));
-      if (!setorGeo) {
+      if (regrasRecebidas.length > 0 && !setorGeo) {
         return res.status(400).json({
           error: 'O setor GEO nao existe ou esta inativo.'
         });
       }
       const tokensSetorGeo = new Set(
-        [setorGeo.codigo, setorGeo.nome].map(normalizarTokenAprovacao).filter(Boolean)
+        setorGeo
+          ? [setorGeo.codigo, setorGeo.nome].map(normalizarTokenAprovacao).filter(Boolean)
+          : []
       );
 
       const regras = [];
       for (const regra of regrasRecebidas) {
+        if (!regra.setor_destino || !regra.status_destino) {
+          return res.status(400).json({
+            error: `Informe setor e status juntos para o tipo ${regra.tipo_solicitacao_id}.`
+          });
+        }
+
         const tipo = tiposPorId.get(Number(regra.tipo_solicitacao_id));
         if (!tipo) {
           return res.status(400).json({
@@ -1203,7 +1217,19 @@ module.exports = {
         });
       }
 
-      await salvarConfiguracaoJson(CHAVE_APROVACAO_SOLICITACAO_POR_TIPO, { regras });
+      const regrasParaSalvar = edicaoParcial
+        ? mesclarAlteracoesAprovacao(
+          await obterRegrasAprovacaoSolicitacaoPorTipo({ incluirPadraoCompra: false }),
+          [
+            ...alteracoesRecebidas.filter((regra) => regra.remover),
+            ...regras
+          ]
+        )
+        : regras;
+
+      await salvarConfiguracaoJson(CHAVE_APROVACAO_SOLICITACAO_POR_TIPO, {
+        regras: regrasParaSalvar
+      });
       const regrasComPadrao = await obterRegrasAprovacaoSolicitacaoPorTipo();
       return res.json({ ok: true, regras: regrasComPadrao });
     } catch (error) {

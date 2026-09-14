@@ -202,6 +202,10 @@ Solicitação de Compra sugere o setor **COMPRAS**. O destino e o catálogo de s
 funções distintas: o destino define para onde o registro segue e o status aplicado é uma
 decisão do GEO. O fallback histórico usa `LIBERADO` somente quando esse status está ativo
 no GEO. Uma regra padrão inválida não bloqueia mais o salvamento das outras configurações.
+O salvamento é parcial: somente os tipos efetivamente alterados na tela são validados e
+gravados. Uma regra antiga não editada, cujo status tenha sido desativado depois, é
+preservada e identificada como **inativa no GEO**, sem impedir a atualização dos demais
+tipos. Para excluir essa regra antiga, limpe a configuração daquele tipo e salve novamente.
 
 Tipos sem configuração continuam sem aprovação automática por esse mecanismo. Automação
 por Status permanece separada e só deve ser usada quando a movimentação depender da troca
