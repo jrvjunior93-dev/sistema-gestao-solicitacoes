@@ -7,6 +7,10 @@ const {
   registrarBaixasFila,
   resolverItemFila
 } = require('../services/pagamentoManualFilaService');
+const {
+  linkReceipts,
+  previewReceipts
+} = require('../services/pagamentoComprovantePdfService');
 const { responderErroController } = require('../utils/controllerError');
 
 function responderErro(res, error, fallback) {
@@ -27,6 +31,22 @@ module.exports = {
       return res.json(await listarContasPagadorasFila(req));
     } catch (error) {
       return responderErro(res, error, 'Erro ao carregar contas pagadoras');
+    }
+  },
+
+  async previewComprovantes(req, res) {
+    try {
+      return res.json(await previewReceipts(req.files || []));
+    } catch (error) {
+      return responderErro(res, error, 'Erro ao ler comprovantes PDF');
+    }
+  },
+
+  async vincularComprovantes(req, res) {
+    try {
+      return res.json(await linkReceipts(req, req.files || [], req.body?.vinculos));
+    } catch (error) {
+      return responderErro(res, error, 'Erro ao vincular comprovantes PDF');
     }
   },
 

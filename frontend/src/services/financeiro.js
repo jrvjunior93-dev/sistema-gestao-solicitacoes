@@ -51,6 +51,31 @@ export async function getContasFilaPagamentos() {
   return parseJson(response, 'Erro ao carregar as contas pagadoras');
 }
 
+function buildComprovantesFormData(files, vinculos) {
+  const form = new FormData();
+  Array.from(files || []).forEach((file) => form.append('files', file));
+  if (vinculos) form.append('vinculos', JSON.stringify(vinculos));
+  return form;
+}
+
+export async function previewComprovantesFilaPagamentos(files) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/comprovantes/preview`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: buildComprovantesFormData(files)
+  });
+  return parseJson(response, 'Erro ao ler comprovantes PDF');
+}
+
+export async function vincularComprovantesFilaPagamentos(files, vinculos) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/comprovantes/vincular`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: buildComprovantesFormData(files, vinculos)
+  });
+  return parseJson(response, 'Erro ao vincular comprovantes PDF');
+}
+
 export async function enviarTitulosFilaPagamentos(tituloIds, idempotencyKey) {
   const response = await fetch(`${API_URL}/financeiro/fila-pagamentos`, {
     method: 'POST',

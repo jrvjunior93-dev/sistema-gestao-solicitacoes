@@ -277,6 +277,7 @@ const {
   canAccessFinanceiro,
   canAccessFinanceiroRelatorio,
   canImportTitulosFinanceiros,
+  canImportarComprovantesFilaPagamentos,
   canImportComercialContratos,
   userHasAreaPermission,
   canViewSolicitacaoFinanceiro,
@@ -369,6 +370,7 @@ const {
 } = require('./services/authorizationService');
 
 const uploadComprovantes = require('./config/uploadComprovantes');
+const uploadComprovantesPagamento = require('./config/uploadComprovantesPagamento');
 const uploadNegociacaoContrato = require('./config/uploadNegociacaoContrato');
 const uploadDocumentacaoJuridica = require('./config/uploadDocumentacaoJuridica');
 const uploadOfx = require('./config/uploadOfx');
@@ -907,6 +909,11 @@ const allowFilaPagamentosPrepare = allowPaymentAction(
   'FINANCEIRO_FILA_PAGAMENTOS_PREPARE',
   canPrepareFilaPagamentos,
   'Acesso negado para enviar titulos para pagamento'
+);
+const allowFilaPagamentosImportarComprovantes = allowPaymentAction(
+  'FINANCEIRO_FILA_PAGAMENTOS_IMPORTAR_COMPROVANTES',
+  canImportarComprovantesFilaPagamentos,
+  'Acesso negado para importar comprovantes da fila de pagamentos'
 );
 const allowFilaPagamentosBaixa = allowPaymentAction(
   'FINANCEIRO_FILA_PAGAMENTOS_BAIXA',
@@ -2006,6 +2013,8 @@ router.post('/financeiro/favorecidos/:id/validar', allowFavorecidosManage, criti
 router.get('/financeiro/favorecidos/:id/auditoria', allowFavorecidosAudit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.auditoria);
 router.get('/financeiro/fila-pagamentos', allowFilaPagamentosRead, validateRequest({ query: validateManualPaymentQueueQuery }), PagamentoManualFilaController.index);
 router.get('/financeiro/fila-pagamentos/contas', allowFilaPagamentosRead, PagamentoManualFilaController.contas);
+router.post('/financeiro/fila-pagamentos/comprovantes/preview', allowFilaPagamentosImportarComprovantes, uploadRateLimit, uploadComprovantesPagamento.array('files', 10), PagamentoManualFilaController.previewComprovantes);
+router.post('/financeiro/fila-pagamentos/comprovantes/vincular', allowFilaPagamentosImportarComprovantes, criticalRateLimit, uploadComprovantesPagamento.array('files', 10), PagamentoManualFilaController.vincularComprovantes);
 router.post('/financeiro/fila-pagamentos', allowFilaPagamentosPrepare, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueCreateBody }), PagamentoManualFilaController.create);
 router.post('/financeiro/fila-pagamentos/baixar', allowFilaPagamentosBaixa, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueProcessBody }), PagamentoManualFilaController.baixar);
 router.post('/financeiro/fila-pagamentos/aprovar-divergencias', allowFilaPagamentosResolver, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueApproveBody }), PagamentoManualFilaController.aprovarDivergencias);

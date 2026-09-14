@@ -4,6 +4,47 @@
 
 Antes de trabalho paralelo, registrar agente, escopo, arquivos reservados e horario de inicio. Remover a reserva ao concluir o handoff.
 
+Ownership ativo da sessao `/root` retomado em 2026-09-14 para permitir selecao de centenas
+de comprovantes, mantendo lotes internos pequenos e seguros. Arquivos reservados:
+
+- `frontend/src/pages/FinanceiroFilaPagamentos.jsx`
+- `docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`
+- `docs/handoffs/FILA_PAGAMENTOS_COMPROVANTES_PDF_2026-09-14.md`
+
+Ownership deste ajuste liberado em 2026-09-14 após compilação do frontend, prova
+responsiva e revisão da estratégia de processamento em lotes. O usuário pode selecionar
+até 500 PDFs em uma única ação, enquanto o backend continua protegido por lotes de 10.
+
+Ownership ativo da sessao `/root` iniciado em 2026-09-14 para implementar a primeira fase da
+leitura deterministica de comprovantes PDF na Fila de Pagamentos, com previa, deduplicacao,
+sugestao de titulo, confirmacao humana e preenchimento da baixa sem executa-la automaticamente.
+Arquivos reservados:
+
+- `backend/package.json`
+- `backend/package-lock.json`
+- `backend/migrations/202609140002_fila_pagamentos_comprovantes_pdf.js`
+- `backend/src/config/uploadComprovantesPagamento.js`
+- `backend/src/constants/moduloPermissoes.js`
+- `backend/src/controllers/PagamentoManualFilaController.js`
+- `backend/src/generated/navegacaoFonteUnica.cjs`
+- `backend/src/models/PagamentoManualFilaItem.js`
+- `backend/src/models/index.js`
+- `backend/src/routes.js`
+- `backend/src/services/authorizationService.js`
+- `backend/src/services/pagamentoComprovantePdfService.js`
+- `backend/src/services/pagamentoManualFilaService.js`
+- `backend/src/validators/paymentValidators.js`
+- `backend/scripts/validarComprovantesPdfFila.js`
+- `frontend/src/pages/FinanceiroFilaPagamentos.jsx`
+- `frontend/src/services/financeiro.js`
+- `frontend/src/utils/acessoProduto.js`
+- `docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`
+- `docs/handoffs/FILA_PAGAMENTOS_COMPROVANTES_PDF_2026-09-14.md`
+
+Ownership deste escopo liberado em 2026-09-14 após validação dos sete modelos reais,
+testes da fila e permissões, compilação do frontend, prova responsiva dos modais e registro
+do handoff. As alterações permanecem sem commit até autorização explícita do usuário.
+
 Ownership da sessao `/root` iniciado em 2026-09-14 para permitir a edicao parcial da
 configuracao de Aprovacao por Tipo sem revalidar regras antigas nao alteradas. Arquivos trabalhados:
 

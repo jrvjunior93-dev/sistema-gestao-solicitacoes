@@ -879,6 +879,7 @@ export function canAccessFilaPagamentos(user) {
     return hasAnyPermissao(user, [
       'financeiro.fila_pagamentos.visualizar',
       'financeiro.fila_pagamentos.preparar',
+      'financeiro.fila_pagamentos.importar_comprovantes',
       'financeiro.fila_pagamentos.baixar',
       'financeiro.fila_pagamentos.reportar',
       'financeiro.fila_pagamentos.resolver'
@@ -888,6 +889,7 @@ export function canAccessFilaPagamentos(user) {
 }
 
 export const canPrepareFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.preparar');
+export const canImportarComprovantesFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.importar_comprovantes');
 export const canBaixarFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.baixar');
 export const canReportarFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.reportar');
 export const canResolverFilaPagamentos = (user) => canFilaPagamentos(user, 'financeiro.fila_pagamentos.resolver');

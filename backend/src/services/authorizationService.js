@@ -93,6 +93,7 @@ const FINANCEIRO_PAGAMENTOS_PERMISSION_KEYS = [
 const FINANCEIRO_FILA_PAGAMENTOS_PERMISSION_KEYS = [
   'financeiro.fila_pagamentos.visualizar',
   'financeiro.fila_pagamentos.preparar',
+  'financeiro.fila_pagamentos.importar_comprovantes',
   'financeiro.fila_pagamentos.baixar',
   'financeiro.fila_pagamentos.reportar',
   'financeiro.fila_pagamentos.resolver'
@@ -1573,6 +1574,14 @@ async function canPrepareFilaPagamentos(user) {
   if (isBusinessAdmin(user)) return true;
   if (await userHasConfiguredAreaPermissions(user)) {
     return userHasAreaPermission(user, ['financeiro.fila_pagamentos.preparar']);
+  }
+  return userHasFinanceiroSector(user);
+}
+
+async function canImportarComprovantesFilaPagamentos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['financeiro.fila_pagamentos.importar_comprovantes']);
   }
   return userHasFinanceiroSector(user);
 }
@@ -3422,6 +3431,7 @@ module.exports = {
   canUploadFiscalDocuments,
   canPreparePagamentos,
   canPrepareFilaPagamentos,
+  canImportarComprovantesFilaPagamentos,
   canReportarFilaPagamentos,
   canResolverFilaPagamentos,
   canManageIntegracaoSiengeConfig,

@@ -72,6 +72,43 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.STRING(120),
       allowNull: true,
       unique: true
+    },
+    comprovante_nome: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
+    comprovante_url: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    comprovante_hash: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+      unique: true
+    },
+    comprovante_banco: {
+      type: DataTypes.STRING(40),
+      allowNull: true
+    },
+    comprovante_tipo: {
+      type: DataTypes.STRING(40),
+      allowNull: true
+    },
+    comprovante_identificador: {
+      type: DataTypes.STRING(160),
+      allowNull: true
+    },
+    comprovante_dados_json: {
+      type: DataTypes.JSON,
+      allowNull: true
+    },
+    comprovante_vinculado_por: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    comprovante_vinculado_em: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   },
   {

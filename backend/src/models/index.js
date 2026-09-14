@@ -4601,6 +4601,16 @@ db.PagamentoManualFilaItem.belongsTo(db.User, {
   as: 'resolvidoPor'
 });
 
+db.User.hasMany(db.PagamentoManualFilaItem, {
+  foreignKey: 'comprovante_vinculado_por',
+  as: 'comprovantesFilaVinculados'
+});
+
+db.PagamentoManualFilaItem.belongsTo(db.User, {
+  foreignKey: 'comprovante_vinculado_por',
+  as: 'comprovanteVinculadoPor'
+});
+
 db.MovimentoFinanceiro.hasMany(db.PaymentReconciliation, {
   foreignKey: 'movimento_financeiro_id',
   as: 'paymentReconciliations'

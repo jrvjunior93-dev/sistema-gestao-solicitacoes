@@ -910,3 +910,61 @@ Para confrontar uma regra de backend:
 git diff origin/main..origin/refactor/frontend -- backend/src
 git log --oneline origin/main..origin/refactor/frontend -- backend/src
 ```
+
+## 20. Fila de Pagamentos — leitura de comprovantes PDF
+
+Foi adicionada uma primeira etapa assistida para importar comprovantes diretamente na
+Fila de Pagamentos. O sistema lê PDFs com texto pesquisável, identifica os principais
+dados do pagamento, sugere o título pendente e exige que o usuário confirme o vínculo.
+Essa confirmação apenas anexa o comprovante e preenche data, valor e conta sugerida; ela
+não registra a baixa automaticamente.
+
+### Formatos validados nesta primeira versão
+
+- Banco do Brasil: PIX;
+- CAIXA: PIX, boleto, TEV e DARF;
+- Sicredi: PIX.
+
+Os modelos entregues em 14/09/2026 foram usados como contratos de leitura. Outros bancos,
+mudanças de layout e PDFs somente como imagem devem cair em revisão manual. OCR e IA não
+fazem parte desta versão.
+
+### Segurança e limites
+
+- aceita somente arquivos `.pdf` com MIME de PDF;
+- até 500 arquivos selecionados em uma importação pela interface;
+- processamento automático em lotes internos de até 10 arquivos por requisição;
+- até 12 MB por arquivo e 50 MB por lote interno;
+- um pagamento por arquivo;
+- hash SHA-256 impede reutilização do mesmo comprovante;
+- um título recebe no máximo um comprovante por item pendente da fila;
+- arquivos ficam no S3 e os metadados extraídos são registrados na fila;
+- o usuário sempre confirma o título antes do vínculo;
+- a baixa continua usando as validações e permissões já existentes.
+
+### Permissão e configuração
+
+A nova ação granular é `financeiro.fila_pagamentos.importar_comprovantes`. Conceda-a ao
+grupo que fará a preparação dos pagamentos. Administradores de negócio e a compatibilidade
+legada do setor Financeiro continuam cobertos pela regra existente de acesso à fila.
+
+### Alteração estrutural
+
+A migration `202609140002_fila_pagamentos_comprovantes_pdf.js` acrescenta à tabela
+`pagamentos_manuais_fila` os dados do arquivo, hash, banco, tipo, identificador, conteúdo
+extraído e auditoria do usuário que vinculou. Ela também cria índice único para o hash e
+chave estrangeira para `users.id`.
+
+Na implantação:
+
+1. instalar as dependências do backend;
+2. executar o preflight de schema;
+3. aplicar a migration com a autorização explícita prevista para o ambiente;
+4. executar `npm run test:fila-comprovantes-pdf` e `npm run test:fila-pagamentos`;
+5. reiniciar somente o processo correspondente ao ambiente;
+6. conceder a permissão granular aos usuários responsáveis;
+7. validar um PDF de cada banco/tipo na fila sem concluir a baixa;
+8. confirmar no detalhe da fila o nome do arquivo e os dados pré-preenchidos.
+
+Dependências relacionadas: `pdf-parse@2.4.5` e `multer@2.3.0`. O Multer foi atualizado
+para a versão corrigida da linha 2.x antes de liberar a nova entrada de arquivos.

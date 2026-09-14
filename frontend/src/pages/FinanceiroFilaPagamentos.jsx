@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   HiOutlineArrowPath,
   HiOutlineCheckCircle,
+  HiOutlineDocumentArrowUp,
   HiOutlineExclamationTriangle,
   HiOutlineMagnifyingGlass
 } from 'react-icons/hi2';
@@ -12,12 +13,15 @@ import {
   getContasFilaPagamentos,
   getFilaPagamentos,
   informarNaoPagamentoFila,
+  previewComprovantesFilaPagamentos,
   registrarBaixasFilaPagamentos,
-  resolverFilaPagamento
+  resolverFilaPagamento,
+  vincularComprovantesFilaPagamentos
 } from '../services/financeiro';
 import {
   canBaixarFilaPagamentos,
   canAccessFinanceiro,
+  canImportarComprovantesFilaPagamentos,
   canReportarFilaPagamentos,
   canResolverFilaPagamentos
 } from '../utils/acessoProduto';
@@ -50,6 +54,16 @@ const SUMMARY_FILTERS = [
   { status: 'BAIXADO', label: 'Baixados', tone: 'success' },
   { status: 'RESOLVIDO', label: 'Resolvidos', tone: 'neutral' }
 ];
+
+const RECEIPT_BATCH_SIZE = 10;
+const MAX_RECEIPT_SELECTION = 500;
+const MAX_RECEIPT_FILE_BYTES = 12 * 1024 * 1024;
+
+function splitIntoBatches(items, size = RECEIPT_BATCH_SIZE) {
+  const batches = [];
+  for (let index = 0; index < items.length; index += size) batches.push(items.slice(index, index + size));
+  return batches;
+}
 
 function SummaryFilter({ item, value, active, onClick, disabled }) {
   const toneClass = {
@@ -231,6 +245,266 @@ function ErroRegistroBaixaModal({ erro, onFechar }) {
   );
 }
 
+function bancoLabel(value) {
+  return ({ BANCO_DO_BRASIL: 'Banco do Brasil', CAIXA: 'CAIXA', SICREDI: 'Sicredi' })[value] || 'Banco não identificado';
+}
+
+function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
+  const [files, setFiles] = useState([]);
+  const [preview, setPreview] = useState(null);
+  const [links, setLinks] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [progress, setProgress] = useState('');
+
+  async function readFiles() {
+    if (!files.length) {
+      setError('Selecione ao menos um comprovante PDF.');
+      return;
+    }
+    if (files.length > MAX_RECEIPT_SELECTION) {
+      setError(`Selecione no máximo ${MAX_RECEIPT_SELECTION} comprovantes por importação.`);
+      return;
+    }
+    const invalidFile = files.find((file) => !String(file.name || '').toLowerCase().endsWith('.pdf'));
+    if (invalidFile) {
+      setError(`O arquivo ${invalidFile.name || 'selecionado'} não é um PDF.`);
+      return;
+    }
+    const oversizedFile = files.find((file) => Number(file.size || 0) > MAX_RECEIPT_FILE_BYTES);
+    if (oversizedFile) {
+      setError(`O arquivo ${oversizedFile.name} excede o limite de 12 MB.`);
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setPreview(null);
+    try {
+      const batches = splitIntoBatches(files);
+      const allFiles = [];
+      const titleOptions = new Map();
+      let fileOffset = 0;
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        const batch = batches[batchIndex];
+        setProgress(`Lendo lote ${batchIndex + 1} de ${batches.length} · ${Math.min(fileOffset + batch.length, files.length)} de ${files.length} arquivos`);
+        const result = await previewComprovantesFilaPagamentos(batch);
+        (result?.arquivos || []).forEach((item, itemIndex) => allFiles.push({
+          ...item,
+          _file_index: fileOffset + itemIndex
+        }));
+        (result?.titulos_pendentes || []).forEach((item) => titleOptions.set(Number(item.fila_id), item));
+        fileOffset += batch.length;
+      }
+      const seenHashes = new Set();
+      const repeated = allFiles.find((item) => {
+        if (seenHashes.has(item.arquivo_hash)) return true;
+        seenHashes.add(item.arquivo_hash);
+        return false;
+      });
+      if (repeated) throw new Error(`O arquivo ${repeated.arquivo_nome} está repetido na seleção.`);
+
+      const usedSuggestedTitles = new Set();
+      const initialLinks = {};
+      allFiles.forEach((item) => {
+        const suggestedId = Number(item.fila_sugerida_id);
+        const canUseSuggestion = !item.duplicado && suggestedId > 0 && !usedSuggestedTitles.has(suggestedId);
+        initialLinks[item.arquivo_hash] = canUseSuggestion ? suggestedId : '';
+        if (canUseSuggestion) usedSuggestedTitles.add(suggestedId);
+      });
+      setPreview({ arquivos: allFiles, titulos_pendentes: [...titleOptions.values()] });
+      setLinks(initialLinks);
+    } catch (readError) {
+      setError(readError?.message || 'Não foi possível ler os comprovantes.');
+    } finally {
+      setProgress('');
+      setBusy(false);
+    }
+  }
+
+  async function linkFiles() {
+    const selectedItems = (preview?.arquivos || [])
+      .filter((item) => !item.duplicado && Number(links[item.arquivo_hash]))
+      .map((item) => ({
+        file: files[item._file_index],
+        mapping: { arquivo_hash: item.arquivo_hash, fila_id: Number(links[item.arquivo_hash]) }
+      }));
+    if (!selectedItems.length) {
+      setError('Escolha ao menos um título para vincular.');
+      return;
+    }
+    if (selectedItems.some((item) => !item.file)) {
+      setError('A seleção de arquivos mudou. Leia os comprovantes novamente.');
+      return;
+    }
+    if (new Set(selectedItems.map((item) => item.mapping.fila_id)).size !== selectedItems.length) {
+      setError('Escolha um título diferente para cada comprovante.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    let linkedCount = 0;
+    try {
+      const batches = splitIntoBatches(selectedItems);
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        const batch = batches[batchIndex];
+        setProgress(`Vinculando lote ${batchIndex + 1} de ${batches.length} · ${linkedCount} de ${selectedItems.length} concluídos`);
+        const result = await vincularComprovantesFilaPagamentos(
+          batch.map((item) => item.file),
+          batch.map((item) => item.mapping)
+        );
+        linkedCount += Number(result?.quantidade || batch.length);
+      }
+      await onVinculados(linkedCount);
+    } catch (linkError) {
+      if (linkedCount > 0) {
+        await onParcial?.(linkedCount);
+        setError(`${linkedCount} comprovante(s) foram vinculados antes da falha. Atualize e reabra a importação para continuar. ${linkError?.message || ''}`.trim());
+      } else {
+        setError(linkError?.message || 'Não foi possível vincular os comprovantes.');
+      }
+    } finally {
+      setProgress('');
+      setBusy(false);
+    }
+  }
+
+  const options = preview?.titulos_pendentes || [];
+  const selectedCount = Object.values(links).filter((value) => Number(value)).length;
+
+  return (
+    <OverlayModal rotulo="Importar comprovantes PDF" largura="var(--modal-max-w-xl, 1420px)" onFechar={busy ? undefined : onFechar}>
+      <div className="flex max-h-[calc(100dvh-8rem)] min-h-[420px] flex-col">
+        <div className="border-b border-[var(--c-border)] p-5">
+          <h2 className="text-lg font-semibold text-[var(--c-text)]">Importar comprovantes para a fila</h2>
+          <p className="mt-1 text-sm text-[var(--c-muted)]">
+            Envie PDFs do Banco do Brasil, CAIXA ou Sicredi. O sistema lê os dados e sugere o título; confira antes de vincular. A baixa não é executada nesta etapa.
+          </p>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-auto p-5">
+          <div className="rounded-xl border border-dashed border-[var(--c-border)] bg-[var(--ui-surface-2)] p-4">
+            <label className="block text-sm font-semibold text-[var(--c-text)]" htmlFor="fila-comprovantes-pdf">Comprovantes PDF</label>
+            <input
+              id="fila-comprovantes-pdf"
+              className="input mt-2 w-full"
+              type="file"
+              accept="application/pdf,.pdf"
+              multiple
+              disabled={busy}
+              onChange={(event) => {
+                const nextFiles = Array.from(event.target.files || []);
+                setFiles(nextFiles);
+                setPreview(null);
+                setLinks({});
+                setError('');
+              }}
+            />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-xs text-[var(--c-muted)]">Selecione até 500 PDFs. O sistema processa blocos seguros de 10 arquivos automaticamente; limite de 12 MB por PDF. Use um pagamento por arquivo.</span>
+              <button className="btn btn-outline" type="button" onClick={readFiles} disabled={busy || !files.length}>
+                {busy && !preview ? (progress || 'Lendo PDFs...') : 'Ler comprovantes'}
+              </button>
+            </div>
+            {files.length ? <div className="mt-2 text-xs font-medium text-[var(--c-text)]">{files.length} arquivo(s) selecionado(s)</div> : null}
+          </div>
+
+          {error ? (
+            <div className="mt-4 rounded-lg bg-[var(--sem-danger-bg)] px-4 py-3 text-sm text-[var(--sem-danger)]" role="alert">{error}</div>
+          ) : null}
+
+          {preview?.arquivos?.length ? (
+            <div className="mt-5 overflow-x-auto rounded-xl border border-[var(--c-border)]">
+              <table className="w-full min-w-[1120px] border-collapse text-sm">
+                <thead className="bg-[var(--ui-surface-2)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
+                  <tr>
+                    <th className="px-3 py-3">Arquivo</th>
+                    <th className="px-3 py-3">Leitura</th>
+                    <th className="px-3 py-3">Pagamento</th>
+                    <th className="px-3 py-3">Favorecido</th>
+                    <th className="px-3 py-3">Título da fila</th>
+                    <th className="px-3 py-3">Conferência</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
+                  {preview.arquivos.map((item) => {
+                    const suggested = item.candidatos?.find((candidate) => Number(candidate.fila_id) === Number(item.fila_sugerida_id));
+                    return (
+                      <tr key={item.arquivo_hash} className={item.duplicado ? 'bg-[var(--sem-warning-bg)]' : ''}>
+                        <td className="max-w-[220px] px-3 py-3 align-top">
+                          <div className="break-words font-medium">{item.arquivo_nome}</div>
+                          <div className="mt-1 text-xs text-[var(--c-muted)]">{item.arquivo_hash.slice(0, 12)}…</div>
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <div className="font-medium">{bancoLabel(item.dados?.banco)} · {item.dados?.tipo || 'Não identificado'}</div>
+                          <div className="mt-1 text-xs text-[var(--c-muted)]">{item.dados?.referencia_solicitacao || item.dados?.identificador_transacao || 'Sem referência operacional'}</div>
+                          {item.conta_sugerida ? <div className="mt-1 text-xs text-[var(--sem-success)]">Conta: {item.conta_sugerida.nome}</div> : null}
+                        </td>
+                        <td className="px-3 py-3 align-top whitespace-nowrap">
+                          <div className="font-semibold">{currency(item.dados?.valor)}</div>
+                          <div className="text-xs text-[var(--c-muted)]">{dateBR(item.dados?.data_pagamento)}</div>
+                        </td>
+                        <td className="max-w-[230px] px-3 py-3 align-top">
+                          <div>{item.dados?.favorecido_nome || 'Não identificado'}</div>
+                          <div className="text-xs text-[var(--c-muted)]">{item.dados?.favorecido_documento || 'Sem documento'}</div>
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          {item.duplicado ? (
+                            <div className="text-sm font-semibold text-[var(--sem-warning)]">Já vinculado a {item.duplicado.titulo_codigo || `item #${item.duplicado.fila_id}`}</div>
+                          ) : (
+                            <select
+                              className="input input-sm w-[330px]"
+                              value={links[item.arquivo_hash] || ''}
+                              onChange={(event) => setLinks((current) => ({ ...current, [item.arquivo_hash]: event.target.value }))}
+                              disabled={busy}
+                              aria-label={`Título para ${item.arquivo_nome}`}
+                            >
+                              <option value="">Selecione para revisar</option>
+                              {options.map((option) => (
+                                <option key={option.fila_id} value={option.fila_id}>
+                                  {option.titulo_codigo || `#${option.titulo_id}`} · {currency(option.valor_saldo)} · {option.favorecido || 'Sem favorecido'}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
+                        <td className="max-w-[260px] px-3 py-3 align-top text-xs">
+                          {item.duplicado ? 'Este mesmo arquivo não será importado novamente.' : suggested ? (
+                            <>
+                              <div className="font-semibold text-[var(--sem-success)]">Sugestão segura</div>
+                              <div className="mt-1 text-[var(--c-muted)]">{suggested.motivos.join(' · ')}</div>
+                            </>
+                          ) : item.dados?.texto_reconhecido ? (
+                            <>
+                              <div className="font-semibold text-[var(--sem-warning)]">Revisão manual</div>
+                              <div className="mt-1 text-[var(--c-muted)]">Não houve correspondência única com confiança suficiente.</div>
+                            </>
+                          ) : (
+                            <div className="font-semibold text-[var(--sem-danger)]">Modelo ainda não reconhecido</div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--c-border)] p-4">
+          <span className="text-xs text-[var(--c-muted)]">{preview ? `${selectedCount} comprovante(s) pronto(s) para vincular` : 'Nenhum comprovante lido'}</span>
+          <div className="flex gap-2">
+            <button className="btn btn-outline" type="button" onClick={onFechar} disabled={busy}>Cancelar</button>
+            <button className="btn btn-primary" type="button" onClick={linkFiles} disabled={busy || !preview || selectedCount === 0}>
+              {busy && preview ? (progress || 'Vinculando...') : 'Vincular comprovantes'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </OverlayModal>
+  );
+}
+
 export default function FinanceiroFilaPagamentos() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -252,11 +526,13 @@ export default function FinanceiroFilaPagamentos() {
   const [actionKey, setActionKey] = useState('');
   const [reasonOpenId, setReasonOpenId] = useState(null);
   const [erroBaixa, setErroBaixa] = useState(null);
+  const [comprovantesOpen, setComprovantesOpen] = useState(false);
 
   const canSettle = canBaixarFilaPagamentos(user);
   const canOpenTitle = canAccessFinanceiro(user);
   const canReport = canReportarFilaPagamentos(user);
   const canResolve = canResolverFilaPagamentos(user);
+  const canImportReceipts = canImportarComprovantesFilaPagamentos(user);
 
   function applyFilters(nextStatus = status, nextSearch = appliedSearch) {
     setStatus(nextStatus);
@@ -479,12 +755,20 @@ export default function FinanceiroFilaPagamentos() {
           desabilitada: busy || selectedRows.length === 0,
           icone: <HiOutlineCheckCircle aria-hidden="true" />
         } : undefined}
-        secundarias={[{
-          rotulo: 'Atualizar',
-          onClick: () => { limparAvisos(); load(); },
-          desabilitada: loading || busy,
-          icone: <HiOutlineArrowPath aria-hidden="true" />
-        }]}
+        secundarias={[
+          ...(canImportReceipts ? [{
+            rotulo: 'Importar comprovantes',
+            onClick: () => setComprovantesOpen(true),
+            desabilitada: loading || busy,
+            icone: <HiOutlineDocumentArrowUp aria-hidden="true" />
+          }] : []),
+          {
+            rotulo: 'Atualizar',
+            onClick: () => { limparAvisos(); load(); },
+            desabilitada: loading || busy,
+            icone: <HiOutlineArrowPath aria-hidden="true" />
+          }
+        ]}
       />
 
       <Avisos avisos={avisos} aoFechar={fecharAviso} />
@@ -593,6 +877,11 @@ export default function FinanceiroFilaPagamentos() {
                       )}
                       <div className="mt-1 max-w-[210px] truncate" title={title.descricao}>{title.descricao || 'Sem descrição'}</div>
                       <div className="text-xs text-[var(--c-muted)]">{title.numero_documento || 'Sem documento'} · {title.formaPagamento?.nome || 'Forma não informada'}</div>
+                      {row.comprovante_hash ? (
+                        <div className="mt-2 inline-flex rounded-full bg-[var(--sem-success-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--sem-success)]">
+                          Comprovante {row.comprovante_banco ? bancoLabel(row.comprovante_banco) : 'PDF'} vinculado
+                        </div>
+                      ) : null}
                     </td>
                     <td className="px-3 py-3 align-top">
                       <div className="max-w-[230px] font-medium" title={beneficiary.nome}>{beneficiary.nome}</div>
@@ -721,6 +1010,22 @@ export default function FinanceiroFilaPagamentos() {
         </p>
       </BlocoConteudo>
       <ErroRegistroBaixaModal erro={erroBaixa} onFechar={fecharErroRegistroBaixa} />
+      {comprovantesOpen ? (
+        <ComprovantesPdfModal
+          onFechar={() => setComprovantesOpen(false)}
+          onVinculados={async (quantidade) => {
+            setComprovantesOpen(false);
+            setDrafts({});
+            avisar.sucesso(`${quantidade} comprovante(s) vinculado(s). Confira os dados preenchidos antes de registrar a baixa.`);
+            await load();
+          }}
+          onParcial={async (quantidade) => {
+            setDrafts({});
+            avisar.alerta(`${quantidade} comprovante(s) foram vinculados. A fila foi atualizada; revise a mensagem da importação para continuar.`);
+            await load();
+          }}
+        />
+      ) : null}
       {elementoConfirmacao}
     </Pagina>
   );
