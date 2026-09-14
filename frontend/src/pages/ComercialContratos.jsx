@@ -2067,17 +2067,19 @@ export default function ComercialContratos() {
         descricao={form.id ? 'A edicao inicial ajusta status e dados complementares.' : 'A criacao gera as parcelas e os titulos financeiros.'}
         variante="primario"
         cor="var(--module-comercial)"
+        recolhivel={!form.id}
+        chavePreferencia={!form.id ? 'comercial:contratos:novo-contrato' : undefined}
       >
         <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-          <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            <label className="sol-filter-field">
+          <div className="grid items-start gap-3 lg:grid-cols-3">
+            <label className="sol-filter-field lg:col-span-1">
               <span className="sol-filter-label">Empreendimento</span>
               <select className="input w-full" value={form.empreendimento_id} onChange={(e) => selecionarEmpreendimentoContrato(e.target.value)} required disabled={Boolean(form.id)}>
                 <option value="">Selecione</option>
                 {empreendimentos.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
               </select>
             </label>
-            <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3 xl:col-span-2">
+            <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3 lg:col-span-2 lg:row-span-2">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <div className="sol-filter-label">Unidades do contrato</div>
@@ -2155,7 +2157,7 @@ export default function ComercialContratos() {
                 <div className="mt-2 text-xs text-[var(--c-muted)]">Nenhuma unidade disponível para contrato neste empreendimento.</div>
               )}
             </div>
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3">
+            <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3 lg:col-span-1">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="sol-filter-label">Comprador principal</span>
                 {!form.id && (
@@ -3222,73 +3224,76 @@ export default function ComercialContratos() {
         <BlocoConteudo
           titulo={`Detalhe do contrato ${contratoSelecionado.numero}`}
           descricao="Parcelas geradas e acesso aos títulos do financeiro."
+          recolhivel
+          chavePreferencia="comercial:contratos:detalhe"
         >
+          <div className="mt-4 grid items-start gap-4 xl:grid-cols-3">
+            <section className="overflow-hidden rounded-xl border border-[var(--c-border)] xl:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-[var(--c-bg)] px-3 py-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Unidades vinculadas</div>
+                <span className="text-xs text-[var(--c-muted)]">{(contratoSelecionado.unidades || []).length} unidade(s)</span>
+              </div>
+              <div className="divide-y divide-[var(--c-border)]">
+                {(contratoSelecionado.unidades || []).map((item) => (
+                  <div key={item.unidade_comercial_id} className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-2 2xl:grid-cols-4 2xl:items-center">
+                    <span className="font-medium text-[var(--c-text)] sm:col-span-2 2xl:col-span-1">{buildUnidadeOptionLabel(item.unidade)}</span>
+                    <span className="text-[var(--c-muted)] tabular-nums">Cadastro: {formatCurrency(item.valor_cadastro_referencia)}</span>
+                    <span className="font-medium text-[var(--c-text)] tabular-nums">Real: {formatCurrency(item.valor_atribuido)}</span>
+                    <span className="text-xs text-[var(--c-muted)] 2xl:text-right">{item.principal ? 'Unidade principal' : 'Unidade adicional'}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
 
-          <div className="mt-4 overflow-hidden rounded-xl border border-[var(--c-border)]">
-            <div className="bg-[var(--c-bg)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Unidades vinculadas</div>
-            {/* R10: a linha era `md:grid-cols-[minmax(0,1fr)_170px_170px_auto]`
-                — largura de coluna escrita na tela. Os dois valores usam
-                `tabular-nums` (R6) para alinhar entre as linhas. */}
-            <div className="divide-y divide-[var(--c-border)]">
-              {(contratoSelecionado.unidades || []).map((item) => (
-                <div key={item.unidade_comercial_id} className="grid gap-1 px-3 py-2 text-sm md:grid-cols-4">
-                  <span className="font-medium text-[var(--c-text)]">{buildUnidadeOptionLabel(item.unidade)}</span>
-                  <span className="text-[var(--c-muted)] tabular-nums">Cadastro: {formatCurrency(item.valor_cadastro_referencia)}</span>
-                  <span className="text-[var(--c-text)] tabular-nums">Real: {formatCurrency(item.valor_atribuido)}</span>
-                  <span className="text-xs text-[var(--c-muted)]">{item.principal ? 'Principal' : ''}</span>
+            <aside className="overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)]">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Situação financeira</span>
+                <StatusBadge status={contratoSelecionado.indicadoresFinanceiros?.status_sugerido || contratoSelecionado.status} />
+              </div>
+              <dl className="divide-y divide-[var(--c-border)] text-sm">
+                <div className="flex items-center justify-between gap-3 px-3 py-2">
+                  <dt className="text-[var(--c-muted)]">Valor em aberto</dt>
+                  <dd className="font-semibold tabular-nums text-[var(--c-text)]">{formatCurrency(contratoSelecionado.indicadoresFinanceiros?.valor_em_aberto || 0)}</dd>
                 </div>
-              ))}
-            </div>
+                <div className="flex items-center justify-between gap-3 px-3 py-2">
+                  <dt className="text-[var(--c-muted)]">Valor vencido</dt>
+                  <dd className="font-semibold tabular-nums text-[var(--sem-danger)]">{formatCurrency(contratoSelecionado.indicadoresFinanceiros?.valor_vencido || 0)}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 px-3 py-2">
+                  <dt className="text-[var(--c-muted)]">Próximo vencimento</dt>
+                  <dd className="font-semibold text-[var(--c-text)]">{formatDate(contratoSelecionado.indicadoresFinanceiros?.proximo_vencimento)}</dd>
+                </div>
+              </dl>
+            </aside>
           </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Corretor</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">{contratoSelecionado.corretor_nome || '-'}</div>
+          <dl className="mt-4 grid overflow-hidden rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] sm:grid-cols-2 xl:grid-cols-3">
+            <div className="min-w-0 border-b border-[var(--c-border)] p-3 sm:border-r xl:border-b-0">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Corretor</dt>
+              <dd className="mt-1 truncate text-sm font-medium text-[var(--c-text)]" title={contratoSelecionado.corretor_nome || ''}>{contratoSelecionado.corretor_nome || '-'}</dd>
             </div>
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Comissão</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">
+            <div className="border-b border-[var(--c-border)] p-3 xl:border-b-0 xl:border-r">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Comissão</dt>
+              <dd className="mt-1 text-sm font-medium text-[var(--c-text)]">
                 {Number(contratoSelecionado.comissao_percentual || 0) > 0
                   ? `${Number(contratoSelecionado.comissao_percentual).toLocaleString('pt-BR')}%`
                   : '-'}
-              </div>
-              <div className="mt-1 text-xs text-[var(--c-muted)]">
-                Competencia DRE: {formatDate(contratoSelecionado.competencia_comissao_data)}
-              </div>
+                <span className="ml-2 text-xs font-normal text-[var(--c-muted)]">DRE: {formatDate(contratoSelecionado.competencia_comissao_data)}</span>
+              </dd>
             </div>
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Título comissão</div>
-              <div className="mt-2">
+            <div className="p-3 sm:col-span-2 xl:col-span-1">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">Título da comissão</dt>
+              <dd className="mt-1">
                 {contratoSelecionado.tituloFinanceiroComissao?.id ? (
-                  <Link className="btn btn-outline" to={`/financeiro/titulos/${contratoSelecionado.tituloFinanceiroComissao.id}`}>
-                    Abrir título da comissão
+                  <Link className="btn btn-outline btn-sm" to={`/financeiro/titulos/${contratoSelecionado.tituloFinanceiroComissao.id}`}>
+                    Abrir título
                   </Link>
                 ) : (
                   <span className="text-sm text-[var(--c-muted)]">Não gerado</span>
                 )}
-              </div>
+              </dd>
             </div>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Status sugerido</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">{contratoSelecionado.indicadoresFinanceiros?.status_sugerido || contratoSelecionado.status}</div>
-            </div>
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Valor em aberto</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">{formatCurrency(contratoSelecionado.indicadoresFinanceiros?.valor_em_aberto || 0)}</div>
-            </div>
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Valor vencido</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">{formatCurrency(contratoSelecionado.indicadoresFinanceiros?.valor_vencido || 0)}</div>
-            </div>
-            <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-              <div className="text-xs uppercase tracking-[0.18em] text-[var(--c-muted)]">Próximo vencimento</div>
-              <div className="mt-2 text-sm font-semibold text-[var(--c-text)]">{formatDate(contratoSelecionado.indicadoresFinanceiros?.proximo_vencimento)}</div>
-            </div>
-          </div>
+          </dl>
 
           {(contratoSelecionado.data_distrato || contratoSelecionado.motivo_distrato) && (
             <div className="mt-4 rounded-2xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] p-4 text-sm text-[var(--sem-danger)]">
@@ -3296,22 +3301,22 @@ export default function ComercialContratos() {
             </div>
           )}
 
-          <div className="mt-4 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+          <div className="mt-4 space-y-4 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 sm:p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-[var(--c-text)]">Ações operacionais do contrato</p>
                 <p className="text-xs text-[var(--c-muted)]">Controle inadimplencia, distrato guiado e troca de unidade com ajuste financeiro.</p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="btn btn-outline" onClick={() => handleSincronizarStatusFinanceiro(contratoSelecionado.id)} disabled={processingAction === 'sync'}>
+              <div className="grid w-full gap-2 sm:flex sm:flex-wrap lg:w-auto lg:justify-end">
+                <button type="button" className="btn btn-outline w-full sm:w-auto" onClick={() => handleSincronizarStatusFinanceiro(contratoSelecionado.id)} disabled={processingAction === 'sync'}>
                   {processingAction === 'sync' ? 'Sincronizando...' : 'Sincronizar status financeiro'}
                 </button>
                 {!['DISTRATADO', 'CANCELADO'].includes(String(contratoSelecionado.status || '').toUpperCase()) && (
                   <>
-                    <button type="button" className="btn btn-outline" onClick={() => { setShowTroca((value) => !value); setShowDistrato(false); }}>
+                    <button type="button" className="btn btn-outline w-full sm:w-auto" onClick={() => { setShowTroca((value) => !value); setShowDistrato(false); }}>
                       {showTroca ? 'Fechar troca' : 'Trocar unidade'}
                     </button>
-                    <button type="button" className="btn btn-outline" onClick={() => { setShowDistrato((value) => !value); setShowTroca(false); }}>
+                    <button type="button" className="btn btn-outline w-full sm:w-auto" onClick={() => { setShowDistrato((value) => !value); setShowTroca(false); }}>
                       {showDistrato ? 'Fechar distrato' : 'Distratar contrato'}
                     </button>
                   </>
@@ -3319,7 +3324,7 @@ export default function ComercialContratos() {
                 {isSuperadmin && (
                   <button
                     type="button"
-                    className="btn btn-outline btn-perigo-suave"
+                    className="btn btn-outline btn-perigo-suave w-full sm:w-auto"
                     onClick={handleExcluirContrato}
                     disabled={processingAction === 'excluir' || possuiContratoAssinado}
                     title={possuiContratoAssinado ? 'Contratos assinados nao podem ser excluidos.' : 'Excluir contrato nao assinado'}
@@ -3395,18 +3400,18 @@ export default function ComercialContratos() {
             )}
           </div>
 
-          <div className="mt-4 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4 space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
+          <div className="mt-4 space-y-4 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 sm:p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-[var(--c-text)]">Documentos e assinatura digital</p>
                 <p className="text-xs text-[var(--c-muted)]">
                   Ao gerar contrato, o PDF sai com Quadro Resumo primeiro e Contrato na sequência.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid w-full gap-2 sm:flex sm:flex-wrap lg:w-auto lg:justify-end">
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="btn btn-primary w-full sm:w-auto"
                   onClick={handleGerarDocumentoContrato}
                   disabled={
                     processingAction === 'gerar-documento'
@@ -3417,7 +3422,7 @@ export default function ComercialContratos() {
                 >
                   {processingAction === 'gerar-documento' ? 'Gerando PDF...' : 'Gerar PDF completo'}
                 </button>
-                <label className="btn btn-outline cursor-pointer">
+                <label className="btn btn-outline w-full cursor-pointer sm:w-auto">
                   <input
                     className="sr-only"
                     type="file"
@@ -3429,7 +3434,7 @@ export default function ComercialContratos() {
                 </label>
                 <button
                   type="button"
-                  className="btn btn-outline"
+                  className="btn btn-outline w-full sm:w-auto"
                   onClick={handleAnexarContratoAssinado}
                   disabled={possuiContratoAssinado || !contratoAssinadoArquivo || processingAction === 'anexar-assinado'}
                 >
@@ -3558,7 +3563,7 @@ export default function ComercialContratos() {
                   id: 'data_vencimento',
                   titulo: 'Vencimento',
                   tipo: 'data',
-                  render: (parcela) => formatDate(parcela.data_vencimento)
+                  render: (parcela) => formatDate(parcela.tituloFinanceiro?.data_vencimento || parcela.data_vencimento)
                 },
                 {
                   id: 'competencia_data',
@@ -3602,7 +3607,7 @@ export default function ComercialContratos() {
             />
           </div>
 
-          <div className="mt-4 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
+          <div className="mt-4 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3 sm:p-4">
             <div className="text-sm font-semibold text-[var(--c-text)]">Histórico operacional</div>
             <div className="mt-3 space-y-3">
               {(contratoSelecionado.eventos || []).length === 0 ? (

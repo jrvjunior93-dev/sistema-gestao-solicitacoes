@@ -968,3 +968,44 @@ Na implantação:
 
 Dependências relacionadas: `pdf-parse@2.4.5` e `multer@2.3.0`. O Multer foi atualizado
 para a versão corrigida da linha 2.x antes de liberar a nova entrada de arquivos.
+
+## 21. Comercial — vencimento do título e tela de Contratos de Venda
+
+Quando um título a receber vinculado a uma parcela comercial tem o vencimento editado no
+Financeiro, o título passa a ser a fonte operacional para os indicadores do contrato. A
+data também é sincronizada na parcela comercial e o contrato alterna automaticamente entre
+`ATIVO`, `INADIMPLENTE` e `QUITADO` conforme o conjunto de títulos. Estados comerciais
+terminais ou preparatórios (`DISTRATADO`, `CANCELADO` e `RASCUNHO`) não são sobrescritos.
+
+Na tela `Comercial > Contratos de Venda`:
+
+- o formulário de novo contrato pode ser recolhido e preserva a preferência do usuário;
+- empreendimento/comprador e unidades usam uma grade que se adapta sem comprimir os campos;
+- unidades e situação financeira ficam organizadas lado a lado apenas quando há largura;
+- dados de corretagem foram consolidados em uma faixa compacta;
+- ações operacionais e documentos ocupam a largura total no celular;
+- a tabela de parcelas exibe primeiro o vencimento vigente no título financeiro.
+
+Não existe migration para esta correção. Execute no backend:
+
+```bash
+npm run test:comercial-titulo-vencimento
+npm run test:comercial-importacao-sienge
+npm run test:filtro-valor-titulos
+```
+
+Depois do deploy em desenvolvimento, edite um título comercial levando o vencimento de uma
+data passada para futura e faça o caminho inverso. Confirme data da parcela, valor vencido,
+status do contrato, sugestão financeira e evento no histórico.
+
+### Recorte futuro para produção
+
+O commit funcional de multiunidade `727093e8` toca predominantemente o Comercial, mas não é
+um cherry-pick autônomo: o frontend atual depende dos componentes padrão criados na série de
+refatoração, inexistentes em `main`. Os commits visuais posteriores também abrangem centenas
+de telas e não devem ser promovidos como hotfix comercial.
+
+O caminho seguro é criar uma branch a partir de `origin/main`, portar somente o modelo,
+migration, serviços, rotas, permissões e telas do Comercial necessários, adaptar a tela ao
+shell existente em produção e então gerar um único commit de release. A migration de
+multiunidade e o backfill continuam sujeitos a autorização operacional separada.

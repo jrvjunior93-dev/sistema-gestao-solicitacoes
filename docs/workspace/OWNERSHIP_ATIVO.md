@@ -4,6 +4,22 @@
 
 Antes de trabalho paralelo, registrar agente, escopo, arquivos reservados e horario de inicio. Remover a reserva ao concluir o handoff.
 
+Ownership ativo da sessao `/root` iniciado em 2026-09-14 para corrigir a sincronizacao
+de vencimento entre titulo financeiro e parcela comercial, reorganizar responsivamente a
+tela de Contratos de Venda e avaliar a promocao isolada do modulo Comercial. Arquivos reservados:
+
+- `backend/src/services/tituloFinanceiroService.js`
+- `backend/src/services/comercialService.js`
+- `backend/scripts/validarComercialTituloVencimento.js`
+- `backend/package.json`
+- `frontend/src/pages/ComercialContratos.jsx`
+- `docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`
+- `docs/handoffs/COMERCIAL_CONTRATOS_RESPONSIVIDADE_VENCIMENTO_2026-09-14.md`
+
+Ownership desta sessao liberado em 2026-09-14 apos corrigir a fonte operacional do
+vencimento, sincronizar o status comercial, reorganizar responsivamente a tela, concluir
+os testes e documentar o plano de backport isolado. Alteracoes permanecem sem commit.
+
 Ownership ativo da sessao `/root` retomado em 2026-09-14 para permitir selecao de centenas
 de comprovantes, mantendo lotes internos pequenos e seguros. Arquivos reservados:
 

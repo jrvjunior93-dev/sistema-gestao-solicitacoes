@@ -57,6 +57,7 @@ const { sincronizarStatusSolicitacaoPorBaixaTitulos } = require('./solicitacaoFi
 const { reabrirConciliacoesPorMovimentos } = require('./conciliacaoEstornoService');
 const { assertTituloDisponivelParaBaixa } = require('./tituloBloqueioRetornoObraService');
 const { resolveTituloStatusFilter } = require('../utils/tituloFinanceiroStatusFilter');
+const { sincronizarContratoComercialPorTituloEditado } = require('./comercialService');
 
 const FORMAS_COBRANCA = ['BOLETO', 'PIX', 'OUTROS'];
 const STATUS_COBRANCA = ['NAO_APLICAVEL', 'PENDENTE_EMISSAO', 'EMITIDO', 'PAGO_BANCO', 'CONCILIADO', 'CANCELADO'];
@@ -2146,6 +2147,12 @@ async function atualizarTitulo(req, tituloId, payload = {}) {
       usuarioId: req.user?.id || null
     });
   }
+
+  await sincronizarContratoComercialPorTituloEditado({
+    tituloId: titulo.id,
+    dataVencimento: titulo.data_vencimento,
+    usuarioId: req.user?.id || null
+  });
 
   await registrarEventoSeguranca({
     req,

@@ -46,6 +46,7 @@
     "comercial:multiunidade:simular-backfill": "node scripts/backfillContratosComerciaisUnidades.js",
     "comercial:multiunidade:aplicar-backfill": "node scripts/backfillContratosComerciaisUnidades.js --confirm",
     "test:comercial-importacao-sienge": "node scripts/validarComercialContratosMultiunidadeImportacao.js",
+    "test:comercial-titulo-vencimento": "node scripts/validarComercialTituloVencimento.js",
     "test:relatorio-financeiro-periodo": "node scripts/validarRelatorioFinanceiroPeriodo.js",
     "reconcile:recarga-prestacoes": "node scripts/reconciliarPrestacoesRecargaEnviadas.js",
     "test:importacao-apropriacoes": "node scripts/validarImportacaoApropriacoes.js",

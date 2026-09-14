@@ -26,6 +26,7 @@ const { registrarEventoSeguranca } = require('./securityLogService');
 const CHAVE_COMERCIAL_CATEGORIAS_CONTRATO = 'COMERCIAL_CATEGORIAS_CONTRATO_VENDA';
 const CHAVE_COMERCIAL_PERMITIR_VENDA_MANUAL = 'COMERCIAL_PERMITIR_VENDA_MANUAL';
 const STATUS_CONTRATO_BLOQUEIAM_UNIDADE = ['RASCUNHO', 'ATIVO', 'INADIMPLENTE', 'QUITADO'];
+const STATUS_CONTRATO_SINCRONIZAVEIS_FINANCEIRO = ['ATIVO', 'INADIMPLENTE', 'QUITADO'];
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -979,7 +980,10 @@ function calcularIndicadoresFinanceirosContrato(parcelas = []) {
     const titulo = parcela?.tituloFinanceiro;
     const status = String(titulo?.status || 'ABERTO').trim().toUpperCase();
     const saldo = roundCurrency(titulo?.valor_saldo ?? parcela?.valor_original ?? 0);
-    const vencimento = parcela?.data_vencimento || titulo?.data_vencimento || null;
+    // O titulo e a fonte operacional depois que a agenda comercial foi gerada.
+    // Edicoes feitas no Financeiro precisam refletir imediatamente na cobranca,
+    // ainda que a data espelhada da parcela ainda esteja sendo sincronizada.
+    const vencimento = titulo?.data_vencimento || parcela?.data_vencimento || null;
 
     if (status === 'QUITADO') {
       resumo.parcelas_quitadas += 1;
@@ -1028,6 +1032,95 @@ function mergeIndicadoresNoContrato(contrato) {
     ...plain,
     indicadoresFinanceiros: indicadores
   };
+}
+
+async function sincronizarContratoComercialPorTituloEditado({ tituloId, dataVencimento, usuarioId }) {
+  const idTitulo = Number(tituloId || 0);
+  if (!Number.isInteger(idTitulo) || idTitulo <= 0) return [];
+
+  return sequelize.transaction(async (transaction) => {
+    const parcelasVinculadas = await ContratoComercialParcela.findAll({
+      where: { titulo_financeiro_id: idTitulo },
+      attributes: ['id', 'contrato_comercial_id', 'data_vencimento'],
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!parcelasVinculadas.length) return [];
+
+    const vencimentoAtualizado = String(dataVencimento || '').trim() || null;
+    if (vencimentoAtualizado) {
+      await ContratoComercialParcela.update(
+        { data_vencimento: vencimentoAtualizado },
+        {
+          where: { titulo_financeiro_id: idTitulo },
+          transaction
+        }
+      );
+    }
+
+    const contratosIds = Array.from(new Set(
+      parcelasVinculadas
+        .map((parcela) => Number(parcela.contrato_comercial_id || 0))
+        .filter((id) => id > 0)
+    ));
+    const resultados = [];
+
+    for (const contratoId of contratosIds) {
+      const contrato = await ContratoComercial.findByPk(contratoId, {
+        attributes: ['id', 'numero', 'status'],
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!contrato) continue;
+
+      const parcelasContrato = await ContratoComercialParcela.findAll({
+        where: { contrato_comercial_id: contratoId },
+        attributes: ['id', 'data_vencimento', 'valor_original'],
+        include: [{
+          model: TituloFinanceiro,
+          as: 'tituloFinanceiro',
+          required: false,
+          attributes: ['id', 'status', 'valor_saldo', 'data_vencimento']
+        }],
+        transaction
+      });
+      const indicadores = calcularIndicadoresFinanceirosContrato(parcelasContrato);
+      const statusAnterior = String(contrato.status || '').trim().toUpperCase();
+      const statusSugerido = String(indicadores.status_sugerido || 'ATIVO').trim().toUpperCase();
+      const podeSincronizarStatus = STATUS_CONTRATO_SINCRONIZAVEIS_FINANCEIRO.includes(statusAnterior);
+
+      if (podeSincronizarStatus && statusAnterior !== statusSugerido) {
+        await contrato.update({
+          status: statusSugerido,
+          atualizado_por: usuarioId || null
+        }, { transaction });
+
+        await registrarEventoContratoComercial({
+          transaction,
+          contratoId,
+          tipoEvento: 'STATUS_FINANCEIRO_SINCRONIZADO',
+          descricao: `Status atualizado automaticamente de ${statusAnterior} para ${statusSugerido} apos edicao do titulo financeiro.`,
+          metadata: {
+            titulo_financeiro_id: idTitulo,
+            status_anterior: statusAnterior,
+            status_novo: statusSugerido,
+            data_vencimento: vencimentoAtualizado,
+            indicadores
+          },
+          usuarioId
+        });
+      }
+
+      resultados.push({
+        contrato_id: contratoId,
+        status_anterior: statusAnterior,
+        status_atual: podeSincronizarStatus ? statusSugerido : statusAnterior,
+        indicadores
+      });
+    }
+
+    return resultados;
+  });
 }
 
 async function registrarEventoContratoComercial({ transaction, contratoId, tipoEvento, dataEvento, descricao, metadata, usuarioId }) {
@@ -2816,6 +2909,7 @@ module.exports = {
   listarUnidadesComerciais,
   obterConfiguracaoUnidadesComerciais,
   atualizarConfiguracaoUnidadesComerciais,
+  sincronizarContratoComercialPorTituloEditado,
   sincronizarStatusFinanceiroContratoComercial,
   trocarUnidadeContratoComercial
 };
