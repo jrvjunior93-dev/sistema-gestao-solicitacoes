@@ -13,6 +13,7 @@ const { obterSessaoAbertaParaConta } = require('./financeiroCaixaSessionHelper')
 const { registrarEventoSeguranca } = require('./securityLogService');
 const { normalizeTipoIntercompany } = require('../constants/intercompany');
 const { sincronizarStatusSolicitacaoPorBaixaTitulos } = require('./solicitacaoFinanceiroStatusService');
+const { sincronizarContratoComercialPorTituloFinanceiro } = require('./comercialService');
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -315,6 +316,13 @@ async function baixarFaturaCartao(req, faturaId, payload = {}, { transaction: ex
         data_quitacao: dataMovimento,
         atualizado_por: req.user?.id || null
       }, { transaction });
+
+      await sincronizarContratoComercialPorTituloFinanceiro({
+        tituloId: titulo.id,
+        usuarioId: req.user?.id || null,
+        transaction,
+        motivo: 'BAIXA_FATURA_CARTAO'
+      });
 
       if (titulo.solicitacao_id) {
         solicitacaoIdsSincronizar.add(Number(titulo.solicitacao_id));

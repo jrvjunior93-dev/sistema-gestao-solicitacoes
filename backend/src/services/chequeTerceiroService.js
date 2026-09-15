@@ -27,6 +27,7 @@ const { isValidCpfCnpj, normalizarCpfCnpj } = require('./parceiroService');
 const { registrarEventoSeguranca } = require('./securityLogService');
 const { reabrirConciliacoesPorMovimentos } = require('./conciliacaoEstornoService');
 const { contaExigeSessao, obterSessaoAbertaParaConta } = require('./financeiroCaixaSessionHelper');
+const { sincronizarContratoComercialPorTituloFinanceiro } = require('./comercialService');
 
 const STATUS_CHEQUE = ['EM_CARTEIRA', 'RESERVADO', 'UTILIZADO', 'DEPOSITADO', 'DEVOLVIDO', 'CANCELADO'];
 const EVENTOS_MANUAIS = {
@@ -853,6 +854,12 @@ async function estornarBaixaComposta(req, id, payload = {}) {
       const saldo = Math.max(0, round(Number(titulo.valor_original || 0) - novoBaixado));
       const status = novoBaixado <= 0 ? 'ABERTO' : (saldo <= 0 ? 'QUITADO' : 'PARCIAL');
       await titulo.update({ valor_baixado: novoBaixado, valor_saldo: saldo, status, data_quitacao: status === 'QUITADO' ? titulo.data_quitacao : null, atualizado_por: req.user?.id || null }, { transaction });
+      await sincronizarContratoComercialPorTituloFinanceiro({
+        tituloId: titulo.id,
+        usuarioId: req.user?.id || null,
+        transaction,
+        motivo: 'ESTORNO_BAIXA_COMPOSTA'
+      });
       await sincronizarRealizacaoCompraPorTitulo({ titulo, statusTitulo: status, transaction });
       await sincronizarStatusSolicitacaoPorBaixaTitulos({
         solicitacaoId: titulo.solicitacao_id,

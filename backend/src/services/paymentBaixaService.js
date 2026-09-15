@@ -15,6 +15,7 @@ const { carregarContaBancaria, obterSessaoAbertaParaConta } = require('./finance
 const { registrarEventoSeguranca } = require('./securityLogService');
 const { normalizeTipoIntercompany } = require('../constants/intercompany');
 const { sincronizarStatusSolicitacaoPorBaixaTitulos } = require('./solicitacaoFinanceiroStatusService');
+const { sincronizarContratoComercialPorTituloFinanceiro } = require('./comercialService');
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -256,6 +257,13 @@ async function confirmBaixaFromPaymentIntent(req, id, payload = {}) {
       data_quitacao: novoEstado.status === 'QUITADO' ? dataMovimento : null,
       atualizado_por: req.user?.id || null
     }, { transaction });
+
+    await sincronizarContratoComercialPorTituloFinanceiro({
+      tituloId: titulo.id,
+      usuarioId: req.user?.id || null,
+      transaction,
+      motivo: 'CONFIRMACAO_PAGAMENTO_BANCARIO'
+    });
 
     await sincronizarStatusSolicitacaoPorBaixaTitulos({
       solicitacaoId: titulo.solicitacao_id,

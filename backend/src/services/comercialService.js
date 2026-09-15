@@ -1033,11 +1033,17 @@ function mergeIndicadoresNoContrato(contrato) {
   };
 }
 
-async function sincronizarContratoComercialPorTituloEditado({ tituloId, dataVencimento, usuarioId }) {
+async function sincronizarContratoComercialPorTituloFinanceiro({
+  tituloId,
+  dataVencimento,
+  usuarioId,
+  transaction: externalTransaction = null,
+  motivo = 'ATUALIZACAO_TITULO'
+}) {
   const idTitulo = Number(tituloId || 0);
   if (!Number.isInteger(idTitulo) || idTitulo <= 0) return [];
 
-  return sequelize.transaction(async (transaction) => {
+  const executar = async (transaction) => {
     const parcelasVinculadas = await ContratoComercialParcela.findAll({
       where: { titulo_financeiro_id: idTitulo },
       attributes: ['id', 'contrato_comercial_id', 'data_vencimento'],
@@ -1098,12 +1104,13 @@ async function sincronizarContratoComercialPorTituloEditado({ tituloId, dataVenc
           transaction,
           contratoId,
           tipoEvento: 'STATUS_FINANCEIRO_SINCRONIZADO',
-          descricao: `Status atualizado automaticamente de ${statusAnterior} para ${statusSugerido} apos edicao do titulo financeiro.`,
+          descricao: `Status atualizado automaticamente de ${statusAnterior} para ${statusSugerido} apos alteracao financeira do titulo.`,
           metadata: {
             titulo_financeiro_id: idTitulo,
             status_anterior: statusAnterior,
             status_novo: statusSugerido,
             data_vencimento: vencimentoAtualizado,
+            motivo,
             indicadores
           },
           usuarioId
@@ -1119,6 +1126,19 @@ async function sincronizarContratoComercialPorTituloEditado({ tituloId, dataVenc
     }
 
     return resultados;
+  };
+
+  if (externalTransaction) {
+    return executar(externalTransaction);
+  }
+
+  return sequelize.transaction(executar);
+}
+
+async function sincronizarContratoComercialPorTituloEditado(params) {
+  return sincronizarContratoComercialPorTituloFinanceiro({
+    ...params,
+    motivo: 'EDICAO_TITULO'
   });
 }
 
@@ -2909,6 +2929,7 @@ module.exports = {
   obterConfiguracaoUnidadesComerciais,
   atualizarConfiguracaoUnidadesComerciais,
   sincronizarContratoComercialPorTituloEditado,
+  sincronizarContratoComercialPorTituloFinanceiro,
   sincronizarStatusFinanceiroContratoComercial,
   trocarUnidadeContratoComercial
 };

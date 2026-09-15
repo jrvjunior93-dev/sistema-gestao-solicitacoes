@@ -49,7 +49,10 @@ const {
 } = require('./tituloIntercompanyCartaoHelper');
 const { sincronizarStatusSolicitacaoPorBaixaTitulos } = require('./solicitacaoFinanceiroStatusService');
 const { reabrirConciliacoesPorMovimentos } = require('./conciliacaoEstornoService');
-const { sincronizarContratoComercialPorTituloEditado } = require('./comercialService');
+const {
+  sincronizarContratoComercialPorTituloEditado,
+  sincronizarContratoComercialPorTituloFinanceiro
+} = require('./comercialService');
 
 const FORMAS_COBRANCA = ['BOLETO', 'PIX', 'OUTROS'];
 const STATUS_COBRANCA = ['NAO_APLICAVEL', 'PENDENTE_EMISSAO', 'EMITIDO', 'PAGO_BANCO', 'CONCILIADO', 'CANCELADO'];
@@ -3269,6 +3272,13 @@ async function criarTituloManualComBaixaAtomica(req, payload = {}, { transaction
       atualizado_por: req.user?.id || null
     }, { transaction });
 
+    await sincronizarContratoComercialPorTituloFinanceiro({
+      tituloId: titulo.id,
+      usuarioId: req.user?.id || null,
+      transaction,
+      motivo: 'BAIXA_TITULO'
+    });
+
     await sincronizarRealizacaoCompraPorTitulo({
       titulo,
       statusTitulo: novoEstado.status,
@@ -3549,6 +3559,13 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       status_cobranca: titulo.forma_cobranca ? 'CONCILIADO' : titulo.status_cobranca,
       atualizado_por: req.user?.id || null
     }, { transaction });
+
+    await sincronizarContratoComercialPorTituloFinanceiro({
+      tituloId: titulo.id,
+      usuarioId: req.user?.id || null,
+      transaction,
+      motivo: 'BAIXA_TITULO'
+    });
 
     await sincronizarRealizacaoCompraPorTitulo({
       titulo,
@@ -3865,6 +3882,15 @@ async function baixarTitulosParceladosEmMassa(req, payload = {}) {
           observacao: `Titulo financeiro ${titulo.codigo || `#${titulo.id}`} quitado por baixa agrupada ${grupoParcelamentoId}.`
         }, { transaction });
       }
+    }
+
+    for (const titulo of titulos) {
+      await sincronizarContratoComercialPorTituloFinanceiro({
+        tituloId: titulo.id,
+        usuarioId: req.user?.id || null,
+        transaction,
+        motivo: 'BAIXA_AGRUPADA_TITULO'
+      });
     }
 
     const parcelasCriadas = [];
@@ -4284,6 +4310,13 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {})
       status_cobranca: titulo.forma_cobranca ? 'EMITIDO' : titulo.status_cobranca,
       atualizado_por: req.user?.id || null
     }, { transaction });
+
+    await sincronizarContratoComercialPorTituloFinanceiro({
+      tituloId: titulo.id,
+      usuarioId: req.user?.id || null,
+      transaction,
+      motivo: 'ESTORNO_BAIXA_TITULO'
+    });
 
     await sincronizarRealizacaoCompraPorTitulo({
       titulo,

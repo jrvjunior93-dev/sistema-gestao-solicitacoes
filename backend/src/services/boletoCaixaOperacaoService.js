@@ -5,6 +5,7 @@ const { gerarPdfBoletoTitulo } = require('./boletoCaixaService');
 const { parseRetornoCnab240Caixa } = require('./boletoCaixaRetornoCnab240Service');
 const { registrarEventoSeguranca } = require('./securityLogService');
 const { sincronizarStatusSolicitacaoPorBaixaTitulos } = require('./solicitacaoFinanceiroStatusService');
+const { sincronizarContratoComercialPorTituloFinanceiro } = require('./comercialService');
 
 const {
   BoletoCaixa,
@@ -798,6 +799,13 @@ async function aplicarBaixaFinanceiraPorLiquidacao({ boleto, convenio, retorno, 
       },
       { transaction }
     );
+
+    await sincronizarContratoComercialPorTituloFinanceiro({
+      tituloId: titulo.id,
+      usuarioId: usuarioId || null,
+      transaction,
+      motivo: 'LIQUIDACAO_RETORNO_BANCARIO'
+    });
 
     await sincronizarStatusSolicitacaoPorBaixaTitulos({
       solicitacaoId: titulo.solicitacao_id,
