@@ -129,6 +129,7 @@ const {
   validateComercialTabelaPrecoQuery,
   validateComercialTabelaPrecoUpdateBody,
   validateComercialUnidadeCreateBody,
+  validateComercialUnidadeDeleteBody,
   validateComercialUnidadeQuery,
   validateComercialUnidadeUpdateBody
 } = require('./validators/commercialValidators');
@@ -1866,6 +1867,7 @@ router.get('/comercial/unidades-configuracao', allowComercialEmpreendimentosRead
 router.patch('/comercial/unidades-configuracao', allowComercialEmpreendimentosManage, criticalRateLimit, ComercialUnidadeController.atualizarConfiguracao);
 router.post('/comercial/unidades', allowComercialEmpreendimentosManage, criticalRateLimit, validateRequest({ body: validateComercialUnidadeCreateBody }), ComercialUnidadeController.create);
 router.patch('/comercial/unidades/:id', allowComercialEmpreendimentosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Unidade comercial'), body: validateComercialUnidadeUpdateBody }), ComercialUnidadeController.update);
+router.delete('/comercial/unidades/:id', allowComercialEmpreendimentosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Unidade comercial'), body: validateComercialUnidadeDeleteBody }), ComercialUnidadeController.remove);
 router.get('/comercial/tabelas-preco', allowComercialEmpreendimentosRead, validateRequest({ query: validateComercialTabelaPrecoQuery }), ComercialTabelaPrecoController.index);
 router.post('/comercial/tabelas-preco', allowComercialEmpreendimentosManage, criticalRateLimit, validateRequest({ body: validateComercialTabelaPrecoCreateBody }), ComercialTabelaPrecoController.create);
 router.patch('/comercial/tabelas-preco/:id', allowComercialEmpreendimentosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Tabela de preco comercial'), body: validateComercialTabelaPrecoUpdateBody }), ComercialTabelaPrecoController.update);

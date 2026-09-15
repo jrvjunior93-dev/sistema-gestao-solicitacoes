@@ -90,6 +90,15 @@ export async function atualizarUnidadeComercial(id, data) {
   return parseJson(response, 'Erro ao atualizar unidade comercial');
 }
 
+export async function excluirUnidadeComercial(id, motivo) {
+  const response = await fetch(`${API_URL}/comercial/unidades/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ motivo })
+  });
+  return parseJson(response, 'Erro ao excluir unidade comercial');
+}
+
 export async function getConfiguracaoUnidadesComerciais() {
   const response = await fetch(`${API_URL}/comercial/unidades-configuracao`, {
     headers: authHeaders()

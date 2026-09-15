@@ -14,11 +14,13 @@ import {
 } from '../components/padrao';
 import StatusBadge from '../components/StatusBadge';
 import ParceiroAutocomplete from '../components/ui/ParceiroAutocomplete';
+import ModalPortal from '../components/ui/ModalPortal';
 import { buscarParceiros } from '../services/parceiros';
 import {
   atualizarUnidadeComercial,
   atualizarConfiguracaoUnidadesComerciais,
   criarUnidadeComercial,
+  excluirUnidadeComercial,
   getConfiguracaoUnidadesComerciais,
   getEmpreendimentosComerciais,
   getUnidadesComerciais
@@ -75,7 +77,8 @@ const FAMILIA_SITUACAO = {
   RESERVADA: 'warning',
   VENDIDA: 'info',
   DISTRATADA: 'neutral',
-  BLOQUEADA: 'danger'
+  BLOQUEADA: 'danger',
+  EXCLUIDA: 'danger'
 };
 
 function familiaDaSituacao(situacao) {
@@ -116,7 +119,11 @@ export default function ComercialUnidades() {
   const [form, setForm] = useState(defaultForm());
   // R12: o recorte da lista é um conjunto de MARCAS (vazio = todos os
   // empreendimentos), não mais um select de escolha única.
-  const [filtros, setFiltros] = useState({ q: '', empreendimento: new Set() });
+  const [filtros, setFiltros] = useState({
+    q: '',
+    empreendimento: new Set(),
+    registros: new Set(['ATIVAS'])
+  });
   const [empreendimentos, setEmpreendimentos] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [unidades, setUnidades] = useState([]);
@@ -124,6 +131,9 @@ export default function ComercialUnidades() {
   const [saving, setSaving] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [permitirVendaManual, setPermitirVendaManual] = useState(false);
+  const [unidadeExclusao, setUnidadeExclusao] = useState(null);
+  const [motivoExclusao, setMotivoExclusao] = useState('');
+  const [deleting, setDeleting] = useState(false);
   // R22: hook usado é hook importado — o useRef está no import acima. A
   // referência leva o foco ao formulário (que fica ACIMA da lista); não
   // mede nada.
@@ -158,6 +168,11 @@ export default function ComercialUnidades() {
   const listaFiltrada = useMemo(() => {
     const termo = normalizeSearch(filtros.q);
     return unidades.filter((item) => {
+      const grupoRegistro = item.ativo === false ? 'EXCLUIDAS' : 'ATIVAS';
+      if (filtros.registros.size > 0 && !filtros.registros.has(grupoRegistro)) {
+        return false;
+      }
+
       // R23: o recorte aplica ao marcar — o filtro é local, não há consulta
       // cara nem botão de "aplicar".
       if (filtros.empreendimento.size > 0
@@ -197,6 +212,10 @@ export default function ComercialUnidades() {
   }
 
   function editarUnidade(item) {
+    if (item.ativo === false) {
+      avisar.erro('Unidade excluida nao pode ser editada. Consulte os dados de exclusao na tabela.');
+      return;
+    }
     setForm(pickForm(item));
     focarFormulario();
   }
@@ -219,8 +238,7 @@ export default function ComercialUnidades() {
         valor_base_venda: form.valor_base_venda || undefined,
         situacao: form.situacao,
         reservado_ate: form.reservado_ate || undefined,
-        observacoes: form.observacoes,
-        ativo: form.ativo
+        observacoes: form.observacoes
       };
 
       if (form.id) {
@@ -236,6 +254,23 @@ export default function ComercialUnidades() {
       avisar.erro(err?.message || 'Erro ao salvar unidade comercial');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleExcluirUnidade() {
+    if (!unidadeExclusao || !motivoExclusao.trim()) return;
+    try {
+      setDeleting(true);
+      await excluirUnidadeComercial(unidadeExclusao.id, motivoExclusao.trim());
+      if (Number(form.id) === Number(unidadeExclusao.id)) setForm(defaultForm());
+      setUnidadeExclusao(null);
+      setMotivoExclusao('');
+      avisar.sucesso('Unidade excluida. O cadastro e o historico foram preservados.');
+      await carregar();
+    } catch (err) {
+      avisar.erro(err?.message || 'Erro ao excluir unidade comercial');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -336,8 +371,30 @@ export default function ComercialUnidades() {
       // cor, ícone e contraste por token; a família vem do mapa acima, que
       // preserva a distinção entre as cinco situações.
       render: (item) => (
-        <StatusBadge status={item.situacao} kind={familiaDaSituacao(item.situacao)} />
+        <StatusBadge
+          status={item.ativo === false ? 'EXCLUIDA' : item.situacao}
+          kind={familiaDaSituacao(item.ativo === false ? 'EXCLUIDA' : item.situacao)}
+        />
       )
+    },
+    {
+      id: 'exclusao',
+      titulo: 'Exclusao',
+      tipo: 'texto',
+      render: (item) => {
+        if (item.ativo !== false) return '-';
+        const data = item.excluido_em
+          ? new Date(item.excluido_em).toLocaleString('pt-BR')
+          : 'Data nao registrada';
+        const usuario = item.excluidoPor?.nome ? ` por ${item.excluidoPor.nome}` : '';
+        const resumo = `${data}${usuario}`;
+        return (
+          <CelulaDupla
+            principal={resumo}
+            sub={item.motivo_exclusao || 'Motivo nao registrado'}
+          />
+        );
+      }
     },
     {
       id: 'observacoes',
@@ -587,16 +644,6 @@ export default function ComercialUnidades() {
               />
             </CampoForm>
 
-            <div className="form-campo--linha">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.ativo}
-                  onChange={(event) => setForm((current) => ({ ...current, ativo: event.target.checked }))}
-                />
-                Unidade ativa
-              </label>
-            </div>
           </FormSecao>
 
           <div className="app-actionbar">
@@ -631,20 +678,37 @@ export default function ComercialUnidades() {
             aoMudar: (valor) => setFiltros((prev) => ({ ...prev, q: valor })),
             placeholder: 'Buscar código, torre, pavimento, reserva ou empreendimento'
           }}
-          filtros={[{
-            id: 'empreendimento',
-            rotulo: 'Empreendimento',
-            opcoes: empreendimentos.map((item) => ({
-              valor: String(item.id),
-              rotulo: item.codigo ? `${item.codigo} - ${item.nome}` : item.nome
-            }))
-          }]}
-          ativos={{ empreendimento: filtros.empreendimento }}
+          filtros={[
+            {
+              id: 'empreendimento',
+              rotulo: 'Empreendimento',
+              opcoes: empreendimentos.map((item) => ({
+                valor: String(item.id),
+                rotulo: item.codigo ? `${item.codigo} - ${item.nome}` : item.nome
+              }))
+            },
+            {
+              id: 'registros',
+              rotulo: 'Registros',
+              opcoes: [
+                { valor: 'ATIVAS', rotulo: 'Ativas' },
+                { valor: 'EXCLUIDAS', rotulo: 'Excluidas' }
+              ]
+            }
+          ]}
+          ativos={{
+            empreendimento: filtros.empreendimento,
+            registros: filtros.registros
+          }}
           aoAlternar={(dim, valor, opcoes) => setFiltros((prev) => ({
             ...alternarValorFiltro(prev, dim, valor, opcoes),
             q: prev.q
           }))}
-          aoLimpar={() => setFiltros((prev) => ({ ...prev, empreendimento: new Set() }))}
+          aoLimpar={() => setFiltros((prev) => ({
+            ...prev,
+            empreendimento: new Set(),
+            registros: new Set()
+          }))}
         />
 
         {/* A1: a ação da linha é um <button> focável ("Editar"), e a linha
@@ -657,24 +721,90 @@ export default function ComercialUnidades() {
           getId={(item) => item.id}
           storageKey="tabela:comercial-unidades"
           rotuloRolagem="Unidades comerciais"
-          larguraAcoes={110}
+          larguraAcoes={190}
           colunasConfiguraveis
           aoClicarLinha={editarUnidade}
           vazio={{
             title: 'Nenhuma unidade comercial encontrada',
             message: 'Cadastre a primeira unidade do empreendimento para liberar reservas, vendas e recebimentos.'
           }}
-          acoesLinha={(item) => (
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => editarUnidade(item)}
-            >
-              Editar
-            </button>
-          )}
+          acoesLinha={(item) => item.ativo !== false ? (
+            <>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => editarUnidade(item)}
+              >
+                Editar
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm text-rose-700"
+                onClick={() => {
+                  setUnidadeExclusao(item);
+                  setMotivoExclusao('');
+                }}
+              >
+                Excluir
+              </button>
+            </>
+          ) : null}
         />
       </BlocoConteudo>
+
+      {unidadeExclusao && (
+        <ModalPortal
+          onClose={() => {
+            if (deleting) return;
+            setUnidadeExclusao(null);
+            setMotivoExclusao('');
+          }}
+          closeOnEscape={!deleting}
+        >
+          <div className="app-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="excluir-unidade-titulo">
+            <div className="app-modal-surface app-modal-surface--compact p-5">
+              <h2 id="excluir-unidade-titulo" className="text-lg font-semibold text-[var(--c-text)]">
+                Excluir unidade {unidadeExclusao.codigo}
+              </h2>
+              <p className="mt-1 text-sm text-[var(--c-muted)]">
+                A unidade deixara de aparecer em novos contratos e tabelas. O cadastro permanecera preservado para auditoria.
+              </p>
+              <label className="mt-4 block">
+                <span className="sol-filter-label">Motivo da exclusao *</span>
+                <textarea
+                  className="input mt-1 min-h-[96px] w-full"
+                  value={motivoExclusao}
+                  maxLength={500}
+                  onChange={(event) => setMotivoExclusao(event.target.value)}
+                  placeholder="Explique por que esta unidade deve ser excluida."
+                  autoFocus
+                />
+              </label>
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  disabled={deleting}
+                  onClick={() => {
+                    setUnidadeExclusao(null);
+                    setMotivoExclusao('');
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={deleting || !motivoExclusao.trim()}
+                  onClick={handleExcluirUnidade}
+                >
+                  {deleting ? 'Excluindo...' : 'Confirmar exclusao'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
+      )}
     </Pagina>
   );
 }

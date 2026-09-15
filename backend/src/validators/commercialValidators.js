@@ -483,6 +483,13 @@ function validateComercialUnidadeUpdateBody(body = {}) {
   return data;
 }
 
+function validateComercialUnidadeDeleteBody(body = {}) {
+  ensureAllowedKeys(body, ['motivo'], 'Exclusao de unidade comercial');
+  return {
+    motivo: parseOptionalText(body.motivo, 'Motivo da exclusao', 500, { required: true })
+  };
+}
+
 function normalizeParcelas(parcelas) {
   if (!Array.isArray(parcelas) || parcelas.length === 0) {
     throw new ValidationError('Informe ao menos uma parcela para o contrato comercial.');
@@ -924,6 +931,7 @@ module.exports = {
   validateComercialTabelaPrecoQuery,
   validateComercialTabelaPrecoUpdateBody,
   validateComercialUnidadeCreateBody,
+  validateComercialUnidadeDeleteBody,
   validateComercialUnidadeQuery,
   validateComercialUnidadeUpdateBody
 };

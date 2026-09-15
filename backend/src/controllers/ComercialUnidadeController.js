@@ -2,6 +2,7 @@ const {
   atualizarUnidadeComercial,
   atualizarConfiguracaoUnidadesComerciais,
   criarUnidadeComercial,
+  excluirUnidadeComercial,
   listarUnidadesComerciais,
   obterConfiguracaoUnidadesComerciais
 } = require('../services/comercialService');
@@ -35,6 +36,16 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao atualizar unidade comercial');
+    }
+  },
+
+  async remove(req, res) {
+    try {
+      const data = await excluirUnidadeComercial(req, req.params.id, req.body || {});
+      return res.json(data);
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao excluir unidade comercial');
     }
   },
 

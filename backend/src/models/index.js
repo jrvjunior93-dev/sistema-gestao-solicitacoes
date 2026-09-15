@@ -1084,6 +1084,16 @@ db.UnidadeComercial.belongsTo(db.Parceiro, {
   as: 'parceiroReserva'
 });
 
+db.User.hasMany(db.UnidadeComercial, {
+  foreignKey: 'excluido_por',
+  as: 'unidadesComerciaisExcluidas'
+});
+
+db.UnidadeComercial.belongsTo(db.User, {
+  foreignKey: 'excluido_por',
+  as: 'excluidoPor'
+});
+
 db.Empreendimento.hasMany(db.TabelaPrecoComercial, {
   foreignKey: 'empreendimento_id',
   as: 'tabelasPreco'

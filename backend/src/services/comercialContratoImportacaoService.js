@@ -998,6 +998,9 @@ async function confirmarImportacao(req, importacaoId, { idempotencyKey, aceitarA
           where: { id: { [Op.in]: unitIds } }, order: [['id', 'ASC']], transaction, lock: transaction.LOCK.UPDATE
         });
         if (lockedUnits.length !== unitIds.length) throw createHttpError(409, 'Uma unidade deixou de existir. Gere novo preview.');
+        if (lockedUnits.some((unit) => unit.ativo === false)) {
+          throw createHttpError(409, 'Uma unidade foi excluida depois do preview. Gere um novo preview.');
+        }
         for (const unit of lockedUnits) {
           const [link, legacy] = await Promise.all([
             ContratoComercialUnidade.findOne({
