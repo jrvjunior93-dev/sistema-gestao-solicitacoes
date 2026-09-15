@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import ParceiroAutocomplete from '../components/ui/ParceiroAutocomplete';
+import ModalPortal from '../components/ui/ModalPortal';
 import { buscarParceiros } from '../services/parceiros';
 import {
   atualizarUnidadeComercial,
   atualizarConfiguracaoUnidadesComerciais,
   criarUnidadeComercial,
+  excluirUnidadeComercial,
   getConfiguracaoUnidadesComerciais,
   getEmpreendimentosComerciais,
   getUnidadesComerciais
@@ -77,6 +79,8 @@ function statusClass(status) {
       return 'bg-blue-100 text-blue-700';
     case 'BLOQUEADA':
       return 'bg-rose-100 text-rose-700';
+    case 'EXCLUIDA':
+      return 'bg-rose-100 text-rose-800';
     default:
       return 'bg-slate-100 text-slate-600';
   }
@@ -86,6 +90,7 @@ export default function ComercialUnidades() {
   const [form, setForm] = useState(defaultForm());
   const [busca, setBusca] = useState('');
   const [filtroEmpreendimento, setFiltroEmpreendimento] = useState('');
+  const [filtroAtivo, setFiltroAtivo] = useState('ATIVAS');
   const [empreendimentos, setEmpreendimentos] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [unidades, setUnidades] = useState([]);
@@ -93,6 +98,10 @@ export default function ComercialUnidades() {
   const [saving, setSaving] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [permitirVendaManual, setPermitirVendaManual] = useState(false);
+  const [unidadeExclusao, setUnidadeExclusao] = useState(null);
+  const [motivoExclusao, setMotivoExclusao] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
 
   async function carregar() {
@@ -123,6 +132,8 @@ export default function ComercialUnidades() {
   const listaFiltrada = useMemo(() => {
     const termo = normalizeSearch(busca);
     return unidades.filter((item) => {
+      if (filtroAtivo === 'ATIVAS' && item.ativo === false) return false;
+      if (filtroAtivo === 'EXCLUIDAS' && item.ativo !== false) return false;
       if (filtroEmpreendimento && String(item.empreendimento_id) !== filtroEmpreendimento) {
         return false;
       }
@@ -142,13 +153,14 @@ export default function ComercialUnidades() {
 
       return blob.includes(termo);
     });
-  }, [busca, filtroEmpreendimento, unidades]);
+  }, [busca, filtroAtivo, filtroEmpreendimento, unidades]);
 
   async function handleSubmit(event) {
     event.preventDefault();
     try {
       setSaving(true);
       setError('');
+      setSuccess('');
 
       const payload = {
         empreendimento_id: Number(form.empreendimento_id),
@@ -163,8 +175,7 @@ export default function ComercialUnidades() {
         valor_base_venda: form.valor_base_venda || undefined,
         situacao: form.situacao,
         reservado_ate: form.reservado_ate || undefined,
-        observacoes: form.observacoes,
-        ativo: form.ativo
+        observacoes: form.observacoes
       };
 
       if (form.id) {
@@ -174,11 +185,31 @@ export default function ComercialUnidades() {
       }
 
       setForm(defaultForm());
+      setSuccess(form.id ? 'Unidade atualizada com sucesso.' : 'Unidade criada com sucesso.');
       await carregar();
     } catch (err) {
       setError(err?.message || 'Erro ao salvar unidade comercial');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleExcluirUnidade() {
+    if (!unidadeExclusao || !motivoExclusao.trim()) return;
+    try {
+      setDeleting(true);
+      setError('');
+      setSuccess('');
+      await excluirUnidadeComercial(unidadeExclusao.id, motivoExclusao.trim());
+      if (Number(form.id) === Number(unidadeExclusao.id)) setForm(defaultForm());
+      setUnidadeExclusao(null);
+      setMotivoExclusao('');
+      setSuccess('Unidade excluida. O registro e o historico foram preservados.');
+      await carregar();
+    } catch (err) {
+      setError(err?.message || 'Erro ao excluir unidade comercial');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -220,6 +251,12 @@ export default function ComercialUnidades() {
       {error && (
         <div className="app-alert app-alert--error">
           {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="app-alert app-alert--success">
+          {success}
         </div>
       )}
 
@@ -360,11 +397,6 @@ export default function ComercialUnidades() {
                 />
               </label>
 
-              <label className="inline-flex items-center gap-2 text-sm text-[var(--c-text)]">
-                <input type="checkbox" checked={form.ativo} onChange={(event) => setForm((current) => ({ ...current, ativo: event.target.checked }))} />
-                Unidade ativa
-              </label>
-
               <div className="flex flex-wrap gap-2">
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? 'Salvando...' : (form.id ? 'Salvar alteracoes' : 'Criar unidade')}
@@ -389,7 +421,7 @@ export default function ComercialUnidades() {
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-[240px_minmax(0,1fr)]">
+            <div className="mt-4 grid gap-3 md:grid-cols-[220px_180px_minmax(0,1fr)]">
               <label className="sol-filter-field">
                 <span className="sol-filter-label">Empreendimento</span>
                 <select className="input w-full" value={filtroEmpreendimento} onChange={(event) => setFiltroEmpreendimento(event.target.value)}>
@@ -397,6 +429,15 @@ export default function ComercialUnidades() {
                   {empreendimentos.map((item) => (
                     <option key={item.id} value={item.id}>{item.nome}</option>
                   ))}
+                </select>
+              </label>
+
+              <label className="sol-filter-field">
+                <span className="sol-filter-label">Registros</span>
+                <select className="input w-full" value={filtroAtivo} onChange={(event) => setFiltroAtivo(event.target.value)}>
+                  <option value="ATIVAS">Ativas</option>
+                  <option value="EXCLUIDAS">Excluidas</option>
+                  <option value="TODAS">Todas</option>
                 </select>
               </label>
 
@@ -418,8 +459,8 @@ export default function ComercialUnidades() {
                           <h3 className="text-base font-semibold text-[var(--c-text)]">
                             {item.codigo} {item.nome ? `- ${item.nome}` : ''}
                           </h3>
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(item.situacao)}`}>
-                            {item.situacao}
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(item.ativo === false ? 'EXCLUIDA' : item.situacao)}`}>
+                            {item.ativo === false ? 'EXCLUIDA' : item.situacao}
                           </span>
                         </div>
                         <div className="grid gap-2 text-sm text-[var(--c-muted)] md:grid-cols-2">
@@ -436,11 +477,32 @@ export default function ComercialUnidades() {
                         {item.observacoes && (
                           <p className="text-sm text-[var(--c-muted)]">{item.observacoes}</p>
                         )}
+                        {item.ativo === false && (
+                          <p className="text-sm text-rose-700">
+                            Excluida em {item.excluido_em ? new Date(item.excluido_em).toLocaleString('pt-BR') : '-'}
+                            {item.excluidoPor?.nome ? ` por ${item.excluidoPor.nome}` : ''}.
+                            {item.motivo_exclusao ? ` Motivo: ${item.motivo_exclusao}` : ''}
+                          </p>
+                        )}
                       </div>
 
-                      <button type="button" className="btn btn-outline" onClick={() => setForm(pickForm(item))}>
-                        Editar
-                      </button>
+                      {item.ativo !== false && (
+                        <div className="flex flex-wrap gap-2">
+                          <button type="button" className="btn btn-outline" onClick={() => setForm(pickForm(item))}>
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline text-rose-700"
+                            onClick={() => {
+                              setUnidadeExclusao(item);
+                              setMotivoExclusao('');
+                            }}
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </article>
                 ))
@@ -448,6 +510,47 @@ export default function ComercialUnidades() {
             </div>
           </section>
         </div>
+      )}
+
+      {unidadeExclusao && (
+        <ModalPortal
+          onClose={() => {
+            if (deleting) return;
+            setUnidadeExclusao(null);
+            setMotivoExclusao('');
+          }}
+          closeOnEscape={!deleting}
+        >
+          <div className="app-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="excluir-unidade-titulo">
+            <div className="app-modal-surface app-modal-surface--compact p-5">
+              <h2 id="excluir-unidade-titulo" className="text-lg font-semibold text-[var(--c-text)]">
+                Excluir unidade {unidadeExclusao.codigo}
+              </h2>
+              <p className="mt-1 text-sm text-[var(--c-muted)]">
+                A unidade deixara de aparecer em novos contratos e tabelas. O cadastro permanecera preservado para auditoria.
+              </p>
+              <label className="mt-4 block">
+                <span className="sol-filter-label">Motivo da exclusao *</span>
+                <textarea
+                  className="input mt-1 min-h-[96px] w-full"
+                  value={motivoExclusao}
+                  maxLength={500}
+                  onChange={(event) => setMotivoExclusao(event.target.value)}
+                  placeholder="Explique por que esta unidade deve ser excluida."
+                  autoFocus
+                />
+              </label>
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <button type="button" className="btn btn-outline" disabled={deleting} onClick={() => setUnidadeExclusao(null)}>
+                  Cancelar
+                </button>
+                <button type="button" className="btn btn-primary" disabled={deleting || !motivoExclusao.trim()} onClick={handleExcluirUnidade}>
+                  {deleting ? 'Excluindo...' : 'Confirmar exclusao'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
       )}
     </div>
   );

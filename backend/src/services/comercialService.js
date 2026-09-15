@@ -265,6 +265,12 @@ function buildUnidadeInclude() {
       attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email']
     },
     {
+      model: User,
+      as: 'excluidoPor',
+      attributes: ['id', 'nome', 'email'],
+      required: false
+    },
+    {
       model: TabelaPrecoComercialItem,
       as: 'itensTabelaPreco',
       required: false,
@@ -774,6 +780,10 @@ async function localizarContratoBloqueanteDaUnidade(unidadeId, contratoId = null
 }
 
 async function ensureUnidadeDisponivelParaContrato(unidade, parceiroId, contratoId = null, transaction = null) {
+  if (unidade.ativo === false) {
+    throw createHttpError(400, 'A unidade foi excluida e nao pode receber contrato comercial.');
+  }
+
   const situacao = String(unidade.situacao || '').trim().toUpperCase();
   const reservaParceiroId = Number(unidade.parceiro_reserva_id || 0);
 
@@ -1189,7 +1199,8 @@ async function ensureUnidadesTabelaPreco(empreendimentoId, itens = []) {
 
   const unidades = await UnidadeComercial.findAll({
     where: {
-      id: unidadeIds
+      id: unidadeIds,
+      ativo: true
     }
   });
 
@@ -1221,7 +1232,8 @@ async function aplicarTabelaPrecoNasUnidades(tabela, transaction) {
       },
       {
         where: {
-          id: item.unidade_comercial_id
+          id: item.unidade_comercial_id,
+          ativo: true
         },
         transaction
       }
@@ -1366,6 +1378,12 @@ async function criarUnidadeComercial(payload = {}) {
 
 async function atualizarUnidadeComercial(id, payload = {}) {
   const unidade = await ensureUnidadeExists(id);
+  if (unidade.ativo === false) {
+    throw createHttpError(409, 'Unidade excluida nao pode ser editada.');
+  }
+  if (payload.ativo === false) {
+    throw createHttpError(400, 'Use a acao Excluir unidade para preservar o motivo e a auditoria.');
+  }
   const empreendimentoId = payload.empreendimento_id || unidade.empreendimento_id;
 
   if (payload.empreendimento_id) {
@@ -1399,6 +1417,73 @@ async function atualizarUnidadeComercial(id, payload = {}) {
 
   await unidade.update(updatePayload);
   return ensureUnidadeExists(id);
+}
+
+async function excluirUnidadeComercial(req, id, payload = {}) {
+  const transaction = await sequelize.transaction();
+  let unidade;
+  try {
+    unidade = await UnidadeComercial.findByPk(Number(id), {
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!unidade) {
+      throw createHttpError(404, 'Unidade comercial nao encontrada.');
+    }
+
+    if (unidade.ativo === false && unidade.excluido_em) {
+      await transaction.commit();
+      return ensureUnidadeExists(unidade.id);
+    }
+
+    const situacao = String(unidade.situacao || '').trim().toUpperCase();
+    if (situacao === 'RESERVADA' || unidade.parceiro_reserva_id) {
+      throw createHttpError(409, 'Cancele a reserva da unidade antes de exclui-la.');
+    }
+
+    const contratoBloqueante = await localizarContratoBloqueanteDaUnidade(unidade.id, null, transaction);
+    if (contratoBloqueante) {
+      throw createHttpError(
+        409,
+        `A unidade nao pode ser excluida porque esta vinculada ao contrato ${contratoBloqueante.numero || `#${contratoBloqueante.id}`}.`
+      );
+    }
+
+    const motivo = normalizeOptionalText(payload.motivo);
+    await unidade.update({
+      ativo: false,
+      excluido_em: new Date(),
+      excluido_por: req.user?.id || null,
+      motivo_exclusao: motivo
+    }, { transaction });
+
+    await transaction.commit();
+
+    await registrarEventoSeguranca({
+      req,
+      usuarioId: req.user?.id || null,
+      tipoEvento: 'COMMERCIAL_UNIT_SOFT_DELETED',
+      recursoTipo: 'UNIDADE_COMERCIAL',
+      recursoId: unidade.id,
+      status: 'SUCCESS',
+      descricao: 'Unidade comercial excluida logicamente',
+      metadata: {
+        empreendimento_id: unidade.empreendimento_id,
+        codigo: unidade.codigo,
+        nome: unidade.nome,
+        torre: unidade.torre,
+        situacao: unidade.situacao,
+        motivo
+      }
+    });
+
+    return ensureUnidadeExists(unidade.id);
+  } catch (error) {
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+    throw error;
+  }
 }
 
 async function listarTabelasPrecoComerciais(filters = {}) {
@@ -2920,6 +3005,7 @@ module.exports = {
   criarUnidadeComercial,
   distratarContratoComercial,
   excluirContratoComercial,
+  excluirUnidadeComercial,
   listarCategoriasFinanceirasComercial,
   listarContratosComerciais,
   listarEmpreendimentos,

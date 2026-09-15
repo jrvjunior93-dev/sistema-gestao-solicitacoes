@@ -71,6 +71,18 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true
+    },
+    excluido_em: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    excluido_por: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    motivo_exclusao: {
+      type: DataTypes.STRING(500),
+      allowNull: true
     }
   },
   {
