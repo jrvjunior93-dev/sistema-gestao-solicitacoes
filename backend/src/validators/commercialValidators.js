@@ -674,6 +674,7 @@ function validateComercialContratoCreateBody(body = {}) {
     [
       'empreendimento_id',
       'unidade_comercial_id',
+      'unidades',
       'parceiro_id',
       'compradores',
       'corretor_parceiro_id',
@@ -706,7 +707,15 @@ function validateComercialContratoCreateBody(body = {}) {
 
   const data = {
     empreendimento_id: parseInteger(body.empreendimento_id, 'Empreendimento', { required: true }),
-    unidade_comercial_id: parseInteger(body.unidade_comercial_id, 'Unidade comercial', { required: true }),
+    unidade_comercial_id: parseInteger(body.unidade_comercial_id, 'Unidade comercial'),
+    unidades: Array.isArray(body.unidades)
+      ? body.unidades.map((item, index) => ({
+          unidade_comercial_id: parseInteger(item?.unidade_comercial_id, `Unidade ${index + 1}`, { required: true }),
+          valor_cadastro_referencia: parseDecimal(item?.valor_cadastro_referencia, `Valor de cadastro da unidade ${index + 1}`, { min: 0 }),
+          valor_atribuido: parseDecimal(item?.valor_atribuido, `Valor da unidade ${index + 1}`, { min: 0.01 }),
+          principal: Boolean(item?.principal)
+        }))
+      : undefined,
     parceiro_id: parseInteger(body.parceiro_id, 'Cliente', { required: true }),
     compradores: normalizeCompradoresContrato(body.compradores, body.parceiro_id),
     corretor_parceiro_id: Object.prototype.hasOwnProperty.call(body, 'corretor_parceiro_id')
@@ -736,6 +745,10 @@ function validateComercialContratoCreateBody(body = {}) {
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
     parcelas: normalizeParcelas(body.parcelas)
   };
+
+  if (!data.unidade_comercial_id && !data.unidades?.length) {
+    throw new ValidationError('Informe ao menos uma unidade comercial.');
+  }
 
   if (data.possui_vaga_garagem && !data.quantidade_vagas_garagem) {
     throw new ValidationError('Quantidade de vagas de garagem e obrigatoria quando houver vaga.');
@@ -780,6 +793,7 @@ function validateComercialContratoUpdateBody(body = {}) {
     [
       'status',
       'compradores',
+      'unidades',
       'categoria_financeira_id',
       'corretor_parceiro_id',
       'desconto_concedido',
@@ -805,6 +819,16 @@ function validateComercialContratoUpdateBody(body = {}) {
     status: parseEnum(body.status, 'Status', CONTRATO_STATUS),
     compradores: Object.prototype.hasOwnProperty.call(body, 'compradores')
       ? normalizeCompradoresContrato(body.compradores)
+      : undefined,
+    unidades: Object.prototype.hasOwnProperty.call(body, 'unidades')
+      ? (Array.isArray(body.unidades)
+          ? body.unidades.map((item, index) => ({
+              unidade_comercial_id: parseInteger(item?.unidade_comercial_id, `Unidade ${index + 1}`, { required: true }),
+              valor_cadastro_referencia: parseDecimal(item?.valor_cadastro_referencia, `Valor de cadastro da unidade ${index + 1}`, { min: 0 }),
+              valor_atribuido: parseDecimal(item?.valor_atribuido, `Valor da unidade ${index + 1}`, { min: 0.01 }),
+              principal: Boolean(item?.principal)
+            }))
+          : (() => { throw new ValidationError('Unidades deve ser uma lista.'); })())
       : undefined,
     categoria_financeira_id: parseInteger(body.categoria_financeira_id, 'Categoria financeira'),
     corretor_parceiro_id: Object.prototype.hasOwnProperty.call(body, 'corretor_parceiro_id')
@@ -867,11 +891,12 @@ function validateComercialContratoDistratoBody(body = {}) {
 function validateComercialContratoTrocaUnidadeBody(body = {}) {
   ensureAllowedKeys(
     body,
-    ['unidade_comercial_destino_id', 'novo_valor_total', 'data_efetiva', 'competencia_data', 'observacoes'],
+    ['unidade_comercial_origem_id', 'unidade_comercial_destino_id', 'novo_valor_total', 'data_efetiva', 'competencia_data', 'observacoes'],
     'Troca de unidade do contrato comercial'
   );
 
   return {
+    unidade_comercial_origem_id: parseInteger(body.unidade_comercial_origem_id, 'Unidade de origem'),
     unidade_comercial_destino_id: parseInteger(body.unidade_comercial_destino_id, 'Nova unidade', { required: true }),
     novo_valor_total: parseDecimal(body.novo_valor_total, 'Novo valor total', { min: 0.01 }),
     data_efetiva: parseDateOnly(body.data_efetiva, 'Data efetiva'),

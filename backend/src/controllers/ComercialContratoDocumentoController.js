@@ -1,4 +1,5 @@
 const {
+  anexarContratoAssinadoComercial,
   VARIAVEIS_CONTRATO_COMERCIAL,
   criarModeloContratoComercial,
   enviarDocumentoD4Sign,
@@ -60,6 +61,16 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao listar documentos do contrato');
+    }
+  },
+
+  async anexarAssinado(req, res) {
+    try {
+      const data = await anexarContratoAssinadoComercial(req, req.params.id, req.file, req.body || {});
+      return res.status(201).json(data);
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao anexar contrato assinado');
     }
   },
 

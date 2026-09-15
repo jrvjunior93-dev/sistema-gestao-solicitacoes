@@ -96,6 +96,15 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: false
       },
+      cadastro_incompleto: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
+      origem_cadastro: {
+        type: DataTypes.STRING(40),
+        allowNull: true
+      },
       conjuge_nome: {
         type: DataTypes.STRING(255),
         allowNull: true

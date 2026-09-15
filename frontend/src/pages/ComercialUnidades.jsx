@@ -3,7 +3,9 @@ import ParceiroAutocomplete from '../components/ui/ParceiroAutocomplete';
 import { buscarParceiros } from '../services/parceiros';
 import {
   atualizarUnidadeComercial,
+  atualizarConfiguracaoUnidadesComerciais,
   criarUnidadeComercial,
+  getConfiguracaoUnidadesComerciais,
   getEmpreendimentosComerciais,
   getUnidadesComerciais
 } from '../services/comercial';
@@ -89,20 +91,24 @@ export default function ComercialUnidades() {
   const [unidades, setUnidades] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [permitirVendaManual, setPermitirVendaManual] = useState(false);
   const [error, setError] = useState('');
 
   async function carregar() {
     try {
       setLoading(true);
       setError('');
-      const [empreendimentosData, clientesData, unidadesData] = await Promise.all([
+      const [empreendimentosData, clientesData, unidadesData, configuracaoData] = await Promise.all([
         getEmpreendimentosComerciais({ ativo: 1 }),
         buscarParceiros({ cliente: 1, ativo: 1, limit: 'all' }),
-        getUnidadesComerciais()
+        getUnidadesComerciais(),
+        getConfiguracaoUnidadesComerciais()
       ]);
       setEmpreendimentos(Array.isArray(empreendimentosData) ? empreendimentosData : []);
       setClientes(Array.isArray(clientesData) ? clientesData : []);
       setUnidades(Array.isArray(unidadesData) ? unidadesData : []);
+      setPermitirVendaManual(Boolean(configuracaoData?.permitir_venda_manual));
     } catch (err) {
       setError(err?.message || 'Erro ao carregar unidades comerciais');
     } finally {
@@ -176,6 +182,19 @@ export default function ComercialUnidades() {
     }
   }
 
+  async function handleVendaManualChange(checked) {
+    try {
+      setSavingConfig(true);
+      setError('');
+      const data = await atualizarConfiguracaoUnidadesComerciais({ permitir_venda_manual: checked });
+      setPermitirVendaManual(Boolean(data?.permitir_venda_manual));
+    } catch (err) {
+      setError(err?.message || 'Erro ao atualizar a configuracao de venda manual.');
+    } finally {
+      setSavingConfig(false);
+    }
+  }
+
   return (
     <div className="page solicitacoes-page space-y-5 md:space-y-6">
       <header className="app-page-header">
@@ -186,6 +205,15 @@ export default function ComercialUnidades() {
               Controle disponibilidade, reservas, valores de tabela e base de venda por empreendimento.
             </p>
           </div>
+          <label className="inline-flex items-center gap-2 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm text-[var(--c-text)]">
+            <input
+              type="checkbox"
+              checked={permitirVendaManual}
+              onChange={(event) => handleVendaManualChange(event.target.checked)}
+              disabled={savingConfig}
+            />
+            Permitir marcar unidade como Vendida manualmente
+          </label>
         </div>
       </header>
 
@@ -287,10 +315,13 @@ export default function ComercialUnidades() {
                     value={form.situacao}
                     onChange={(event) => setForm((current) => ({ ...current, situacao: event.target.value }))}
                   >
-                    {SITUACOES.map((item) => (
+                    {SITUACOES.filter((item) => item !== 'VENDIDA' || permitirVendaManual || form.situacao === 'VENDIDA').map((item) => (
                       <option key={item} value={item}>{item}</option>
                     ))}
                   </select>
+                  {!permitirVendaManual && form.situacao !== 'VENDIDA' && (
+                    <span className="mt-1 text-xs text-[var(--c-muted)]">Vendida e definida automaticamente ao vincular um contrato.</span>
+                  )}
                 </label>
                 <label className="sol-filter-field">
                   <span className="sol-filter-label">Reservado ate</span>

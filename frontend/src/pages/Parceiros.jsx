@@ -45,6 +45,7 @@ function defaultParceiroForm() {
     cliente: true,
     fornecedor: true,
     corretor: false,
+    cadastro_incompleto: false,
     ativo: true,
     categoria_ids: []
   };
@@ -98,6 +99,7 @@ function pickParceiroFormData(parceiro = {}) {
     cliente: parceiro.cliente !== false,
     fornecedor: parceiro.fornecedor !== false,
     corretor: parceiro.corretor === true,
+    cadastro_incompleto: parceiro.cadastro_incompleto === true,
     ativo: parceiro.ativo !== false,
     categoria_ids: Array.isArray(parceiro.categorias)
       ? parceiro.categorias.map((categoria) => categoria.id)
@@ -595,6 +597,24 @@ export default function Parceiros() {
                 </div>
               </div>
 
+              {parceiroForm.id && parceiroForm.cadastro_incompleto && (
+                <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+                  <input
+                    className="mt-0.5"
+                    type="checkbox"
+                    checked={!parceiroForm.cadastro_incompleto}
+                    onChange={(event) => setParceiroForm((current) => ({
+                      ...current,
+                      cadastro_incompleto: !event.target.checked
+                    }))}
+                  />
+                  <span>
+                    <strong>Cadastro conferido e completo</strong>
+                    <span className="mt-0.5 block text-xs">Marque depois de revisar os dados trazidos pela importacao do Sienge.</span>
+                  </span>
+                </label>
+              )}
+
               <div className="space-y-2">
                 <div className="text-sm font-medium text-[var(--c-text)]">Categorias</div>
                 {categorias.length === 0 ? (
@@ -776,6 +796,11 @@ export default function Parceiros() {
                                   <div className="font-semibold text-[var(--c-text)]">{parceiro.nome}</div>
                                   {parceiro.municipio && (
                                     <div className="text-xs text-[var(--c-muted)]">{parceiro.municipio}</div>
+                                  )}
+                                  {parceiro.cadastro_incompleto && (
+                                    <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                                      CADASTRO INCOMPLETO
+                                    </span>
                                   )}
                                 </td>
                                 <td>{parceiro.cpf_cnpj || '-'}</td>

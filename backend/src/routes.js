@@ -257,6 +257,7 @@ const {
   canAccessFinanceiro,
   canAccessFinanceiroRelatorio,
   canImportTitulosFinanceiros,
+  canImportComercialContratos,
   userHasAreaPermission,
   canViewSolicitacaoFinanceiro,
   canAccessTreinamento,
@@ -377,6 +378,7 @@ const ParceiroCategoriaController = require('./controllers/ParceiroCategoriaCont
 const ComercialEmpreendimentoController = require('./controllers/ComercialEmpreendimentoController');
 const ComercialUnidadeController = require('./controllers/ComercialUnidadeController');
 const ComercialContratoController = require('./controllers/ComercialContratoController');
+const ComercialContratoImportacaoController = require('./controllers/ComercialContratoImportacaoController');
 const ComercialContratoDocumentoController = require('./controllers/ComercialContratoDocumentoController');
 const ComercialTabelaPrecoController = require('./controllers/ComercialTabelaPrecoController');
 const ComercialRelatorioController = require('./controllers/ComercialRelatorioController');
@@ -1080,6 +1082,15 @@ const allowComercialContratosManage = permit({
   )
 });
 
+const allowComercialContratosImport = permit({
+  resource: 'COMERCIAL_CONTRATO_IMPORTACAO',
+  custom: async (req) => (
+    (await canImportComercialContratos(req.user))
+      ? true
+      : 'Acesso negado para importar contratos comerciais'
+  )
+});
+
 const allowComercialContratosCategorias = permit({
   resource: 'COMERCIAL',
   custom: async (req) => (
@@ -1618,6 +1629,8 @@ router.get('/comercial/empreendimentos', allowComercialEmpreendimentosRead, vali
 router.post('/comercial/empreendimentos', allowComercialEmpreendimentosManage, criticalRateLimit, validateRequest({ body: validateComercialEmpreendimentoCreateBody }), ComercialEmpreendimentoController.create);
 router.patch('/comercial/empreendimentos/:id', allowComercialEmpreendimentosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Empreendimento'), body: validateComercialEmpreendimentoUpdateBody }), ComercialEmpreendimentoController.update);
 router.get('/comercial/unidades', allowComercialEmpreendimentosRead, validateRequest({ query: validateComercialUnidadeQuery }), ComercialUnidadeController.index);
+router.get('/comercial/unidades-configuracao', allowComercialEmpreendimentosRead, ComercialUnidadeController.configuracao);
+router.patch('/comercial/unidades-configuracao', allowComercialEmpreendimentosManage, criticalRateLimit, ComercialUnidadeController.atualizarConfiguracao);
 router.post('/comercial/unidades', allowComercialEmpreendimentosManage, criticalRateLimit, validateRequest({ body: validateComercialUnidadeCreateBody }), ComercialUnidadeController.create);
 router.patch('/comercial/unidades/:id', allowComercialEmpreendimentosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Unidade comercial'), body: validateComercialUnidadeUpdateBody }), ComercialUnidadeController.update);
 router.get('/comercial/tabelas-preco', allowComercialEmpreendimentosRead, validateRequest({ query: validateComercialTabelaPrecoQuery }), ComercialTabelaPrecoController.index);
@@ -1631,6 +1644,10 @@ router.post('/comercial/contratos-modelos', allowComercialContratosManage, uploa
 router.get('/comercial/contratos-documentos/:documentoId/link', allowComercialContratosRead, validateRequest({ params: validateNumericIdParam('documentoId', 'Documento comercial') }), ComercialContratoDocumentoController.obterLink);
 router.post('/comercial/contratos-documentos/:documentoId/enviar-d4sign', allowComercialContratosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('documentoId', 'Documento comercial') }), ComercialContratoDocumentoController.enviarD4Sign);
 router.delete('/comercial/contratos-documentos/:documentoId', allowComercialContratosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('documentoId', 'Documento comercial') }), ComercialContratoDocumentoController.excluirDocumento);
+router.get('/comercial/contratos-importacao/modelo', allowComercialContratosImport, ComercialContratoImportacaoController.modelo);
+router.post('/comercial/contratos-importacao/preview', allowComercialContratosImport, uploadRateLimit, uploadComprovantes.single('file'), ComercialContratoImportacaoController.preview);
+router.get('/comercial/contratos-importacao/:id', allowComercialContratosImport, validateRequest({ params: validateNumericIdParam('id', 'Importacao Sienge') }), ComercialContratoImportacaoController.show);
+router.post('/comercial/contratos-importacao/:id/confirmar', allowComercialContratosImport, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Importacao Sienge') }), ComercialContratoImportacaoController.confirmar);
 router.get('/comercial/categorias-financeiras', allowComercialContratosCategorias, ComercialContratoController.categoriasFinanceiras);
 router.get('/comercial/contratos', allowComercialContratosRead, validateRequest({ query: validateComercialContratoQuery }), ComercialContratoController.index);
 router.get('/comercial/contratos/:id', allowComercialContratosRead, validateRequest({ params: validateNumericIdParam('id', 'Contrato comercial') }), ComercialContratoController.show);
@@ -1641,6 +1658,7 @@ router.post('/comercial/contratos/:id/distrato', allowComercialContratosManage, 
 router.post('/comercial/contratos/:id/troca-unidade', allowComercialContratosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Contrato comercial'), body: validateComercialContratoTrocaUnidadeBody }), ComercialContratoController.trocarUnidade);
 router.post('/comercial/contratos/:id/sincronizar-status-financeiro', allowComercialContratosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Contrato comercial') }), ComercialContratoController.sincronizarStatusFinanceiro);
 router.get('/comercial/contratos/:id/documentos', allowComercialContratosRead, validateRequest({ params: validateNumericIdParam('id', 'Contrato comercial') }), ComercialContratoDocumentoController.listarDocumentosContrato);
+router.post('/comercial/contratos/:id/documentos/assinado', allowComercialContratosManage, uploadRateLimit, uploadComprovantes.single('file'), validateRequest({ params: validateNumericIdParam('id', 'Contrato comercial') }), ComercialContratoDocumentoController.anexarAssinado);
 router.post('/comercial/contratos/:id/documentos/gerar', allowComercialContratosManage, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Contrato comercial') }), ComercialContratoDocumentoController.gerarDocumento);
 
 // -------------------------------------------------------------------

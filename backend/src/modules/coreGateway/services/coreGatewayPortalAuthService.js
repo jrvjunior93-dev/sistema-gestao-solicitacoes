@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const {
   ContratoComercial,
   ContratoComercialComprador,
+  ContratoComercialUnidade,
   Empreendimento,
   Parceiro,
   UnidadeComercial,
@@ -47,6 +48,23 @@ function sanitizeContrato(contrato, parceiroId) {
   const comoTitular = Number(contrato.parceiro_id) === Number(parceiroId);
   const comoComprador = compradores.some((item) => Number(item.parceiro_id) === Number(parceiroId));
 
+  const unidades = (contrato.unidadesContrato || []).map((item) => ({
+    id: item.unidadeComercial?.id || item.unidade_comercial_id,
+    codigo: item.unidadeComercial?.codigo || null,
+    tipologia: item.unidadeComercial?.tipologia || null,
+    principal: Boolean(item.principal),
+    valor_atribuido: item.valor_atribuido
+  }));
+  if (!unidades.length && contrato.unidadeComercial) {
+    unidades.push({
+      id: contrato.unidadeComercial.id,
+      codigo: contrato.unidadeComercial.codigo,
+      tipologia: contrato.unidadeComercial.tipologia || null,
+      principal: true,
+      valor_atribuido: contrato.valor_total
+    });
+  }
+
   return {
     id: contrato.id,
     numero: contrato.numero,
@@ -62,7 +80,8 @@ function sanitizeContrato(contrato, parceiroId) {
       id: contrato.unidadeComercial.id,
       codigo: contrato.unidadeComercial.codigo,
       tipologia: contrato.unidadeComercial.tipologia || null
-    } : null
+    } : null,
+    unidades
   };
 }
 
@@ -93,6 +112,18 @@ async function listarContratosAutorizados(parceiroId) {
         as: 'unidadeComercial',
         attributes: ['id', 'codigo', 'tipologia'],
         required: false
+      },
+      {
+        model: ContratoComercialUnidade,
+        as: 'unidadesContrato',
+        separate: true,
+        order: [['ordem', 'ASC']],
+        include: [{
+          model: UnidadeComercial,
+          as: 'unidadeComercial',
+          attributes: ['id', 'codigo', 'tipologia'],
+          required: false
+        }]
       }
     ],
     order: [

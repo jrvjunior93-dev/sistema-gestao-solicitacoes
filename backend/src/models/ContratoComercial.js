@@ -38,6 +38,15 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true
     },
+    origem_dados: {
+      type: DataTypes.STRING(40),
+      allowNull: false,
+      defaultValue: 'FLUXY'
+    },
+    identificador_externo: {
+      type: DataTypes.STRING(180),
+      allowNull: true
+    },
     numero: {
       type: DataTypes.STRING(120),
       allowNull: false

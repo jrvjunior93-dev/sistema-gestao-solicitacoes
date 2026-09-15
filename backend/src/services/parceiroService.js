@@ -224,6 +224,9 @@ function normalizeParceiroPayload(payload = {}, { partial = false } = {}) {
     pix_chave_variavel: partial
       ? (payload.pix_chave_variavel !== undefined ? sanitizePixChave(payload.pix_chave_variavel) : undefined)
       : sanitizePixChave(payload.pix_chave_variavel),
+    cadastro_incompleto: partial
+      ? (payload.cadastro_incompleto !== undefined ? parseBoolean(payload.cadastro_incompleto, false) : undefined)
+      : false,
     ativo: partial
       ? (payload.ativo !== undefined ? parseBoolean(payload.ativo, true) : undefined)
       : (payload.ativo === undefined ? true : parseBoolean(payload.ativo, true))

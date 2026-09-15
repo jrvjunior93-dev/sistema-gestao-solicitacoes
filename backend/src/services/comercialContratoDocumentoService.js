@@ -7,11 +7,13 @@ const PizZip = require('pizzip');
 const Docxtemplater = require('docxtemplater');
 const { PDFDocument } = require('pdf-lib');
 const {
+  sequelize,
   ContratoComercial,
   ContratoComercialComprador,
   ContratoComercialDocumento,
   ContratoComercialModelo,
   ContratoComercialParcela,
+  ContratoComercialUnidade,
   Empreendimento,
   Obra,
   Parceiro,
@@ -92,6 +94,8 @@ const VARIAVEIS_CONTRATO_COMERCIAL = [
   { chave: 'unidade.metragem_privativa_formatada', descricao: 'Metragem privativa formatada com m2' },
   { chave: 'unidade.fracao_ideal', descricao: 'Fracao ideal da unidade' },
   { chave: 'unidade.vagas_garagem', descricao: 'Resumo das vagas de garagem da unidade vendida' },
+  { chave: 'unidades.resumo', descricao: 'Resumo textual de todas as unidades do contrato' },
+  { chave: 'unidades.itens', descricao: 'Lista estruturada das unidades vinculadas ao contrato' },
   { chave: 'corretor.nome', descricao: 'Nome do corretor' },
   { chave: 'corretor.cpf_cnpj', descricao: 'CPF/CNPJ do corretor' },
   { chave: 'corretor.cpf_cnpj_formatado', descricao: 'CPF/CNPJ do corretor com rotulo' },
@@ -711,22 +715,28 @@ function buildUnidadeAutonomaResumo(unidade = {}) {
 }
 
 function buildObjetoQuadroResumoCells(dados = {}) {
+  const itens = Array.isArray(dados?.unidades?.itens) && dados.unidades.itens.length
+    ? dados.unidades.itens
+    : [dados?.unidade || {}];
+  const join = (selector) => itens.map((item, index) => (
+    itens.length > 1 ? `${index + 1}. ${selector(item)}` : selector(item)
+  )).join(' | ');
   return [
     [
       { text: 'Torre:', bold: true },
-      { text: ` ${safeString(dados?.unidade?.torre || dados?.empreendimento?.nome || '-')}` }
+      { text: ` ${join((item) => safeString(item?.torre || dados?.empreendimento?.nome || '-'))}` }
     ],
     [
       { text: 'Unidade Autônoma:', bold: true },
-      { text: ` ${safeString(dados?.unidade?.nome_codigo || dados?.unidade?.nome || dados?.unidade?.codigo || '-')}` }
+      { text: ` ${join((item) => safeString(item?.nome_codigo || item?.nome || item?.codigo || '-'))}` }
     ],
     [
       { text: 'Área privativa da unidade:', bold: true },
-      { text: ` ${safeString(dados?.unidade?.metragem_privativa_formatada || dados?.unidade?.metragem_privativa || '-')}` }
+      { text: ` ${join((item) => safeString(item?.metragem_privativa_formatada || item?.metragem_privativa || '-'))}` }
     ],
     [
       { text: 'Fração Ideal:', bold: true },
-      { text: ` ${safeString(dados?.unidade?.fracao_ideal || '-')}` }
+      { text: ` ${join((item) => safeString(item?.fracao_ideal || '-'))}` }
     ],
     [
       { text: 'Vagas de Garagem:', bold: true },
@@ -1253,14 +1263,20 @@ function buildNumeroContrato(raw = {}, empreendimento = {}, unidade = {}) {
   return numeroDocumento || safeString(raw.numero).trim();
 }
 
-function buildItemIIITexto(contrato = {}, empreendimento = {}, unidade = {}) {
-  return [
-    `Torre: ${safeString(unidade.torre || empreendimento.nome || '-')}`,
-    `Unidade Autônoma: ${buildUnidadeAutonomaResumo(unidade)}`,
-    `Área privativa da unidade: ${formatArea(unidade.metragem_privativa) || safeString(unidade.metragem_privativa) || '-'}`,
-    `Fração Ideal: ${formatFracaoIdeal(unidade.fracao_ideal) || '-'}`,
-    `Vagas de Garagem: ${buildVagasGaragemResumo(contrato)}`
-  ].join('\n');
+function buildItemIIITexto(contrato = {}, empreendimento = {}, unidade = {}, unidades = []) {
+  const lista = unidades.length ? unidades : [{ unidadeComercial: unidade }];
+  return lista.map((item, index) => {
+    const atual = item.unidadeComercial || item.unidade || item;
+    const prefixo = lista.length > 1 ? `Unidade ${index + 1}\n` : '';
+    return `${prefixo}${[
+      `Torre: ${safeString(atual.torre || empreendimento.nome || '-')}`,
+      `Unidade Autônoma: ${buildUnidadeAutonomaResumo(atual)}`,
+      `Área privativa da unidade: ${formatArea(atual.metragem_privativa) || safeString(atual.metragem_privativa) || '-'}`,
+      `Fração Ideal: ${formatFracaoIdeal(atual.fracao_ideal) || '-'}`,
+      `Valor atribuído: ${formatCurrency(item.valor_atribuido || 0)}`,
+      `Vagas de Garagem: ${buildVagasGaragemResumo(contrato)}`
+    ].join('\n')}`;
+  }).join('\n\n');
 }
 
 function buildPessoaContratoData(pessoa = {}) {
@@ -1355,7 +1371,11 @@ function buildDadosContrato(contrato, customVariables = {}) {
   const cliente = raw.cliente || {};
   const conjuge = cliente.conjuge || {};
   const compradores = buildCompradoresContratoData(raw);
-  const unidade = raw.unidadeComercial || {};
+  const unidadesContrato = Array.isArray(raw.unidadesContrato) && raw.unidadesContrato.length
+    ? [...raw.unidadesContrato].sort((a, b) => Number(a.ordem || 0) - Number(b.ordem || 0))
+    : [{ unidadeComercial: raw.unidadeComercial || {}, valor_atribuido: raw.valor_total, principal: true, ordem: 1 }];
+  const vinculoPrincipal = unidadesContrato.find((item) => item.principal) || unidadesContrato[0];
+  const unidade = vinculoPrincipal?.unidadeComercial || raw.unidadeComercial || {};
   const corretor = raw.corretorParceiro || {};
   const empreendimento = raw.empreendimento || {};
   const obra = raw.obra || {};
@@ -1363,11 +1383,13 @@ function buildDadosContrato(contrato, customVariables = {}) {
   const vagasGaragemResumo = buildVagasGaragemResumo(raw);
   const dataAssinaturaBase = raw.data_assinatura || raw.data_contrato;
   const localAssinatura = safeString(raw.local_assinatura);
-  const numeroContrato = buildNumeroContrato(raw, empreendimento, unidade);
+  const codigosUnidades = unidadesContrato.map((item) => safeString(item.unidadeComercial?.codigo)).filter(Boolean);
+  const numeroContrato = [safeString(empreendimento.codigo).trim(), codigosUnidades.join(' / ')].filter(Boolean).join(' - ')
+    || buildNumeroContrato(raw, empreendimento, unidade);
   const valorTotalFormatado = formatCurrency(raw.valor_total);
   const valorTotalExtenso = formatCurrencyExtenso(raw.valor_total);
   const valorTotalComExtenso = `${valorTotalFormatado} (${valorTotalExtenso})`;
-  const itemIIITexto = buildItemIIITexto(raw, empreendimento, unidade);
+  const itemIIITexto = buildItemIIITexto(raw, empreendimento, unidade, unidadesContrato);
   const corretorNome = safeString(corretor.nome || raw.corretor_nome);
   const corretorCpfCnpj = safeString(corretor.cpf_cnpj);
   const corretorCreci = safeString(corretor.creci);
@@ -1470,6 +1492,30 @@ function buildDadosContrato(contrato, customVariables = {}) {
       valor_base_venda: safeString(unidade.valor_base_venda),
       valor_base_venda_formatado: formatCurrency(unidade.valor_base_venda)
     },
+    unidades: {
+      resumo: codigosUnidades.join(' / '),
+      itens: unidadesContrato.map((item, index) => {
+        const atual = item.unidadeComercial || {};
+        return {
+          ordem: safeString(item.ordem || index + 1),
+          principal: item.principal ? 'Sim' : 'Nao',
+          codigo: safeString(atual.codigo),
+          nome: safeString(atual.nome),
+          nome_codigo: buildUnidadeAutonomaResumo(atual),
+          bloco: safeString(atual.bloco),
+          torre: safeString(atual.torre),
+          pavimento: safeString(atual.pavimento),
+          tipologia: safeString(atual.tipologia),
+          metragem_privativa: safeString(atual.metragem_privativa),
+          metragem_privativa_formatada: formatArea(atual.metragem_privativa),
+          fracao_ideal: formatFracaoIdeal(atual.fracao_ideal) || safeString(atual.fracao_ideal),
+          valor_cadastro_referencia: safeString(item.valor_cadastro_referencia),
+          valor_cadastro_referencia_formatado: formatCurrency(item.valor_cadastro_referencia),
+          valor_atribuido: safeString(item.valor_atribuido),
+          valor_atribuido_formatado: formatCurrency(item.valor_atribuido)
+        };
+      })
+    },
     corretor: {
       nome: corretorNome,
       cpf_cnpj: corretorCpfCnpj,
@@ -1560,6 +1606,13 @@ async function carregarContratoParaDocumento(id) {
     include: [
       { model: Empreendimento, as: 'empreendimento' },
       { model: UnidadeComercial, as: 'unidadeComercial' },
+      {
+        model: ContratoComercialUnidade,
+        as: 'unidadesContrato',
+        separate: true,
+        order: [['ordem', 'ASC'], ['id', 'ASC']],
+        include: [{ model: UnidadeComercial, as: 'unidadeComercial' }]
+      },
       { model: Parceiro, as: 'cliente', include: [{ model: Parceiro, as: 'conjuge' }] },
       {
         model: ContratoComercialComprador,
@@ -1780,6 +1833,62 @@ async function listarDocumentosContratoComercial(contratoId) {
     ],
     order: [['createdAt', 'DESC'], ['id', 'DESC']]
   });
+}
+
+async function anexarContratoAssinadoComercial(req, contratoId, file, payload = {}) {
+  if (!file?.buffer) throw createHttpError(400, 'Arquivo PDF do contrato assinado e obrigatorio.');
+  const extension = path.extname(file.originalname || '').toLowerCase();
+  if (extension !== '.pdf' || String(file.mimetype || '').toLowerCase() !== 'application/pdf') {
+    throw createHttpError(400, 'Envie o contrato assinado em formato PDF.');
+  }
+  const nomeOriginal = normalizeOriginalName(file.originalname);
+  const nomeInformado = String(payload.nome || '').trim().slice(0, 200);
+  let contrato;
+  let documento;
+  await sequelize.transaction(async (transaction) => {
+    contrato = await ContratoComercial.findByPk(Number(contratoId), {
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!contrato) throw createHttpError(404, 'Contrato comercial nao encontrado.');
+    const existente = await ContratoComercialDocumento.findOne({
+      where: {
+        contrato_comercial_id: contrato.id,
+        [Op.or]: [
+          { tipo_documento: 'CONTRATO_ASSINADO' },
+          { status: 'ASSINADO' },
+          { d4sign_finalizado_em: { [Op.ne]: null } }
+        ]
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (existente) throw createHttpError(409, 'Este contrato ja possui um documento assinado.');
+    const arquivoPdfUrl = await uploadToS3(file, `comercial/contratos/assinados/${contrato.id}`);
+    documento = await ContratoComercialDocumento.create({
+      contrato_comercial_id: contrato.id,
+      modelo_id: null,
+      tipo_documento: 'CONTRATO_ASSINADO',
+      nome: nomeInformado || nomeOriginal,
+      status: 'ASSINADO',
+      arquivo_docx_url: null,
+      arquivo_pdf_url: arquivoPdfUrl,
+      d4sign_status: null,
+      criado_por: req.user?.id || null,
+      atualizado_por: req.user?.id || null
+    }, { transaction });
+  });
+  await registrarEventoSeguranca({
+    req,
+    usuarioId: req.user?.id || null,
+    tipoEvento: 'COMMERCIAL_SIGNED_CONTRACT_ATTACHED',
+    recursoTipo: 'CONTRATO_COMERCIAL_DOCUMENTO',
+    recursoId: documento.id,
+    status: 'SUCCESS',
+    descricao: 'Contrato comercial assinado anexado posteriormente',
+    metadata: { contrato_comercial_id: contrato.id, arquivo_nome: nomeOriginal }
+  });
+  return documento;
 }
 
 async function resolveModeloParaContrato(contrato, payload = {}) {
@@ -2163,6 +2272,7 @@ module.exports = {
   LEGACY_BRACKET_ALIASES,
   TIPOS_DOCUMENTO,
   VARIAVEIS_CONTRATO_COMERCIAL,
+  anexarContratoAssinadoComercial,
   criarModeloContratoComercial,
   enviarDocumentoD4Sign,
   excluirDocumentoContratoComercial,

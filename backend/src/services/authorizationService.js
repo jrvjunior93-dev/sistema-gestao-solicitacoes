@@ -426,6 +426,7 @@ const COMPRAS_PERMISSION_KEYS = [
 const COMERCIAL_EMPREENDIMENTOS_VIEW_KEYS = [
   'comercial.empreendimentos.visualizar',
   'comercial.empreendimentos.gerenciar',
+  'comercial.vendas.importar',
   'comercial.relatorios.visualizar'
 ];
 
@@ -437,6 +438,7 @@ const COMERCIAL_CONTRATOS_VIEW_KEYS = [
   'comercial.vendas.visualizar',
   'comercial.vendas.criar',
   'comercial.vendas.contratos',
+  'comercial.vendas.importar',
   'comercial.relatorios.visualizar'
 ];
 
@@ -447,6 +449,10 @@ const COMERCIAL_CONTRATOS_CREATE_KEYS = [
 
 const COMERCIAL_CONTRATOS_MANAGE_KEYS = [
   'comercial.vendas.contratos'
+];
+
+const COMERCIAL_CONTRATOS_IMPORT_KEYS = [
+  'comercial.vendas.importar'
 ];
 
 const COMERCIAL_PERMISSION_KEYS = [
@@ -2265,6 +2271,14 @@ async function canManageComercialContratos(user) {
   return false;
 }
 
+async function canImportComercialContratos(user) {
+  if (isBusinessAdmin(user)) return true;
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, COMERCIAL_CONTRATOS_IMPORT_KEYS);
+  }
+  return false;
+}
+
 async function canAccessContratos(user) {
   if (isBusinessAdmin(user)) {
     return true;
@@ -3006,6 +3020,7 @@ module.exports = {
   canExportCrmLeads,
   canGenerateBoletos,
   canCreateComercialContratos,
+  canImportComercialContratos,
   canManagePaymentBeneficiaries,
   canManageComercialContratos,
   canManageContratos,

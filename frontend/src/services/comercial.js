@@ -97,6 +97,22 @@ export async function atualizarUnidadeComercial(id, data) {
   return parseJson(response, 'Erro ao atualizar unidade comercial');
 }
 
+export async function getConfiguracaoUnidadesComerciais() {
+  const response = await fetch(`${API_URL}/comercial/unidades-configuracao`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao consultar configuracao das unidades comerciais');
+}
+
+export async function atualizarConfiguracaoUnidadesComerciais(data) {
+  const response = await fetch(`${API_URL}/comercial/unidades-configuracao`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data || {})
+  });
+  return parseJson(response, 'Erro ao atualizar configuracao das unidades comerciais');
+}
+
 export async function getTabelasPrecoComerciais(params = {}) {
   const query = buildQuery(params);
   const url = query ? `${API_URL}/comercial/tabelas-preco?${query}` : `${API_URL}/comercial/tabelas-preco`;
@@ -184,6 +200,41 @@ export async function excluirContratoComercial(id) {
   return parseJson(response, 'Erro ao excluir contrato comercial');
 }
 
+export async function baixarModeloImportacaoContratosSienge() {
+  const response = await fetch(`${API_URL}/comercial/contratos-importacao/modelo`, {
+    headers: authHeaders()
+  });
+  if (!response.ok) {
+    await parseJson(response, 'Erro ao baixar modelo de importacao Sienge');
+  }
+  return response.blob();
+}
+
+export async function criarPreviewImportacaoContratosSienge(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(`${API_URL}/comercial/contratos-importacao/preview`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData
+  });
+  return parseJson(response, 'Erro ao validar planilha de importacao Sienge');
+}
+
+export async function confirmarImportacaoContratosSienge(id, data = {}) {
+  const idempotencyKey = globalThis.crypto?.randomUUID?.()
+    || `sienge-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const response = await fetch(`${API_URL}/comercial/contratos-importacao/${id}/confirmar`, {
+    method: 'POST',
+    headers: authHeaders({
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey
+    }),
+    body: JSON.stringify(data || {})
+  });
+  return parseJson(response, 'Erro ao confirmar importacao Sienge');
+}
+
 export async function distratarContratoComercial(id, data) {
   const response = await fetch(`${API_URL}/comercial/contratos/${id}/distrato`, {
     method: 'POST',
@@ -250,6 +301,17 @@ export async function gerarDocumentoContratoComercial(contratoId, data) {
     body: JSON.stringify(data || {})
   });
   return parseJson(response, 'Erro ao gerar documento do contrato');
+}
+
+export async function anexarContratoAssinadoComercial(contratoId, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(`${API_URL}/comercial/contratos/${contratoId}/documentos/assinado`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData
+  });
+  return parseJson(response, 'Erro ao anexar contrato assinado');
 }
 
 export async function getLinkDocumentoContratoComercial(documentoId, tipo = 'pdf') {

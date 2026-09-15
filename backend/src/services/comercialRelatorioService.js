@@ -3,6 +3,7 @@ const {
   ContratoComercial,
   ContratoComercialDocumento,
   ContratoComercialParcela,
+  ContratoComercialUnidade,
   Empreendimento,
   Obra,
   Parceiro,
@@ -101,6 +102,13 @@ async function gerarRelatorioComercialOperacional(query = {}) {
       include: [
         { model: Empreendimento, as: 'empreendimento', attributes: ['id', 'nome', 'obra_id'] },
         { model: UnidadeComercial, as: 'unidadeComercial', attributes: ['id', 'codigo', 'nome', 'situacao', 'valor_tabela'] },
+        {
+          model: ContratoComercialUnidade,
+          as: 'unidadesContrato',
+          separate: true,
+          order: [['ordem', 'ASC']],
+          include: [{ model: UnidadeComercial, as: 'unidadeComercial', attributes: ['id', 'codigo', 'nome', 'situacao', 'valor_tabela'] }]
+        },
         { model: Parceiro, as: 'cliente', attributes: ['id', 'nome', 'cpf_cnpj'] },
         { model: Parceiro, as: 'corretorParceiro', attributes: ['id', 'nome'] },
         { model: Obra, as: 'obra', attributes: ['id', 'nome'] },
@@ -201,7 +209,14 @@ async function gerarRelatorioComercialOperacional(query = {}) {
     status: contrato.status,
     data_contrato: contrato.data_contrato,
     empreendimento_nome: contrato.empreendimento?.nome || null,
-    unidade_codigo: contrato.unidadeComercial?.codigo || null,
+    unidade_codigo: contrato.unidadesContrato?.map((item) => item.unidadeComercial?.codigo).filter(Boolean).join(' / ')
+      || contrato.unidadeComercial?.codigo || null,
+    unidades: contrato.unidadesContrato?.map((item) => ({
+      id: item.unidade_comercial_id,
+      codigo: item.unidadeComercial?.codigo || null,
+      valor_atribuido: toNumber(item.valor_atribuido),
+      principal: Boolean(item.principal)
+    })) || [],
     cliente_nome: contrato.cliente?.nome || null,
     corretor_nome: contrato.corretorParceiro?.nome || contrato.corretor_nome || null,
     obra_nome: contrato.obra?.nome || null,

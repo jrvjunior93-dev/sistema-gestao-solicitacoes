@@ -11,6 +11,7 @@ const {
   ContratoComercialDocumento,
   ContratoComercialEvento,
   ContratoComercialParcela,
+  ContratoComercialUnidade,
   Empreendimento,
   Obra,
   Parceiro,
@@ -23,6 +24,9 @@ const {
 const { registrarEventoSeguranca } = require('./securityLogService');
 
 const CHAVE_COMERCIAL_CATEGORIAS_CONTRATO = 'COMERCIAL_CATEGORIAS_CONTRATO_VENDA';
+const CHAVE_COMERCIAL_PERMITIR_VENDA_MANUAL = 'COMERCIAL_PERMITIR_VENDA_MANUAL';
+const STATUS_CONTRATO_BLOQUEIAM_UNIDADE = ['RASCUNHO', 'ATIVO', 'INADIMPLENTE', 'QUITADO'];
+const STATUS_CONTRATO_SINCRONIZAVEIS_FINANCEIRO = ['ATIVO', 'INADIMPLENTE', 'QUITADO'];
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -104,6 +108,50 @@ async function getComercialCategoriasContratoConfig() {
   } catch {
     return null;
   }
+}
+
+async function getComercialPermitirVendaManual() {
+  const item = await ConfiguracaoSistema.findOne({
+    where: { chave: CHAVE_COMERCIAL_PERMITIR_VENDA_MANUAL },
+    order: [['id', 'DESC']]
+  });
+  if (!item?.valor) return false;
+  try {
+    const parsed = JSON.parse(item.valor);
+    return parsed === true || parsed?.permitir_venda_manual === true;
+  } catch {
+    return String(item.valor).trim().toLowerCase() === 'true';
+  }
+}
+
+async function obterConfiguracaoUnidadesComerciais() {
+  return { permitir_venda_manual: await getComercialPermitirVendaManual() };
+}
+
+async function atualizarConfiguracaoUnidadesComerciais(req, payload = {}) {
+  if (typeof payload.permitir_venda_manual !== 'boolean') {
+    throw createHttpError(400, 'Informe permitir_venda_manual como verdadeiro ou falso.');
+  }
+  const permitirVendaManual = payload.permitir_venda_manual;
+  const valor = JSON.stringify({ permitir_venda_manual: permitirVendaManual });
+  const existente = await ConfiguracaoSistema.findOne({
+    where: { chave: CHAVE_COMERCIAL_PERMITIR_VENDA_MANUAL },
+    order: [['id', 'DESC']]
+  });
+  if (existente) await existente.update({ valor });
+  else await ConfiguracaoSistema.create({ chave: CHAVE_COMERCIAL_PERMITIR_VENDA_MANUAL, valor });
+
+  await registrarEventoSeguranca({
+    req,
+    usuarioId: req.user?.id || null,
+    tipoEvento: 'COMMERCIAL_UNIT_MANUAL_SALE_CONFIG_UPDATED',
+    recursoTipo: 'CONFIGURACAO_SISTEMA',
+    recursoId: CHAVE_COMERCIAL_PERMITIR_VENDA_MANUAL,
+    status: 'SUCCESS',
+    descricao: 'Configuracao de venda manual de unidades atualizada',
+    metadata: { permitir_venda_manual: permitirVendaManual }
+  });
+  return obterConfiguracaoUnidadesComerciais();
 }
 
 async function ensureCategoriaPermitidaNoComercial(categoriaId, campo) {
@@ -242,6 +290,17 @@ function buildContratoInclude({ includeParcelas = false } = {}) {
       model: UnidadeComercial,
       as: 'unidadeComercial',
       attributes: ['id', 'codigo', 'nome', 'situacao', 'tipologia', 'bloco', 'torre', 'pavimento', 'metragem_privativa', 'fracao_ideal', 'valor_tabela', 'valor_base_venda']
+    },
+    {
+      model: ContratoComercialUnidade,
+      as: 'unidadesContrato',
+      separate: true,
+      order: [['ordem', 'ASC'], ['id', 'ASC']],
+      include: [{
+        model: UnidadeComercial,
+        as: 'unidadeComercial',
+        attributes: ['id', 'empreendimento_id', 'codigo', 'nome', 'situacao', 'tipologia', 'bloco', 'torre', 'pavimento', 'metragem_privativa', 'fracao_ideal', 'valor_tabela', 'valor_base_venda']
+      }]
     },
     {
       model: Parceiro,
@@ -692,7 +751,29 @@ async function ensureUniqueUnidadeCodigo(empreendimentoId, codigo, torre = null,
   }
 }
 
-async function ensureUnidadeDisponivelParaContrato(unidade, parceiroId, contratoId = null) {
+async function localizarContratoBloqueanteDaUnidade(unidadeId, contratoId = null, transaction = null) {
+  const contratoWhere = {
+    status: { [Op.in]: STATUS_CONTRATO_BLOQUEIAM_UNIDADE }
+  };
+  if (contratoId) contratoWhere.id = { [Op.ne]: contratoId };
+
+  const [vinculo, legado] = await Promise.all([
+    ContratoComercialUnidade.findOne({
+      where: { unidade_comercial_id: unidadeId },
+      include: [{ model: ContratoComercial, as: 'contrato', required: true, where: contratoWhere }],
+      transaction,
+      lock: transaction ? transaction.LOCK.UPDATE : undefined
+    }),
+    ContratoComercial.findOne({
+      where: { ...contratoWhere, unidade_comercial_id: unidadeId },
+      transaction,
+      lock: transaction ? transaction.LOCK.UPDATE : undefined
+    })
+  ]);
+  return vinculo?.contrato || legado || null;
+}
+
+async function ensureUnidadeDisponivelParaContrato(unidade, parceiroId, contratoId = null, transaction = null) {
   const situacao = String(unidade.situacao || '').trim().toUpperCase();
   const reservaParceiroId = Number(unidade.parceiro_reserva_id || 0);
 
@@ -700,30 +781,93 @@ async function ensureUnidadeDisponivelParaContrato(unidade, parceiroId, contrato
     throw createHttpError(400, 'A unidade esta bloqueada e nao pode receber contrato comercial.');
   }
 
-  if (situacao === 'VENDIDA') {
-    throw createHttpError(400, 'A unidade ja esta marcada como vendida.');
-  }
-
   if (situacao === 'RESERVADA' && reservaParceiroId && reservaParceiroId !== Number(parceiroId)) {
     throw createHttpError(400, 'A unidade esta reservada para outro cliente.');
   }
 
-  const blockingStatuses = ['RASCUNHO', 'ATIVO', 'INADIMPLENTE', 'QUITADO'];
-  const where = {
-    unidade_comercial_id: unidade.id,
-    status: {
-      [Op.in]: blockingStatuses
-    }
-  };
-
-  if (contratoId) {
-    where.id = { [Op.ne]: contratoId };
-  }
-
-  const existing = await ContratoComercial.findOne({ where });
+  const existing = await localizarContratoBloqueanteDaUnidade(unidade.id, contratoId, transaction);
   if (existing) {
     throw createHttpError(400, 'A unidade ja possui um contrato comercial ativo ou reservado.');
   }
+
+  // VENDIDA sem contrato ativo e uma inconsistencia recuperavel. O novo contrato
+  // assume o vinculo e preserva a situacao vendida de forma idempotente.
+}
+
+function normalizarUnidadesContratoPayload(unidades = [], unidadeLegadaId = null, valorTotal = null) {
+  const source = Array.isArray(unidades) && unidades.length
+    ? unidades
+    : (unidadeLegadaId ? [{ unidade_comercial_id: unidadeLegadaId, valor_atribuido: valorTotal, principal: true }] : []);
+  const seen = new Set();
+  const normalized = source.map((item, index) => {
+    const unidadeId = Number(item?.unidade_comercial_id || item?.id || 0);
+    if (!Number.isInteger(unidadeId) || unidadeId <= 0) {
+      throw createHttpError(400, `Unidade invalida na posicao ${index + 1}.`);
+    }
+    if (seen.has(unidadeId)) throw createHttpError(400, 'A mesma unidade nao pode aparecer duas vezes no contrato.');
+    seen.add(unidadeId);
+    const valorAtribuido = roundCurrency(item?.valor_atribuido);
+    if (!(valorAtribuido > 0)) throw createHttpError(400, `Informe o valor da unidade na posicao ${index + 1}.`);
+    return {
+      unidade_comercial_id: unidadeId,
+      ordem: index + 1,
+      principal: Boolean(item?.principal),
+      valor_cadastro_referencia: item?.valor_cadastro_referencia != null
+        ? roundCurrency(item.valor_cadastro_referencia)
+        : null,
+      valor_atribuido: valorAtribuido
+    };
+  });
+  if (!normalized.length) throw createHttpError(400, 'Informe ao menos uma unidade para o contrato.');
+  const principais = normalized.filter((item) => item.principal);
+  if (principais.length > 1) throw createHttpError(400, 'Somente uma unidade pode ser marcada como principal.');
+  if (!principais.length) normalized[0].principal = true;
+  const soma = roundCurrency(normalized.reduce((total, item) => total + item.valor_atribuido, 0));
+  if (valorTotal != null && Math.abs(soma - roundCurrency(valorTotal)) > 0.02) {
+    throw createHttpError(400, 'A soma dos valores das unidades deve fechar o valor total do contrato.');
+  }
+  return normalized;
+}
+
+async function carregarUnidadesContratoParaGravacao(unidadesNormalizadas, empreendimentoId, parceiroId, contratoId, transaction) {
+  const ids = unidadesNormalizadas.map((item) => item.unidade_comercial_id).sort((a, b) => a - b);
+  const unidades = await UnidadeComercial.findAll({
+    where: { id: { [Op.in]: ids } },
+    order: [['id', 'ASC']],
+    transaction,
+    lock: transaction.LOCK.UPDATE
+  });
+  if (unidades.length !== ids.length) throw createHttpError(400, 'Uma ou mais unidades informadas nao existem.');
+  const porId = new Map(unidades.map((item) => [Number(item.id), item]));
+  for (const item of unidadesNormalizadas) {
+    const unidade = porId.get(item.unidade_comercial_id);
+    if (Number(unidade.empreendimento_id) !== Number(empreendimentoId)) {
+      throw createHttpError(400, `A unidade ${unidade.codigo} nao pertence ao empreendimento informado.`);
+    }
+    await ensureUnidadeDisponivelParaContrato(unidade, parceiroId, contratoId, transaction);
+  }
+  return unidadesNormalizadas.map((item) => ({ ...item, unidade: porId.get(item.unidade_comercial_id) }));
+}
+
+async function salvarUnidadesContrato({ contratoId, unidades, usuarioId, transaction }) {
+  await ContratoComercialUnidade.destroy({ where: { contrato_comercial_id: contratoId }, transaction });
+  await ContratoComercialUnidade.bulkCreate(unidades.map(({ unidade, ...item }) => ({
+    ...item,
+    contrato_comercial_id: contratoId,
+    confirmado_por: usuarioId || null,
+    confirmado_em: new Date()
+  })), { transaction });
+}
+
+async function listarUnidadeIdsContrato(contrato, transaction = null) {
+  const vinculos = await ContratoComercialUnidade.findAll({
+    where: { contrato_comercial_id: contrato.id },
+    attributes: ['unidade_comercial_id'],
+    transaction
+  });
+  const ids = vinculos.map((item) => Number(item.unidade_comercial_id)).filter((id) => id > 0);
+  if (!ids.length && Number(contrato.unidade_comercial_id || 0) > 0) ids.push(Number(contrato.unidade_comercial_id));
+  return [...new Set(ids)];
 }
 
 function getSituacaoUnidadePorStatusContrato(status) {
@@ -741,11 +885,8 @@ function getSituacaoUnidadePorStatusContrato(status) {
 }
 
 async function sincronizarSituacaoUnidade(contrato, transaction) {
-  const unidade = await UnidadeComercial.findByPk(contrato.unidade_comercial_id, { transaction });
-  if (!unidade) {
-    return;
-  }
-
+  const unidadeIds = await listarUnidadeIdsContrato(contrato, transaction);
+  if (!unidadeIds.length) return;
   const novaSituacao = getSituacaoUnidadePorStatusContrato(contrato.status);
   const payload = {
     situacao: novaSituacao
@@ -758,7 +899,13 @@ async function sincronizarSituacaoUnidade(contrato, transaction) {
     payload.reservado_ate = null;
   }
 
-  await unidade.update(payload, { transaction });
+  for (const unidadeId of unidadeIds.sort((a, b) => a - b)) {
+    if (novaSituacao === 'DISPONIVEL') {
+      const bloqueante = await localizarContratoBloqueanteDaUnidade(unidadeId, contrato.id, transaction);
+      if (bloqueante) continue;
+    }
+    await UnidadeComercial.update(payload, { where: { id: unidadeId }, transaction });
+  }
 }
 
 function totalParcelas(parcelas = []) {
@@ -833,7 +980,9 @@ function calcularIndicadoresFinanceirosContrato(parcelas = []) {
     const titulo = parcela?.tituloFinanceiro;
     const status = String(titulo?.status || 'ABERTO').trim().toUpperCase();
     const saldo = roundCurrency(titulo?.valor_saldo ?? parcela?.valor_original ?? 0);
-    const vencimento = parcela?.data_vencimento || titulo?.data_vencimento || null;
+    // Depois da geracao da agenda, o titulo financeiro passa a ser a fonte
+    // operacional do vencimento exibido e usado nos indicadores comerciais.
+    const vencimento = titulo?.data_vencimento || parcela?.data_vencimento || null;
 
     if (status === 'QUITADO') {
       resumo.parcelas_quitadas += 1;
@@ -882,6 +1031,95 @@ function mergeIndicadoresNoContrato(contrato) {
     ...plain,
     indicadoresFinanceiros: indicadores
   };
+}
+
+async function sincronizarContratoComercialPorTituloEditado({ tituloId, dataVencimento, usuarioId }) {
+  const idTitulo = Number(tituloId || 0);
+  if (!Number.isInteger(idTitulo) || idTitulo <= 0) return [];
+
+  return sequelize.transaction(async (transaction) => {
+    const parcelasVinculadas = await ContratoComercialParcela.findAll({
+      where: { titulo_financeiro_id: idTitulo },
+      attributes: ['id', 'contrato_comercial_id', 'data_vencimento'],
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!parcelasVinculadas.length) return [];
+
+    const vencimentoAtualizado = String(dataVencimento || '').trim() || null;
+    if (vencimentoAtualizado) {
+      await ContratoComercialParcela.update(
+        { data_vencimento: vencimentoAtualizado },
+        {
+          where: { titulo_financeiro_id: idTitulo },
+          transaction
+        }
+      );
+    }
+
+    const contratosIds = Array.from(new Set(
+      parcelasVinculadas
+        .map((parcela) => Number(parcela.contrato_comercial_id || 0))
+        .filter((id) => id > 0)
+    ));
+    const resultados = [];
+
+    for (const contratoId of contratosIds) {
+      const contrato = await ContratoComercial.findByPk(contratoId, {
+        attributes: ['id', 'numero', 'status'],
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!contrato) continue;
+
+      const parcelasContrato = await ContratoComercialParcela.findAll({
+        where: { contrato_comercial_id: contratoId },
+        attributes: ['id', 'data_vencimento', 'valor_original'],
+        include: [{
+          model: TituloFinanceiro,
+          as: 'tituloFinanceiro',
+          required: false,
+          attributes: ['id', 'status', 'valor_saldo', 'data_vencimento']
+        }],
+        transaction
+      });
+      const indicadores = calcularIndicadoresFinanceirosContrato(parcelasContrato);
+      const statusAnterior = String(contrato.status || '').trim().toUpperCase();
+      const statusSugerido = String(indicadores.status_sugerido || 'ATIVO').trim().toUpperCase();
+      const podeSincronizarStatus = STATUS_CONTRATO_SINCRONIZAVEIS_FINANCEIRO.includes(statusAnterior);
+
+      if (podeSincronizarStatus && statusAnterior !== statusSugerido) {
+        await contrato.update({
+          status: statusSugerido,
+          atualizado_por: usuarioId || null
+        }, { transaction });
+
+        await registrarEventoContratoComercial({
+          transaction,
+          contratoId,
+          tipoEvento: 'STATUS_FINANCEIRO_SINCRONIZADO',
+          descricao: `Status atualizado automaticamente de ${statusAnterior} para ${statusSugerido} apos edicao do titulo financeiro.`,
+          metadata: {
+            titulo_financeiro_id: idTitulo,
+            status_anterior: statusAnterior,
+            status_novo: statusSugerido,
+            data_vencimento: vencimentoAtualizado,
+            indicadores
+          },
+          usuarioId
+        });
+      }
+
+      resultados.push({
+        contrato_id: contratoId,
+        status_anterior: statusAnterior,
+        status_atual: podeSincronizarStatus ? statusSugerido : statusAnterior,
+        indicadores
+      });
+    }
+
+    return resultados;
+  });
 }
 
 async function registrarEventoContratoComercial({ transaction, contratoId, tipoEvento, dataEvento, descricao, metadata, usuarioId }) {
@@ -1074,6 +1312,9 @@ async function listarUnidadesComerciais(filters = {}) {
 
 async function criarUnidadeComercial(payload = {}) {
   await ensureEmpreendimentoExists(payload.empreendimento_id);
+  if (String(payload.situacao || '').trim().toUpperCase() === 'VENDIDA' && !(await getComercialPermitirVendaManual())) {
+    throw createHttpError(400, 'A situacao VENDIDA e definida por um contrato de venda. A venda manual esta desativada.');
+  }
   const torre = normalizeOptionalText(payload.torre);
   await ensureUniqueUnidadeCodigo(payload.empreendimento_id, payload.codigo, torre);
 
@@ -1128,6 +1369,12 @@ async function atualizarUnidadeComercial(id, payload = {}) {
 
   if (payload.parceiro_reserva_id) {
     await ensureClienteParceiro(payload.parceiro_reserva_id);
+  }
+
+  const situacaoAtual = String(unidade.situacao || '').trim().toUpperCase();
+  const novaSituacao = String(payload.situacao || situacaoAtual).trim().toUpperCase();
+  if (novaSituacao === 'VENDIDA' && situacaoAtual !== 'VENDIDA' && !(await getComercialPermitirVendaManual())) {
+    throw createHttpError(400, 'A situacao VENDIDA e definida por um contrato de venda. A venda manual esta desativada.');
   }
 
   await unidade.update(updatePayload);
@@ -1356,6 +1603,28 @@ async function anexarIndicadoresContratos(contratos = [], { manterParcelas = fal
     const plain = typeof contrato.toJSON === 'function' ? contrato.toJSON() : { ...contrato };
     const parcelasContrato = porContrato.get(Number(plain.id)) || plain.parcelas || [];
     const compradoresContrato = Array.isArray(plain.compradoresContrato) ? plain.compradoresContrato : [];
+    const unidadesContrato = Array.isArray(plain.unidadesContrato) ? plain.unidadesContrato : [];
+    const unidades = unidadesContrato.length
+      ? unidadesContrato
+        .map((item) => ({
+          id: item.id,
+          contrato_comercial_id: item.contrato_comercial_id,
+          unidade_comercial_id: item.unidade_comercial_id,
+          ordem: item.ordem,
+          principal: Boolean(item.principal),
+          valor_cadastro_referencia: item.valor_cadastro_referencia,
+          valor_atribuido: item.valor_atribuido,
+          unidade: item.unidadeComercial
+        }))
+        .sort((a, b) => Number(a.ordem || 0) - Number(b.ordem || 0))
+      : [{
+          unidade_comercial_id: plain.unidade_comercial_id,
+          ordem: 1,
+          principal: true,
+          valor_cadastro_referencia: plain.unidadeComercial?.valor_base_venda ?? plain.unidadeComercial?.valor_tabela ?? null,
+          valor_atribuido: plain.valor_total,
+          unidade: plain.unidadeComercial
+        }].filter((item) => item.unidade_comercial_id);
     const compradores = compradoresContrato.length
       ? compradoresContrato
         .map((item) => ({
@@ -1384,6 +1653,7 @@ async function anexarIndicadoresContratos(contratos = [], { manterParcelas = fal
 
     return {
       ...plain,
+      unidades,
       compradores,
       parcelas: manterParcelas ? parcelasContrato : plain.parcelas,
       eventos,
@@ -1409,7 +1679,18 @@ async function listarContratosComerciais(filters = {}) {
   }
 
   if (filters.unidade_comercial_id) {
-    where.unidade_comercial_id = Number(filters.unidade_comercial_id);
+    const unidadeId = Number(filters.unidade_comercial_id);
+    const vinculos = await ContratoComercialUnidade.findAll({
+      where: { unidade_comercial_id: unidadeId },
+      attributes: ['contrato_comercial_id']
+    });
+    const ids = vinculos.map((item) => Number(item.contrato_comercial_id));
+    const legados = await ContratoComercial.findAll({
+      where: { unidade_comercial_id: unidadeId },
+      attributes: ['id']
+    });
+    ids.push(...legados.map((item) => Number(item.id)));
+    where.id = { [Op.in]: [...new Set(ids)] };
   }
 
   if (filters.parceiro_id) {
@@ -1621,9 +1902,12 @@ async function sincronizarTituloComissao({
 
 async function criarContratoComercial(req, payload = {}) {
   const compradoresNormalizados = normalizarCompradoresPayload(payload.compradores, payload.parceiro_id);
+  const unidadesInformadas = Array.isArray(payload.unidades) ? payload.unidades : [];
+  const unidadePrincipalInformada = unidadesInformadas.find((item) => item?.principal) || unidadesInformadas[0] || null;
+  const unidadePrincipalId = unidadePrincipalInformada?.unidade_comercial_id || payload.unidade_comercial_id;
   const [empreendimento, unidade, cliente, corretorParceiro, obra, compradoresValidados] = await Promise.all([
     ensureEmpreendimentoExists(payload.empreendimento_id),
-    ensureUnidadeExists(payload.unidade_comercial_id),
+    ensureUnidadeExists(unidadePrincipalId),
     ensureClienteParceiro(payload.parceiro_id),
     ensureCorretorParceiro(payload.corretor_parceiro_id),
     ensureObraExists(payload.obra_id),
@@ -1645,7 +1929,6 @@ async function criarContratoComercial(req, payload = {}) {
 
   const numeroContrato = resolveContratoNumeroCadastro(payload.numero, empreendimento, unidade);
   await ensureUniqueContratoNumero(numeroContrato);
-  await ensureUnidadeDisponivelParaContrato(unidade, cliente.id);
 
   const dataAssinatura = payload.data_assinatura || payload.data_contrato;
   const configCategoriasComerciais = await getComercialCategoriasContratoConfig();
@@ -1671,12 +1954,25 @@ async function criarContratoComercial(req, payload = {}) {
   if (roundCurrency(valorTotalInformado) !== roundCurrency(totalCalculado)) {
     throw createHttpError(400, 'O valor total do contrato deve ser igual a soma das parcelas.');
   }
+  const unidadesNormalizadas = normalizarUnidadesContratoPayload(
+    unidadesInformadas,
+    unidade.id,
+    valorTotalInformado
+  );
 
   const transaction = await sequelize.transaction();
   try {
+    const unidadesValidadas = await carregarUnidadesContratoParaGravacao(
+      unidadesNormalizadas,
+      empreendimento.id,
+      cliente.id,
+      null,
+      transaction
+    );
+    const unidadePrincipal = unidadesValidadas.find((item) => item.principal) || unidadesValidadas[0];
     const contrato = await ContratoComercial.create({
       empreendimento_id: empreendimento.id,
-      unidade_comercial_id: unidade.id,
+      unidade_comercial_id: unidadePrincipal.unidade_comercial_id,
       parceiro_id: cliente.id,
       corretor_parceiro_id: corretorParceiro?.id || null,
       obra_id: obra.id,
@@ -1709,6 +2005,12 @@ async function criarContratoComercial(req, payload = {}) {
     await salvarCompradoresContrato({
       contratoId: contrato.id,
       compradores: compradoresValidados,
+      transaction
+    });
+    await salvarUnidadesContrato({
+      contratoId: contrato.id,
+      unidades: unidadesValidadas,
+      usuarioId: req.user?.id || null,
       transaction
     });
 
@@ -1817,7 +2119,8 @@ async function criarContratoComercial(req, payload = {}) {
       descricao: 'Contrato comercial criado com geracao de parcelas e titulos financeiros',
       metadata: {
         empreendimento_id: empreendimento.id,
-        unidade_comercial_id: unidade.id,
+        unidade_comercial_id: unidadePrincipal.unidade_comercial_id,
+        unidades_comerciais_ids: unidadesValidadas.map((item) => item.unidade_comercial_id),
         parceiro_id: cliente.id,
         compradores: compradoresValidados.map((item) => item.parceiro_id),
         corretor_parceiro_id: corretorParceiro?.id || null,
@@ -1838,6 +2141,14 @@ async function criarContratoComercial(req, payload = {}) {
 async function atualizarContratoComercial(req, id, payload = {}) {
   const contrato = await carregarContratoComercial(id);
   const atualizarCompradores = Object.prototype.hasOwnProperty.call(payload, 'compradores');
+  const atualizarUnidades = Object.prototype.hasOwnProperty.call(payload, 'unidades');
+  const unidadesNormalizadas = atualizarUnidades
+    ? normalizarUnidadesContratoPayload(
+        payload.unidades,
+        contrato.unidade_comercial_id,
+        payload.valor_total != null ? payload.valor_total : contrato.valor_total
+      )
+    : null;
   const compradoresValidados = atualizarCompradores
     ? await ensureCompradoresClientes(normalizarCompradoresPayload(payload.compradores, contrato.parceiro_id))
     : null;
@@ -1889,11 +2200,26 @@ async function atualizarContratoComercial(req, id, payload = {}) {
 
   const transaction = await sequelize.transaction();
   try {
+    const unidadesAnterioresIds = atualizarUnidades ? await listarUnidadeIdsContrato(contrato, transaction) : [];
+    const unidadesValidadas = atualizarUnidades
+      ? await carregarUnidadesContratoParaGravacao(
+          unidadesNormalizadas,
+          contrato.empreendimento_id,
+          contrato.parceiro_id,
+          contrato.id,
+          transaction
+        )
+      : null;
     const updateData = {
       ...payload,
       atualizado_por: req.user?.id || null
     };
     delete updateData.compradores;
+    delete updateData.unidades;
+    if (unidadesValidadas) {
+      const principal = unidadesValidadas.find((item) => item.principal) || unidadesValidadas[0];
+      updateData.unidade_comercial_id = principal.unidade_comercial_id;
+    }
 
     const dataAssinaturaAtualizada = atualizarDataAssinatura
       ? (payload.data_assinatura || payload.data_contrato || null)
@@ -2031,6 +2357,14 @@ async function atualizarContratoComercial(req, id, payload = {}) {
         transaction
       });
     }
+    if (unidadesValidadas) {
+      await salvarUnidadesContrato({
+        contratoId: contrato.id,
+        unidades: unidadesValidadas,
+        usuarioId: req.user?.id || null,
+        transaction
+      });
+    }
 
     const contratoAtualizado = await ContratoComercial.findByPk(contrato.id, { transaction });
     const tituloComissao = await sincronizarTituloComissao({
@@ -2050,6 +2384,17 @@ async function atualizarContratoComercial(req, id, payload = {}) {
     }
 
     await sincronizarSituacaoUnidade(contratoAtualizado, transaction);
+    if (unidadesValidadas) {
+      const novasIds = new Set(unidadesValidadas.map((item) => item.unidade_comercial_id));
+      for (const unidadeId of unidadesAnterioresIds.filter((item) => !novasIds.has(item))) {
+        const bloqueante = await localizarContratoBloqueanteDaUnidade(unidadeId, contrato.id, transaction);
+        if (!bloqueante) {
+          await UnidadeComercial.update({
+            situacao: 'DISPONIVEL', parceiro_reserva_id: null, reservado_ate: null
+          }, { where: { id: unidadeId }, transaction });
+        }
+      }
+    }
 
     await transaction.commit();
 
@@ -2254,9 +2599,24 @@ async function trocarUnidadeContratoComercial(req, id, payload = {}) {
     throw createHttpError(400, 'Nao e possivel trocar a unidade de um contrato encerrado.');
   }
 
+  const unidadesContrato = Array.isArray(contrato.unidades) ? contrato.unidades : [];
+  const unidadeOrigemId = Number(
+    payload.unidade_comercial_origem_id
+    || (unidadesContrato.length === 1 ? unidadesContrato[0].unidade_comercial_id : 0)
+    || contrato.unidade_comercial_id
+  );
+  if (unidadesContrato.length > 1 && !payload.unidade_comercial_origem_id) {
+    throw createHttpError(400, 'Informe qual unidade do contrato sera substituida.');
+  }
+  const vinculoOrigem = unidadesContrato.find((item) => Number(item.unidade_comercial_id) === unidadeOrigemId);
+  if (!vinculoOrigem) throw createHttpError(400, 'A unidade de origem nao pertence ao contrato.');
+
   const unidadeDestino = await ensureUnidadeExists(payload.unidade_comercial_destino_id);
-  if (Number(unidadeDestino.id) === Number(contrato.unidade_comercial_id)) {
-    throw createHttpError(400, 'Selecione uma unidade diferente da unidade atual do contrato.');
+  if (unidadesContrato.some((item) => Number(item.unidade_comercial_id) === Number(unidadeDestino.id))) {
+    throw createHttpError(400, 'A unidade de destino ja pertence ao contrato.');
+  }
+  if (unidadesContrato.length > 1 && Number(unidadeDestino.empreendimento_id) !== Number(contrato.empreendimento_id)) {
+    throw createHttpError(400, 'Em contrato multiunidade, a troca deve permanecer no mesmo empreendimento.');
   }
 
   await ensureUnidadeDisponivelParaContrato(unidadeDestino, contrato.parceiro_id, contrato.id);
@@ -2273,7 +2633,7 @@ async function trocarUnidadeContratoComercial(req, id, payload = {}) {
   }
   const observacoesTroca = mergeObservacoes(
     payload.observacoes,
-    `Troca de unidade: ${contrato.unidadeComercial?.codigo || contrato.unidade_comercial_id} -> ${unidadeDestino.codigo}`
+    `Troca de unidade: ${vinculoOrigem.unidade?.codigo || unidadeOrigemId} -> ${unidadeDestino.codigo}`
   );
 
   const transaction = await sequelize.transaction();
@@ -2335,8 +2695,38 @@ async function trocarUnidadeContratoComercial(req, id, payload = {}) {
       }, { transaction });
     }
 
+    const unidadePrincipalId = vinculoOrigem.principal
+      ? unidadeDestino.id
+      : contrato.unidade_comercial_id;
+    const unidadesAtualizadas = unidadesContrato.map((item) => (
+      Number(item.unidade_comercial_id) === unidadeOrigemId
+        ? {
+            unidade_comercial_id: unidadeDestino.id,
+            ordem: item.ordem,
+            principal: item.principal,
+            valor_cadastro_referencia: unidadeDestino.valor_base_venda ?? unidadeDestino.valor_tabela ?? null,
+            valor_atribuido: roundCurrency(Number(item.valor_atribuido || 0) + diferenca),
+            unidade: unidadeDestino
+          }
+        : {
+            unidade_comercial_id: item.unidade_comercial_id,
+            ordem: item.ordem,
+            principal: item.principal,
+            valor_cadastro_referencia: item.valor_cadastro_referencia,
+            valor_atribuido: roundCurrency(item.valor_atribuido),
+            unidade: item.unidade
+          }
+    ));
+    normalizarUnidadesContratoPayload(unidadesAtualizadas, unidadePrincipalId, novoValorTotal);
+    await salvarUnidadesContrato({
+      contratoId: contrato.id,
+      unidades: unidadesAtualizadas,
+      usuarioId: req.user?.id || null,
+      transaction
+    });
+
     await contratoDb.update({
-      unidade_comercial_id: unidadeDestino.id,
+      unidade_comercial_id: unidadePrincipalId,
       empreendimento_id: empreendimentoDestino.id,
       obra_id: obraDestino.id,
       valor_total: novoValorTotal,
@@ -2351,7 +2741,7 @@ async function trocarUnidadeContratoComercial(req, id, payload = {}) {
         reservado_ate: null
       },
       {
-        where: { id: contrato.unidade_comercial_id },
+        where: { id: unidadeOrigemId },
         transaction
       }
     );
@@ -2378,9 +2768,9 @@ async function trocarUnidadeContratoComercial(req, id, payload = {}) {
       contratoId: contrato.id,
       tipoEvento: 'TROCA_UNIDADE',
       dataEvento: dataEfetiva,
-      descricao: `Troca da unidade ${contrato.unidadeComercial?.codigo || contrato.unidade_comercial_id} para ${unidadeDestino.codigo}`,
+      descricao: `Troca da unidade ${vinculoOrigem.unidade?.codigo || unidadeOrigemId} para ${unidadeDestino.codigo}`,
       metadata: {
-        unidade_origem_id: contrato.unidade_comercial_id,
+        unidade_origem_id: unidadeOrigemId,
         unidade_destino_id: unidadeDestino.id,
         valor_anterior: valorAtual,
         novo_valor_total: novoValorTotal,
@@ -2434,6 +2824,7 @@ async function excluirContratoComercial(req, id) {
 
   const transaction = await sequelize.transaction();
   try {
+    const unidadeIdsContrato = await listarUnidadeIdsContrato(contrato, transaction);
     if (tituloIds.length) {
       await TituloFinanceiro.update(
         {
@@ -2459,26 +2850,14 @@ async function excluirContratoComercial(req, id) {
       }
     );
 
-    const contratoAtivoUnidade = await ContratoComercial.findOne({
-      where: {
-        unidade_comercial_id: contrato.unidade_comercial_id,
-        status: { [Op.in]: ['RASCUNHO', 'ATIVO', 'INADIMPLENTE', 'QUITADO'] }
-      },
-      transaction
-    });
-
-    if (!contratoAtivoUnidade) {
-      await UnidadeComercial.update(
-        {
-          situacao: 'DISPONIVEL',
-          parceiro_reserva_id: null,
-          reservado_ate: null
-        },
-        {
-          where: { id: contrato.unidade_comercial_id },
-          transaction
-        }
-      );
+    for (const unidadeId of unidadeIdsContrato) {
+      const contratoAtivoUnidade = await localizarContratoBloqueanteDaUnidade(unidadeId, contrato.id, transaction);
+      if (!contratoAtivoUnidade) {
+        await UnidadeComercial.update(
+          { situacao: 'DISPONIVEL', parceiro_reserva_id: null, reservado_ate: null },
+          { where: { id: unidadeId }, transaction }
+        );
+      }
     }
 
     await transaction.commit();
@@ -2495,6 +2874,7 @@ async function excluirContratoComercial(req, id) {
         numero: contrato.numero,
         empreendimento_id: contrato.empreendimento_id,
         unidade_comercial_id: contrato.unidade_comercial_id,
+        unidades_comerciais_ids: unidadeIdsContrato,
         parceiro_id: contrato.parceiro_id,
         titulos_cancelados: tituloIds
       }
@@ -2526,6 +2906,9 @@ module.exports = {
   listarObrasComerciais,
   listarTabelasPrecoComerciais,
   listarUnidadesComerciais,
+  obterConfiguracaoUnidadesComerciais,
+  atualizarConfiguracaoUnidadesComerciais,
+  sincronizarContratoComercialPorTituloEditado,
   sincronizarStatusFinanceiroContratoComercial,
   trocarUnidadeContratoComercial
 };

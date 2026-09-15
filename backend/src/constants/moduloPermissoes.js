@@ -612,7 +612,8 @@ const MODULO_PERMISSION_GROUPS = [
         permissoes: [
           { key: 'comercial.vendas.visualizar', label: 'Visualizar vendas', descricao: 'Ver propostas, vendas e contratos comerciais.' },
           { key: 'comercial.vendas.criar', label: 'Criar proposta/venda', descricao: 'Registrar novas propostas e vendas.' },
-          { key: 'comercial.vendas.contratos', label: 'Gerenciar contratos comerciais', descricao: 'Emitir e gerenciar contratos de venda.' }
+          { key: 'comercial.vendas.contratos', label: 'Gerenciar contratos comerciais', descricao: 'Emitir e gerenciar contratos de venda.' },
+          { key: 'comercial.vendas.importar', label: 'Importar contratos do Sienge', descricao: 'Baixar o modelo, validar e confirmar importacoes historicas de contratos e recebimentos.' }
         ]
       },
       {

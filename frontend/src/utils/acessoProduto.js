@@ -967,6 +967,7 @@ export function canAccessComercial(user) {
     'comercial.vendas.visualizar',
     'comercial.vendas.criar',
     'comercial.vendas.contratos',
+    'comercial.vendas.importar',
     'comercial.relatorios.visualizar'
   ]);
 }
@@ -976,7 +977,8 @@ export function canViewComercialEmpreendimentos(user) {
   if (isBusinessAdmin(user)) return true;
   return hasAnyExplicitPermissao(user, [
     'comercial.empreendimentos.visualizar',
-    'comercial.empreendimentos.gerenciar'
+    'comercial.empreendimentos.gerenciar',
+    'comercial.vendas.importar'
   ]);
 }
 
@@ -987,8 +989,15 @@ export function canViewComercialContratos(user) {
     'comercial.vendas.visualizar',
     'comercial.vendas.criar',
     'comercial.vendas.contratos',
+    'comercial.vendas.importar',
     'comercial.relatorios.visualizar'
   ]);
+}
+
+export function canImportComercialContratos(user) {
+  if (!hasEnabledModule(user, 'COMERCIAL')) return false;
+  if (isBusinessAdmin(user)) return true;
+  return hasAnyExplicitPermissao(user, ['comercial.vendas.importar']);
 }
 
 const RH_DP_AREA_PERMISSION_KEYS = [

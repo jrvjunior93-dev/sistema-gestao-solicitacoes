@@ -39,11 +39,15 @@ db.UnidadeComercial = require('./UnidadeComercial')(sequelize, Sequelize);
 db.TabelaPrecoComercial = require('./TabelaPrecoComercial')(sequelize, Sequelize);
 db.TabelaPrecoComercialItem = require('./TabelaPrecoComercialItem')(sequelize, Sequelize);
 db.ContratoComercial = require('./ContratoComercial')(sequelize, Sequelize);
+db.ContratoComercialUnidade = require('./ContratoComercialUnidade')(sequelize, Sequelize);
 db.ContratoComercialComprador = require('./ContratoComercialComprador')(sequelize, Sequelize);
 db.ContratoComercialParcela = require('./ContratoComercialParcela')(sequelize, Sequelize);
 db.ContratoComercialEvento = require('./ContratoComercialEvento')(sequelize, Sequelize);
 db.ContratoComercialModelo = require('./ContratoComercialModelo')(sequelize, Sequelize);
 db.ContratoComercialDocumento = require('./ContratoComercialDocumento')(sequelize, Sequelize);
+db.ComercialContratoImportacao = require('./ComercialContratoImportacao')(sequelize, Sequelize);
+db.ComercialContratoImportacaoLinha = require('./ComercialContratoImportacaoLinha')(sequelize, Sequelize);
+db.ComercialContratoImportacaoResultado = require('./ComercialContratoImportacaoResultado')(sequelize, Sequelize);
 db.ProvisaoCategoriaMacro = require('./ProvisaoCategoriaMacro')(sequelize, Sequelize);
 db.ProvisaoFinanceira = require('./ProvisaoFinanceira')(sequelize, Sequelize);
 db.ProvisaoFinanceiraHistorico = require('./ProvisaoFinanceiraHistorico')(sequelize, Sequelize);
@@ -893,6 +897,37 @@ db.ContratoComercial.belongsTo(db.UnidadeComercial, {
   as: 'unidadeComercial'
 });
 
+db.ContratoComercial.hasMany(db.ContratoComercialUnidade, {
+  foreignKey: 'contrato_comercial_id',
+  as: 'unidadesContrato',
+  onDelete: 'CASCADE'
+});
+
+db.ContratoComercialUnidade.belongsTo(db.ContratoComercial, {
+  foreignKey: 'contrato_comercial_id',
+  as: 'contrato'
+});
+
+db.UnidadeComercial.hasMany(db.ContratoComercialUnidade, {
+  foreignKey: 'unidade_comercial_id',
+  as: 'vinculosContratosComerciais'
+});
+
+db.ContratoComercialUnidade.belongsTo(db.UnidadeComercial, {
+  foreignKey: 'unidade_comercial_id',
+  as: 'unidadeComercial'
+});
+
+db.User.hasMany(db.ContratoComercialUnidade, {
+  foreignKey: 'confirmado_por',
+  as: 'unidadesContratosComerciaisConfirmadas'
+});
+
+db.ContratoComercialUnidade.belongsTo(db.User, {
+  foreignKey: 'confirmado_por',
+  as: 'confirmadoPor'
+});
+
 db.Parceiro.hasMany(db.ContratoComercial, {
   foreignKey: 'parceiro_id',
   as: 'contratosComerciais'
@@ -1096,6 +1131,38 @@ db.User.hasMany(db.ContratoComercialDocumento, {
 db.ContratoComercialDocumento.belongsTo(db.User, {
   foreignKey: 'atualizado_por',
   as: 'atualizadoPor'
+});
+
+db.ComercialContratoImportacao.hasMany(db.ComercialContratoImportacaoLinha, {
+  foreignKey: 'importacao_id',
+  as: 'linhas',
+  onDelete: 'CASCADE'
+});
+
+db.ComercialContratoImportacaoLinha.belongsTo(db.ComercialContratoImportacao, {
+  foreignKey: 'importacao_id',
+  as: 'importacao'
+});
+
+db.ComercialContratoImportacao.hasMany(db.ComercialContratoImportacaoResultado, {
+  foreignKey: 'importacao_id',
+  as: 'resultados',
+  onDelete: 'CASCADE'
+});
+
+db.ComercialContratoImportacaoResultado.belongsTo(db.ComercialContratoImportacao, {
+  foreignKey: 'importacao_id',
+  as: 'importacao'
+});
+
+db.ContratoComercial.hasMany(db.ComercialContratoImportacaoResultado, {
+  foreignKey: 'contrato_comercial_id',
+  as: 'resultadosImportacao'
+});
+
+db.ComercialContratoImportacaoResultado.belongsTo(db.ContratoComercial, {
+  foreignKey: 'contrato_comercial_id',
+  as: 'contrato'
 });
 
 db.ProvisaoCategoriaMacro.hasMany(db.ProvisaoFinanceira, {
