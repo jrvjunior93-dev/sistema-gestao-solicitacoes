@@ -3441,10 +3441,12 @@ async function criarTituloManualComBaixaAtomica(req, payload = {}, { transaction
       valorOriginal: Number(titulo.valor_original || 0),
       valorBaixado: novoValorBaixado
     });
+    const chequeTerceiroSemMovimentoBancario = isChequeFormaRecebimento(formaRecebimento)
+      && (tipo === 'RECEBER' || payload.usar_cheque_terceiro === true);
 
     const movimento = await MovimentoFinanceiro.create({
       titulo_financeiro_id: titulo.id,
-      conta_bancaria_id: conta.id,
+      conta_bancaria_id: chequeTerceiroSemMovimentoBancario ? null : conta.id,
       empresa_id: empresaBaixaId,
       ...movimentoIntercompanyFields,
       caixa_sessao_id: caixaSessao?.id || null,
@@ -3722,6 +3724,9 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
     });
     const contaMovimento = cartaoBaixa.conta || conta;
     const formaMovimento = cartaoBaixa.formaRecebimento;
+    const chequeTerceiroSemMovimentoBancario = isChequeFormaRecebimento(formaMovimento)
+      && (getTituloTipo(titulo) === 'RECEBER' || payload.usar_cheque_terceiro === true);
+    const contaEfetivaMovimento = chequeTerceiroSemMovimentoBancario ? null : contaMovimento;
 
     if (formaMovimento === 'DINHEIRO') {
       if (!contaMovimento) {
@@ -3735,15 +3740,15 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       }
     }
 
-    const caixaSessao = contaMovimento
-      ? await obterSessaoAbertaParaConta(contaMovimento, payload.data_movimento, {
+    const caixaSessao = contaEfetivaMovimento
+      ? await obterSessaoAbertaParaConta(contaEfetivaMovimento, payload.data_movimento, {
         transaction,
         exigir: formaMovimento === 'DINHEIRO'
       })
       : null;
     const movimento = await MovimentoFinanceiro.create({
       titulo_financeiro_id: titulo.id,
-      conta_bancaria_id: contaMovimento?.id || null,
+      conta_bancaria_id: contaEfetivaMovimento?.id || null,
       baixa_grupo_id: payload.baixa_grupo_id || null,
       baixa_componente_id: payload.baixa_componente_id || null,
       fatura_cartao_id: cartaoBaixa.fatura?.id || null,
@@ -3856,7 +3861,7 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
       descricao: 'Baixa financeira registrada no titulo',
         metadata: {
           movimento_id: movimento.id,
-          conta_bancaria_id: contaMovimento?.id || null,
+          conta_bancaria_id: contaEfetivaMovimento?.id || null,
           cartao_id: cartaoBaixa.cartao?.id || null,
           fatura_cartao_id: cartaoBaixa.fatura?.id || null,
           empresa_baixa_id: empresaBaixaId,
@@ -4180,7 +4185,10 @@ async function baixarTitulosParceladosEmMassa(req, payload = {}) {
       const caixaSessao = await obterSessaoAbertaParaConta(conta, parcela.data_movimento, { transaction });
       const movimentoParcela = await MovimentoFinanceiro.create({
         titulo_financeiro_id: tituloParcela.id,
-        conta_bancaria_id: conta.id,
+        conta_bancaria_id: formaRecebimento === 'CHEQUE'
+          && (tipoTitulo === 'RECEBER' || parcela.usar_cheque_terceiro === true)
+          ? null
+          : conta.id,
         cartao_id: cartao?.id || null,
         empresa_id: empresaBaixaId,
         caixa_sessao_id: caixaSessao?.id || null,
@@ -4420,7 +4428,7 @@ async function baixarTituloPorConciliacoes(req, tituloId, payload = {}) {
   };
 }
 
-async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {}) {
+async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {}, internalOptions = {}) {
   const titulo = await carregarTituloPorId(req, tituloId, { includeMovimentos: false });
   const movimento = await MovimentoFinanceiro.findOne({
     where: {
@@ -4514,24 +4522,36 @@ async function estornarMovimentoTitulo(req, tituloId, movimentoId, payload = {})
         lock: transaction.LOCK.UPDATE
       });
       if (chequeRecebido) {
-        if (String(chequeRecebido.status).toUpperCase() !== 'EM_CARTEIRA') {
+        const statusChequeRecebido = String(chequeRecebido.status).toUpperCase();
+        const statusPermitidos = Array.isArray(internalOptions.chequeRecebidoStatusPermitidos)
+          ? internalOptions.chequeRecebidoStatusPermitidos.map((status) => String(status).toUpperCase())
+          : ['EM_CARTEIRA'];
+        if (!statusPermitidos.includes(statusChequeRecebido)) {
           throw createHttpError(409, 'O cheque recebido ja possui movimentacao posterior. Reverta primeiro a utilizacao ou o deposito.');
         }
+        const statusDestinoCheque = String(internalOptions.chequeRecebidoStatusDestino || 'CANCELADO').toUpperCase();
         await chequeRecebido.update({
-          status: 'CANCELADO',
+          status: statusDestinoCheque,
+          data_devolucao: statusDestinoCheque === 'DEVOLVIDO'
+            ? (internalOptions.dataDevolucao || new Date().toISOString().slice(0, 10))
+            : chequeRecebido.data_devolucao,
           atualizado_por: req.user?.id || null
         }, { transaction });
         await ChequeTerceiroMovimento.create({
           cheque_terceiro_id: chequeRecebido.id,
-          tipo_evento: 'ESTORNO_ENTRADA',
-          status_anterior: 'EM_CARTEIRA',
-          status_novo: 'CANCELADO',
+          tipo_evento: statusDestinoCheque === 'DEVOLVIDO' ? 'DEVOLUCAO_COM_ESTORNO' : 'ESTORNO_ENTRADA',
+          status_anterior: statusChequeRecebido,
+          status_novo: statusDestinoCheque,
           empresa_origem_id: chequeRecebido.empresa_id || null,
           titulo_financeiro_id: titulo.id,
           movimento_financeiro_id: movimento.id,
           valor: roundCurrency(movimento.valor),
-          data_evento: new Date().toISOString().slice(0, 10),
-          observacoes: payload.observacoes || 'Entrada cancelada pelo estorno da baixa de recebimento.',
+          data_evento: statusDestinoCheque === 'DEVOLVIDO'
+            ? (internalOptions.dataDevolucao || new Date().toISOString().slice(0, 10))
+            : new Date().toISOString().slice(0, 10),
+          observacoes: payload.observacoes || (statusDestinoCheque === 'DEVOLVIDO'
+            ? 'Cheque devolvido e baixa do recebimento estornada.'
+            : 'Entrada cancelada pelo estorno da baixa de recebimento.'),
           criado_por: req.user?.id || null
         }, { transaction });
       }

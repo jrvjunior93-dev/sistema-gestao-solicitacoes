@@ -4839,6 +4839,12 @@ function classifyMovimentoBancario(movimento, titulo) {
   if (tipoMovimento === 'ESTORNO_BANCARIO') {
     return String(titulo?.tipo || '').toUpperCase() === 'RECEBER' ? 'SAIDA' : 'ENTRADA';
   }
+  if (tipoMovimento === 'DEPOSITO_CHEQUE_TERCEIRO') {
+    return 'ENTRADA';
+  }
+  if (tipoMovimento === 'DEVOLUCAO_CHEQUE_TERCEIRO') {
+    return 'SAIDA';
+  }
   if (tipoMovimento === 'LIBERACAO_CREDITO_ROTATIVO') {
     return 'ENTRADA';
   }
@@ -4977,7 +4983,12 @@ async function gerarRelatorioMovimentacaoContas(req, filters = {}) {
   const where = {
     data_movimento: {
       [Op.between]: [filtroPeriodo.data_inicial, filtroPeriodo.data_final]
-    }
+    },
+    [Op.or]: [
+      { conta_bancaria_id: { [Op.ne]: null } },
+      { forma_recebimento: 'PERMUTA' },
+      { tipo_permuta: { [Op.ne]: null } }
+    ]
   };
 
   if (filters.conta_bancaria_id) {

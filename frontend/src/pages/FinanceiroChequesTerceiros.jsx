@@ -46,6 +46,7 @@ const STATUS_LABELS = {
   RESERVADO: 'Reservado',
   UTILIZADO: 'Utilizado',
   DEPOSITADO: 'Depositado',
+  COMPENSADO: 'Compensado',
   DEVOLVIDO: 'Devolvido',
   CANCELADO: 'Cancelado'
 };
@@ -96,7 +97,8 @@ function Modal({ title, subtitle, children, onClose, wide = false }) {
    (R24). `bg-emerald-100`/`text-slate-700` não têm nem um nem outro. */
 function StatusBadge({ status }) {
   const normalized = String(status || '').toUpperCase();
-  const tone = normalized === 'EM_CARTEIRA' ? 'badge badge-success'
+  const tone = normalized === 'EM_CARTEIRA' || normalized === 'COMPENSADO' ? 'badge badge-success'
+    : normalized === 'DEPOSITADO' ? 'badge badge-warning'
     : normalized === 'DEVOLVIDO' || normalized === 'CANCELADO' ? 'badge badge-danger'
       : 'badge badge-muted';
   return <span className={tone}>{STATUS_LABELS[normalized] || normalized || '-'}</span>;
@@ -180,6 +182,7 @@ export default function FinanceiroChequesTerceiros() {
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState(null);
   const [action, setAction] = useState(null);
+  const [actionIdempotencyKey, setActionIdempotencyKey] = useState(null);
   const [actionForm, setActionForm] = useState({ data_evento: new Date().toISOString().slice(0, 10), conta_bancaria_id: '', empresa_destino_id: '', observacoes: '' });
 
   const canCreate = hasPermissao(user, 'financeiro.cheques.cadastrar');
@@ -272,11 +275,22 @@ export default function FinanceiroChequesTerceiros() {
   async function submitAction(event) {
     event.preventDefault(); setSaving(true); limparAvisos();
     try {
-      await movimentarChequeTerceiro(selected.id, { acao: action, ...actionForm });
-      setAction(null); setSelected(null); await load();
-      avisar.sucesso('Movimentação registrada na custodia do cheque.');
+      await movimentarChequeTerceiro(
+        selected.id,
+        { acao: action, ...actionForm },
+        action === 'DEPOSITAR' ? actionIdempotencyKey : null
+      );
+      setAction(null); setActionIdempotencyKey(null); setSelected(null); await load();
+      avisar.sucesso(action === 'DEPOSITAR'
+        ? 'Depósito registrado. O cheque ficará aguardando a conciliação do crédito bancário.'
+        : 'Movimentação registrada na custódia do cheque.');
     } catch (err) { avisar.erro(err.message || 'Erro ao movimentar cheque.'); }
     finally { setSaving(false); }
+  }
+
+  function openAction(nextAction) {
+    setAction(nextAction);
+    setActionIdempotencyKey(nextAction === 'DEPOSITAR' ? crypto.randomUUID() : null);
   }
 
   const actionLabels = { DEPOSITAR: 'Registrar depósito', DEVOLVER: 'Registrar devolução', CANCELAR: 'Cancelar cheque', TRANSFERIR: 'Transferir custódia' };
@@ -764,7 +778,49 @@ export default function FinanceiroChequesTerceiros() {
         </Modal>
       ) : null}
 
-      {selected && !action ? <Modal title={`${selected.codigo} · cheque ${selected.numero_cheque}`} subtitle={`${selected.empresa?.nome || '-'} · ${money(selected.valor)}`} onClose={() => setSelected(null)}><div className="grid gap-3 sm:grid-cols-4"><div><small className="text-[var(--c-muted)]">Status</small><div className="mt-1"><StatusBadge status={selected.status} /></div></div><div><small className="text-[var(--c-muted)]">Titular</small><strong className="block">{selected.titularParceiro?.nome || selected.titular_nome || '-'}</strong></div><div><small className="text-[var(--c-muted)]">Cliente/origem</small><strong className="block">{selected.parceiroEntregou?.nome || selected.cliente_nome || '-'}</strong></div><div><small className="text-[var(--c-muted)]">Vencimento</small><strong className="block">{dateBr(selected.data_vencimento)}</strong></div></div>{selected.status === 'EM_CARTEIRA' ? <div className="mt-4 flex flex-wrap gap-2">{canDeposit ? <button className="btn btn-outline btn-sm" onClick={() => setAction('DEPOSITAR')}><HiOutlineBanknotes /> Depositar</button> : null}{canTransfer ? <button className="btn btn-outline btn-sm" onClick={() => setAction('TRANSFERIR')}><HiOutlineArrowRight /> Transferir</button> : null}{canReturn ? <button className="btn btn-outline btn-sm" onClick={() => setAction('DEVOLVER')}>Devolver</button> : null}{canCancel ? <button className="btn btn-outline btn-perigo-suave btn-sm" onClick={() => setAction('CANCELAR')}>Cancelar cheque</button> : null}</div> : null}<h3 className="mt-6 font-semibold">Histórico</h3><div className="mt-2 space-y-2">{(selected.historico || []).map((item) => <div key={item.id} className="rounded-xl border border-[var(--c-border)] p-3 text-sm"><div className="flex justify-between gap-3"><strong>{item.tipo_evento}</strong><span>{dateBr(item.data_evento)}</span></div><p className="mt-1 text-[var(--c-muted)]">{item.observacoes || `${item.status_anterior || '-'} → ${item.status_novo}`}</p></div>)}</div></Modal> : null}
+      {selected && !action ? (
+        <Modal
+          title={`${selected.codigo} · cheque ${selected.numero_cheque}`}
+          subtitle={`${selected.empresa?.nome || '-'} · ${money(selected.valor)}`}
+          onClose={() => setSelected(null)}
+        >
+          <div className="grid gap-3 sm:grid-cols-4">
+            <div><small className="text-[var(--c-muted)]">Status</small><div className="mt-1"><StatusBadge status={selected.status} /></div></div>
+            <div><small className="text-[var(--c-muted)]">Titular</small><strong className="block">{selected.titularParceiro?.nome || selected.titular_nome || '-'}</strong></div>
+            <div><small className="text-[var(--c-muted)]">Cliente/origem</small><strong className="block">{selected.parceiroEntregou?.nome || selected.cliente_nome || '-'}</strong></div>
+            <div><small className="text-[var(--c-muted)]">Vencimento</small><strong className="block">{dateBr(selected.data_vencimento)}</strong></div>
+          </div>
+          {selected.movimentoDeposito ? (
+            <div className="mt-4 grid gap-3 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface-soft)] p-3 sm:grid-cols-3">
+              <div><small className="text-[var(--c-muted)]">Conta do depósito</small><strong className="block">{selected.movimentoDeposito.contaBancaria?.nome || '-'}</strong></div>
+              <div><small className="text-[var(--c-muted)]">Data do depósito</small><strong className="block">{dateBr(selected.data_deposito || selected.movimentoDeposito.data_movimento)}</strong></div>
+              <div><small className="text-[var(--c-muted)]">Compensação</small><strong className="block">{selected.data_compensacao ? dateBr(selected.data_compensacao) : 'Aguardando conciliação'}</strong></div>
+            </div>
+          ) : null}
+          {selected.status === 'EM_CARTEIRA' ? (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {canDeposit ? <button className="btn btn-outline btn-sm" onClick={() => openAction('DEPOSITAR')}><HiOutlineBanknotes /> Depositar</button> : null}
+              {canTransfer ? <button className="btn btn-outline btn-sm" onClick={() => openAction('TRANSFERIR')}><HiOutlineArrowRight /> Transferir</button> : null}
+              {canReturn ? <button className="btn btn-outline btn-sm" onClick={() => openAction('DEVOLVER')}>Devolver</button> : null}
+              {canCancel ? <button className="btn btn-outline btn-perigo-suave btn-sm" onClick={() => openAction('CANCELAR')}>Cancelar cheque</button> : null}
+            </div>
+          ) : null}
+          {selected.status === 'UTILIZADO' && canReturn ? (
+            <div className="mt-4">
+              <button className="btn btn-outline btn-sm" onClick={() => openAction('DEVOLVER')}>Registrar devolução pelo credor</button>
+            </div>
+          ) : null}
+          <h3 className="mt-6 font-semibold">Histórico</h3>
+          <div className="mt-2 space-y-2">
+            {(selected.historico || []).map((item) => (
+              <div key={item.id} className="rounded-xl border border-[var(--c-border)] p-3 text-sm">
+                <div className="flex justify-between gap-3"><strong>{item.tipo_evento}</strong><span>{dateBr(item.data_evento)}</span></div>
+                <p className="mt-1 text-[var(--c-muted)]">{item.observacoes || `${item.status_anterior || '-'} → ${item.status_novo}`}</p>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      ) : null}
 
       {selected && action ? <Modal title={actionLabels[action]} subtitle={`${selected.codigo} · ${money(selected.valor)}`} onClose={() => setAction(null)}><form className="space-y-3" onSubmit={submitAction}>{action === 'DEPOSITAR' ? <label className="form-control"><span>Conta de destino *</span><select className="select" required value={actionForm.conta_bancaria_id} onChange={(e) => setActionForm((v) => ({ ...v, conta_bancaria_id: e.target.value }))}><option value="">Selecione</option>{contasEmpresaAcao.map((item) => <option key={item.id} value={item.id}>{item.nome || item.banco_nome || `Conta #${item.id}`}</option>)}</select></label> : null}{action === 'TRANSFERIR' ? <label className="form-control"><span>Empresa de destino *</span><select className="select" required value={actionForm.empresa_destino_id} onChange={(e) => setActionForm((v) => ({ ...v, empresa_destino_id: e.target.value }))}><option value="">Selecione</option>{empresas.filter((item) => Number(item.id) !== Number(selected.empresa_id)).map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}</select></label> : null}<label className="form-control"><span>Data *</span><DateInputBR className="input" required value={actionForm.data_evento} onChange={(e) => setActionForm((v) => ({ ...v, data_evento: e.target.value }))} /></label><label className="form-control"><span>Justificativa / observação *</span><textarea className="textarea" required value={actionForm.observacoes} onChange={(e) => setActionForm((v) => ({ ...v, observacoes: e.target.value }))} /></label><div className="flex justify-end gap-2"><button type="button" className="btn btn-outline" onClick={() => setAction(null)}>Voltar</button><button className="btn btn-primary" disabled={saving}>Confirmar</button></div></form></Modal> : null}
     </Pagina>

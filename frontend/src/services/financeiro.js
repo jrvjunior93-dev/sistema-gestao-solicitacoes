@@ -1135,10 +1135,13 @@ export async function criarClienteChequeTerceiro(data) {
   return parseJson(response, 'Erro ao cadastrar cliente');
 }
 
-export async function movimentarChequeTerceiro(id, data) {
+export async function movimentarChequeTerceiro(id, data, idempotencyKey = null) {
   const response = await fetch(`${API_URL}/financeiro/cheques-terceiros/${id}/movimentar`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: authHeaders({
+      'Content-Type': 'application/json',
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {})
+    }),
     body: JSON.stringify(data)
   });
   return parseJson(response, 'Erro ao movimentar cheque de terceiro');

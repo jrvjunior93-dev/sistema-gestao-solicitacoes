@@ -1009,3 +1009,34 @@ O caminho seguro é criar uma branch a partir de `origin/main`, portar somente o
 migration, serviços, rotas, permissões e telas do Comercial necessários, adaptar a tela ao
 shell existente em produção e então gerar um único commit de release. A migration de
 multiunidade e o backfill continuam sujeitos a autorização operacional separada.
+
+## 22. Financeiro — ciclo de depósito, compensação e devolução de cheques
+
+O cheque de terceiro continua sendo um documento em custódia, não uma conta bancária. Ao
+registrar o depósito, o sistema cria um movimento bancário idempotente e mantém o cheque
+como `DEPOSITADO`. Ele só muda para `COMPENSADO` quando o crédito correspondente é
+conciliado no extrato.
+
+Cheques de terceiros avulsos, cadastrados ou importados sem uma baixa de origem, seguem o
+mesmo ciclo sem criação de título artificial. Quando existe um contas a receber de origem,
+a devolução do cheque reabre esse título. Se o cheque tiver sido usado para pagar um
+fornecedor, a devolução também estorna a baixa do contas a pagar, permitindo novo pagamento.
+
+Cheques próprios permanecem vinculados à baixa do contas a pagar. A conciliação aceita a
+apresentação bancária posterior à emissão dentro de 180 dias, mantendo associação manual
+quando as datas não forem iguais.
+
+A migration `202609150002_cheques_ciclo_compensacao.js` adiciona os vínculos dos movimentos
+e conciliações de depósito/devolução, as datas do ciclo e a chave idempotente do depósito.
+Ela não executa backfill e não altera cheques históricos.
+
+Após aplicar a migration em desenvolvimento:
+
+1. executar `npm run test:cheques-terceiros` e `npm run test:conciliacao-matches`;
+2. reiniciar somente `backend-dev`;
+3. cadastrar e depositar um cheque avulso, conciliar o crédito e confirmar `COMPENSADO`;
+4. repetir com cheque originado em contas a receber;
+5. conciliar uma devolução e confirmar a reabertura do título de origem;
+6. validar um cheque próprio apresentado em data posterior;
+7. comparar o relatório de movimentação da conta para confirmar que só depósito e
+   devolução afetam o saldo bancário.

@@ -3545,6 +3545,31 @@ db.ChequeTerceiro.belongsTo(db.MovimentoFinanceiro, {
   as: 'movimentoFinanceiro'
 });
 
+db.MovimentoFinanceiro.hasOne(db.ChequeTerceiro, {
+  foreignKey: 'movimento_deposito_id',
+  as: 'chequeTerceiroDepositado'
+});
+
+db.ChequeTerceiro.belongsTo(db.MovimentoFinanceiro, {
+  foreignKey: 'movimento_deposito_id',
+  as: 'movimentoDeposito'
+});
+
+db.ChequeTerceiro.belongsTo(db.MovimentoFinanceiro, {
+  foreignKey: 'movimento_devolucao_id',
+  as: 'movimentoDevolucao'
+});
+
+db.ChequeTerceiro.belongsTo(db.ConciliacaoBancaria, {
+  foreignKey: 'conciliacao_deposito_id',
+  as: 'conciliacaoDeposito'
+});
+
+db.ChequeTerceiro.belongsTo(db.ConciliacaoBancaria, {
+  foreignKey: 'conciliacao_devolucao_id',
+  as: 'conciliacaoDevolucao'
+});
+
 db.Parceiro.hasMany(db.ChequeTerceiro, {
   foreignKey: 'parceiro_entregou_id',
   as: 'chequesTerceirosEntregues'

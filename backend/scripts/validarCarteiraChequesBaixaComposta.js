@@ -13,6 +13,7 @@ function validateMigration() {
   const intercompanyMigration = read('migrations/202608100001_baixa_composta_intercompany_fontes.js');
   const chequeSettlementMigration = read('migrations/202608120001_dados_cheque_movimentos_baixas.js');
   const chequeHolderMigration = read('migrations/202608120002_cheques_titular_parceiro.js');
+  const lifecycleMigration = read('migrations/202609150002_cheques_ciclo_compensacao.js');
   [
     'baixas_financeiras_grupos',
     'baixas_financeiras_componentes',
@@ -29,6 +30,15 @@ function validateMigration() {
   ['movimentos_financeiros', 'baixas_financeiras_componentes', 'cheque_numero', 'cheque_emitente', 'cheque_data_vencimento']
     .forEach((contract) => assert(chequeSettlementMigration.includes(contract), `Dados do cheque ausentes na migration: ${contract}`));
   assert(chequeHolderMigration.includes('titular_parceiro_id'), 'Cheque deve persistir o vinculo com o titular cadastrado.');
+  [
+    'movimento_deposito_id',
+    'conciliacao_deposito_id',
+    'movimento_devolucao_id',
+    'conciliacao_devolucao_id',
+    'data_compensacao',
+    'deposito_idempotency_key',
+    'ux_cheques_deposito_idempotency'
+  ].forEach((contract) => assert(lifecycleMigration.includes(contract), `Ciclo de compensacao ausente na migration: ${contract}`));
 }
 
 function validateSecurityAndTransactions() {
@@ -58,6 +68,16 @@ function validateSecurityAndTransactions() {
   assert(service.includes('normalizarCpfCnpj'), 'CPF/CNPJ do titular deve ser persistido sem mascara.');
   assert(service.includes('Informe numero e emitente do cheque na operacao'), 'Cheque proprio da baixa composta deve exigir identificacao.');
   assert(titleService.includes('buildChequeMovimentoFields'), 'Baixa simples deve persistir os dados do cheque no movimento.');
+  assert(service.includes("tipo_movimento: 'DEPOSITO_CHEQUE_TERCEIRO'"), 'Deposito deve gerar movimento bancario conciliavel.');
+  assert(service.includes('confirmarCompensacaoChequePorMovimento'), 'Conciliacao deve confirmar a compensacao do cheque.');
+  assert(service.includes("status: 'COMPENSADO'"), 'Cheque deve distinguir deposito de compensacao bancaria.');
+  assert(service.includes('deposito_idempotency_key'), 'Deposito deve ser protegido contra repeticao.');
+
+  const conciliacaoService = read('src/services/conciliacaoBancariaService.js');
+  assert(conciliacaoService.includes('DEPOSITO_CHEQUE_TERCEIRO'), 'Conciliacao deve listar depositos de cheques de terceiros.');
+  assert(conciliacaoService.includes('DEVOLUCAO_CHEQUE_TERCEIRO'), 'Devolucao bancaria deve gerar contrapartida do deposito.');
+  assert(conciliacaoService.includes('chequeRecebidoStatusDestino: \'DEVOLVIDO\''), 'Devolucao deve reabrir o recebimento vinculado quando existir.');
+  assert(conciliacaoService.includes('calculateDiffDays(conciliacao.data_movimento, movimento.data_movimento) <= 180'), 'Cheque proprio deve aceitar conciliacao na apresentacao bancaria posterior.');
 }
 
 function validateRoutesAndPermissions() {
