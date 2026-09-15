@@ -160,13 +160,28 @@ function normalizeContratoUnidadesForm(contrato = {}) {
       valor_atribuido: contrato.valor_total,
       principal: true
     }] : []);
-  const normalized = source.map((item, index) => ({
-    unidade_comercial_id: String(item.unidade_comercial_id || item.unidade?.id || ''),
-    valor_cadastro_referencia: formatCurrencyInput(item.valor_cadastro_referencia ?? getUnidadeValorReferencia(item.unidade)),
-    valor_atribuido: formatCurrencyInput(item.valor_atribuido),
-    principal: Boolean(item.principal) || (index === 0 && !source.some((row) => row.principal))
-  }));
+  const normalized = source.map((item, index) => {
+    const valorReferencia = item.valor_cadastro_referencia ?? getUnidadeValorReferencia(item.unidade);
+    const valorAtribuido = hasText(item.valor_atribuido) ? item.valor_atribuido : valorReferencia;
+    return {
+      unidade_comercial_id: String(item.unidade_comercial_id || item.unidade?.id || ''),
+      valor_cadastro_referencia: formatCurrencyInput(valorReferencia),
+      valor_atribuido: formatCurrencyInput(valorAtribuido),
+      principal: Boolean(item.principal) || (index === 0 && !source.some((row) => row.principal))
+    };
+  });
   return normalized.length ? normalized : [defaultContratoUnidade()];
+}
+
+function atualizarFormComUnidades(current, unidades) {
+  const valorTotal = roundCurrency(
+    (unidades || []).reduce((total, item) => total + toNumber(item.valor_atribuido), 0)
+  );
+  return {
+    ...current,
+    unidades,
+    valor_total: valorTotal > 0 ? formatCurrencyInput(valorTotal) : ''
+  };
 }
 
 function buildContratoNumeroMulti(empreendimento, unidadesSelecionadas = []) {
@@ -558,12 +573,16 @@ function pickEditForm(contrato = {}) {
   const dataAssinatura = contrato.data_assinatura || contrato.data_contrato || today();
   const possuiCorretor = Boolean(contrato.corretor_parceiro_id);
   const categoriaFinanceiraId = contrato.categoria_financeira_id ? String(contrato.categoria_financeira_id) : '';
+  const unidadesNormalizadas = normalizeContratoUnidadesForm(contrato);
+  const valorTotalUnidades = roundCurrency(
+    unidadesNormalizadas.reduce((total, item) => total + toNumber(item.valor_atribuido), 0)
+  );
 
   return {
     id: contrato.id || null,
     empreendimento_id: contrato.empreendimento_id ? String(contrato.empreendimento_id) : '',
     unidade_comercial_id: contrato.unidade_comercial_id ? String(contrato.unidade_comercial_id) : '',
-    unidades: normalizeContratoUnidadesForm(contrato),
+    unidades: unidadesNormalizadas,
     parceiro_id: contrato.parceiro_id ? String(contrato.parceiro_id) : '',
     compradores,
     corretor_parceiro_id: contrato.corretor_parceiro_id ? String(contrato.corretor_parceiro_id) : '',
@@ -572,7 +591,7 @@ function pickEditForm(contrato = {}) {
     numero: contrato.numero || '',
     status: contrato.status || 'ATIVO',
     data_contrato: dataAssinatura,
-    valor_total: formatCurrencyInput(contrato.valor_total),
+    valor_total: formatCurrencyInput(valorTotalUnidades || contrato.valor_total),
     valor_entrada: formatCurrencyInput(contrato.valor_entrada),
     desconto_concedido: formatCurrencyInput(contrato.desconto_concedido),
     corretor_nome: possuiCorretor ? (contrato.corretorParceiro?.nome || contrato.corretor_nome || '') : '',
@@ -767,11 +786,12 @@ export default function ComercialContratos() {
   const [draftLoaded] = useState(() => getStoredContratoDraft());
   const [form, setForm] = useState(() => {
     if (!draftLoaded?.form) return defaultForm();
-    return {
+    const unidadesNormalizadas = normalizeContratoUnidadesForm(draftLoaded.form);
+    return atualizarFormComUnidades({
       ...defaultForm(),
       ...draftLoaded.form,
-      unidades: normalizeContratoUnidadesForm(draftLoaded.form)
-    };
+      unidades: unidadesNormalizadas
+    }, unidadesNormalizadas);
   });
   const [generator, setGenerator] = useState(() => draftLoaded?.generator || defaultGenerator());
   const [paymentPlans, setPaymentPlans] = useState(() => (
@@ -1168,7 +1188,8 @@ export default function ComercialContratos() {
       unidade_comercial_id: '',
       unidades: [defaultContratoUnidade()],
       obra_id: empreendimento?.obra_id ? String(empreendimento.obra_id) : '',
-      numero: ''
+      numero: '',
+      valor_total: ''
     }));
   }
 
@@ -1180,10 +1201,13 @@ export default function ComercialContratos() {
         ...item,
         unidade_comercial_id: unidadeId,
         valor_cadastro_referencia: referencia ? formatCurrencyInput(referencia) : '',
-        valor_atribuido: item.valor_atribuido || ((current.unidades || []).length === 1 && current.valor_total ? current.valor_total : '')
+        valor_atribuido: referencia ? formatCurrencyInput(referencia) : ''
       } : item);
       const principal = proximas.find((item) => item.principal) || proximas[0];
-      return { ...current, unidades: proximas, unidade_comercial_id: principal?.unidade_comercial_id || '' };
+      return atualizarFormComUnidades({
+        ...current,
+        unidade_comercial_id: principal?.unidade_comercial_id || ''
+      }, proximas);
     });
   }
 
@@ -1200,7 +1224,10 @@ export default function ComercialContratos() {
       if (!proximas.length) proximas = [defaultContratoUnidade()];
       if (!proximas.some((item) => item.principal)) proximas = proximas.map((item, itemIndex) => ({ ...item, principal: itemIndex === 0 }));
       const principal = proximas.find((item) => item.principal) || proximas[0];
-      return { ...current, unidades: proximas, unidade_comercial_id: principal?.unidade_comercial_id || '' };
+      return atualizarFormComUnidades({
+        ...current,
+        unidade_comercial_id: principal?.unidade_comercial_id || ''
+      }, proximas);
     });
   }
 
@@ -1807,7 +1834,7 @@ export default function ComercialContratos() {
 
     if (!hasText(form.empreendimento_id)) camposFaltando.push('Empreendimento');
     if (!(form.unidades || []).length || (form.unidades || []).some((item) => !hasText(item.unidade_comercial_id))) camposFaltando.push('Unidades');
-    if ((form.unidades || []).some((item) => toNumber(item.valor_atribuido) <= 0)) camposFaltando.push('Valor real de cada unidade');
+    if ((form.unidades || []).some((item) => toNumber(item.valor_atribuido) <= 0)) camposFaltando.push('Valor de cada unidade');
     if (!hasText(form.parceiro_id)) camposFaltando.push('Cliente');
     if (!hasText(form.obra_id) || !empreendimentoSelecionado?.obra_id) camposFaltando.push('Obra vinculada ao empreendimento');
     if (!hasText(numeroContratoCalculado)) camposFaltando.push('Contrato');
@@ -1863,7 +1890,7 @@ export default function ComercialContratos() {
     }
 
     if (Math.abs(totalValorUnidades - valorTotalContrato) > 0.02) {
-      return 'A soma dos valores reais das unidades precisa fechar o valor total do contrato, com tolerancia de R$ 0,02.';
+      return 'A soma dos valores das unidades precisa fechar o valor total do contrato, com tolerancia de R$ 0,02.';
     }
 
     return '';
@@ -1872,10 +1899,10 @@ export default function ComercialContratos() {
   function validarUnidadesContrato() {
     const linhas = form.unidades || [];
     if (!linhas.length || linhas.some((item) => !hasText(item.unidade_comercial_id))) return 'Selecione todas as unidades do contrato.';
-    if (linhas.some((item) => toNumber(item.valor_atribuido) <= 0)) return 'Informe o valor real de cada unidade antes de salvar.';
+    if (linhas.some((item) => toNumber(item.valor_atribuido) <= 0)) return 'Informe o valor de cada unidade antes de salvar.';
     const ids = linhas.map((item) => String(item.unidade_comercial_id));
     if (new Set(ids).size !== ids.length) return 'A mesma unidade nao pode ser vinculada mais de uma vez ao contrato.';
-    if (Math.abs(totalValorUnidades - valorTotalContrato) > 0.02) return 'A soma dos valores reais das unidades precisa fechar o valor total do contrato, com tolerancia de R$ 0,02.';
+    if (Math.abs(totalValorUnidades - valorTotalContrato) > 0.02) return 'A soma dos valores das unidades precisa fechar o valor total do contrato, com tolerancia de R$ 0,02.';
     return '';
   }
 
@@ -2071,129 +2098,141 @@ export default function ComercialContratos() {
         chavePreferencia={!form.id ? 'comercial:contratos:novo-contrato' : undefined}
       >
         <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-          <div className="grid items-start gap-3 lg:grid-cols-3">
-            <label className="sol-filter-field lg:col-span-1">
-              <span className="sol-filter-label">Empreendimento</span>
-              <select className="input w-full" value={form.empreendimento_id} onChange={(e) => selecionarEmpreendimentoContrato(e.target.value)} required disabled={Boolean(form.id)}>
-                <option value="">Selecione</option>
-                {empreendimentos.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
-              </select>
-            </label>
-            <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3 lg:col-span-2 lg:row-span-2">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <div className="sol-filter-label">Unidades do contrato</div>
-                  <div className="text-xs text-[var(--c-muted)]">O valor do cadastro e apenas referência. Informe o valor real atribuído a cada unidade.</div>
-                </div>
-                <button type="button" className="btn btn-outline btn-sm" onClick={adicionarUnidadeContrato} disabled={!form.empreendimento_id}>
-                  <HiPlus className="h-4 w-4" /> Adicionar unidade
-                </button>
-              </div>
-              <div className="mt-3 space-y-2">
-                {(form.unidades || []).map((linha, index) => {
-                  const unidade = unidades.find((item) => String(item.id) === String(linha.unidade_comercial_id));
-                  const selecionadasEmOutrasLinhas = new Set((form.unidades || [])
-                    .filter((_, itemIndex) => itemIndex !== index)
-                    .map((item) => String(item.unidade_comercial_id)));
-                  // R10: a linha era
-                  // `md:grid-cols-[minmax(190px,1fr)_150px_170px_auto_auto]` —
-                  // medida escrita na tela. As colunas do formulario vem da
-                  // escala; os campos de dinheiro trazem o proprio piso pela
-                  // `.input-moeda` (R6), que e o que garantia os 150px do
-                  // antigo valor fixo.
-                  return (
-                    <div key={`${index}-${linha.unidade_comercial_id}`} className="grid gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-2 sm:grid-cols-2 xl:grid-cols-5 md:items-end">
-                      <label className="sol-filter-field xl:col-span-2">
-                        <span className="sol-filter-label">Unidade</span>
-                        <select className="input w-full" value={linha.unidade_comercial_id} onChange={(event) => atualizarUnidadeContrato(index, event.target.value)} required>
-                          <option value="">Selecione</option>
-                          {unidadesDoEmpreendimento
-                            .filter((item) => !selecionadasEmOutrasLinhas.has(String(item.id)))
-                            .map((item) => <option key={item.id} value={item.id}>{buildUnidadeOptionLabel(item)}</option>)}
-                        </select>
-                      </label>
-                      <label className="sol-filter-field">
-                        <span className="sol-filter-label">Valor cadastrado</span>
-                        {/* R6: campo de dinheiro com `.input-moeda` — 180px de
-                            piso, alinhado a direita e tabular-nums. */}
-                        <input className="input input-moeda w-full" value={linha.valor_cadastro_referencia || (unidade ? formatCurrencyInput(getUnidadeValorReferencia(unidade)) : '')} disabled />
-                      </label>
-                      <label className="sol-filter-field">
-                        <span className="sol-filter-label">Valor real *</span>
-                        <input
-                          className="input input-moeda w-full"
-                          inputMode="decimal"
-                          value={linha.valor_atribuido}
-                          onChange={(event) => setForm((current) => ({
-                            ...current,
-                            unidades: current.unidades.map((item, itemIndex) => itemIndex === index ? { ...item, valor_atribuido: normalizeCurrencyTyping(event.target.value) } : item)
-                          }))}
-                          onBlur={(event) => setForm((current) => ({
-                            ...current,
-                            unidades: current.unidades.map((item, itemIndex) => itemIndex === index ? { ...item, valor_atribuido: formatCurrencyInput(event.target.value) } : item)
-                          }))}
-                          placeholder="R$ 0,00"
-                        />
-                      </label>
-                      {/* R10: `h-10` (40px) nao e degrau da escala; a altura de
-                          campo/controle e do componente (.input/.btn, 44px de
-                          piso pela R7/R2). */}
-                      <label className="inline-flex items-center gap-2 text-xs text-[var(--c-text)]">
-                        <input type="radio" name="unidade-principal" checked={Boolean(linha.principal)} onChange={() => definirUnidadePrincipal(index)} /> Principal
-                      </label>
-                      <button type="button" className="btn btn-outline btn-sm" onClick={() => removerUnidadeContrato(index)} disabled={(form.unidades || []).length === 1} title="Remover unidade">
-                        <HiXMark className="h-4 w-4" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-              {/* R25: paleta crua (emerald/amber) trocada por token semantico
-                  — a mesma cor no claro e no escuro, com piso de contraste. */}
-              <div className={`mt-2 text-xs font-medium ${Math.abs(totalValorUnidades - valorTotalContrato) <= 0.02 ? 'text-[var(--sem-success)]' : 'text-[var(--sem-warning)]'}`}>
-                Soma das unidades: {formatCurrency(totalValorUnidades)} · Valor do contrato: {formatCurrency(valorTotalContrato)}
-              </div>
-              {form.empreendimento_id && unidadesDoEmpreendimento.length === 0 && (
-                <div className="mt-2 text-xs text-[var(--c-muted)]">Nenhuma unidade disponível para contrato neste empreendimento.</div>
-              )}
+          <section className="space-y-3">
+            <div>
+              <h3 className="text-sm font-semibold text-[var(--c-text)]">Dados principais</h3>
+              <p className="text-xs text-[var(--c-muted)]">Identifique o empreendimento e o comprador responsável pelo contrato.</p>
             </div>
-            <div className="rounded-xl border border-[var(--c-border)] bg-[var(--c-bg)] p-3 lg:col-span-1">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="sol-filter-label">Comprador principal</span>
+            <div className="grid items-start gap-3 lg:grid-cols-2">
+              <label className="sol-filter-field">
+                <span className="sol-filter-label">Empreendimento</span>
+                <select className="input w-full" value={form.empreendimento_id} onChange={(e) => selecionarEmpreendimentoContrato(e.target.value)} required disabled={Boolean(form.id)}>
+                  <option value="">Selecione</option>
+                  {empreendimentos.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
+                </select>
+              </label>
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="sol-filter-label">Comprador principal</span>
+                  {!form.id && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm inline-flex h-8 w-8 items-center justify-center p-0"
+                      onClick={() => setMostrarCompradorAdicional(true)}
+                      title="Adicionar comprador"
+                    >
+                      <HiPlus className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <ParceiroAutocomplete
+                  label=""
+                  value={form.parceiro_id}
+                  options={clientes}
+                  onChange={selecionarClientePrincipal}
+                  disabled={Boolean(form.id)}
+                  placeholder="Digite nome, CPF/CNPJ ou e-mail"
+                  emptyLabel="Nenhum cliente encontrado"
+                  showOptionsOnFocus
+                  resultLimit={8}
+                />
                 {!form.id && (
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm inline-flex h-8 w-8 items-center justify-center p-0"
-                    onClick={() => setMostrarCompradorAdicional(true)}
-                    title="Adicionar comprador"
-                  >
-                    <HiPlus className="h-4 w-4" />
+                  <button type="button" className="btn btn-outline btn-sm mt-2" onClick={() => abrirCadastroRapidoPessoa('cliente')}>
+                    Cadastro rápido
                   </button>
                 )}
+                {compradoresContrato[0]?.parceiro?.conjuge_nome && (
+                  <p className="mt-2 text-xs text-[var(--c-muted)]">
+                    Conjuge: {compradoresContrato[0].parceiro.conjuge_nome}
+                  </p>
+                )}
               </div>
-              <ParceiroAutocomplete
-                label=""
-                value={form.parceiro_id}
-                options={clientes}
-                onChange={selecionarClientePrincipal}
-                disabled={Boolean(form.id)}
-                placeholder="Digite nome, CPF/CNPJ ou e-mail"
-                emptyLabel="Nenhum cliente encontrado"
-                showOptionsOnFocus
-                resultLimit={8}
-              />
-              {!form.id && (
-                <button type="button" className="btn btn-outline btn-sm mt-2" onClick={() => abrirCadastroRapidoPessoa('cliente')}>
-                  Cadastro rápido
-                </button>
-              )}
-              {compradoresContrato[0]?.parceiro?.conjuge_nome && (
-                <p className="mt-2 text-xs text-[var(--c-muted)]">
-                  Conjuge: {compradoresContrato[0].parceiro.conjuge_nome}
-                </p>
-              )}
             </div>
-          </div>
+          </section>
+
+          <section className="space-y-3 border-t border-[var(--c-border)] pt-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--c-text)]">Unidades e valores</h3>
+                <p className="text-xs text-[var(--c-muted)]">O valor cadastrado é sugerido automaticamente e pode ser alterado para este contrato.</p>
+              </div>
+              <button type="button" className="btn btn-outline btn-sm" onClick={adicionarUnidadeContrato} disabled={!form.empreendimento_id}>
+                <HiPlus className="h-4 w-4" /> Adicionar unidade
+              </button>
+            </div>
+            <div className="divide-y divide-[var(--c-border)] border-y border-[var(--c-border)]">
+              {(form.unidades || []).map((linha, index) => {
+                const selecionadasEmOutrasLinhas = new Set((form.unidades || [])
+                  .filter((_, itemIndex) => itemIndex !== index)
+                  .map((item) => String(item.unidade_comercial_id)));
+                return (
+                  <div key={`${index}-${linha.unidade_comercial_id}`} className="grid gap-3 py-3 sm:grid-cols-2 lg:grid-cols-3 md:items-end">
+                    <label className="sol-filter-field lg:col-span-1">
+                      <span className="sol-filter-label">Unidade {index + 1}</span>
+                      <select className="input w-full" value={linha.unidade_comercial_id} onChange={(event) => atualizarUnidadeContrato(index, event.target.value)} required>
+                        <option value="">Selecione</option>
+                        {unidadesDoEmpreendimento
+                          .filter((item) => !selecionadasEmOutrasLinhas.has(String(item.id)))
+                          .map((item) => <option key={item.id} value={item.id}>{buildUnidadeOptionLabel(item)}</option>)}
+                      </select>
+                    </label>
+                    <label className="sol-filter-field">
+                      <span className="sol-filter-label">Valor da Unidade *</span>
+                      <input
+                        className="input input-moeda w-full"
+                        inputMode="decimal"
+                        value={linha.valor_atribuido}
+                        onChange={(event) => setForm((current) => {
+                          const proximas = current.unidades.map((item, itemIndex) => itemIndex === index ? {
+                            ...item,
+                            valor_atribuido: normalizeCurrencyTyping(event.target.value)
+                          } : item);
+                          return atualizarFormComUnidades(current, proximas);
+                        })}
+                        onBlur={(event) => setForm((current) => {
+                          const proximas = current.unidades.map((item, itemIndex) => itemIndex === index ? {
+                            ...item,
+                            valor_atribuido: formatCurrencyInput(event.target.value)
+                          } : item);
+                          return atualizarFormComUnidades(current, proximas);
+                        })}
+                        placeholder="R$ 0,00"
+                      />
+                    </label>
+                    <div className="flex min-h-11 flex-wrap items-center gap-2 md:justify-end">
+                      <label className="inline-flex items-center gap-2 text-sm text-[var(--c-text)]">
+                        <input type="radio" name="unidade-principal" checked={Boolean(linha.principal)} onChange={() => definirUnidadePrincipal(index)} /> Principal
+                      </label>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => removerUnidadeContrato(index)}
+                        disabled={(form.unidades || []).length === 1}
+                        title="Remover unidade"
+                        aria-label={`Remover unidade ${index + 1}`}
+                      >
+                        <HiXMark className="h-4 w-4" /> Remover
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="grid items-start gap-3 sm:grid-cols-2">
+              <label className="sol-filter-field">
+                <span className="sol-filter-label">Desconto</span>
+                <input className="input input-moeda w-full" inputMode="decimal" value={form.desconto_concedido} onChange={(e) => setForm((c) => ({ ...c, desconto_concedido: normalizeCurrencyTyping(e.target.value) }))} onBlur={(e) => setForm((c) => ({ ...c, desconto_concedido: formatCurrencyInput(e.target.value) }))} placeholder="R$ 0,00" />
+              </label>
+              <label className="sol-filter-field">
+                <span className="sol-filter-label">Valor total do contrato</span>
+                <input className="input input-moeda w-full" value={form.valor_total} readOnly aria-readonly="true" placeholder="R$ 0,00" />
+                <span className="mt-1 text-xs text-[var(--c-muted)]">Calculado pela soma dos valores das unidades.</span>
+              </label>
+            </div>
+            {form.empreendimento_id && unidadesDoEmpreendimento.length === 0 && (
+              <div className="text-xs text-[var(--c-muted)]">Nenhuma unidade disponível para contrato neste empreendimento.</div>
+            )}
+          </section>
           {!form.id && mostrarCompradorAdicional && (
             <div className="rounded-2xl border border-[var(--sem-info-border)] bg-[var(--sem-info-bg)] p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -2290,8 +2329,6 @@ export default function ComercialContratos() {
                 <span className="mt-1 text-xs text-[var(--sem-warning)]">Cadastre/libere uma categoria RECEBER/AMBOS marcada para DRE e com grupo DRE.</span>
               ) : null}
             </label>
-            <label className="sol-filter-field"><span className="sol-filter-label">Desconto</span><input className="input input-moeda w-full" inputMode="decimal" value={form.desconto_concedido} onChange={(e) => setForm((c) => ({ ...c, desconto_concedido: normalizeCurrencyTyping(e.target.value) }))} onBlur={(e) => setForm((c) => ({ ...c, desconto_concedido: formatCurrencyInput(e.target.value) }))} placeholder="R$ 0,00" /></label>
-            <label className="sol-filter-field"><span className="sol-filter-label">Valor total</span><input className="input input-moeda w-full" inputMode="decimal" value={form.valor_total} onChange={(e) => setForm((c) => ({ ...c, valor_total: normalizeCurrencyTyping(e.target.value) }))} onBlur={(e) => setForm((c) => ({ ...c, valor_total: formatCurrencyInput(e.target.value) }))} placeholder="R$ 0,00" /></label>
           </div>
           <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <label className="sol-filter-field">
@@ -3238,7 +3275,7 @@ export default function ComercialContratos() {
                   <div key={item.unidade_comercial_id} className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-2 2xl:grid-cols-4 2xl:items-center">
                     <span className="font-medium text-[var(--c-text)] sm:col-span-2 2xl:col-span-1">{buildUnidadeOptionLabel(item.unidade)}</span>
                     <span className="text-[var(--c-muted)] tabular-nums">Cadastro: {formatCurrency(item.valor_cadastro_referencia)}</span>
-                    <span className="font-medium text-[var(--c-text)] tabular-nums">Real: {formatCurrency(item.valor_atribuido)}</span>
+                    <span className="font-medium text-[var(--c-text)] tabular-nums">Valor da unidade: {formatCurrency(item.valor_atribuido)}</span>
                     <span className="text-xs text-[var(--c-muted)] 2xl:text-right">{item.principal ? 'Unidade principal' : 'Unidade adicional'}</span>
                   </div>
                 ))}

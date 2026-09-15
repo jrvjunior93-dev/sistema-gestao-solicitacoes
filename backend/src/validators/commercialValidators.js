@@ -712,7 +712,7 @@ function validateComercialContratoCreateBody(body = {}) {
       ? body.unidades.map((item, index) => ({
           unidade_comercial_id: parseInteger(item?.unidade_comercial_id, `Unidade ${index + 1}`, { required: true }),
           valor_cadastro_referencia: parseDecimal(item?.valor_cadastro_referencia, `Valor de cadastro da unidade ${index + 1}`, { min: 0 }),
-          valor_atribuido: parseDecimal(item?.valor_atribuido, `Valor real da unidade ${index + 1}`, { min: 0.01 }),
+          valor_atribuido: parseDecimal(item?.valor_atribuido, `Valor da unidade ${index + 1}`, { min: 0.01 }),
           principal: Boolean(item?.principal)
         }))
       : undefined,
@@ -825,7 +825,7 @@ function validateComercialContratoUpdateBody(body = {}) {
           ? body.unidades.map((item, index) => ({
               unidade_comercial_id: parseInteger(item?.unidade_comercial_id, `Unidade ${index + 1}`, { required: true }),
               valor_cadastro_referencia: parseDecimal(item?.valor_cadastro_referencia, `Valor de cadastro da unidade ${index + 1}`, { min: 0 }),
-              valor_atribuido: parseDecimal(item?.valor_atribuido, `Valor real da unidade ${index + 1}`, { min: 0.01 }),
+              valor_atribuido: parseDecimal(item?.valor_atribuido, `Valor da unidade ${index + 1}`, { min: 0.01 }),
               principal: Boolean(item?.principal)
             }))
           : (() => { throw new ValidationError('Unidades deve ser uma lista.'); })())
