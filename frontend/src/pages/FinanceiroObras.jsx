@@ -421,13 +421,12 @@ export default function FinanceiroObras({ embutido = false }) {
   }
 
   /*
-    R26 + CONSENTIMENTO (DoD) — a pré-visualização inteira é FIXADA numa
-    const ANTES do `await` da confirmação, e é essa mesma referência que
-    vai no payload. O modal do sistema não bloqueia a tela: sem fixar, dava
-    para trocar a planilha enquanto a pergunta estava aberta e importar
-    outra coisa daquela que a pessoa leu.
+    R26 + CONSENTIMENTO (DoD) — a pré-visualização, o arquivo e as opções
+    são FIXADOS antes do `await` da confirmação. O servidor relê esse arquivo
+    e compara o digest das linhas antes de gravar; assim uma troca enquanto
+    a pergunta está aberta não importa conteúdo diferente do aprovado.
 
-    E o número citado vem da COLEÇÃO QUE A AÇÃO PERCORRE, com o MESMO
+    E o número citado vem da COLEÇÃO DA PRÉVIA, com o MESMO
     critério do servidor (`status === 'VALIDA'`, obraCustoHistoricoService)
     — não do `resumo.importaveis`, que é um número paralelo, e muito menos
     da página visível da pré-visualização, que mostra 25 de N e seria
@@ -435,11 +434,17 @@ export default function FinanceiroObras({ embutido = false }) {
   */
   async function confirmarImportacao() {
     const lote = importPreview;
+    const arquivo = importForm.file;
+    const opcoes = {
+      obra_id: importForm.obra_id,
+      empresa_id: importForm.empresa_id,
+      categoria_financeira_id: importForm.categoria_financeira_id
+    };
     const linhasDoLote = Array.isArray(lote?.linhas) ? lote.linhas : [];
     const linhasValidas = linhasDoLote.filter(
       (linha) => String(linha.status || '').toUpperCase() === 'VALIDA'
     );
-    if (!linhasValidas.length) return;
+    if (!linhasValidas.length || !arquivo || !lote?.preview_digest) return;
 
     const { ok } = await confirmar({
       titulo: 'Confirmar importação de custos históricos',
@@ -454,11 +459,14 @@ export default function FinanceiroObras({ embutido = false }) {
     setImportLoading(true);
     setImportError('');
     try {
-      const resultado = await confirmarImportacaoCustosHistoricosObra({
-        arquivo_nome: lote.arquivo_nome,
-        arquivo_hash: lote.arquivo_hash,
-        linhas: linhasDoLote
-      });
+      const formData = new FormData();
+      formData.append('file', arquivo);
+      formData.append('arquivo_hash', lote.arquivo_hash);
+      formData.append('preview_digest', lote.preview_digest);
+      formData.append('obra_id', opcoes.obra_id);
+      if (opcoes.empresa_id) formData.append('empresa_id', opcoes.empresa_id);
+      if (opcoes.categoria_financeira_id) formData.append('categoria_financeira_id', opcoes.categoria_financeira_id);
+      const resultado = await confirmarImportacaoCustosHistoricosObra(formData);
       fecharImportModal();
       const importados = Number(resultado?.resumo?.importados ?? linhasValidas.length);
       const datas = linhasValidas.map((linha) => linha.data_pagamento)
@@ -1096,7 +1104,7 @@ export default function FinanceiroObras({ embutido = false }) {
                 type="button"
                 className="btn btn-primary"
                 onClick={confirmarImportacao}
-                disabled={importLoading || !importPreview.resumo?.importaveis}
+                disabled={importLoading || !importPreview.resumo?.importaveis || !importPreview.preview_digest}
               >
                 {importLoading ? 'Importando...' : 'Confirmar importacao'}
               </button>

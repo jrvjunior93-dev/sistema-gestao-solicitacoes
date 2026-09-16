@@ -394,10 +394,11 @@ export async function previewImportacaoCustosHistoricosObra(formData) {
 }
 
 export async function confirmarImportacaoCustosHistoricosObra(payload = {}) {
+  const multipart = payload instanceof FormData;
   const response = await fetch(`${API_URL}/financeiro/relatorios/financeiro-obras/importacoes-historicas/confirmar`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(payload)
+    headers: authHeaders(multipart ? {} : { 'Content-Type': 'application/json' }),
+    body: multipart ? payload : JSON.stringify(payload)
   });
 
   return parseJson(response, 'Erro ao importar custos historicos');
