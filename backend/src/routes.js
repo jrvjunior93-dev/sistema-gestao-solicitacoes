@@ -2091,6 +2091,7 @@ router.get('/financeiro/relatorios/fluxo-caixa', allowFinanceiroRelatorio(['fina
 router.get('/financeiro/relatorios/fluxo-consolidado', allowFinanceiroRelatorio(['financeiro.relatorios.fluxo_consolidado']), validateRequest({ query: validateFinanceFluxoConsolidadoQuery }), RelatorioFinanceiroController.fluxoConsolidado);
 router.get('/financeiro/relatorios/analitico', allowFinanceiroRelatorio(['financeiro.relatorios.analitico']), validateRequest({ query: validateFinanceRelatorioAnaliticoQuery }), RelatorioFinanceiroController.analitico);
 router.get('/financeiro/relatorios/financeiro-obras', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), validateRequest({ query: validateFinanceiroObrasQuery }), RelatorioFinanceiroController.financeiroObras);
+router.get('/financeiro/relatorios/financeiro-obras/pdf', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), validateRequest({ query: validateFinanceiroObrasQuery }), RelatorioFinanceiroController.financeiroObrasPdf);
 // Item 22 (23/08): os arquivos da linha. MESMA permissao do relatorio — quem le o relatorio pode
 // nao ter acesso ao modulo de solicitacoes, e tomaria 403 clicando numa linha do proprio relatorio.
 router.get('/financeiro/relatorios/financeiro-obras/titulos/:id/arquivos', allowFinanceiroRelatorio(['financeiro.relatorios.financeiro_obras']), validateRequest({ params: validateNumericIdParam('id', 'Titulo') }), RelatorioFinanceiroController.arquivosDoTitulo);

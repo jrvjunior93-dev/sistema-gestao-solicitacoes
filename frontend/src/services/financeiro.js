@@ -355,6 +355,34 @@ export async function getRelatorioFinanceiroObras(params = {}) {
   return parseJson(response, 'Erro ao buscar financeiro de obras');
 }
 
+export async function gerarRelatorioFinanceiroObrasPdf(params = {}) {
+  const query = new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  ).toString();
+  const url = query
+    ? `${API_URL}/financeiro/relatorios/financeiro-obras/pdf?${query}`
+    : `${API_URL}/financeiro/relatorios/financeiro-obras/pdf`;
+  const response = await fetch(url, { cache: 'no-store', headers: authHeaders() });
+
+  if (!response.ok) {
+    const message = await response.text();
+    try {
+      const payload = JSON.parse(message);
+      throw new Error(payload?.error || 'Erro ao gerar PDF do financeiro de obras');
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      throw new Error(message || 'Erro ao gerar PDF do financeiro de obras');
+    }
+  }
+
+  const disposition = response.headers.get('content-disposition') || '';
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return {
+    blob: await response.blob(),
+    filename: filenameMatch?.[1] || 'financeiro-obras.pdf'
+  };
+}
+
 export async function previewImportacaoCustosHistoricosObra(formData) {
   const response = await fetch(`${API_URL}/financeiro/relatorios/financeiro-obras/importacoes-historicas/preview`, {
     method: 'POST',

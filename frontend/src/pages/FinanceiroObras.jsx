@@ -1,12 +1,13 @@
 import DateInputBR from '../components/DateInputBR';
-import { useEffect, useMemo, useState } from 'react';
-import { HiOutlineArrowDownTray, HiOutlineArrowUpTray, HiOutlineBuildingOffice2, HiOutlineXMark } from 'react-icons/hi2';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { HiOutlineArrowDownTray, HiOutlineArrowUpTray, HiOutlineBuildingOffice2, HiOutlineDocumentText, HiOutlineEye, HiOutlineXMark } from 'react-icons/hi2';
 import OverlayModal from '../components/ui/OverlayModal';
 import {
   confirmarImportacaoCustosHistoricosObra,
   getArquivosDoTitulo,
   getCategoriasFinanceiras,
   getRelatorioFinanceiroObras,
+  gerarRelatorioFinanceiroObrasPdf,
   previewImportacaoCustosHistoricosObra
 } from '../services/financeiro';
 import { fileUrl } from '../services/api';
@@ -29,15 +30,15 @@ const IMPORT_PREVIEW_PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 /*
   R23 — REGIME DE CONSULTA CARA, DECLARADO.
 
-  Marcar um filtro NÃO aplica: as marcas são RASCUNHO até "Gerar
-  relatorio". A tela tem NOVE dimensões que o usuário combina (análise,
+  Marcar um filtro NÃO aplica: as marcas são RASCUNHO até "Filtrar".
+  A tela tem NOVE dimensões que o usuário combina (análise,
   data inicial, data final, tipo, limite, busca, obra, empresa, plano
   financeiro) e a consulta varre movimentos, títulos, histórico legado e
   fretes do período — muito além dos "4+ dimensões" do critério.
 
-  O botão diz o que faz e o apoio avisa que a marca só vale no clique.
+  O botão Filtrar aplica a consulta; Gerar relatório produz PDF dos filtros aplicados.
 */
-const APOIO_RASCUNHO = 'Os filtros só valem depois de "Gerar relatorio" — até o clique, a marca é rascunho.';
+const APOIO_RASCUNHO = 'Os filtros só valem depois de "Filtrar" — até o clique, a marca é rascunho.';
 
 function getTodayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -180,6 +181,12 @@ export default function FinanceiroObras({ embutido = false }) {
   const [loading, setLoading] = useState(true);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [error, setError] = useState('');
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState('');
+  const [pdfUrl, setPdfUrl] = useState('');
+  const [pdfFilename, setPdfFilename] = useState('financeiro-obras.pdf');
+  const pdfRequestIdRef = useRef(0);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importForm, setImportForm] = useState({
     obra_id: '',
@@ -247,6 +254,10 @@ export default function FinanceiroObras({ embutido = false }) {
     };
   }, [appliedFilters]);
 
+  useEffect(() => () => {
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+  }, [pdfUrl]);
+
   const analiseAtual = useMemo(
     () => ANALISE_OPTIONS.find((item) => item.value === filters.analise) || ANALISE_OPTIONS[0],
     [filters.analise]
@@ -303,6 +314,51 @@ export default function FinanceiroObras({ embutido = false }) {
   function limparFiltros() {
     setFilters(DEFAULT_FILTERS);
     setAppliedFilters(DEFAULT_FILTERS);
+  }
+
+  function fecharPdf() {
+    pdfRequestIdRef.current += 1;
+    setPdfModalOpen(false);
+    setPdfLoading(false);
+    setPdfError('');
+    setPdfUrl('');
+  }
+
+  async function abrirPdf() {
+    if (loading || pdfLoading) return;
+    const requestId = pdfRequestIdRef.current + 1;
+    pdfRequestIdRef.current = requestId;
+    setPdfModalOpen(true);
+    setPdfLoading(true);
+    setPdfError('');
+    setPdfUrl('');
+
+    try {
+      const result = await gerarRelatorioFinanceiroObrasPdf(compact(appliedFilters));
+      const objectUrl = URL.createObjectURL(result.blob);
+      if (pdfRequestIdRef.current !== requestId) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+      setPdfFilename(result.filename);
+      setPdfUrl(objectUrl);
+    } catch (err) {
+      if (pdfRequestIdRef.current === requestId) {
+        setPdfError(err?.message || 'Nao foi possivel gerar o PDF. Tente novamente.');
+      }
+    } finally {
+      if (pdfRequestIdRef.current === requestId) setPdfLoading(false);
+    }
+  }
+
+  function baixarPdf() {
+    if (!pdfUrl) return;
+    const link = document.createElement('a');
+    link.href = pdfUrl;
+    link.download = pdfFilename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   }
 
   function resetImportModal() {
@@ -610,12 +666,65 @@ export default function FinanceiroObras({ embutido = false }) {
             */}
             <span className="text-sm text-[var(--c-muted)]">{APOIO_RASCUNHO}</span>
             <button type="button" className="btn btn-outline btn-sm" onClick={limparFiltros}>Limpar</button>
-            <button type="submit" className="btn btn-primary btn-sm">Gerar relatório</button>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={loading}>
+              {loading ? 'Filtrando...' : 'Filtrar'}
+            </button>
+            <button type="button" className="btn btn-outline btn-sm gap-2" onClick={abrirPdf}
+              disabled={loading || pdfLoading} title="Gerar PDF com os filtros aplicados">
+              <HiOutlineDocumentText className="h-4 w-4" />
+              {pdfLoading ? 'Gerando...' : 'Gerar relatório'}
+            </button>
           </div>
         </div>
       </form>
 
       {error ? <div className="app-alert app-alert--error">{error}</div> : null}
+
+      {pdfModalOpen ? (
+        <OverlayModal rotulo="Relatório financeiro de obras" largura="1500px" onFechar={fecharPdf}>
+          <header data-modal="cabecalho" className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border)] p-4">
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--c-text)]">Relatório financeiro de obras</h2>
+              <p className="text-xs text-[var(--c-muted)]">PDF dos filtros aplicados, respeitando o limite de linhas e seu acesso.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {pdfUrl ? (
+                <>
+                  <button type="button" className="btn btn-outline btn-sm gap-2"
+                    onClick={() => window.open(pdfUrl, '_blank', 'noopener,noreferrer')}>
+                    <HiOutlineEye className="h-4 w-4" /> Abrir em nova aba
+                  </button>
+                  <button type="button" className="btn btn-primary btn-sm gap-2" onClick={baixarPdf}>
+                    <HiOutlineArrowDownTray className="h-4 w-4" /> Baixar PDF
+                  </button>
+                </>
+              ) : null}
+              <button type="button" className="btn btn-outline btn-sm btn-square" onClick={fecharPdf}
+                title="Fechar relatório" aria-label="Fechar relatório">
+                <HiOutlineXMark className="h-4 w-4" />
+              </button>
+            </div>
+          </header>
+          <div className="bg-[var(--ui-surface-soft)] p-2 sm:p-3" style={{ height: 'min(75dvh, 750px)' }}>
+            {pdfLoading ? (
+              <div className="flex h-full items-center justify-center bg-[var(--c-surface)] text-sm font-semibold text-[var(--c-text)]">
+                Preparando o relatório filtrado...
+              </div>
+            ) : pdfError ? (
+              <div className="flex h-full items-center justify-center bg-[var(--c-surface)] p-4">
+                <div className="max-w-md text-center">
+                  <h3 className="text-sm font-semibold text-[var(--sem-danger)]">Não foi possível gerar o PDF</h3>
+                  <p className="mt-2 text-sm text-[var(--c-muted)]">{pdfError}</p>
+                  <button type="button" className="btn btn-outline btn-sm mt-4" onClick={abrirPdf}>Tentar novamente</button>
+                </div>
+              </div>
+            ) : pdfUrl ? (
+              <iframe src={pdfUrl} title="Visualização do relatório financeiro de obras"
+                className="h-full w-full rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]" />
+            ) : null}
+          </div>
+        </OverlayModal>
+      ) : null}
 
       {/*
         ATENÇÃO — o apoio destes quatro ladrilhos diz "no recorte
