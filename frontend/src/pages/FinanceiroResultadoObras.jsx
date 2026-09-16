@@ -45,6 +45,8 @@ function ObraCard({ obra }) {
   const recebido = obra.receber.recebido;
   const totalPagar = obra.pagar.total;
   const totalReceber = obra.receber.total;
+  const historicoPago = Number(obra.pagar.historico?.valor || 0);
+  const historicoRecebido = Number(obra.receber.historico?.valor || 0);
   const faltaReceber = Number(obra.falta_receber ?? (
     valorReferenciaResultado > 0 ? valorReferenciaResultado - recebido : obra.receber.saldo
   ));
@@ -103,13 +105,17 @@ function ObraCard({ obra }) {
         <StatItem
           label="Executado (pago)"
           value={formatCurrency(executado)}
-          sub={totalPagar > 0 ? `de ${formatCurrency(totalPagar)} empenhados` : undefined}
+          sub={historicoPago > 0
+            ? `inclui ${formatCurrency(historicoPago)} pagos no sistema anterior`
+            : totalPagar > 0 ? `de ${formatCurrency(totalPagar)} empenhados` : undefined}
           color="var(--c-primary)"
         />
         <StatItem
           label="Recebido"
           value={formatCurrency(recebido)}
-          sub={totalReceber > 0 ? `de ${formatCurrency(totalReceber)} a receber` : undefined}
+          sub={historicoRecebido > 0
+            ? `inclui ${formatCurrency(historicoRecebido)} do sistema anterior`
+            : totalReceber > 0 ? `de ${formatCurrency(totalReceber)} a receber` : undefined}
           color="#10b981"
         />
         <StatItem
@@ -188,8 +194,10 @@ export default function FinanceiroResultadoObras() {
   const resumo = obrasFiltradas.reduce((acc, obra) => {
     acc.orcamento += obra.orcamento || 0;
     acc.executado += obra.pagar.executado;
+    acc.historicoPago += Number(obra.pagar.historico?.valor || 0);
     acc.totalReceber += obra.receber.total;
     acc.recebido += obra.receber.recebido;
+    acc.historicoRecebido += Number(obra.receber.historico?.valor || 0);
     const classificacao = String(obra.classificacao || '').trim().toUpperCase();
     const valorReferencia = classificacao === 'PRIVADA'
       ? obra.vgv
@@ -202,7 +210,7 @@ export default function FinanceiroResultadoObras() {
     ));
     acc.lucroPrejuizo += Number(obra.lucro_prejuizo ?? (obra.receber.recebido - obra.pagar.executado));
     return acc;
-  }, { orcamento: 0, executado: 0, totalReceber: 0, recebido: 0, faltaReceber: 0, lucroPrejuizo: 0 });
+  }, { orcamento: 0, executado: 0, historicoPago: 0, totalReceber: 0, recebido: 0, historicoRecebido: 0, faltaReceber: 0, lucroPrejuizo: 0 });
 
   return (
     <div className="page solicitacoes-page">
@@ -243,15 +251,16 @@ export default function FinanceiroResultadoObras() {
             {[
               { label: 'Obras', value: String(obrasFiltradas.length) },
               { label: 'Orçamento', value: formatCurrency(resumo.orcamento) },
-              { label: 'Executado', value: formatCurrency(resumo.executado) },
+              { label: 'Executado', value: formatCurrency(resumo.executado), detalhe: resumo.historicoPago > 0 ? `${formatCurrency(resumo.historicoPago)} do sistema anterior` : null },
               { label: 'Total receber', value: formatCurrency(resumo.totalReceber) },
-              { label: 'Recebido', value: formatCurrency(resumo.recebido) },
+              { label: 'Recebido', value: formatCurrency(resumo.recebido), detalhe: resumo.historicoRecebido > 0 ? `${formatCurrency(resumo.historicoRecebido)} do sistema anterior` : null },
               { label: 'Falta receber', value: formatCurrency(resumo.faltaReceber) },
               { label: 'Lucro/Prejuizo', value: formatCurrency(resumo.lucroPrejuizo) }
             ].map((item) => (
               <div key={item.label} className="flex flex-col items-end">
                 <span className="text-[10px] uppercase tracking-wide text-[var(--c-muted)]">{item.label}</span>
                 <span className="text-sm font-bold tabular-nums leading-tight text-[var(--c-text)]">{item.value}</span>
+                {item.detalhe ? <small className="text-[10px] text-[var(--c-muted)]">{item.detalhe}</small> : null}
               </div>
             ))}
           </div>

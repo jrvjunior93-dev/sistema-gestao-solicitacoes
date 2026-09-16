@@ -39,8 +39,7 @@ const DEFAULT_FILTERS = {
   parceiro_id: '',
   categoria_financeira_id: '',
   incluir_historico: '1',
-  q: '',
-  limit: '1000'
+  q: ''
 };
 
 const ANALISE_OPTIONS = [
@@ -165,6 +164,8 @@ export default function FinanceiroObras() {
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS);
   const [relatorio, setRelatorio] = useState({ filtros: {}, resumo: {}, linhas: [] });
+  const [pagina, setPagina] = useState(1);
+  const [tamanhoPagina, setTamanhoPagina] = useState(25);
   const [obras, setObras] = useState([]);
   const [empresas, setEmpresas] = useState([]);
   const [parceiros, setParceiros] = useState([]);
@@ -230,6 +231,7 @@ export default function FinanceiroObras() {
           resumo: data?.resumo || {},
           linhas: Array.isArray(data?.linhas) ? data.linhas : []
         });
+        setPagina(1);
       })
       .catch((err) => {
         if (!active) return;
@@ -244,6 +246,14 @@ export default function FinanceiroObras() {
       active = false;
     };
   }, [appliedFilters]);
+
+  const totalLinhas = relatorio.linhas.length;
+  const totalPaginas = tamanhoPagina === 'ALL' ? 1 : Math.max(1, Math.ceil(totalLinhas / tamanhoPagina));
+  const paginaAtual = Math.min(pagina, totalPaginas);
+  const linhasVisiveis = useMemo(() => tamanhoPagina === 'ALL'
+    ? relatorio.linhas
+    : relatorio.linhas.slice((paginaAtual - 1) * tamanhoPagina, paginaAtual * tamanhoPagina),
+  [relatorio.linhas, paginaAtual, tamanhoPagina]);
 
   useEffect(() => () => {
     if (pdfUrl) URL.revokeObjectURL(pdfUrl);
@@ -384,13 +394,28 @@ export default function FinanceiroObras() {
     setImportLoading(true);
     setImportError('');
     try {
-      await confirmarImportacaoCustosHistoricosObra({
+      const validas = importPreview.linhas.filter((linha) => linha.status === 'VALIDA');
+      const resultado = await confirmarImportacaoCustosHistoricosObra({
         arquivo_nome: importPreview.arquivo_nome,
         arquivo_hash: importPreview.arquivo_hash,
         linhas: importPreview.linhas
       });
       fecharImportModal();
-      setAppliedFilters((current) => ({ ...current }));
+      const datas = validas.map((linha) => linha.data_pagamento)
+        .filter((data) => /^\d{4}-\d{2}-\d{2}$/.test(String(data)))
+        .sort();
+      if (Number(resultado?.resumo?.importados || 0) > 0 && datas.length) {
+        const recorte = {
+          ...DEFAULT_FILTERS,
+          obra_id: String(validas[0].obra_id || ''),
+          data_inicial: datas[0],
+          data_final: datas[datas.length - 1]
+        };
+        setFilters(recorte);
+        setAppliedFilters(recorte);
+      } else {
+        setAppliedFilters((current) => ({ ...current }));
+      }
     } catch (err) {
       setImportError(err?.message || 'Erro ao confirmar importacao');
     } finally {
@@ -491,10 +516,6 @@ export default function FinanceiroObras() {
             </select>
           </label>
           <label className="app-filter-field">
-            <span className="app-filter-label">Limite</span>
-            <input className="input w-full input-sm" type="number" min="1" max="3000" value={filters.limit} onChange={(e) => setFilter('limit', e.target.value)} />
-          </label>
-          <label className="app-filter-field">
             <span className="app-filter-label">Busca</span>
             <input className="input w-full input-sm" value={filters.q} onChange={(e) => setFilter('q', e.target.value)} placeholder="Titulo, documento, parceiro..." />
           </label>
@@ -551,7 +572,7 @@ export default function FinanceiroObras() {
                 checked={filters.incluir_historico !== '0'}
                 onChange={(event) => setFilter('incluir_historico', event.target.checked ? '1' : '0')}
               />
-              Incluir historico legado no executado
+              Incluir histórico legado (pela data de pagamento, dentro do período filtrado)
             </label>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
@@ -577,7 +598,7 @@ export default function FinanceiroObras() {
             <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border)] p-4">
             <div>
               <h2 className="text-lg font-semibold text-[var(--c-text)]">Relatório financeiro de obras</h2>
-              <p className="text-xs text-[var(--c-muted)]">PDF dos filtros aplicados, respeitando o limite de linhas e seu acesso.</p>
+              <p className="text-xs text-[var(--c-muted)]">PDF de todas as linhas dos filtros aplicados, respeitando seu acesso.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {pdfUrl ? (
@@ -640,6 +661,7 @@ export default function FinanceiroObras() {
           <h2 className="text-lg font-semibold text-[var(--c-text)]">Detalhamento financeiro</h2>
           <p className="text-sm text-[var(--c-muted)]">
             Periodo: {formatDate(relatorio.filtros.data_inicial)} ate {formatDate(relatorio.filtros.data_final)}.
+            {' '}Histórico importado é incluído pela data de pagamento.
           </p>
         </div>
 
@@ -671,7 +693,7 @@ export default function FinanceiroObras() {
                   <td colSpan={12} className="text-center text-[var(--c-muted)]">Nenhum titulo encontrado para os filtros selecionados.</td>
                 </tr>
               ) : (
-                relatorio.linhas.map((linha) => (
+                linhasVisiveis.map((linha) => (
                   <tr key={linha.id}>
                     <td>{formatDate(linha.data_baixa)}</td>
                     <td>{formatDate(linha.data_vencimento)}</td>
@@ -695,6 +717,24 @@ export default function FinanceiroObras() {
               )}
             </tbody>
           </ResizableTable>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--c-border)] px-3 py-2 text-sm text-[var(--c-muted)]">
+          <span>
+            {totalLinhas === 0 ? 'Nenhuma linha' : `Exibindo ${tamanhoPagina === 'ALL' ? 1 : (paginaAtual - 1) * tamanhoPagina + 1}-${tamanhoPagina === 'ALL' ? totalLinhas : Math.min(paginaAtual * tamanhoPagina, totalLinhas)} de ${totalLinhas} linhas`}
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="financeiro-obras-tamanho-pagina">Linhas por página</label>
+            <select id="financeiro-obras-tamanho-pagina" className="input input-sm" value={tamanhoPagina}
+              onChange={(event) => { setTamanhoPagina(event.target.value === 'ALL' ? 'ALL' : Number(event.target.value)); setPagina(1); }}>
+              {[25, 50, 100, 200, 500].map((valor) => <option key={valor} value={valor}>{valor}</option>)}
+              <option value="ALL">Todos</option>
+            </select>
+            <button type="button" className="btn btn-outline btn-sm" disabled={paginaAtual <= 1 || tamanhoPagina === 'ALL'}
+              onClick={() => setPagina((atual) => Math.max(1, atual - 1))}>Anterior</button>
+            <span>Página {paginaAtual} de {totalPaginas}</span>
+            <button type="button" className="btn btn-outline btn-sm" disabled={paginaAtual >= totalPaginas || tamanhoPagina === 'ALL'}
+              onClick={() => setPagina((atual) => Math.min(totalPaginas, atual + 1))}>Próxima</button>
+          </div>
         </div>
       </section>
 
