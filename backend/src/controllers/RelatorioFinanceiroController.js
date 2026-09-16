@@ -14,6 +14,7 @@ const {
   gerarRelatorioMovimentacaoContas
 } = require('../services/relatorioFinanceiroService');
 const { responderErroController } = require('../utils/controllerError');
+const { gerarFinanceiroObrasPdf } = require('../services/financeiroObrasRelatorioPdfService');
 
 function responderErro(res, error, fallbackMessage) {
   return responderErroController(res, error, fallbackMessage);
@@ -67,6 +68,22 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErro(res, error, 'Erro ao gerar relatorio financeiro de obras');
+    }
+  },
+
+  async financeiroObrasPdf(req, res) {
+    try {
+      const relatorio = await gerarRelatorioFinanceiroObras(req, req.query || {});
+      const pdf = await gerarFinanceiroObrasPdf({ relatorio, usuario: req.user });
+      const dataArquivo = new Date().toISOString().slice(0, 10);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="financeiro-obras-${dataArquivo}.pdf"`);
+      res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+      res.setHeader('Content-Length', pdf.length);
+      return res.send(pdf);
+    } catch (error) {
+      console.error(error);
+      return responderErro(res, error, 'Erro ao gerar PDF do financeiro de obras');
     }
   },
 

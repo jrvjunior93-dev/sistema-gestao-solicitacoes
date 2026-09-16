@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { HiOutlineArrowDownTray, HiOutlineBuildingOffice2, HiOutlineXMark } from 'react-icons/hi2';
+import { HiOutlineArrowDownTray, HiOutlineBuildingOffice2, HiOutlineDocumentText, HiOutlineEye, HiOutlineXMark } from 'react-icons/hi2';
 import {
   confirmarImportacaoCustosHistoricosObra,
   getCategoriasFinanceiras,
   getRelatorioFinanceiroObras,
+  gerarRelatorioFinanceiroObrasPdf,
   previewImportacaoCustosHistoricosObra
 } from '../services/financeiro';
 import { getEmpresasGrupo } from '../services/empresasGrupo';
@@ -16,6 +17,7 @@ const STORAGE_KEY = 'fluxy.financeiro.financeiroObras.columnWidths';
 const IMPORT_PREVIEW_STORAGE_KEY = 'fluxy.financeiro.financeiroObras.importPreview.columnWidths';
 const IMPORT_PREVIEW_PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const MODELO_IMPORTACAO_URL = `${import.meta.env.BASE_URL}modelos/modelo-importacao-financeiro-obras.xlsx`;
+const APOIO_RASCUNHO = 'Os filtros só valem depois de "Filtrar" — até o clique, a marca é rascunho.';
 
 function getTodayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -170,6 +172,12 @@ export default function FinanceiroObras() {
   const [loading, setLoading] = useState(true);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [error, setError] = useState('');
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState('');
+  const [pdfUrl, setPdfUrl] = useState('');
+  const [pdfFilename, setPdfFilename] = useState('financeiro-obras.pdf');
+  const pdfRequestIdRef = useRef(0);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importForm, setImportForm] = useState({
     obra_id: '',
@@ -237,6 +245,10 @@ export default function FinanceiroObras() {
     };
   }, [appliedFilters]);
 
+  useEffect(() => () => {
+    if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+  }, [pdfUrl]);
+
   const analiseAtual = useMemo(
     () => ANALISE_OPTIONS.find((item) => item.value === filters.analise) || ANALISE_OPTIONS[0],
     [filters.analise]
@@ -267,6 +279,51 @@ export default function FinanceiroObras() {
   function limparFiltros() {
     setFilters(DEFAULT_FILTERS);
     setAppliedFilters(DEFAULT_FILTERS);
+  }
+
+  function fecharPdf() {
+    pdfRequestIdRef.current += 1;
+    setPdfModalOpen(false);
+    setPdfLoading(false);
+    setPdfError('');
+    setPdfUrl('');
+  }
+
+  async function abrirPdf() {
+    if (loading || pdfLoading) return;
+    const requestId = pdfRequestIdRef.current + 1;
+    pdfRequestIdRef.current = requestId;
+    setPdfModalOpen(true);
+    setPdfLoading(true);
+    setPdfError('');
+    setPdfUrl('');
+
+    try {
+      const result = await gerarRelatorioFinanceiroObrasPdf(compact(appliedFilters));
+      const objectUrl = URL.createObjectURL(result.blob);
+      if (pdfRequestIdRef.current !== requestId) {
+        URL.revokeObjectURL(objectUrl);
+        return;
+      }
+      setPdfFilename(result.filename);
+      setPdfUrl(objectUrl);
+    } catch (err) {
+      if (pdfRequestIdRef.current === requestId) {
+        setPdfError(err?.message || 'Nao foi possivel gerar o PDF. Tente novamente.');
+      }
+    } finally {
+      if (pdfRequestIdRef.current === requestId) setPdfLoading(false);
+    }
+  }
+
+  function baixarPdf() {
+    if (!pdfUrl) return;
+    const link = document.createElement('a');
+    link.href = pdfUrl;
+    link.download = pdfFilename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   }
 
   function resetImportModal() {
@@ -393,6 +450,9 @@ export default function FinanceiroObras() {
             </p>
           </div>
           <div className="app-page-actions">
+            <a className="btn btn-outline" href={MODELO_IMPORTACAO_URL} download="modelo-importacao-financeiro-obras.xlsx">
+              <HiOutlineArrowDownTray aria-hidden="true" /> Baixar modelo
+            </a>
             <button type="button" className="btn btn-outline" onClick={() => setImportModalOpen(true)}>
               Importar historico
             </button>
@@ -494,14 +554,70 @@ export default function FinanceiroObras() {
               Incluir historico legado no executado
             </label>
           ) : null}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-[var(--c-muted)]">{APOIO_RASCUNHO}</span>
             <button type="button" className="btn btn-outline btn-sm" onClick={limparFiltros}>Limpar</button>
-            <button type="submit" className="btn btn-primary btn-sm">Gerar relatorio</button>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={loading}>
+              {loading ? 'Filtrando...' : 'Filtrar'}
+            </button>
+            <button type="button" className="btn btn-outline btn-sm gap-2" onClick={abrirPdf}
+              disabled={loading || pdfLoading} title="Gerar PDF com os filtros aplicados">
+              <HiOutlineDocumentText className="h-4 w-4" />
+              {pdfLoading ? 'Gerando...' : 'Gerar relatório'}
+            </button>
           </div>
         </div>
       </form>
 
       {error ? <div className="app-alert app-alert--error">{error}</div> : null}
+
+      {pdfModalOpen ? (
+        <div role="dialog" aria-modal="true" aria-label="Relatório financeiro de obras" className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-sm">
+          <div className="card sol-surface-card flex w-full max-w-[1500px] max-h-[90vh] flex-col overflow-hidden p-0">
+            <header className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border)] p-4">
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--c-text)]">Relatório financeiro de obras</h2>
+              <p className="text-xs text-[var(--c-muted)]">PDF dos filtros aplicados, respeitando o limite de linhas e seu acesso.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {pdfUrl ? (
+                <>
+                  <button type="button" className="btn btn-outline btn-sm gap-2"
+                    onClick={() => window.open(pdfUrl, '_blank', 'noopener,noreferrer')}>
+                    <HiOutlineEye className="h-4 w-4" /> Abrir em nova aba
+                  </button>
+                  <button type="button" className="btn btn-primary btn-sm gap-2" onClick={baixarPdf}>
+                    <HiOutlineArrowDownTray className="h-4 w-4" /> Baixar PDF
+                  </button>
+                </>
+              ) : null}
+              <button type="button" className="btn btn-outline btn-sm btn-square" onClick={fecharPdf}
+                title="Fechar relatório" aria-label="Fechar relatório">
+                <HiOutlineXMark className="h-4 w-4" />
+              </button>
+            </div>
+            </header>
+            <div className="min-h-0 bg-[var(--ui-surface-soft)] p-2 sm:p-3" style={{ height: 'min(75dvh, 750px)' }}>
+            {pdfLoading ? (
+              <div className="flex h-full items-center justify-center bg-[var(--c-surface)] text-sm font-semibold text-[var(--c-text)]">
+                Preparando o relatório filtrado...
+              </div>
+            ) : pdfError ? (
+              <div className="flex h-full items-center justify-center bg-[var(--c-surface)] p-4">
+                <div className="max-w-md text-center">
+                  <h3 className="text-sm font-semibold text-[var(--sem-danger)]">Não foi possível gerar o PDF</h3>
+                  <p className="mt-2 text-sm text-[var(--c-muted)]">{pdfError}</p>
+                  <button type="button" className="btn btn-outline btn-sm mt-4" onClick={abrirPdf}>Tentar novamente</button>
+                </div>
+              </div>
+            ) : pdfUrl ? (
+              <iframe src={pdfUrl} title="Visualização do relatório financeiro de obras"
+                className="h-full w-full rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]" />
+            ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="app-summary-grid">
         <Metric label="Credito" value={formatCurrency(relatorio.resumo.credito_total)} detail="Entradas no recorte" tone="positive" />
