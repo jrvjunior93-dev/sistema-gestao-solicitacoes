@@ -203,10 +203,17 @@ export default function Obras() {
         const gestaoData = await getObrasGestao();
         const resumoPorId = new Map((Array.isArray(gestaoData) ? gestaoData : [])
           .map((obra) => [Number(obra.id), obra]));
-        lista = lista.map((obra) => ({
-          ...obra,
-          resumo: resumoPorId.get(Number(obra.id))?.resumo || obra.resumo
-        }));
+        lista = lista.map((obra) => {
+          const gestaoObra = resumoPorId.get(Number(obra.id));
+          return {
+            ...obra,
+            vgv_efetivo: gestaoObra?.vgv_efetivo,
+            vgv_origem: gestaoObra?.vgv_origem,
+            vgv_unidades_total: gestaoObra?.vgv_unidades_total,
+            vgv_unidades_sem_valor: gestaoObra?.vgv_unidades_sem_valor,
+            resumo: gestaoObra?.resumo || obra.resumo
+          };
+        });
       }
 
       setObras(lista);
@@ -407,16 +414,23 @@ export default function Obras() {
               tipo: 'valor',
               render: (obra) => {
                 if (!isCadastroObra(obra)) return '-';
-                const ref = obra.vgv ?? obra.planilha_geral;
+                const ref = obra.classificacao === 'PRIVADA'
+                  ? (obra.vgv_efetivo ?? obra.vgv)
+                  : obra.planilha_geral;
                 const margem = obra.margem_custo_esperada;
                 const orcamento = ref != null && margem != null && margem > 0
                   ? Number(ref) * (1 - Number(margem) / 100)
                   : null;
                 if (ref == null && orcamento == null) return '-';
+                const avisoVgv = obra.vgv_origem === 'UNIDADES'
+                  ? `${obra.vgv_unidades_total} unidades · base de venda`
+                  : obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
+                    ? `${obra.vgv_unidades_sem_valor} unidade(s) sem valor base`
+                    : null;
                 return (
                   <CelulaDupla
                     principal={ref != null ? formatCurrency(ref) : '-'}
-                    sub={orcamento != null ? `Orç. ${formatCurrency(orcamento)}` : null}
+                    sub={[avisoVgv, orcamento != null ? `Orç. ${formatCurrency(orcamento)}` : null].filter(Boolean).join(' · ') || null}
                     title={margem != null ? `Margem de custo esperada: ${Number(margem).toFixed(1)}%` : undefined}
                   />
                 );

@@ -62,7 +62,7 @@ function ObraBloco({ obra }) {
   const isPrivada = classificacao === 'PRIVADA';
   const isPublica = classificacao === 'PUBLICA';
 
-  const valorReferencia = isPrivada ? obra.vgv : isPublica ? obra.planilha_geral : null;
+  const valorReferencia = isPrivada ? (obra.vgv_efetivo ?? obra.vgv) : isPublica ? obra.planilha_geral : null;
   const orcamento = obra.orcamento; // calculado no backend: valorReferencia * (1 - margem/100)
   const valorReferenciaResultado = Number(obra.valor_referencia_resultado ?? valorReferencia ?? 0);
 
@@ -82,7 +82,15 @@ function ObraBloco({ obra }) {
     : null;
 
   const pctExecutado = orcamento > 0 ? Math.min(100, (executado / orcamento) * 100) : 0;
-  const pctRecebido = totalReceber > 0 ? Math.min(100, (recebido / totalReceber) * 100) : 0;
+  const baseRecebimento = valorReferenciaResultado > 0 ? valorReferenciaResultado : totalReceber;
+  const pctRecebido = baseRecebimento > 0 ? Math.min(100, (recebido / baseRecebimento) * 100) : 0;
+  const fonteVgv = obra.vgv_origem === 'UNIDADES'
+    ? `${obra.vgv_unidades_total} unidades ativas · valor base de venda`
+    : obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
+      ? `VGV não calculado: ${obra.vgv_unidades_sem_valor} unidade(s) sem valor base de venda`
+      : obra.vgv_origem === 'SEM_UNIDADES'
+        ? 'Sem unidades ativas vinculadas; VGV não calculado'
+        : undefined;
 
   const apoio = [
     obra.cidade || null,
@@ -104,7 +112,7 @@ function ObraBloco({ obra }) {
     >
       <StatGrid colunas={2}>
         {isPrivada ? (
-          <StatTile label="VGV" valor={<Previsto>{formatCurrency(obra.vgv)}</Previsto>} />
+          <StatTile label="VGV" valor={<Previsto>{formatCurrency(valorReferencia)}</Previsto>} sub={fonteVgv} />
         ) : null}
         {isPublica ? (
           <StatTile label="Planilha geral" valor={<Previsto>{formatCurrency(obra.planilha_geral)}</Previsto>} />
@@ -128,7 +136,7 @@ function ObraBloco({ obra }) {
           valor={<Realizado>{formatCurrency(recebido)}</Realizado>}
           sub={historicoRecebido > 0 ? `inclui ${formatCurrency(historicoRecebido)} do sistema anterior` : undefined}
         />
-        <StatTile label="Falta receber" valor={formatCurrency(faltaReceber)} />
+        <StatTile label="Falta receber" valor={formatCurrency(faltaReceber)} sub={valorReferenciaResultado > 0 ? `${isPrivada ? 'VGV' : 'Planilha geral'} menos recebido` : 'Saldo dos títulos a receber'} />
         <StatTile label="Lucro/Prejuízo" valor={formatCurrency(lucroPrejuizo)} sub="Recebido menos executado" />
         {margemRealizada != null ? (
           <StatTile
@@ -154,17 +162,17 @@ function ObraBloco({ obra }) {
             <BarraProporcao valor={executado} max={orcamento} serie="serie-realizada" />
           </div>
         ) : null}
-        {totalReceber > 0 ? (
+        {baseRecebimento > 0 ? (
           <div>
             <div className="mb-2 flex justify-between text-xs text-[var(--c-muted)]">
               <span>
                 <span className="texto-realizado">Recebido</span>
                 {' / '}
-                <span className="texto-previsto">A receber</span>
+                <span className="texto-previsto">{valorReferenciaResultado > 0 ? (isPrivada ? 'VGV' : 'Planilha geral') : 'Títulos a receber'}</span>
               </span>
               <span className="tabular-nums">{pctRecebido.toFixed(1)}%</span>
             </div>
-            <BarraProporcao valor={recebido} max={totalReceber} serie="serie-realizada" />
+            <BarraProporcao valor={recebido} max={baseRecebimento} serie="serie-realizada" />
           </div>
         ) : null}
       </div>
@@ -230,7 +238,7 @@ export default function FinanceiroResultadoObras() {
     acc.historicoRecebido += Number(obra.receber.historico?.valor || 0);
     const classificacao = String(obra.classificacao || '').trim().toUpperCase();
     const valorReferencia = classificacao === 'PRIVADA'
-      ? obra.vgv
+      ? (obra.vgv_efetivo ?? obra.vgv)
       : classificacao === 'PUBLICA'
         ? obra.planilha_geral
         : null;

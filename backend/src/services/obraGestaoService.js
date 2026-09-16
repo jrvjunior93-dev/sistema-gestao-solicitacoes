@@ -18,6 +18,7 @@ const {
   ContratoAnexo
 } = require('../models');
 const { distribuirPorApropriacao } = require('./obraGestaoApropriacaoService');
+const { obterVgvEfetivoPorObras } = require('./obraVgvService');
 
 const STATUS_TITULO_ABERTO = new Set(['ABERTO', 'PARCIAL']);
 const STATUS_MOVIMENTO_ATIVO = 'ATIVO';
@@ -700,6 +701,8 @@ async function listarObrasGestao() {
     return [];
   }
 
+  const vgvPorObra = await obterVgvEfetivoPorObras(obras);
+
   const apropriacoes = await Apropriacao.findAll({
     where: {
       obra_id: { [Op.in]: obras.map((obra) => obra.id) },
@@ -794,8 +797,9 @@ async function listarObrasGestao() {
       + asNumber(custosHistoricosReceberByObra.get(Number(obra.id)))
     );
     const classificacao = String(obra.classificacao || '').trim().toUpperCase();
+    const vgvInfo = vgvPorObra.get(Number(obra.id));
     const valorReferenciaResultado = classificacao === 'PRIVADA'
-      ? asNumber(obra.vgv)
+      ? asNumber(vgvInfo?.valor)
       : classificacao === 'PUBLICA'
         ? asNumber(obra.planilha_geral)
         : 0;
@@ -818,6 +822,10 @@ async function listarObrasGestao() {
       tipo_centro_custo: obra.tipo_centro_custo || TIPO_CENTRO_CUSTO_OBRA,
       classificacao: obra.classificacao || null,
       vgv: obra.vgv != null ? Number(obra.vgv) : null,
+      vgv_efetivo: vgvInfo?.valor ?? null,
+      vgv_origem: vgvInfo?.origem ?? null,
+      vgv_unidades_total: vgvInfo?.unidades_total ?? 0,
+      vgv_unidades_sem_valor: vgvInfo?.unidades_sem_valor ?? 0,
       planilha_geral: obra.planilha_geral != null ? Number(obra.planilha_geral) : null,
       margem_custo_esperada: obra.margem_custo_esperada != null ? Number(obra.margem_custo_esperada) : null,
       resumo: {

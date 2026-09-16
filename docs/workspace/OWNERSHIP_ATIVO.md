@@ -2,6 +2,21 @@
 
 ## Ownership ativo
 
+Ownership temporario da sessao `/root` em 2026-09-16 para calcular VGV das
+obras privadas sem VGV cadastrado a partir do valor base de venda das unidades.
+Arquivos reservados:
+
+- `backend/src/services/obraVgvService.js`
+- `backend/src/controllers/ResultadoObrasController.js`
+- `backend/src/services/obraGestaoService.js`
+- `backend/scripts/validarVgvUnidadesObra.js`
+- `frontend/src/pages/FinanceiroResultadoObras.jsx`
+- `frontend/src/pages/Obras.jsx`
+- `docs/handoffs/VGV_OBRAS_UNIDADES_2026-09-16.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Ownership desta sessao liberado em 2026-09-16 apos testes e handoff.
+
 Ownership da sessao `/root` iniciado em 2026-09-16 para corrigir a composicao
 do Financeiro de Obras (Comprometido = Realizado + A realizar), incluindo historico
 legado, PDF, orientacoes da tela e teste de regressao. Arquivos reservados:
