@@ -37,7 +37,7 @@ function ObraCard({ obra }) {
   const isPrivada = classificacao === 'PRIVADA';
   const isPublica = classificacao === 'PUBLICA';
 
-  const valorReferencia = isPrivada ? obra.vgv : isPublica ? obra.planilha_geral : null;
+  const valorReferencia = isPrivada ? (obra.vgv_efetivo ?? obra.vgv) : isPublica ? obra.planilha_geral : null;
   const orcamento = obra.orcamento; // calculado no backend: valorReferencia * (1 - margem/100)
   const valorReferenciaResultado = Number(obra.valor_referencia_resultado ?? valorReferencia ?? 0);
 
@@ -58,7 +58,15 @@ function ObraCard({ obra }) {
     : null;
 
   const pctExecutado = orcamento > 0 ? Math.min(100, (executado / orcamento) * 100) : 0;
-  const pctRecebido = totalReceber > 0 ? Math.min(100, (recebido / totalReceber) * 100) : 0;
+  const baseRecebimento = valorReferenciaResultado > 0 ? valorReferenciaResultado : totalReceber;
+  const pctRecebido = baseRecebimento > 0 ? Math.min(100, (recebido / baseRecebimento) * 100) : 0;
+  const fonteVgv = obra.vgv_origem === 'UNIDADES'
+    ? `${obra.vgv_unidades_total} unidades ativas · valor base de venda`
+    : obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
+      ? `VGV não calculado: ${obra.vgv_unidades_sem_valor} unidade(s) sem valor base de venda`
+      : obra.vgv_origem === 'SEM_UNIDADES'
+        ? 'Sem unidades ativas vinculadas; VGV não calculado'
+        : undefined;
 
   return (
     <article className="overflow-hidden rounded-xl border bg-[var(--ui-surface)] border-[var(--ui-border)]">
@@ -94,7 +102,7 @@ function ObraCard({ obra }) {
       {/* Stats grid */}
       <div className="px-4 py-3 grid grid-cols-2 gap-x-4 gap-y-3 border-b border-[var(--ui-border)]">
         {isPrivada && (
-          <StatItem label="VGV" value={formatCurrency(obra.vgv)} />
+          <StatItem label="VGV" value={formatCurrency(valorReferencia)} sub={fonteVgv} />
         )}
         {isPublica && (
           <StatItem label="Planilha geral" value={formatCurrency(obra.planilha_geral)} />
@@ -121,6 +129,7 @@ function ObraCard({ obra }) {
         <StatItem
           label="Falta receber"
           value={formatCurrency(faltaReceber)}
+          sub={valorReferenciaResultado > 0 ? `${isPrivada ? 'VGV' : 'Planilha geral'} menos recebido` : 'Saldo dos títulos a receber'}
           color={faltaReceber > 0 ? '#f59e0b' : undefined}
         />
         <StatItem
@@ -148,13 +157,13 @@ function ObraCard({ obra }) {
             <ProgressBar value={executado} max={orcamento} color="var(--c-primary)" />
           </div>
         )}
-        {totalReceber > 0 && (
+        {baseRecebimento > 0 && (
           <div>
             <div className="mb-1 flex justify-between text-[10px] text-[var(--c-muted)]">
-              <span>Recebido</span>
+              <span>{valorReferenciaResultado > 0 ? `Recebido / ${isPrivada ? 'VGV' : 'Planilha geral'}` : 'Recebido / títulos a receber'}</span>
               <span>{pctRecebido.toFixed(1)}%</span>
             </div>
-            <ProgressBar value={recebido} max={totalReceber} color="#10b981" />
+            <ProgressBar value={recebido} max={baseRecebimento} color="#10b981" />
           </div>
         )}
       </div>
@@ -200,7 +209,7 @@ export default function FinanceiroResultadoObras() {
     acc.historicoRecebido += Number(obra.receber.historico?.valor || 0);
     const classificacao = String(obra.classificacao || '').trim().toUpperCase();
     const valorReferencia = classificacao === 'PRIVADA'
-      ? obra.vgv
+      ? (obra.vgv_efetivo ?? obra.vgv)
       : classificacao === 'PUBLICA'
         ? obra.planilha_geral
         : null;

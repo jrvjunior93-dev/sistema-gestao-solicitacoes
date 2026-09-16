@@ -196,10 +196,17 @@ export default function Obras() {
         const gestaoData = await getObrasGestao();
         const resumoPorId = new Map((Array.isArray(gestaoData) ? gestaoData : [])
           .map((obra) => [Number(obra.id), obra]));
-        lista = lista.map((obra) => ({
-          ...obra,
-          resumo: resumoPorId.get(Number(obra.id))?.resumo || obra.resumo
-        }));
+        lista = lista.map((obra) => {
+          const gestaoObra = resumoPorId.get(Number(obra.id));
+          return {
+            ...obra,
+            vgv_efetivo: gestaoObra?.vgv_efetivo,
+            vgv_origem: gestaoObra?.vgv_origem,
+            vgv_unidades_total: gestaoObra?.vgv_unidades_total,
+            vgv_unidades_sem_valor: gestaoObra?.vgv_unidades_sem_valor,
+            resumo: gestaoObra?.resumo || obra.resumo
+          };
+        });
       }
 
       setObras(lista);
@@ -394,6 +401,9 @@ export default function Obras() {
             const lucroPrejuizo = Number(obra.resumo?.lucro_prejuizo || 0);
             const percentual = getExecucaoPercentual(orcado, executado);
             const cadastroEhObra = isCadastroObra(obra);
+            const vgvVisual = obra.classificacao === 'PRIVADA'
+              ? (obra.vgv_efetivo ?? obra.vgv)
+              : obra.vgv;
 
             return (
               <article
@@ -463,12 +473,14 @@ export default function Obras() {
                     </div>
                   </div>
 
-                  {cadastroEhObra && (obra.vgv != null || obra.planilha_geral != null || obra.margem_custo_esperada != null) && (
+                  {cadastroEhObra && (vgvVisual != null || obra.planilha_geral != null || obra.margem_custo_esperada != null) && (
                     <div className="mt-4 flex flex-wrap gap-3">
-                      {obra.vgv != null && (
+                      {vgvVisual != null && (
                         <div>
                           <div className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: 'var(--c-muted)' }}>VGV</div>
-                          <div className="mt-0.5 text-sm font-bold" style={{ color: 'var(--c-text)' }}>{formatCurrency(obra.vgv)}</div>
+                          <div className="mt-0.5 text-sm font-bold" style={{ color: 'var(--c-text)' }}>{formatCurrency(vgvVisual)}</div>
+                          {obra.vgv_origem === 'UNIDADES' && <div className="text-[10px] text-[var(--c-muted)]">{obra.vgv_unidades_total} unidades · base de venda</div>}
+                          {obra.vgv_origem === 'UNIDADES_INCOMPLETAS' && <div className="text-[10px] text-[var(--c-muted)]">{obra.vgv_unidades_sem_valor} unidade(s) sem valor base</div>}
                         </div>
                       )}
                       {obra.planilha_geral != null && (
@@ -484,7 +496,7 @@ export default function Obras() {
                         </div>
                       )}
                       {(() => {
-                        const ref = obra.vgv ?? obra.planilha_geral;
+                        const ref = obra.classificacao === 'PRIVADA' ? vgvVisual : obra.planilha_geral;
                         const margem = obra.margem_custo_esperada;
                         if (ref != null && margem != null && margem > 0) {
                           const orcamento = Number(ref) * (1 - Number(margem) / 100);

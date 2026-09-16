@@ -1,6 +1,7 @@
 const { Obra, TituloFinanceiro, ObraCustoHistorico } = require('../models');
 const { Op, fn, col, literal } = require('sequelize');
 const { TIPO_CENTRO_CUSTO_OBRA } = require('../constants/centroCusto');
+const { obterVgvEfetivoPorObras } = require('../services/obraVgvService');
 
 module.exports = {
   async index(req, res) {
@@ -15,6 +16,8 @@ module.exports = {
       if (obraIds.length === 0) {
         return res.json([]);
       }
+
+      const vgvPorObra = await obterVgvEfetivoPorObras(obras);
 
       // Aggregate titulos por obra_id e tipo
       const agregados = await TituloFinanceiro.findAll({
@@ -88,10 +91,11 @@ module.exports = {
 
         const classificacao = String(obra.classificacao || '').trim().toUpperCase();
         const margem = Number(obra.margem_custo_esperada || 0);
+        const vgvInfo = vgvPorObra.get(Number(obra.id));
 
         let valorReferencia = 0;
         if (classificacao === 'PRIVADA') {
-          valorReferencia = Number(obra.vgv || 0);
+          valorReferencia = vgvInfo?.valor || 0;
         } else if (classificacao === 'PUBLICA') {
           valorReferencia = Number(obra.planilha_geral || 0);
         }
@@ -110,6 +114,10 @@ module.exports = {
           cidade: obra.cidade,
           classificacao: obra.classificacao,
           vgv: obra.vgv != null ? Number(obra.vgv) : null,
+          vgv_efetivo: vgvInfo?.valor ?? null,
+          vgv_origem: vgvInfo?.origem ?? null,
+          vgv_unidades_total: vgvInfo?.unidades_total ?? 0,
+          vgv_unidades_sem_valor: vgvInfo?.unidades_sem_valor ?? 0,
           planilha_geral: obra.planilha_geral != null ? Number(obra.planilha_geral) : null,
           margem_custo_esperada: obra.margem_custo_esperada != null ? Number(obra.margem_custo_esperada) : null,
           orcamento,
