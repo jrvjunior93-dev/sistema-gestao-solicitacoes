@@ -21,6 +21,7 @@
     "test:importacao-titulos": "node scripts/validarImportacaoTitulos.js",
     "test:baixa-massa-formas": "node scripts/validarBaixaMassaFormasPagamento.js",
     "test:financeiro-obras-pdf": "node scripts/validarFinanceiroObrasPdf.js",
+    "test:relatorio-financeiro-periodo": "node scripts/validarRelatorioFinanceiroPeriodo.js",
     "test:dda": "node scripts/validarFinanceiroDda.js",
     "test:conciliacao-matches": "node scripts/validarConciliacaoMatchesExatos.js",
     "test:cheques-terceiros": "node scripts/validarCarteiraChequesBaixaComposta.js",
