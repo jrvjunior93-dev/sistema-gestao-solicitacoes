@@ -15,6 +15,7 @@ import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 const STORAGE_KEY = 'fluxy.financeiro.financeiroObras.columnWidths';
 const IMPORT_PREVIEW_STORAGE_KEY = 'fluxy.financeiro.financeiroObras.importPreview.columnWidths';
 const IMPORT_PREVIEW_PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+const MODELO_IMPORTACAO_URL = `${import.meta.env.BASE_URL}modelos/modelo-importacao-financeiro-obras.xlsx`;
 
 function getTodayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -646,13 +647,17 @@ export default function FinanceiroObras() {
                 <input
                   className="input w-full input-sm"
                   type="file"
-                  accept=".xlsx,.xls,.csv"
+                  accept=".xlsx,.csv"
                   onChange={(event) => setImportForm((current) => ({ ...current, file: event.target.files?.[0] || null }))}
                   disabled={importLoading}
                 />
               </label>
 
-              <div className="md:col-span-2 xl:col-span-4 flex justify-end gap-2">
+              <div className="md:col-span-2 xl:col-span-4 flex flex-wrap items-center justify-end gap-2">
+                <span className="mr-auto text-xs text-[var(--c-muted)]">O modelo contém a aba de preenchimento e as instruções para converter o relatório do SIENGE.</span>
+                <a className="btn btn-outline btn-sm gap-2" href={MODELO_IMPORTACAO_URL} download="modelo-importacao-financeiro-obras.xlsx">
+                  <HiOutlineArrowDownTray className="h-4 w-4" aria-hidden="true" /> Baixar modelo
+                </a>
                 <button type="button" className="btn btn-outline btn-sm" onClick={resetImportModal} disabled={importLoading}>Limpar</button>
                 <button type="submit" className="btn btn-primary btn-sm" disabled={importLoading}>
                   {importLoading ? 'Validando...' : 'Pre-visualizar'}
