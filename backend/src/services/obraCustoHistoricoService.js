@@ -13,6 +13,7 @@ const { getFinanceiroObraScopeIds } = require('./authorizationService');
 const { excelSerialDateToDate, sheetToArrayRows } = require('../utils/excelWorkbook');
 
 const MAX_IMPORT_ROWS = 5000;
+const INSERT_BATCH_SIZE = 250;
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -478,6 +479,7 @@ async function previewImportacaoCustosHistoricos(req, defaultsPayload = {}) {
   return {
     arquivo_nome: req.file.originalname,
     arquivo_hash: crypto.createHash('sha256').update(req.file.buffer).digest('hex'),
+    preview_digest: hashObject(linhasComStatus),
     metadata,
     resumo,
     linhas: linhasComStatus
@@ -505,8 +507,22 @@ function sanitizeLinhaConfirmacao(linha = {}) {
 }
 
 async function confirmarImportacaoCustosHistoricos(req, payload = {}) {
-  const linhasValidas = Array.isArray(payload.linhas)
-    ? payload.linhas.filter((linha) => String(linha.status || '').toUpperCase() === 'VALIDA')
+  let dados = payload;
+  if (req.file) {
+    // O arquivo compacto substitui milhares de objetos JSON. A previa e
+    // recalculada para garantir que o conteudo aprovado ainda corresponde
+    // ao arquivo e aos cadastros no momento da confirmacao.
+    const previaAtual = await previewImportacaoCustosHistoricos(req, payload);
+    if (!payload.arquivo_hash || !payload.preview_digest
+      || payload.arquivo_hash !== previaAtual.arquivo_hash
+      || payload.preview_digest !== previaAtual.preview_digest) {
+      throw createHttpError(409, 'A planilha ou sua pre-visualizacao mudou. Pre-visualize novamente antes de importar.');
+    }
+    dados = previaAtual;
+  }
+
+  const linhasValidas = Array.isArray(dados.linhas)
+    ? dados.linhas.filter((linha) => String(linha.status || '').toUpperCase() === 'VALIDA')
     : [];
 
   if (!linhasValidas.length) {
@@ -540,30 +556,29 @@ async function confirmarImportacaoCustosHistoricos(req, payload = {}) {
 
   return sequelize.transaction(async (transaction) => {
     const importacao = await ObraCustoHistoricoImportacao.create({
-      arquivo_hash: sanitizeText(payload.arquivo_hash, 64) || hashObject({ linhas: sanitized }),
-      arquivo_nome: sanitizeText(payload.arquivo_nome, 255) || 'importacao-historico.xlsx',
+      arquivo_hash: sanitizeText(dados.arquivo_hash, 64) || hashObject({ linhas: sanitized }),
+      arquivo_nome: sanitizeText(dados.arquivo_nome, 255) || 'importacao-historico.xlsx',
       status: 'CONFIRMADA',
-      total_lidos: Array.isArray(payload.linhas) ? payload.linhas.length : sanitized.length,
+      total_lidos: Array.isArray(dados.linhas) ? dados.linhas.length : sanitized.length,
       importados: rowsToCreate.length,
       duplicados: duplicated.size,
-      erros: Array.isArray(payload.linhas)
-        ? payload.linhas.filter((linha) => String(linha.status || '').toUpperCase() === 'ERRO').length
+      erros: Array.isArray(dados.linhas)
+        ? dados.linhas.filter((linha) => String(linha.status || '').toUpperCase() === 'ERRO').length
         : 0,
       valor_total: rowsToCreate.reduce((total, linha) => roundCurrency(total + linha.valor), 0),
       criado_por: req.user?.id || null
     }, { transaction });
 
     if (rowsToCreate.length) {
-      await ObraCustoHistorico.bulkCreate(
-        rowsToCreate.map((linha) => ({
+      for (let offset = 0; offset < rowsToCreate.length; offset += INSERT_BATCH_SIZE) {
+        await ObraCustoHistorico.bulkCreate(rowsToCreate.slice(offset, offset + INSERT_BATCH_SIZE).map((linha) => ({
           ...linha,
           importacao_id: importacao.id,
           origem: 'HISTORICO_LEGADO',
           ativo: true,
           criado_por: req.user?.id || null
-        })),
-        { transaction }
-      );
+        })), { transaction });
+      }
     }
 
     return {

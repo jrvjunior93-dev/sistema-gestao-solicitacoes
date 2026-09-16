@@ -387,19 +387,29 @@ export default function FinanceiroObras() {
   }
 
   async function confirmarImportacao() {
-    if (!importPreview?.linhas?.length) {
-      return;
-    }
+    const lote = importPreview;
+    const arquivo = importForm.file;
+    const opcoes = {
+      obra_id: importForm.obra_id,
+      empresa_id: importForm.empresa_id,
+      categoria_financeira_id: importForm.categoria_financeira_id
+    };
+    const validas = Array.isArray(lote?.linhas)
+      ? lote.linhas.filter((linha) => linha.status === 'VALIDA')
+      : [];
+    if (!validas.length || !arquivo || !lote?.preview_digest || importLoading) return;
 
     setImportLoading(true);
     setImportError('');
     try {
-      const validas = importPreview.linhas.filter((linha) => linha.status === 'VALIDA');
-      const resultado = await confirmarImportacaoCustosHistoricosObra({
-        arquivo_nome: importPreview.arquivo_nome,
-        arquivo_hash: importPreview.arquivo_hash,
-        linhas: importPreview.linhas
-      });
+      const formData = new FormData();
+      formData.append('file', arquivo);
+      formData.append('arquivo_hash', lote.arquivo_hash);
+      formData.append('preview_digest', lote.preview_digest);
+      formData.append('obra_id', opcoes.obra_id);
+      if (opcoes.empresa_id) formData.append('empresa_id', opcoes.empresa_id);
+      if (opcoes.categoria_financeira_id) formData.append('categoria_financeira_id', opcoes.categoria_financeira_id);
+      const resultado = await confirmarImportacaoCustosHistoricosObra(formData);
       fecharImportModal();
       const datas = validas.map((linha) => linha.data_pagamento)
         .filter((data) => /^\d{4}-\d{2}-\d{2}$/.test(String(data)))
@@ -919,7 +929,7 @@ export default function FinanceiroObras() {
                     type="button"
                     className="btn btn-primary btn-sm"
                     onClick={confirmarImportacao}
-                    disabled={importLoading || !importPreview.resumo?.importaveis}
+                    disabled={importLoading || !importPreview.resumo?.importaveis || !importPreview.preview_digest}
                   >
                     {importLoading ? 'Importando...' : 'Confirmar importacao'}
                   </button>
