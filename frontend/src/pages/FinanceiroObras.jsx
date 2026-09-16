@@ -28,6 +28,15 @@ import {
 const IMPORT_PREVIEW_PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 const MODELO_IMPORTACAO_URL = `${import.meta.env.BASE_URL}modelos/modelo-importacao-financeiro-obras.xlsx`;
 
+function baixarModeloImportacao() {
+  const link = document.createElement('a');
+  link.href = MODELO_IMPORTACAO_URL;
+  link.download = 'modelo-importacao-financeiro-obras.xlsx';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
 /*
   R23 — REGIME DE CONSULTA CARA, DECLARADO.
 
@@ -524,13 +533,21 @@ export default function FinanceiroObras({ embutido = false }) {
       icone: <HiOutlineArrowUpTray aria-hidden="true" />,
       onClick: () => setImportModalOpen(true)
     },
-    secundarias: [{
-      rotulo: 'Exportar CSV',
-      icone: <HiOutlineArrowDownTray aria-hidden="true" />,
-      onClick: exportarCsv,
-      desabilitada: !relatorio.linhas.length,
-      title: 'Exporta as linhas carregadas neste recorte'
-    }]
+    secundarias: [
+      {
+        rotulo: 'Baixar modelo',
+        icone: <HiOutlineArrowDownTray aria-hidden="true" />,
+        onClick: baixarModeloImportacao,
+        title: 'Baixa a planilha para importar custos históricos'
+      },
+      {
+        rotulo: 'Exportar CSV',
+        icone: <HiOutlineArrowDownTray aria-hidden="true" />,
+        onClick: exportarCsv,
+        desabilitada: !relatorio.linhas.length,
+        title: 'Exporta as linhas carregadas neste recorte'
+      }
+    ]
   };
 
   return (
@@ -551,6 +568,9 @@ export default function FinanceiroObras({ embutido = false }) {
         <div className="card sol-surface-card flex flex-wrap items-center justify-between gap-3">
           <span className="text-sm text-[var(--c-muted)]">{APOIO_RASCUNHO}</span>
           <div className="app-actionbar">
+            <a className="btn btn-outline" href={MODELO_IMPORTACAO_URL} download="modelo-importacao-financeiro-obras.xlsx">
+              <HiOutlineArrowDownTray aria-hidden="true" /> Baixar modelo
+            </a>
             <button
               type="button"
               className="btn btn-outline"
