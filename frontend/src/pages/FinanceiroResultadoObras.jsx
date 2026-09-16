@@ -70,6 +70,8 @@ function ObraBloco({ obra }) {
   const recebido = obra.receber.recebido;
   const totalPagar = obra.pagar.total;
   const totalReceber = obra.receber.total;
+  const historicoPago = Number(obra.pagar.historico?.valor || 0);
+  const historicoRecebido = Number(obra.receber.historico?.valor || 0);
   const faltaReceber = Number(obra.falta_receber ?? (
     valorReferenciaResultado > 0 ? valorReferenciaResultado - recebido : obra.receber.saldo
   ));
@@ -113,7 +115,9 @@ function ObraBloco({ obra }) {
         <StatTile
           label="Executado (pago)"
           valor={<Realizado>{formatCurrency(executado)}</Realizado>}
-          sub={totalPagar > 0 ? `de ${formatCurrency(totalPagar)} empenhados` : undefined}
+          sub={historicoPago > 0
+            ? `inclui ${formatCurrency(historicoPago)} pagos no sistema anterior`
+            : totalPagar > 0 ? `de ${formatCurrency(totalPagar)} empenhados` : undefined}
         />
         <StatTile
           label="A receber"
@@ -122,6 +126,7 @@ function ObraBloco({ obra }) {
         <StatTile
           label="Recebido"
           valor={<Realizado>{formatCurrency(recebido)}</Realizado>}
+          sub={historicoRecebido > 0 ? `inclui ${formatCurrency(historicoRecebido)} do sistema anterior` : undefined}
         />
         <StatTile label="Falta receber" valor={formatCurrency(faltaReceber)} />
         <StatTile label="Lucro/Prejuízo" valor={formatCurrency(lucroPrejuizo)} sub="Recebido menos executado" />
@@ -219,8 +224,10 @@ export default function FinanceiroResultadoObras() {
   const resumo = useMemo(() => obrasFiltradas.reduce((acc, obra) => {
     acc.orcamento += obra.orcamento || 0;
     acc.executado += obra.pagar.executado;
+    acc.historicoPago += Number(obra.pagar.historico?.valor || 0);
     acc.totalReceber += obra.receber.total;
     acc.recebido += obra.receber.recebido;
+    acc.historicoRecebido += Number(obra.receber.historico?.valor || 0);
     const classificacao = String(obra.classificacao || '').trim().toUpperCase();
     const valorReferencia = classificacao === 'PRIVADA'
       ? obra.vgv
@@ -233,7 +240,7 @@ export default function FinanceiroResultadoObras() {
     ));
     acc.lucroPrejuizo += Number(obra.lucro_prejuizo ?? (obra.receber.recebido - obra.pagar.executado));
     return acc;
-  }, { orcamento: 0, executado: 0, totalReceber: 0, recebido: 0, faltaReceber: 0, lucroPrejuizo: 0 }), [obrasFiltradas]);
+  }, { orcamento: 0, executado: 0, historicoPago: 0, totalReceber: 0, recebido: 0, historicoRecebido: 0, faltaReceber: 0, lucroPrejuizo: 0 }), [obrasFiltradas]);
 
   return (
     <Pagina>
@@ -287,9 +294,11 @@ export default function FinanceiroResultadoObras() {
       >
         <StatGrid colunas={3}>
           <StatTile label="Orçamento" valor={<Previsto>{formatCurrency(resumo.orcamento)}</Previsto>} />
-          <StatTile label="Executado" valor={<Realizado>{formatCurrency(resumo.executado)}</Realizado>} />
+          <StatTile label="Executado" valor={<Realizado>{formatCurrency(resumo.executado)}</Realizado>}
+            sub={resumo.historicoPago > 0 ? `inclui ${formatCurrency(resumo.historicoPago)} do sistema anterior` : undefined} />
           <StatTile label="Total a receber" valor={<Previsto>{formatCurrency(resumo.totalReceber)}</Previsto>} />
-          <StatTile label="Recebido" valor={<Realizado>{formatCurrency(resumo.recebido)}</Realizado>} />
+          <StatTile label="Recebido" valor={<Realizado>{formatCurrency(resumo.recebido)}</Realizado>}
+            sub={resumo.historicoRecebido > 0 ? `inclui ${formatCurrency(resumo.historicoRecebido)} do sistema anterior` : undefined} />
           <StatTile label="Falta receber" valor={formatCurrency(resumo.faltaReceber)} />
           <StatTile
             label="Lucro/Prejuízo"

@@ -1,4 +1,4 @@
-const { Obra, TituloFinanceiro, TituloFinanceiroRateio } = require('../models');
+const { Obra, TituloFinanceiro, TituloFinanceiroRateio, ObraCustoHistorico } = require('../models');
 const { Op, fn, col, literal } = require('sequelize');
 const { TIPO_CENTRO_CUSTO_OBRA } = require('../constants/centroCusto');
 
@@ -51,6 +51,20 @@ module.exports = {
         }]
       });
 
+      // O legado ja foi pago/recebido no sistema de origem. Nao representa
+      // titulo ou movimento bancario do Fluxy e deve ser contabilizado uma vez so.
+      const historicos = await ObraCustoHistorico.findAll({
+        attributes: [
+          'obra_id',
+          'tipo',
+          [fn('SUM', col('valor')), 'valor_total'],
+          [fn('COUNT', col('id')), 'quantidade']
+        ],
+        where: { obra_id: { [Op.in]: obraIds }, ativo: true },
+        group: ['obra_id', 'tipo'],
+        raw: true
+      });
+
       // Map agregados por obra_id
       const mapAgregados = {};
       for (const row of agregados) {
@@ -85,6 +99,30 @@ module.exports = {
           total_valor_saldo: atual.total_valor_saldo + (valorRateio * (1 - proporcaoBaixada)),
           quantidade: atual.quantidade + 1
         };
+      }
+
+      const mapHistoricos = {};
+      for (const row of historicos) {
+        const obraId = Number(row.obra_id);
+        const tipo = String(row.tipo || '').toUpperCase();
+        const valor = Number(row.valor_total || 0);
+        const quantidade = Number(row.quantidade || 0);
+        if (!obraIds.includes(obraId) || !['PAGAR', 'RECEBER'].includes(tipo) || !Number.isFinite(valor) || valor <= 0) continue;
+        const atual = mapAgregados[obraId]?.[tipo] || {
+          total_valor_original: 0,
+          total_valor_baixado: 0,
+          total_valor_saldo: 0,
+          quantidade: 0
+        };
+        if (!mapAgregados[obraId]) mapAgregados[obraId] = {};
+        mapAgregados[obraId][tipo] = {
+          ...atual,
+          total_valor_original: atual.total_valor_original + valor,
+          total_valor_baixado: atual.total_valor_baixado + valor,
+          quantidade: atual.quantidade + quantidade
+        };
+        if (!mapHistoricos[obraId]) mapHistoricos[obraId] = {};
+        mapHistoricos[obraId][tipo] = { valor, quantidade };
       }
 
       const resultado = obras.map(obra => {
@@ -125,13 +163,15 @@ module.exports = {
             total: pagar.total_valor_original,
             executado: pagar.total_valor_baixado,
             saldo: pagar.total_valor_saldo,
-            quantidade: pagar.quantidade
+            quantidade: pagar.quantidade,
+            historico: mapHistoricos[obra.id]?.PAGAR || { valor: 0, quantidade: 0 }
           },
           receber: {
             total: receber.total_valor_original,
             recebido: receber.total_valor_baixado,
             saldo: receber.total_valor_saldo,
-            quantidade: receber.quantidade
+            quantidade: receber.quantidade,
+            historico: mapHistoricos[obra.id]?.RECEBER || { valor: 0, quantidade: 0 }
           }
         };
       });

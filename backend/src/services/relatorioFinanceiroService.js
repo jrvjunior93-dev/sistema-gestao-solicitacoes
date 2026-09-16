@@ -1750,7 +1750,7 @@ async function listarLinhasFreteFinanceiroObras(filters, obraWhere, periodo, ana
       [analise === 'REALIZADO' ? 'createdAt' : 'data_vencimento', 'ASC'],
       ['id', 'ASC']
     ],
-    limit,
+    ...(limit ? { limit } : {}),
     subQuery: false
   });
 
@@ -1778,7 +1778,14 @@ async function gerarRelatorioFinanceiroObras(req, filters = {}) {
   }
 
   const tituloWhere = buildFinanceiroObrasTituloWhere(filters, obraWhere, periodo, analise);
-  const limit = Math.min(Number(filters.limit || 1000), 3000);
+  // A consulta de Obras deve devolver o recorte completo. O antigo limite
+  // silencioso de 1000/3000 cortava os lancamentos mais recentes e alterava
+  // inclusive os totais do resumo. Preservamos limite explicito para clientes
+  // legados, mas a tela atual nao envia este parametro.
+  const requestedLimit = Number(filters.limit);
+  const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+    ? Math.min(Math.floor(requestedLimit), 3000)
+    : null;
   let linhas = [];
 
   if (analise === 'REALIZADO') {
@@ -1808,7 +1815,7 @@ async function gerarRelatorioFinanceiroObras(req, filters = {}) {
         [{ model: TituloFinanceiro, as: 'titulo' }, 'data_vencimento', 'ASC'],
         ['id', 'ASC']
       ],
-      limit,
+      ...(limit ? { limit } : {}),
       subQuery: false
     });
 
@@ -1846,7 +1853,7 @@ async function gerarRelatorioFinanceiroObras(req, filters = {}) {
           ['data_pagamento', 'ASC'],
           ['id', 'ASC']
         ],
-        limit
+        ...(limit ? { limit } : {})
       });
 
       linhas = [
@@ -1867,7 +1874,8 @@ async function gerarRelatorioFinanceiroObras(req, filters = {}) {
       const dateB = String(b.data_baixa || b.data_vencimento || '');
       if (dateA !== dateB) return dateA.localeCompare(dateB);
       return String(a.id).localeCompare(String(b.id));
-    }).slice(0, limit);
+    });
+    if (limit) linhas = linhas.slice(0, limit);
   } else {
     const titulos = await TituloFinanceiro.findAll({
       where: tituloWhere,
@@ -1876,7 +1884,7 @@ async function gerarRelatorioFinanceiroObras(req, filters = {}) {
         ['data_vencimento', 'ASC'],
         ['id', 'ASC']
       ],
-      limit,
+      ...(limit ? { limit } : {}),
       subQuery: false
     });
 
@@ -1894,7 +1902,8 @@ async function gerarRelatorioFinanceiroObras(req, filters = {}) {
       const dateB = String(b.data_vencimento || b.data_baixa || '');
       if (dateA !== dateB) return dateA.localeCompare(dateB);
       return String(a.id).localeCompare(String(b.id));
-    }).slice(0, limit);
+    });
+    if (limit) linhas = linhas.slice(0, limit);
   }
 
   const linhasComSaldo = applyFinanceiroObrasSaldo(linhas);

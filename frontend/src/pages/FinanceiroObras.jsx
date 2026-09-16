@@ -42,7 +42,7 @@ function baixarModeloImportacao() {
 
   Marcar um filtro NÃO aplica: as marcas são RASCUNHO até "Filtrar".
   A tela tem NOVE dimensões que o usuário combina (análise,
-  data inicial, data final, tipo, limite, busca, obra, empresa, plano
+  data inicial, data final, tipo, busca, obra, empresa, plano
   financeiro) e a consulta varre movimentos, títulos, histórico legado e
   fretes do período — muito além dos "4+ dimensões" do critério.
 
@@ -70,8 +70,7 @@ const DEFAULT_FILTERS = {
   parceiro_id: '',
   categoria_financeira_id: '',
   incluir_historico: '1',
-  q: '',
-  limit: '1000'
+  q: ''
 };
 
 const ANALISE_OPTIONS = [
@@ -455,14 +454,33 @@ export default function FinanceiroObras({ embutido = false }) {
     setImportLoading(true);
     setImportError('');
     try {
-      await confirmarImportacaoCustosHistoricosObra({
+      const resultado = await confirmarImportacaoCustosHistoricosObra({
         arquivo_nome: lote.arquivo_nome,
         arquivo_hash: lote.arquivo_hash,
         linhas: linhasDoLote
       });
       fecharImportModal();
-      avisar.sucesso(`${linhasValidas.length} linha(s) enviada(s) para importacao.`);
-      setAppliedFilters((current) => ({ ...current }));
+      const importados = Number(resultado?.resumo?.importados ?? linhasValidas.length);
+      const datas = linhasValidas.map((linha) => linha.data_pagamento)
+        .filter((data) => /^\d{4}-\d{2}-\d{2}$/.test(String(data)))
+        .sort();
+      if (importados > 0 && datas.length) {
+        // A consulta inicia no mes corrente; sem ajustar o periodo, o legado
+        // recem-importado aparenta nao ter entrado no Financeiro de Obras.
+        const recorte = {
+          ...DEFAULT_FILTERS,
+          analise: 'REALIZADO',
+          incluir_historico: '1',
+          obra_id: String(linhasValidas[0].obra_id || ''),
+          data_inicial: datas[0],
+          data_final: datas[datas.length - 1]
+        };
+        setFilters(recorte);
+        setAppliedFilters(recorte);
+      } else {
+        setAppliedFilters((current) => ({ ...current }));
+      }
+      avisar.sucesso(`${importados} linha(s) histórica(s) importada(s). A consulta Realizado foi ajustada para a obra e as datas de pagamento da planilha.`);
     } catch (err) {
       setImportError(err?.message || 'Erro ao confirmar importacao');
     } finally {
@@ -615,10 +633,6 @@ export default function FinanceiroObras({ embutido = false }) {
             </select>
           </label>
           <label className="app-filter-field">
-            <span className="app-filter-label">Limite</span>
-            <input className="input w-full input-sm" type="number" min="1" max="3000" value={filters.limit} onChange={(e) => setFilter('limit', e.target.value)} />
-          </label>
-          <label className="app-filter-field">
             <span className="app-filter-label">Busca</span>
             <input className="input w-full input-sm" value={filters.q} onChange={(e) => setFilter('q', e.target.value)} placeholder="Título, documento, parceiro..." />
           </label>
@@ -675,7 +689,7 @@ export default function FinanceiroObras({ embutido = false }) {
                 checked={filters.incluir_historico !== '0'}
                 onChange={(event) => setFilter('incluir_historico', event.target.checked ? '1' : '0')}
               />
-              Incluir histórico legado no executado
+              Incluir histórico legado (pela data de pagamento, dentro do período filtrado)
             </label>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
@@ -706,7 +720,7 @@ export default function FinanceiroObras({ embutido = false }) {
           <header data-modal="cabecalho" className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--c-border)] p-4">
             <div>
               <h2 className="text-lg font-semibold text-[var(--c-text)]">Relatório financeiro de obras</h2>
-              <p className="text-xs text-[var(--c-muted)]">PDF dos filtros aplicados, respeitando o limite de linhas e seu acesso.</p>
+              <p className="text-xs text-[var(--c-muted)]">PDF do período e dos filtros aplicados, respeitando seu acesso.</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {pdfUrl ? (
@@ -747,36 +761,23 @@ export default function FinanceiroObras({ embutido = false }) {
         </OverlayModal>
       ) : null}
 
-      {/*
-        ATENÇÃO — o apoio destes quatro ladrilhos diz "no recorte
-        carregado", e NÃO "no periodo". Não é preciosismo de texto: o
-        backend calcula o resumo depois de cortar as linhas em `limit`
-        (relatorioFinanceiroService.js, `summarizeFinanceiroObras`
-        recebendo a lista já truncada). Com mais linhas do que o limite, o
-        que se lê aqui é o total das PRIMEIRAS N por data, não o do
-        período. O defeito é do backend e está relatado; o texto da tela
-        pelo menos para de afirmar o que o número não sustenta.
-      */}
       <StatGrid colunas={4}>
         <StatTile
           label="Crédito"
           valor={formatCurrency(relatorio.resumo.credito_total)}
-          sub="Entradas no recorte carregado"
+          sub="Entradas no período filtrado"
           tom={tomDoValor('positive')}
         />
         <StatTile
           label="Débito"
           valor={formatCurrency(relatorio.resumo.debito_total)}
-          sub="Saídas no recorte carregado"
+          sub="Saídas no período filtrado"
           tom={tomDoValor('negative')}
         />
-        {/* O limite exibido é o do relatório JÁ CARREGADO (o que o servidor
-            devolveu), nunca o do rascunho de filtros — senão o apoio
-            descreveria um recorte que ainda não foi consultado (R23). */}
         <StatTile
           label="Saldo"
           valor={formatCurrency(relatorio.resumo.saldo_total)}
-          sub={`${relatorio.resumo.quantidade_linhas || 0} linha(s) carregada(s), limite de ${relatorio.filtros.limit || appliedFilters.limit}`}
+          sub={`${relatorio.resumo.quantidade_linhas || 0} linha(s) no período filtrado`}
           tom={tomDoValor(Number(relatorio.resumo.saldo_total || 0) >= 0 ? 'positive' : 'negative')}
         />
         <StatTile
