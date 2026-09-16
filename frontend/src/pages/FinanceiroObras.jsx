@@ -82,7 +82,7 @@ const ANALISE_OPTIONS = [
   {
     value: 'COMPROMETIDO',
     label: 'Comprometido',
-    description: 'Titulos existentes no periodo, pela data de vencimento.'
+    description: 'Baixas e histórico pela data de pagamento + saldos pelo vencimento.'
   },
   {
     value: 'A_REALIZAR',
@@ -449,7 +449,7 @@ export default function FinanceiroObras({ embutido = false }) {
     const { ok } = await confirmar({
       titulo: 'Confirmar importação de custos históricos',
       mensagem: `Importar ${linhasValidas.length} linha(s) valida(s) de "${lote.arquivo_nome || 'planilha'}" para o historico da obra? `
-        + 'As linhas entram no executado/recebido do Financeiro de Obras e nao geram titulos, baixas, DRE nem movimento bancario. '
+        + 'As linhas entram no Realizado e no Comprometido do Financeiro de Obras e nao geram titulos, baixas, DRE nem movimento bancario. '
         + 'Esta acao nao pode ser desfeita por esta tela.',
       rotuloConfirmar: 'Importar',
       destrutiva: true
@@ -690,7 +690,7 @@ export default function FinanceiroObras({ embutido = false }) {
             <HiOutlineBuildingOffice2 className="mt-1" aria-hidden="true" />
             <span>{analiseAtual.description}</span>
           </div>
-          {filters.analise === 'REALIZADO' ? (
+          {['REALIZADO', 'COMPROMETIDO'].includes(filters.analise) ? (
             <label className="flex items-center gap-2 text-sm text-[var(--c-muted)]">
               <input
                 type="checkbox"
@@ -773,13 +773,13 @@ export default function FinanceiroObras({ embutido = false }) {
         <StatTile
           label="Crédito"
           valor={formatCurrency(relatorio.resumo.credito_total)}
-          sub="Entradas no período filtrado"
+          sub={relatorio.filtros.analise === 'COMPROMETIDO' ? 'Realizado + a receber no período' : 'Entradas no período filtrado'}
           tom={tomDoValor('positive')}
         />
         <StatTile
           label="Débito"
           valor={formatCurrency(relatorio.resumo.debito_total)}
-          sub="Saídas no período filtrado"
+          sub={relatorio.filtros.analise === 'COMPROMETIDO' ? 'Realizado + a pagar no período' : 'Saídas no período filtrado'}
           tom={tomDoValor('negative')}
         />
         <StatTile
@@ -930,7 +930,7 @@ export default function FinanceiroObras({ embutido = false }) {
             <div>
               <h2 className="text-lg font-semibold text-[var(--c-text)]">Importar custos históricos</h2>
               <p className="text-sm text-[var(--c-muted)]">
-                As linhas importadas entram somente no executado/recebido do Financeiro de Obras e não geram títulos, baixas, DRE ou movimento bancário.
+                As linhas importadas entram no Realizado e no Comprometido do Financeiro de Obras e não geram títulos, baixas, DRE ou movimento bancário.
               </p>
             </div>
             <button type="button" className="btn btn-icon btn-outline shrink-0" onClick={fecharImportModal} disabled={importLoading} aria-label="Fechar">

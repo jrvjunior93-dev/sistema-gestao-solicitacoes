@@ -72,7 +72,7 @@ function filterSummary(filters, rows) {
     entries.push(`Plano: ${text(category?.plano_financeiro || rows[0]?.plano_financeiro, `#${filters.categoria_financeira_id}`)}`);
   }
   if (filters.q) entries.push(`Busca: ${text(filters.q)}`);
-  if (filters.analise === 'REALIZADO') {
+  if (['REALIZADO', 'COMPROMETIDO'].includes(filters.analise)) {
     entries.push(`Historico legado: ${['0', 'false'].includes(String(filters.incluir_historico)) ? 'nao' : 'sim'}`);
   }
   entries.push(`Limite: ${number(filters.limit || 1000)} linhas`);

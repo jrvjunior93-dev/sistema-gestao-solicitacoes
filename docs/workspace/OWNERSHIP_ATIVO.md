@@ -2,6 +2,20 @@
 
 ## Ownership ativo
 
+Ownership da sessao `/root` iniciado em 2026-09-16 para corrigir a composicao
+do Financeiro de Obras (Comprometido = Realizado + A realizar), incluindo historico
+legado, PDF, orientacoes da tela e teste de regressao. Arquivos reservados:
+
+- `backend/src/services/relatorioFinanceiroService.js`
+- `backend/src/services/financeiroObrasRelatorioPdfService.js`
+- `backend/scripts/validarFinanceiroObrasComprometido.js`
+- `backend/package.json`
+- `frontend/src/pages/FinanceiroObras.jsx`
+- `docs/handoffs/FINANCEIRO_OBRAS_COMPROMETIDO_2026-09-16.md`
+
+Ownership desta sessao liberado em 2026-09-16 apos validar a composicao,
+documentar o handoff e preservar as alteracoes sem commit.
+
 Antes de trabalho paralelo, registrar agente, escopo, arquivos reservados e horario de inicio. Remover a reserva ao concluir o handoff.
 
 Ownership ativo da sessao `/root` iniciado em 2026-09-14 para corrigir a sincronizacao
