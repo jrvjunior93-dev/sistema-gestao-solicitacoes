@@ -51,7 +51,7 @@ const ANALISE_OPTIONS = [
   {
     value: 'COMPROMETIDO',
     label: 'Comprometido',
-    description: 'Titulos existentes no periodo, pela data de vencimento.'
+    description: 'Baixas e historico pela data de pagamento + saldos pelo vencimento.'
   },
   {
     value: 'A_REALIZAR',
@@ -565,7 +565,7 @@ export default function FinanceiroObras() {
             <HiOutlineBuildingOffice2 className="mt-0.5" />
             <span>{analiseAtual.description}</span>
           </div>
-          {filters.analise === 'REALIZADO' ? (
+          {['REALIZADO', 'COMPROMETIDO'].includes(filters.analise) ? (
             <label className="flex items-center gap-2 text-sm text-[var(--c-muted)]">
               <input
                 type="checkbox"
@@ -641,8 +641,8 @@ export default function FinanceiroObras() {
       ) : null}
 
       <div className="app-summary-grid">
-        <Metric label="Credito" value={formatCurrency(relatorio.resumo.credito_total)} detail="Entradas no recorte" tone="positive" />
-        <Metric label="Debito" value={formatCurrency(relatorio.resumo.debito_total)} detail="Saidas no recorte" tone="negative" />
+        <Metric label="Credito" value={formatCurrency(relatorio.resumo.credito_total)} detail={relatorio.filtros.analise === 'COMPROMETIDO' ? 'Realizado + a receber no recorte' : 'Entradas no recorte'} tone="positive" />
+        <Metric label="Debito" value={formatCurrency(relatorio.resumo.debito_total)} detail={relatorio.filtros.analise === 'COMPROMETIDO' ? 'Realizado + a pagar no recorte' : 'Saidas no recorte'} tone="negative" />
         <Metric
           label="Saldo"
           value={formatCurrency(relatorio.resumo.saldo_total)}
@@ -745,7 +745,7 @@ export default function FinanceiroObras() {
               <div>
                 <h2 className="text-lg font-semibold text-[var(--c-text)]">Importar custos historicos</h2>
                 <p className="text-sm text-[var(--c-muted)]">
-                  As linhas importadas entram somente no executado/recebido do Financeiro de Obras e nao geram titulos, baixas, DRE ou movimento bancario.
+                  As linhas importadas entram no Realizado e no Comprometido do Financeiro de Obras e nao geram titulos, baixas, DRE ou movimento bancario.
                 </p>
               </div>
               <button type="button" className="btn btn-icon btn-outline" onClick={fecharImportModal} disabled={importLoading} aria-label="Fechar">

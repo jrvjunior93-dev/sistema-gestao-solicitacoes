@@ -1710,6 +1710,32 @@ async function listarLinhasFreteFinanceiroObras(filters, obraWhere, periodo, ana
 
 async function gerarRelatorioFinanceiroObras(req, filters = {}) {
   const analise = normalizeFinanceiroObrasAnalise(filters.analise);
+  if (analise === 'COMPROMETIDO') {
+    // Soma os pagamentos efetivos (inclusive historico legado e frete embutido)
+    // aos saldos ainda a realizar, sem duplicar titulos parcialmente baixados.
+    const [realizado, aRealizar] = await Promise.all([
+      gerarRelatorioFinanceiroObras(req, { ...filters, analise: 'REALIZADO' }),
+      gerarRelatorioFinanceiroObras(req, { ...filters, analise: 'A_REALIZAR' })
+    ]);
+    const requestedLimit = Number(filters.limit);
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(Math.floor(requestedLimit), 3000)
+      : null;
+    const linhasOrdenadas = [...realizado.linhas, ...aRealizar.linhas].sort((a, b) => {
+      const dateA = String(a.data_baixa || a.data_vencimento || '');
+      const dateB = String(b.data_baixa || b.data_vencimento || '');
+      if (dateA !== dateB) return dateA.localeCompare(dateB);
+      return String(a.id).localeCompare(String(b.id));
+    });
+    const linhas = applyFinanceiroObrasSaldo(limit ? linhasOrdenadas.slice(0, limit) : linhasOrdenadas);
+
+    return {
+      filtros: { ...realizado.filtros, analise },
+      resumo: summarizeFinanceiroObras(linhas),
+      linhas
+    };
+  }
+
   const periodo = resolvePeriodo({
     data_inicial: filters.data_inicial,
     data_final: filters.data_final,
