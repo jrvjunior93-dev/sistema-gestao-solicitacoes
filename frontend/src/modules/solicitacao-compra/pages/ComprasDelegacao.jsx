@@ -201,7 +201,9 @@ export default function ComprasDelegacao() {
       return;
     }
 
-    navigate(`/solicitacoes-compra/${solicitacao.id}`);
+    navigate(Number(solicitacao.solicitacao_principal_id) > 0
+      ? `/solicitacoes/${solicitacao.solicitacao_principal_id}`
+      : `/solicitacoes-compra/${solicitacao.id}`);
   }
 
   async function salvarDelegacao(event, solicitacao) {

@@ -20,8 +20,30 @@ const {
 } = require('../src/services/pedidoCompraDocumentoUtils');
 const {
   calcularValorMercadoriasCotacao,
-  obterQuantidadeBaseFinanceiraCotacao
+  obterQuantidadeBaseFinanceiraCotacao,
+  obterItensCotaveis
 } = require('../src/services/comprasCotacao');
+
+function validarAprovacaoGeoDosItensCotaveis() {
+  const montarItem = (id, status_aprovacao) => ({
+    id, status_aprovacao, quantidade: 1, insumo: { nome: `Item ${id}` }, apropriacoes: []
+  });
+  const itens = obterItensCotaveis({
+    itens: [
+      montarItem(1, 'PENDENTE'),
+      montarItem(2, 'APROVADO'),
+      montarItem(3, 'REJEITADO'),
+      montarItem(4, null)
+    ],
+    itensManuais: [
+      { id: 5, status_aprovacao: 'PENDENTE', nome_manual: 'Manual pendente', quantidade: 1, apropriacoes: [] },
+      { id: 6, status_aprovacao: 'APROVADO', nome_manual: 'Manual aprovado', quantidade: 1, apropriacoes: [] }
+    ]
+  });
+  assert.deepStrictEqual(itens.map((item) => [item.item_tipo, item.id]), [
+    ['CADASTRADO', 2], ['CADASTRADO', 4], ['MANUAL', 6]
+  ], 'Compras deve receber somente itens aprovados pelo GEO, preservando itens legados sem status.');
+}
 
 function validarBaseFinanceiraDaCotacao() {
   assert.strictEqual(
@@ -516,6 +538,7 @@ function validarMultiplosArquivosRespostaCotacao() {
 }
 
 validarItensPorFornecedor();
+validarAprovacaoGeoDosItensCotaveis();
 validarBaseFinanceiraDaCotacao();
 validarItensGlobaisLegados();
 validarFechamentoParcial();

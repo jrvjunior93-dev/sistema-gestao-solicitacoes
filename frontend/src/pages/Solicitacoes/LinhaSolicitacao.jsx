@@ -542,6 +542,11 @@ export function construirColunas({
               Retorno solicitado
             </span>
           )}
+          {item.atencao_pendente && (
+            <span className="sol-retorno-pendente" title={item.atencao_pendente.resumo || 'Nova interação nesta solicitação.'}>
+              {item.atencao_pendente.tipo === 'ENVIO_MANUAL' ? 'Enviada ao setor' : 'Novo comentário'}
+            </span>
+          )}
         </span>
       )
     },

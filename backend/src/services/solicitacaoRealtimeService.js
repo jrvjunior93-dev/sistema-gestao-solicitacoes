@@ -167,5 +167,6 @@ async function publishSolicitacaoRealtimeEvent({
 
 module.exports = {
   fetchSolicitacaoSnapshot,
+  resolveRecipientIds,
   publishSolicitacaoRealtimeEvent
 };

@@ -296,6 +296,7 @@ export default function Header({
         titulo="Dados da solicitação"
         variante="primario"
         cor="var(--module-solicitacoes)"
+        recolhivel
       >
         <Avisos avisos={avisos} aoFechar={fechar} />
         <CamposComVazios colunas={4} campos={campos} />

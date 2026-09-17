@@ -1897,6 +1897,11 @@ export default function Solicitacoes({ arquivadas = false }) {
               Retorno solicitado
             </span>
           )}
+          {item.atencao_pendente && (
+            <span className="sol-retorno-pendente" title={item.atencao_pendente.resumo || 'Nova interação nesta solicitação.'}>
+              {item.atencao_pendente.tipo === 'ENVIO_MANUAL' ? 'Enviada ao setor' : 'Novo comentário'}
+            </span>
+          )}
         </span>
         <StatusBadge
           status={item.status_global}
@@ -2101,7 +2106,7 @@ export default function Solicitacoes({ arquivadas = false }) {
           ]}
           renderCard={renderCardSolicitacao}
           urgencia={(item) => (
-            item.retorno_solicitado_pendente
+            item.retorno_solicitado_pendente || item.atencao_pendente
               ? 'retorno'
               : urgenciaVencimento(item.data_vencimento)
           )}

@@ -2216,6 +2216,7 @@ function SecaoEnvioFornecedores({
 // SecaoComparativo
 
 function SecaoComparativo({
+  embedded = false,
   comparativo,
   solicitacao,
   podeComprar,
@@ -2444,6 +2445,7 @@ function SecaoComparativo({
     return (
       <BlocoConteudo
         titulo="Comparativo de Cotações"
+        recolhivel={embedded}
         className="cotacao-comparativo-panel"
       >
         <div className="app-empty-card">
@@ -2461,6 +2463,7 @@ function SecaoComparativo({
       */}
       <BlocoConteudo
         titulo="Comparativo por item"
+        recolhivel={embedded}
         variante="primario"
         cor="var(--sem-info)"
         contagem={`${comparativo.itens.length} item(ns)`}
@@ -2827,8 +2830,10 @@ function SecaoComparativo({
 
 // Componente principal
 
-export default function GerenciarCotacaoSolicitacao() {
-  const { id } = useParams();
+export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null, embedded = false }) {
+  const { id: routeId } = useParams();
+  const id = solicitacaoCompraId || routeId;
+  const Container = embedded ? 'div' : Pagina;
   const navigate = useNavigate();
   const { user } = useAuth();
   const { avisos, avisar, fechar } = useAvisos();
@@ -3013,7 +3018,9 @@ export default function GerenciarCotacaoSolicitacao() {
   useEffect(() => () => fornecedorRequestRef.current.controller?.abort(), []);
 
   const itensCombinados = useMemo(() => {
-    const itens = (solicitacao?.itens || []).map((item) => ({
+    const itens = (solicitacao?.itens || [])
+      .filter((item) => !item.status_aprovacao || item.status_aprovacao === 'APROVADO')
+      .map((item) => ({
       item_tipo: 'CADASTRADO',
       item_referencia_id: item.id,
       nome: item.insumo?.nome || '-',
@@ -3026,7 +3033,9 @@ export default function GerenciarCotacaoSolicitacao() {
       arquivo_url: item.arquivo_url || '',
       arquivo_nome_original: item.arquivo_nome_original || ''
     }));
-    const manuais = (solicitacao?.itensManuais || []).map((item) => ({
+    const manuais = (solicitacao?.itensManuais || [])
+      .filter((item) => !item.status_aprovacao || item.status_aprovacao === 'APROVADO')
+      .map((item) => ({
       item_tipo: 'MANUAL',
       item_referencia_id: item.id,
       nome: item.nome_manual || '-',
@@ -3822,20 +3831,20 @@ export default function GerenciarCotacaoSolicitacao() {
 
   if (loading) {
     return (
-      <Pagina>
+      <Container>
         <div className="app-empty-card">Carregando...</div>
-      </Pagina>
+      </Container>
     );
   }
 
   if (!solicitacao) {
     return (
-      <Pagina>
+      <Container>
         <Avisos avisos={avisos} aoFechar={fechar} />
         <div className="app-empty-card">
           {erroCarregamento || 'Solicitacao de compra nao encontrada.'}
         </div>
-      </Pagina>
+      </Container>
     );
   }
 
@@ -3863,7 +3872,7 @@ export default function GerenciarCotacaoSolicitacao() {
   const codigoSolicitacao = `SC-${String(solicitacao.id).padStart(5, '0')}`;
 
   return (
-    <Pagina className="page-compra-nova cotacao-gestao-page">
+    <Container className={embedded ? 'cotacao-gestao-embutida' : 'page-compra-nova cotacao-gestao-page'}>
       {!cotacaoRespostaInterna && faixaAvisos}
       {/*
         R13/C4: cabeçalho FIXO, com o NOME do registro em destaque e o código
@@ -3875,7 +3884,7 @@ export default function GerenciarCotacaoSolicitacao() {
         ela sai daqui — o menu, o breadcrumb e o Ctrl+K resolvem, e a seta de
         voltar já devolve ao detalhe desta solicitação.
       */}
-      <PageHeader
+      {!embedded && <PageHeader
         titulo={isAvulsa ? (solicitacao.titulo || 'Cotacao Avulsa') : 'Gestao da Cotacao'}
         contagem={codigoSolicitacao}
         descricao={[
@@ -3903,7 +3912,16 @@ export default function GerenciarCotacaoSolicitacao() {
             ? { rotulo: 'Cancelar cotação', onClick: () => setModalCancelamentoCotacao(true) }
             : null
         ].filter(Boolean)}
-      />
+      />}
+      {embedded && <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-[var(--c-border)] pb-3">
+        <span className="mr-auto text-sm font-semibold">Gestão da cotação · {codigoSolicitacao}</span>
+        <button type="button" className="btn btn-outline btn-sm" onClick={handleAbrirPdf} disabled={baixando}>
+          {baixando ? 'Abrindo...' : 'Abrir PDF'}
+        </button>
+        {podeOperarFluxo && <button type="button" className="btn btn-outline btn-sm" onClick={handleRecusarSolicitacao}>Recusar</button>}
+        {podeExibirCancelamentoCotacao && <button type="button" className="btn btn-danger btn-sm"
+          onClick={() => setModalCancelamentoCotacao(true)}>Cancelar cotação</button>}
+      </div>}
 
       {/*
         C2 × B3: a faixa fica com o TOTAL; estes chips carregam o RECORTE
@@ -3924,6 +3942,7 @@ export default function GerenciarCotacaoSolicitacao() {
       {podeOperarFluxo && (
         <BlocoConteudo
           titulo="Comentário da cotação"
+          recolhivel={embedded}
           variante="secundario"
           descricao="Registre alinhamentos com compras; o texto também alimenta o histórico da solicitação da obra."
         >
@@ -3963,6 +3982,7 @@ export default function GerenciarCotacaoSolicitacao() {
       */}
       <BlocoConteudo
         titulo="Fornecedores e links de cotação"
+        recolhivel={embedded}
         variante="primario"
         cor="var(--module-compras)"
         contagem={`${solicitacao.fornecedores?.length || 0} vinculado(s)`}
@@ -4282,6 +4302,7 @@ export default function GerenciarCotacaoSolicitacao() {
 
       {/* Comparativo */}
       <SecaoComparativo
+        embedded={embedded}
         comparativo={comparativo}
         solicitacao={solicitacao}
         podeComprar={podeOperarFluxo}
@@ -4363,6 +4384,6 @@ export default function GerenciarCotacaoSolicitacao() {
       {/* R21: os dois modais que substituem as caixas do navegador. */}
       {elementoConfirmacao}
       {elementoJustificativa}
-    </Pagina>
+    </Container>
   );
 }

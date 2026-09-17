@@ -35,6 +35,7 @@ const { createWorkbookBuffer, sheetToJsonRows } = require('../utils/excelWorkboo
 const { getPresignedUrl, uploadToS3 } = require('../services/s3');
 const gerarCodigoSolicitacao = require('../services/solicitacao/gerarCodigo');
 const { normalizeOriginalName } = require('../utils/fileName');
+const { registrarAtencaoSolicitacao } = require('../services/solicitacaoAtencaoService');
 const { findSetorByCapability, resolveSetorPersistenciaValue, userHasSetorCapability } = require('../services/setorCapabilityService');
 const { normalizeTipoSolicitacaoBehavior, normalizeTipoSolicitacaoCodigo } = require('../services/tipoSolicitacaoBehaviorService');
 const { assertTipoDisponivelNoDestino } = require('../services/tipoSolicitacaoDisponibilidadeService');
@@ -1332,12 +1333,18 @@ function selecionarPayloadItensCotacao(entry, itensPayload, itensCotaveis) {
 async function carregarItensCotaveisDiretos(solicitacaoCompraId, transaction) {
   const [itens, itensManuais] = await Promise.all([
     SolicitacaoCompraItem.findAll({
-      where: { solicitacao_compra_id: solicitacaoCompraId },
+      where: {
+        solicitacao_compra_id: solicitacaoCompraId,
+        [Op.or]: [{ status_aprovacao: null }, { status_aprovacao: 'APROVADO' }]
+      },
       attributes: ['id'],
       transaction
     }),
     SolicitacaoCompraItemManual.findAll({
-      where: { solicitacao_compra_id: solicitacaoCompraId },
+      where: {
+        solicitacao_compra_id: solicitacaoCompraId,
+        [Op.or]: [{ status_aprovacao: null }, { status_aprovacao: 'APROVADO' }]
+      },
       attributes: ['id'],
       transaction
     })
@@ -2099,6 +2106,20 @@ async function encaminharSolicitacaoCompraParaFilaCompras({ solicitacao, usuario
     const codigo = `SC-${String(solicitacao.id).padStart(5, '0')}`;
     const error = new Error(`${codigo} nao esta pendente de revisao do GEO.`);
     error.statusCode = 400;
+    throw error;
+  }
+
+  const whereAprovados = {
+    solicitacao_compra_id: solicitacao.id,
+    [Op.or]: [{ status_aprovacao: null }, { status_aprovacao: 'APROVADO' }]
+  };
+  const [itensAprovados, itensManuaisAprovados] = await Promise.all([
+    SolicitacaoCompraItem.count({ where: whereAprovados, transaction }),
+    SolicitacaoCompraItemManual.count({ where: whereAprovados, transaction })
+  ]);
+  if (itensAprovados + itensManuaisAprovados === 0) {
+    const error = new Error('Aprove ao menos um item no GEO antes de encaminhar para Compras.');
+    error.statusCode = 409;
     throw error;
   }
 
@@ -3800,10 +3821,23 @@ module.exports = {
       }
 
       await transaction.commit();
+      if (solicitacao.solicitacao_principal_id) {
+        try {
+          const principal = await Solicitacao.findByPk(solicitacao.solicitacao_principal_id);
+          if (principal) await registrarAtencaoSolicitacao({
+            solicitacao: principal,
+            atorId: usuario.id,
+            tipo: 'COMENTARIO_COTACAO',
+            resumo: 'Novo comentário na cotação'
+          });
+        } catch (atencaoError) {
+          console.error('Comentario da cotacao salvo, mas destaque da solicitacao falhou:', atencaoError);
+        }
+      }
       const atualizada = await carregarSolicitacaoCompra(req.params.id);
       return res.json(atualizada);
     } catch (error) {
-      await transaction.rollback();
+      if (!transaction.finished) await transaction.rollback();
       console.error(error);
       return res.status(500).json({ error: 'Erro ao registrar comentario da cotacao' });
     }
@@ -4062,6 +4096,7 @@ module.exports = {
         const itemCriado = await SolicitacaoCompraItem.create(
           {
             ...entry.item,
+            status_aprovacao: compraDireta ? null : 'PENDENTE',
             solicitacao_compra_id: solicitacaoCompra.id
           },
           { transaction }
@@ -4081,6 +4116,7 @@ module.exports = {
         const itemCriado = await SolicitacaoCompraItemManual.create(
           {
             ...entry.item,
+            status_aprovacao: compraDireta ? null : 'PENDENTE',
             solicitacao_compra_id: solicitacaoCompra.id
           },
           { transaction }

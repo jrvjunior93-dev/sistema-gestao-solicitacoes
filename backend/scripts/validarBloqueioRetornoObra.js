@@ -61,7 +61,7 @@ assert(
 
 const solicitacoesFrontendSource = read('../frontend/src/pages/Solicitacoes/index.jsx');
 assert(
-  solicitacoesFrontendSource.includes("item.retorno_solicitado_pendente\n              ? 'retorno'"),
+  solicitacoesFrontendSource.includes("item.retorno_solicitado_pendente || item.atencao_pendente\n              ? 'retorno'"),
   'lista de solicitacoes nao aplica o estado visual de retorno pendente'
 );
 assert(

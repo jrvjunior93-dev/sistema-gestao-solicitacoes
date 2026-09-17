@@ -45,7 +45,7 @@ import { Avisos, BlocoConteudo, useAvisos } from '../../components/padrao';
  * tempo. Ele nasce aberto agora, mas continua PODENDO ser recolhido, entao o motivo continua de pe
  * e os dois ficam onde estao.
  */
-export default function Conversa({ solicitacaoId, onSucesso, podeInteragir = true, motivoBloqueio = '' }) {
+export default function Conversa({ solicitacaoId, onSucesso, podeInteragir = true, podeAnexar = podeInteragir, motivoBloqueio = '' }) {
   const [texto, setTexto] = useState('');
   const [arquivos, setArquivos] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -167,14 +167,14 @@ export default function Conversa({ solicitacaoId, onSucesso, podeInteragir = tru
     if (!podeInteragir) return;
     const temTexto = Boolean(texto.trim());
     const temArquivo = arquivos.length > 0;
-    if (!temTexto && !temArquivo) return;
+    if (!temTexto && !(temArquivo && podeAnexar)) return;
 
     try {
       setLoading(true);
 
       // O comentario primeiro: se o upload falhar, ele ja esta gravado e a pessoa so reanexa.
       if (temTexto) await enviarComentario();
-      if (temArquivo) await enviarArquivos();
+      if (temArquivo && podeAnexar) await enviarArquivos();
 
       setTexto('');
       setArquivos([]);
@@ -214,7 +214,9 @@ export default function Conversa({ solicitacaoId, onSucesso, podeInteragir = tru
   return (
     <BlocoConteudo
       titulo="Conversa"
-      descricao="Comentar e anexar são um ato so: um dos dois basta."
+      descricao={podeAnexar
+        ? 'Comente ou anexe arquivos à solicitação.'
+        : 'Comentários são livres para quem pode visualizar. Para anexar ou executar outras ações, solicite o retorno ao seu setor.'}
       recolhivel
       id="sol-detail-conversa"
       data-testid="card-comentario"
@@ -233,7 +235,7 @@ export default function Conversa({ solicitacaoId, onSucesso, podeInteragir = tru
       {/* Barra compacta: anexar, mencionar e a contagem no mesmo nivel —
           os anexos, que eram um card proprio, fazem parte do mesmo ato. */}
       <div className="flex items-center gap-2 flex-wrap mb-2">
-        <label className={`btn btn-outline btn-sm inline-flex items-center gap-2 cursor-pointer ${loading ? 'opacity-60 pointer-events-none' : ''}`}>
+        {podeAnexar && <label className={`btn btn-outline btn-sm inline-flex items-center gap-2 cursor-pointer ${loading ? 'opacity-60 pointer-events-none' : ''}`}>
           <HiPaperClip className="w-4 h-4" />
           <span>Anexar arquivos</span>
           <input
@@ -248,7 +250,7 @@ export default function Conversa({ solicitacaoId, onSucesso, podeInteragir = tru
               e.target.value = '';
             }}
           />
-        </label>
+        </label>}
 
         <button
           type="button"

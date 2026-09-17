@@ -10,6 +10,7 @@ import {
   listarInsumos,
   listarUnidades,
   obterUrlAssinadaCompra,
+  obterEtapasCompraSolicitacao,
   uploadAnexoTemporarioCompra
 } from '../../../services/compras';
 import { buscarParceiros, criarCredorCompraDireta } from '../../../services/parceiros';
@@ -217,7 +218,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const obraIdInicial = String(searchParams.get('obra_id') || '').trim();
   const tipoSolicitacaoIdInicial = String(searchParams.get('tipo_solicitacao_id') || '').trim();
   const areaResponsavelInicial = String(searchParams.get('area_responsavel') || '').trim();
-  const draftKey = buildComprasDraftKey(user?.id, modoCompraDireta ? 'compra-direta' : 'solicitacao');
+  const reaproveitarSolicitacaoId = !modoCompraDireta ? Number(searchParams.get('reaproveitar_solicitacao') || 0) : 0;
+  const draftKey = buildComprasDraftKey(user?.id, reaproveitarSolicitacaoId > 0
+    ? `reaproveitar-${reaproveitarSolicitacaoId}`
+    : modoCompraDireta ? 'compra-direta' : 'solicitacao');
   const hidratandoDraftRef = useRef(false);
   const draftCarregadoRef = useRef(false);
   const suspenderAutosaveAteRef = useRef(0);
@@ -534,9 +538,48 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       return;
     }
 
+    let aguardaReaproveitamento = false;
     try {
       const dados = readComprasDraft(draftKey);
       if (!dados) {
+        if (reaproveitarSolicitacaoId > 0) {
+          aguardaReaproveitamento = true;
+          let ativo = true;
+          obterEtapasCompraSolicitacao(reaproveitarSolicitacaoId)
+            .then((origem) => {
+              if (!ativo) return;
+              const rejeitados = (origem.itens || []).filter((item) => item.status_aprovacao === 'REJEITADO');
+              setObraId(String(origem.obra_id || obraIdInicial || ''));
+              setObservacoes(`Itens reaproveitados da solicitação #${reaproveitarSolicitacaoId}. Revise quantidades, apropriações e datas antes de enviar.`);
+              setItens(rejeitados.map((item) => sincronizarItemComRateios({
+                insumo_id: item.item_tipo === 'MANUAL' ? null : item.insumo_id,
+                insumo_nome: item.item_tipo === 'MANUAL' ? item.nome_manual : item.insumo?.nome || item.nome,
+                unidade_id: item.item_tipo === 'MANUAL' ? null : item.unidade_id,
+                unidade_sigla: item.unidade_sigla_manual || '',
+                quantidade: String(item.quantidade || '1'),
+                valor_unitario: '',
+                valor_total: '',
+                especificacao: item.especificacao || '',
+                apropriacao_id: String(item.apropriacao_id || ''),
+                apropriacoes: (item.apropriacoes || []).map((rateio) => ({
+                  apropriacao_id: rateio.apropriacao_id,
+                  quantidade_apropriada: rateio.quantidade_apropriada
+                })),
+                necessario_para: item.necessario_para || '',
+                link_produto: item.link_produto || '',
+                arquivo_url: item.arquivo_url || '',
+                arquivo_nome_original: item.arquivo_nome_original || '',
+                manual: item.item_tipo === 'MANUAL',
+                nome_manual: item.item_tipo === 'MANUAL' ? item.nome_manual || '' : '',
+                unidade_sigla_manual: item.unidade_sigla_manual || ''
+              })));
+              if (!rejeitados.length) avisar.alerta('Não há mais itens rejeitados para reaproveitar nesta solicitação.');
+              else avisar.sucesso(`${rejeitados.length} item(ns) rejeitado(s) carregado(s). Revise antes de criar a nova solicitação.`);
+            })
+            .catch((error) => { if (ativo) avisar.erro(error.message || 'Não foi possível carregar os itens rejeitados.'); })
+            .finally(() => { if (ativo) draftCarregadoRef.current = true; });
+          return () => { ativo = false; };
+        }
         if (obraIdInicial) setObraId(obraIdInicial);
         draftCarregadoRef.current = true;
         return;
@@ -616,7 +659,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     } catch (error) {
       console.error(error);
     } finally {
-      draftCarregadoRef.current = true;
+      if (!aguardaReaproveitamento) draftCarregadoRef.current = true;
     }
   }, [draftKey]);
 

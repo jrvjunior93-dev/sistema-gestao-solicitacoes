@@ -1,4 +1,5 @@
-const { PedidoCompra, SolicitacaoCompra, User } = require('../models');
+const { PedidoCompra, SolicitacaoCompra, Solicitacao, User } = require('../models');
+const { registrarAtencaoSolicitacao } = require('../services/solicitacaoAtencaoService');
 const {
   adicionarRespostaAoPedido,
   atualizarPedidoItem,
@@ -766,9 +767,23 @@ module.exports = {
       });
 
       await transaction.commit();
+      try {
+        const pedido = await PedidoCompra.findByPk(req.params.id);
+        const compra = pedido && await SolicitacaoCompra.findByPk(pedido.solicitacao_compra_id);
+        const principal = compra?.solicitacao_principal_id
+          ? await Solicitacao.findByPk(compra.solicitacao_principal_id) : null;
+        if (principal) await registrarAtencaoSolicitacao({
+          solicitacao: principal,
+          atorId: usuario.id,
+          tipo: 'COMENTARIO_PEDIDO',
+          resumo: `Novo comentário no pedido #${pedido.id}`
+        });
+      } catch (atencaoError) {
+        console.error('Comentario do pedido salvo, mas destaque da solicitacao falhou:', atencaoError);
+      }
       return res.json({ ok: true });
     } catch (error) {
-      await transaction.rollback();
+      if (!transaction.finished) await transaction.rollback();
       console.error(error);
       return responderErroController(res, error, 'Erro ao comentar pedido', { status: 400 });
     }

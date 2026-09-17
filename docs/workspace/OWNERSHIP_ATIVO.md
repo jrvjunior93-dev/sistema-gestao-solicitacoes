@@ -1,5 +1,14 @@
 # Ownership Ativo
 
+Ownership da sessao `/root` iniciado em 2026-09-17 para integrar a
+operacao de Compras ao detalhe da solicitacao, decidir e comentar itens por etapa,
+registrar recebimento por item e destacar novas interacoes nas listas. Escopo
+reservado: controllers, services, models, migrations e testes de solicitacoes,
+solicitacao-compra, pedidos e alertas; `frontend/src/pages/SolicitacaoDetalhe/`,
+`frontend/src/pages/Solicitacoes/`, telas de Compras envolvidas e servicos
+correspondentes. Ownership liberado apos validacoes e registro do handoff em
+`docs/handoffs/2026-09-17-detalhe-solicitacao-compras-etapas.md`.
+
 ## Ownership ativo
 
 Ownership temporario da sessao `/root` em 2026-09-16 para calcular VGV das

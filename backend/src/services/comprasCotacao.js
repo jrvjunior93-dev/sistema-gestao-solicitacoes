@@ -126,7 +126,9 @@ function buildCotacaoItemKey(itemTipo, itemReferenciaId) {
 }
 
 function obterItensCotaveis(solicitacao) {
-  const itens = (solicitacao?.itens || []).map((item) => {
+  const itens = (solicitacao?.itens || [])
+    .filter((item) => !item.status_aprovacao || item.status_aprovacao === 'APROVADO')
+    .map((item) => {
     const apropriacoes = construirResumoApropriacoes(item);
     return {
       id: Number(item.id),
@@ -146,7 +148,9 @@ function obterItensCotaveis(solicitacao) {
     };
   });
 
-  const itensManuais = (solicitacao?.itensManuais || []).map((item) => {
+  const itensManuais = (solicitacao?.itensManuais || [])
+    .filter((item) => !item.status_aprovacao || item.status_aprovacao === 'APROVADO')
+    .map((item) => {
     const apropriacoes = construirResumoApropriacoes(item);
     return {
       id: Number(item.id),

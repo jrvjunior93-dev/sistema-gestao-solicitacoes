@@ -24,6 +24,7 @@ const {
   ConfiguracaoSistema,
   SolicitacaoVisibilidadeUsuario,
   SolicitacaoPedidoRetorno,
+  SolicitacaoAtencaoUsuario,
   Comprovante,
   TituloFinanceiro,
   SolicitacaoPagamento,
@@ -78,6 +79,10 @@ const {
 const {
   publishSolicitacaoRealtimeEvent
 } = require('../services/solicitacaoRealtimeService');
+const {
+  registrarAtencaoSolicitacao,
+  marcarAtencaoLida
+} = require('../services/solicitacaoAtencaoService');
 const {
   obterConfigCamposNovaSolicitacao,
   obterOpcoesNovaSolicitacao,
@@ -170,6 +175,7 @@ const { criarEscopoIdempotencia } = require('../services/idempotenciaCriacaoServ
 const { validarPeriodoMedicao, validarMedicaoParcelas, aplicarMedicaoNasParcelas, registrarMedicaoDoContrato } = require('../services/medicaoContratoService');
 const {
   assertPodeInteragirSolicitacao,
+  assertPodeVisualizarSolicitacao,
   montarContextoInteracao
 } = require('../services/solicitacaoRetornoService');
 const { gerarTokenUploadCriacaoSolicitacao } = require('../services/solicitacaoCriacaoUploadTokenService');
@@ -315,7 +321,7 @@ function validarDatasConsultaSolicitacoes(filtros) {
   return null;
 }
 
-async function montarResumoSolicitacoesLista(solicitacoes) {
+async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
   if (!Array.isArray(solicitacoes) || solicitacoes.length === 0) {
     return [];
   }
@@ -326,7 +332,7 @@ async function montarResumoSolicitacoesLista(solicitacoes) {
     solicitacoes.map((item) => [Number(item.id), item.area_responsavel || null])
   );
 
-  const [historicosResponsavel, historicosStatus, pedidosRetornoPendentes] = await Promise.all([
+  const [historicosResponsavel, historicosStatus, pedidosRetornoPendentes, atencoesPendentes] = await Promise.all([
     Historico.findAll({
       where: {
         solicitacao_id: { [Op.in]: idsSolicitacoes },
@@ -376,8 +382,19 @@ async function montarResumoSolicitacoesLista(solicitacoes) {
         ['solicitacao_id', 'ASC'],
         ['createdAt', 'DESC']
       ]
-    })
+    }),
+    usuarioId ? SolicitacaoAtencaoUsuario.findAll({
+      where: {
+        solicitacao_id: { [Op.in]: idsSolicitacoes },
+        usuario_id: usuarioId,
+        lido_em: null
+      },
+      attributes: ['solicitacao_id', 'tipo', 'resumo', 'evento_em'],
+      raw: true
+    }) : Promise.resolve([])
   ]);
+
+  const atencaoPorSolicitacao = new Map(atencoesPendentes.map((linha) => [Number(linha.solicitacao_id), linha]));
 
   const responsavelPorSolicitacao = new Map();
   historicosResponsavel.forEach((item) => {
@@ -432,6 +449,10 @@ async function montarResumoSolicitacoesLista(solicitacoes) {
           motivo: pedidoRetorno.motivo,
           createdAt: pedidoRetorno.createdAt
         }
+        : null;
+      const atencao = atencaoPorSolicitacao.get(Number(item.id));
+      solicitacao.atencao_pendente = atencao
+        ? { tipo: atencao.tipo, resumo: atencao.resumo, evento_em: atencao.evento_em }
         : null;
       return solicitacao;
     })
@@ -830,7 +851,8 @@ async function enviarSolicitacaoParaSetorInterno({
   solicitacao,
   setorDestino,
   usuarioId,
-  permitirEnvioFluxoDiretoria = false
+  permitirEnvioFluxoDiretoria = false,
+  destacarAtencao = false
 }) {
   const acessoObra = await validarAcessoObra(req, solicitacao);
   if (!acessoObra) {
@@ -914,6 +936,19 @@ async function enviarSolicitacaoParaSetorInterno({
     acao: 'ENVIADA_SETOR',
     observacao: `De ${setorOrigem} para ${setorDestino}`
   });
+
+  if (destacarAtencao) {
+    try {
+      await registrarAtencaoSolicitacao({
+        solicitacao,
+        atorId: usuarioId,
+        tipo: 'ENVIO_MANUAL',
+        resumo: `Enviada manualmente para ${nomeDestino}`
+      });
+    } catch (atencaoError) {
+      console.error('Envio concluido, mas destaque da solicitacao falhou:', atencaoError);
+    }
+  }
 
   await criarNotificacao({
     solicitacao_id: solicitacao.id,
@@ -2316,6 +2351,18 @@ module.exports = {
       // ordenacao de coluna escolhida na interface.
       const ordenacaoRetornoPendente = [
         [Sequelize.literal(`CASE WHEN EXISTS (
+          SELECT 1 FROM solicitacao_atencoes_usuario sau
+          WHERE sau.solicitacao_id = Solicitacao.id
+            AND sau.usuario_id = ${Number(usuarioId) || -1}
+            AND sau.lido_em IS NULL
+        ) THEN 0 ELSE 1 END`), 'ASC'],
+        [Sequelize.literal(`(
+          SELECT sau.evento_em FROM solicitacao_atencoes_usuario sau
+          WHERE sau.solicitacao_id = Solicitacao.id
+            AND sau.usuario_id = ${Number(usuarioId) || -1}
+            AND sau.lido_em IS NULL
+        )`), 'DESC'],
+        [Sequelize.literal(`CASE WHEN EXISTS (
           SELECT 1
           FROM solicitacao_pedidos_retorno spr
           WHERE spr.solicitacao_id = Solicitacao.id
@@ -2789,7 +2836,7 @@ module.exports = {
             where: { id: { [Op.in]: idsPagina } },
             include: includeBase
           });
-          resultado = await montarResumoSolicitacoesLista(solicitacoesPagina);
+          resultado = await montarResumoSolicitacoesLista(solicitacoesPagina, usuarioId);
           resultado.sort(
             (a, b) =>
               (ordemPagina.get(Number(a.id)) || 0) -
@@ -2830,7 +2877,7 @@ module.exports = {
             ? { limit: limitePorPagina, offset }
             : {})
         });
-        resultado = await montarResumoSolicitacoesLista(solicitacoes);
+        resultado = await montarResumoSolicitacoesLista(solicitacoes, usuarioId);
 
       }
 
@@ -4193,6 +4240,8 @@ module.exports = {
         solicitacao,
         contextoInteracaoBase
       );
+
+      await marcarAtencaoLida(solicitacao.id, req.user.id);
 
       return res.json(payload);
 
@@ -5986,7 +6035,7 @@ module.exports = {
       }
 
       try {
-        await assertPodeInteragirSolicitacao(req, solicitacao);
+        await assertPodeVisualizarSolicitacao(req, solicitacao);
       } catch (errorAcesso) {
         return res.status(Number(errorAcesso.statusCode) || 403).json({
           error: errorAcesso.message,
@@ -6039,6 +6088,18 @@ module.exports = {
           }
         })
       });
+
+      try {
+        await registrarAtencaoSolicitacao({
+          solicitacao,
+          atorId: req.user.id,
+          tipo: 'COMENTARIO',
+          resumo: `Novo comentário de ${usuario?.nome || 'usuário'}`,
+          mencoes: idsMencionados
+        });
+      } catch (atencaoError) {
+        console.error('Comentario salvo, mas destaque da solicitacao falhou:', atencaoError);
+      }
 
       if (usuariosMencionados.length > 0) {
         for (const usuarioMencionado of usuariosMencionados) {
@@ -6355,7 +6416,8 @@ module.exports = {
           req,
           solicitacao,
           setorDestino,
-          usuarioId
+          usuarioId,
+          destacarAtencao: true
         });
         if (!envio.ok) {
           resultado.erros.push({ id, error: envio.error || 'Erro ao enviar' });
@@ -6587,7 +6649,8 @@ module.exports = {
         req,
         solicitacao,
         setorDestino: setor_destino,
-        usuarioId
+        usuarioId,
+        destacarAtencao: true
       });
       if (!envio.ok) {
         return res.status(envio.status || 400).json({ error: envio.error || 'Erro ao enviar para setor' });

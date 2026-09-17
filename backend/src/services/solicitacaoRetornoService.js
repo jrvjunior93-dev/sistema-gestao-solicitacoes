@@ -95,7 +95,7 @@ async function assertPodeInteragirSolicitacao(req, solicitacaoOuId) {
   }
   if (!contexto.estaNoSetorUsuario) {
     throw erro(
-      `A solicitacao esta no setor ${solicitacao.area_responsavel}. Solicite o retorno antes de comentar, anexar arquivos ou abrir uma nova medicao/aditivo.`,
+      `A solicitacao esta no setor ${solicitacao.area_responsavel}. Solicite o retorno antes de anexar arquivos ou executar acoes da etapa. Comentarios de acompanhamento continuam disponiveis.`,
       409,
       'SOLICITACAO_FORA_DO_SETOR'
     );

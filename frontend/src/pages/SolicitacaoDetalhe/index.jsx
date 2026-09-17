@@ -12,6 +12,7 @@ import FinanceiroCard from './FinanceiroCard';
 import AcoesContrato from './AcoesContrato';
 import RetornoSolicitacaoBar from './RetornoSolicitacaoBar';
 import RecargaCartaoDetalhe from './RecargaCartaoDetalhe';
+import CompraEtapas from './CompraEtapas';
 import { getContratoParcelas } from '../../services/contratos';
 import ModalAlterarStatus from './ModalAlterarStatus';
 import { getAcoesPrincipais, resolverAcaoPrincipal } from '../../services/acoesPrincipais';
@@ -67,6 +68,7 @@ import {
   canAlterarQuantidadeSolicitacaoCompra,
   canCatalogarItensManuaisCompras,
   canDeleteSolicitacaoAnexo,
+  canAnexarEspelhoComprasPedidos,
   canEditarApropriacoesItemCompraDireta,
   canEditarApropriacoesItemSolicitacaoCompra,
   canEditarApropriacoesSolicitacao,
@@ -273,6 +275,7 @@ export default function SolicitacaoDetalhe() {
 
   const isSetorGeo = setorTokens.some(isGeoSetor);
   const isSetorObra = userHasSetorCapability(user, 'eh_setor_obra');
+  const isSetorCompras = userHasSetorCapability(user, 'eh_setor_compras');
   const isSetorFinanceiro = setorTokens.includes('FINANCEIRO') || userHasSetorCapability(user, 'eh_setor_financeiro');
   const isSuperadmin = String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN';
   const podeAcessarModuloFinanceiro = canAccessFinanceiro(user);
@@ -1325,7 +1328,18 @@ export default function SolicitacaoDetalhe() {
       </BlocoConteudo>
     ) : null,
 
-    itens_compra_direta: podeGerenciarItensCompra ? (
+    itens_compra_direta: isSolicitacaoCompra && !isCompraDiretaSolicitacao && solicitacao.solicitacao_compra_id ? (
+      <CompraEtapas
+        solicitacaoId={solicitacao.id}
+        podeDecidir={podeInteragirSolicitacao && (isSetorGeo || isSuperadmin)}
+        podeReceber={podeInteragirSolicitacao && (isSetorObra || isSuperadmin)}
+        podeAnexar={podeInteragirSolicitacao && (isSetorCompras || isSuperadmin) && canAnexarEspelhoComprasPedidos(user)}
+        mostrarCotacao={(isSetorCompras || isSuperadmin) && moduloComprasHabilitado}
+        podeGerenciarCotacao={podeInteragirSolicitacao}
+        onGerenciarItens={podeGerenciarItensCompra ? abrirGerenciamentoItensCompra : null}
+        onUpdated={aoRecarregarSilencioso}
+      />
+    ) : podeGerenciarItensCompra ? (
       <BlocoConteudo
         titulo={isCompraDiretaSolicitacao ? 'Itens da compra direta' : 'Itens da solicitação de compra'}
         variante="secundario"
@@ -1424,7 +1438,8 @@ export default function SolicitacaoDetalhe() {
     conversa: (
       <Conversa
         solicitacaoId={id}
-        podeInteragir={podeInteragirSolicitacao}
+        podeInteragir
+        podeAnexar={podeInteragirSolicitacao}
         motivoBloqueio={contextoInteracao?.motivo_bloqueio}
         onSucesso={aoRecarregarSilencioso}
       />
@@ -1620,6 +1635,7 @@ export default function SolicitacaoDetalhe() {
           Os três ladrilhos vinham do cabeçalho antigo (Status, Setor,
           Data Resposta/Pagamento) e da linha de breadcrumb ("Atualizado
           em"), que era texto solto sobre o canvas — B5. */}
+      <BlocoConteudo titulo="Resumo da solicitação" variante="secundario" recolhivel>
       <StatGrid colunas={4}>
         <StatTile
           label="Status"
@@ -1632,6 +1648,7 @@ export default function SolicitacaoDetalhe() {
         />
         <StatTile label="Atualizado em" valor={atualizadoEm} />
       </StatGrid>
+      </BlocoConteudo>
 
       {/* Bloco principal, largura total: o que ESTE registro é. */}
       <Header
