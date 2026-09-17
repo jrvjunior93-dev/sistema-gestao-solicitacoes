@@ -8,6 +8,10 @@ const {
   validateCompraEncerrarSemPedidoBody,
   validateCompraEnviarBody
 } = require('../src/validators/operationalValidators');
+const {
+  validateCompraItemDecisionParams,
+  validateNumericIdParams
+} = require('../src/validators/securityValidators');
 const { ALL_PERMISSION_KEYS } = require('../src/constants/moduloPermissoes');
 const {
   calcularDisponibilidadeFornecedorItem,
@@ -78,6 +82,29 @@ function validarDecisaoGeoEmLoteEEncaminhamento() {
       detalheSource.includes('dados.revisao_geo_pendente && !item.status_aprovacao'),
     'Detalhe da solicitacao deve exigir revisao dos itens legados sem decisao e permitir selecao em lote.'
   );
+}
+
+function validarRotasDeDecisaoERecebimentoPorItem() {
+  assert.deepStrictEqual(
+    validateCompraItemDecisionParams({ id: '2135', tipo: 'cadastrado', itemId: '88' }),
+    { id: '2135', tipo: 'CADASTRADO', itemId: '88' }
+  );
+  assert.deepStrictEqual(
+    validateNumericIdParams(['id', 'pedidoId', 'itemId'])({ id: '2135', pedidoId: '42', itemId: '88' }),
+    { id: '2135', pedidoId: '42', itemId: '88' }
+  );
+  assert.throws(() => validateCompraItemDecisionParams({ id: '2135', tipo: 'OUTRO', itemId: '88' }), /invalido/);
+  assert.throws(() => validateCompraItemDecisionParams({ id: '2135', tipo: 'MANUAL', itemId: 'x' }), /invalido/);
+  assert.throws(() => validateCompraItemDecisionParams({ id: '2135', tipo: 'MANUAL', itemId: '88', admin: true }), /nao permitidos/);
+  assert.throws(() => validateNumericIdParams(['id', 'pedidoId', 'itemId'])({ id: '2135', pedidoId: '42' }), /obrigatorio/);
+
+  const routes = fs.readFileSync(path.join(__dirname, '../src/routes.js'), 'utf8');
+  const layout = fs.readFileSync(path.join(__dirname, '../../frontend/src/layout/Layout.jsx'), 'utf8');
+  assert(routes.includes("params: validateCompraItemDecisionParams }), SolicitacaoCompraEtapasController.decidirItem") &&
+    routes.includes("params: validateNumericIdParams(['id', 'pedidoId', 'itemId'], 'Recebimento de item')"),
+  'Decisao e recebimento devem validar todos os parametros presentes na rota.');
+  assert(layout.includes('!podeVerComunicacao') && layout.includes('canAccessComunicacao(user)'),
+    'O cabecalho nao deve consultar o resumo de conversas sem permissao.');
 }
 
 function validarBaseFinanceiraDaCotacao() {
@@ -575,6 +602,7 @@ function validarMultiplosArquivosRespostaCotacao() {
 validarItensPorFornecedor();
 validarAprovacaoGeoDosItensCotaveis();
 validarDecisaoGeoEmLoteEEncaminhamento();
+validarRotasDeDecisaoERecebimentoPorItem();
 validarBaseFinanceiraDaCotacao();
 validarItensGlobaisLegados();
 validarFechamentoParcial();

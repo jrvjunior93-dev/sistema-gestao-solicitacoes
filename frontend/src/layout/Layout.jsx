@@ -16,7 +16,7 @@ import {
   HiOutlineLifebuoy,
   HiOutlineChatBubbleOvalLeft
 } from 'react-icons/hi2';
-import { isSuperadmin } from '../utils/acessoProduto';
+import { canAccessComunicacao, isSuperadmin } from '../utils/acessoProduto';
 import { findActiveNode, getVisibleModule, resolveLabel } from '../navigation/navigationConfig';
 import CommandPalette from '../navigation/CommandPalette';
 import WorkspaceTabs from '../navigation/WorkspaceTabs';
@@ -126,6 +126,7 @@ export default function Layout() {
   const [suporteWhatsappUrl, setSuporteWhatsappUrl] = useState(null);
   const nativeApp = isNativeApp();
   const superadmin = isSuperadmin(user);
+  const podeVerComunicacao = canAccessComunicacao(user);
   const comprasResponsiveRoute = isComprasResponsiveRoute(location.pathname);
   const custosRecebiveisResponsiveRoute = location.pathname.startsWith('/custos-recebiveis');
   const {
@@ -176,7 +177,7 @@ export default function Layout() {
 
   useEffect(() => {
     const userId = Number(user?.id);
-    if (!Number.isInteger(userId) || userId <= 0) {
+    if (!Number.isInteger(userId) || userId <= 0 || !podeVerComunicacao) {
       setComunicacaoNovasCount(0);
       return undefined;
     }
@@ -203,7 +204,7 @@ export default function Layout() {
       ativo = false;
       clearInterval(interval);
     };
-  }, [user?.id]);
+  }, [user?.id, podeVerComunicacao]);
 
   useEffect(() => {
     let ativo = true;
@@ -409,7 +410,7 @@ export default function Layout() {
                   <HiOutlineLifebuoy size={18} aria-hidden="true" />
                 </button>
 
-                <Link
+                {podeVerComunicacao && <Link
                   to="/comunicacao-interna"
                   className="theme-toggle topbar-chat-btn"
                   aria-label="Chat interno"
@@ -422,7 +423,7 @@ export default function Layout() {
                       {comunicacaoNovasCount > 99 ? '99+' : comunicacaoNovasCount}
                     </span>
                   )}
-                </Link>
+                </Link>}
 
                 <NotificacoesBell />
 

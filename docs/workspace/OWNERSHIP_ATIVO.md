@@ -1,5 +1,14 @@
 # Ownership Ativo
 
+Ownership temporario da sessao `/root` em 2026-09-17 para corrigir a validacao
+dos parametros de decisao/recebimento por item e a consulta indevida do resumo
+de conversas sem permissao: `backend/src/validators/securityValidators.js`,
+`backend/src/routes.js`, `backend/scripts/validarCompraCotacaoEnvio.js`,
+`frontend/src/layout/Layout.jsx` e handoff de regressao. Preservar os arquivos
+alheios ja modificados no worktree.
+Ownership liberado apos validacoes e registro em
+`docs/handoffs/2026-09-17-correcao-parametros-compra-comunicacao.md`.
+
 Ownership temporario da sessao `/root` em 2026-09-17 para classificar itens
 legados sem decisao no reaproveitamento, sem duplicar os que ja entraram em
 cotacao ou pedido. Escopo: `backend/src/controllers/SolicitacaoCompraEtapasController.js`,

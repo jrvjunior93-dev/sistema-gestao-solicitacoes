@@ -168,6 +168,37 @@ function validateNumericIdParam(paramName, label) {
   };
 }
 
+function validateNumericIdParams(paramNames, label) {
+  return (params = {}) => {
+    ensureAllowedKeys(params, paramNames, label || 'Parametros');
+    return Object.fromEntries(paramNames.map((paramName) => [
+      paramName,
+      sanitizeString(params[paramName], paramName, {
+        required: true,
+        max: 20,
+        pattern: /^\d+$/
+      })
+    ]));
+  };
+}
+
+function validateCompraItemDecisionParams(params = {}) {
+  ensureAllowedKeys(params, ['id', 'tipo', 'itemId'], 'Item da solicitacao de compra');
+  const ids = validateNumericIdParams(['id', 'itemId'], 'Item da solicitacao de compra')({
+    id: params.id,
+    itemId: params.itemId
+  });
+  const tipo = sanitizeString(params.tipo, 'Tipo do item', {
+    required: true,
+    max: 20,
+    pattern: /^[a-z]+$/i
+  }).toUpperCase();
+  if (!['CADASTRADO', 'MANUAL'].includes(tipo)) {
+    throw new ValidationError('Tipo do item invalido.');
+  }
+  return { ...ids, tipo };
+}
+
 function validateNumericIdAndSlugParams(paramName, slugName, allowedSlugs, label) {
   const permitidos = new Set(allowedSlugs || []);
   return (params = {}) => {
@@ -195,7 +226,9 @@ module.exports = {
   validateMfaCodeBody,
   validateMfaLoginBody,
   validateNumericIdParam,
+  validateNumericIdParams,
   validateNumericIdAndSlugParams,
+  validateCompraItemDecisionParams,
   validatePasswordChangeBody,
   validateResetPasswordBody,
   validatePresignQuery

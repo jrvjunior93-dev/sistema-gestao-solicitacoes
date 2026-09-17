@@ -29,6 +29,8 @@ const {
   validateMfaLoginBody,
   validateNumericIdAndSlugParams,
   validateNumericIdParam,
+  validateNumericIdParams,
+  validateCompraItemDecisionParams,
   validatePasswordChangeBody,
   validateResetPasswordBody,
   validatePresignQuery
@@ -1652,9 +1654,9 @@ router.get('/solicitacoes/:id/resumo-lista', validateRequest({ params: validateN
 router.get('/solicitacoes/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoController.show);
 router.get('/solicitacoes/:id/compra-etapas', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.listar);
 router.patch('/solicitacoes/:id/compra-itens/aprovacao-lote', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.aprovarItensEmLote);
-router.patch('/solicitacoes/:id/compra-itens/:tipo/:itemId/decisao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.decidirItem);
+router.patch('/solicitacoes/:id/compra-itens/:tipo/:itemId/decisao', criticalRateLimit, validateRequest({ params: validateCompraItemDecisionParams }), SolicitacaoCompraEtapasController.decidirItem);
 router.post('/solicitacoes/:id/compra-etapas/comentarios', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.comentar);
-router.post('/solicitacoes/:id/pedidos-compra/:pedidoId/itens/:itemId/recebimentos', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.receberItem);
+router.post('/solicitacoes/:id/pedidos-compra/:pedidoId/itens/:itemId/recebimentos', criticalRateLimit, validateRequest({ params: validateNumericIdParams(['id', 'pedidoId', 'itemId'], 'Recebimento de item') }), SolicitacaoCompraEtapasController.receberItem);
 router.patch('/solicitacoes/:id/status', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao'), body: validateSolicitacaoStatusBody }), auditSuccess({ eventType: 'SOLICITACAO_STATUS_UPDATED', resourceType: 'SOLICITACAO', description: 'Status da solicitacao atualizado', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.updateStatus);
 router.post('/solicitacoes/:id/aprovar-diretoria', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), auditSuccess({ eventType: 'SOLICITACAO_DIRETORIA_APPROVED', resourceType: 'SOLICITACAO', description: 'Solicitacao aprovada pela diretoria', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.aprovarDiretoria);
 router.post('/solicitacoes/:id/aprovar', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), auditSuccess({ eventType: 'SOLICITACAO_APPROVED', resourceType: 'SOLICITACAO', description: 'Solicitacao aprovada e encaminhada conforme o tipo', resourceIdResolver: (req) => req.params.id }), SolicitacaoController.aprovarPorTipo);
