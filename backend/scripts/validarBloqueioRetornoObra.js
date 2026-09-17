@@ -59,6 +59,24 @@ assert(
   'resumo da solicitacao nao informa o pedido de retorno pendente'
 );
 
+const retornoBarSource = read('../frontend/src/pages/SolicitacaoDetalhe/RetornoSolicitacaoBar.jsx');
+const conversaSource = read('../frontend/src/pages/SolicitacaoDetalhe/Conversa.jsx');
+const detalheSource = read('../frontend/src/pages/SolicitacaoDetalhe/index.jsx');
+const compraEtapasSource = read('src/controllers/SolicitacaoCompraEtapasController.js');
+const comentarioGeralSource = solicitacaoControllerSource.split('async adicionarComentario(req, res) {')[1]
+  ?.split('async removerComentario(req, res) {')[0] || '';
+assert(retornoBarSource.includes('Você pode comentar nos itens visíveis.') &&
+  retornoBarSource.includes('Comentários na conversa geral, anexos, medições, aditivos e outras ações exigem o retorno'),
+'aviso de retorno deve distinguir comentarios dos itens da conversa geral');
+assert(detalheSource.includes('podeInteragir={podeInteragirSolicitacao}') &&
+  detalheSource.includes('podeAnexar={podeInteragirSolicitacao}') &&
+  conversaSource.includes('if (!podeInteragir)') &&
+  comentarioGeralSource.includes('await assertPodeInteragirSolicitacao(req, solicitacao);') &&
+  !comentarioGeralSource.includes('await assertPodeVisualizarSolicitacao(req, solicitacao);'),
+'comentario geral deve ser bloqueado fora do setor no frontend e backend');
+assert(compraEtapasSource.includes('async comentar(req, res) {\n    try {\n      const { solicitacao, compra } = await buscarContexto(req);'),
+'comentarios nos itens devem continuar disponiveis em contexto de visualizacao');
+
 const solicitacoesFrontendSource = read('../frontend/src/pages/Solicitacoes/index.jsx');
 assert(
   solicitacoesFrontendSource.includes("item.retorno_solicitado_pendente || item.atencao_pendente\n              ? 'retorno'"),

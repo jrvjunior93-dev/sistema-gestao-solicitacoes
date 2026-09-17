@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+Ownership temporario da sessao `/root` em 2026-09-17 para manter comentarios
+dos itens livres a quem visualiza e bloquear comentarios da conversa geral fora
+do setor: `backend/src/controllers/SolicitacaoController.js`,
+`backend/src/services/solicitacaoRetornoService.js`,
+`frontend/src/pages/SolicitacaoDetalhe/index.jsx`,
+`frontend/src/pages/SolicitacaoDetalhe/RetornoSolicitacaoBar.jsx`,
+`frontend/src/pages/SolicitacaoDetalhe/Conversa.jsx`,
+`backend/scripts/validarBloqueioRetornoObra.js` e handoff correspondente.
+Preservar alteracoes alheias no worktree.
+Ownership liberado apos validacoes e registro em
+`docs/handoffs/2026-09-17-comentarios-fora-do-setor.md`.
+
 Ownership temporario da sessao `/root` em 2026-09-17 para corrigir a validacao
 dos parametros de decisao/recebimento por item e a consulta indevida do resumo
 de conversas sem permissao: `backend/src/validators/securityValidators.js`,

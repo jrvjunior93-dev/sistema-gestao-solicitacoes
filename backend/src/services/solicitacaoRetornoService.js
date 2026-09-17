@@ -95,7 +95,7 @@ async function assertPodeInteragirSolicitacao(req, solicitacaoOuId) {
   }
   if (!contexto.estaNoSetorUsuario) {
     throw erro(
-      `A solicitacao esta no setor ${solicitacao.area_responsavel}. Solicite o retorno antes de anexar arquivos ou executar acoes da etapa. Comentarios de acompanhamento continuam disponiveis.`,
+      `A solicitacao esta no setor ${solicitacao.area_responsavel}. Solicite o retorno antes de comentar na conversa geral, anexar arquivos ou executar acoes da etapa. Comentarios nos itens continuam disponiveis.`,
       409,
       'SOLICITACAO_FORA_DO_SETOR'
     );
@@ -171,7 +171,7 @@ async function montarContextoInteracao(req, solicitacao, contextoBase = null) {
     pode_decidir_retorno: Boolean(podeInteragir && decidirPermitido),
     motivo_bloqueio: podeInteragir
       ? null
-      : `A solicitacao esta no setor ${solicitacao.area_responsavel}. Para interagir, solicite o retorno ao seu setor.`,
+      : `A solicitacao esta no setor ${solicitacao.area_responsavel}. Comentarios nos itens continuam disponiveis; para comentar na conversa geral, anexar ou executar outras acoes, solicite o retorno ao seu setor.`,
     pedido_retorno_pendente: serializarPedido(pedidoDoUsuario),
     pedidos_retorno_para_decisao: podeInteragir && decidirPermitido
       ? pedidos.map(serializarPedido)

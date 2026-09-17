@@ -5970,7 +5970,7 @@ module.exports = {
       }
 
       try {
-        await assertPodeVisualizarSolicitacao(req, solicitacao);
+        await assertPodeInteragirSolicitacao(req, solicitacao);
       } catch (errorAcesso) {
         return res.status(Number(errorAcesso.statusCode) || 403).json({
           error: errorAcesso.message,

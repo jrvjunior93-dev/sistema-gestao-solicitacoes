@@ -1443,7 +1443,7 @@ export default function SolicitacaoDetalhe() {
     conversa: (
       <Conversa
         solicitacaoId={id}
-        podeInteragir
+        podeInteragir={podeInteragirSolicitacao}
         podeAnexar={podeInteragirSolicitacao}
         motivoBloqueio={contextoInteracao?.motivo_bloqueio}
         onSucesso={aoRecarregarSilencioso}

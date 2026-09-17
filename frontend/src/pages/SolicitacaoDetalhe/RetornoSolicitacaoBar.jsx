@@ -16,7 +16,8 @@ import { Avisos, CampoForm, useAvisos } from '../../components/padrao';
  * BARRA DE RETORNO DA SOLICITACAO — condicao do fluxo, nao card de conteudo.
  *
  * Ela existe em dois estados, e os dois continuam iguais em capacidade:
- *   1. a solicitacao esta em OUTRO setor: so acompanhamento, com o pedido de retorno;
+ *   1. a solicitacao esta em OUTRO setor: comentarios nos itens livres;
+ *      conversa geral e demais acoes bloqueadas, com o pedido de retorno;
  *   2. ha pedidos de retorno esperando decisao NESTE setor: aprovar/rejeitar cada um.
  *
  * O que a rodada de 05/09 mudou:
@@ -103,7 +104,7 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
       <section
         className="tarja tarja--warning rounded-xl border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] px-4 py-3 text-sm text-[var(--sem-warning)]"
 
-        aria-label="Interações bloqueadas pelo setor atual"
+        aria-label="Conversa geral e ações do setor bloqueadas; comentários nos itens permitidos"
         data-testid="barra-retorno-solicitacao"
       >
         <Avisos avisos={avisos} aoFechar={fechar} />
@@ -114,7 +115,7 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
             <div>
               <p className="font-semibold">Somente acompanhamento · setor atual: {contexto.setor_atual}</p>
               <p className="mt-1 text-xs leading-5">
-                Comentarios, anexos, medicoes e aditivos ficam liberados quando a solicitacao voltar para {contexto.setor_usuario || 'seu setor'}.
+                Você pode comentar nos itens visíveis. Comentários na conversa geral, anexos, medições, aditivos e outras ações exigem o retorno para {contexto.setor_usuario || 'seu setor'}.
               </p>
             </div>
           </div>

@@ -229,7 +229,9 @@ export default function Conversa({ solicitacaoId, onSucesso, podeInteragir = tru
         onChange={e => setTexto(e.target.value)}
         rows={5}
         className="input w-full mb-2 sol-detail-comment-textarea"
-        placeholder={'Escreva um comentário e/ou anexe arquivos...\nEnter cria uma nova linha; o histórico mantém a formatacao.'}
+        placeholder={podeAnexar
+          ? 'Escreva um comentário e/ou anexe arquivos...\nEnter cria uma nova linha; o histórico mantém a formatação.'
+          : 'Escreva um comentário...\nEnter cria uma nova linha; o histórico mantém a formatação.'}
       />
 
       {/* Barra compacta: anexar, mencionar e a contagem no mesmo nivel —
