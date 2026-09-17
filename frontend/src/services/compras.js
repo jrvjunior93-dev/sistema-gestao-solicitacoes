@@ -320,6 +320,15 @@ export async function encaminharSolicitacaoCompraParaCompras(id) {
   return handleJsonResponse(response, 'Erro ao enviar solicitacao de compra para Compras');
 }
 
+export async function aprovarItensCompraSolicitacaoEmLote(solicitacaoId, itens) {
+  const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/compra-itens/aprovacao-lote`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ itens })
+  });
+  return handleJsonResponse(response, 'Erro ao aprovar os itens selecionados');
+}
+
 export async function encaminharSolicitacoesCompraParaCompras(ids = []) {
   const response = await fetch(`${API_URL}/compras/solicitacoes/encaminhar-compras-massa`, {
     method: 'POST',

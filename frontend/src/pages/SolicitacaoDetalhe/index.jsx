@@ -67,6 +67,7 @@ import {
   canAccessFinanceiro,
   canAlterarQuantidadeSolicitacaoCompra,
   canCatalogarItensManuaisCompras,
+  canCreateCompraSolicitacao,
   canDeleteSolicitacaoAnexo,
   canAnexarEspelhoComprasPedidos,
   canEditarApropriacoesItemCompraDireta,
@@ -1124,7 +1125,10 @@ export default function SolicitacaoDetalhe() {
       )
     )
   );
-  const podeAprovarPorTipo = Boolean(solicitacao.acao_aprovar_tipo_disponivel);
+  const podeAprovarPorTipo = Boolean(
+    solicitacao.acao_aprovar_tipo_disponivel &&
+    !(solicitacao.solicitacao_compra_id && !solicitacao.compra_direta)
+  );
   const podeEnviarSetor =
     podeInteragirSolicitacao &&
     !usaFluxoAprovacaoDiretoria &&
@@ -1336,6 +1340,7 @@ export default function SolicitacaoDetalhe() {
         podeAnexar={podeInteragirSolicitacao && (isSetorCompras || isSuperadmin) && canAnexarEspelhoComprasPedidos(user)}
         mostrarCotacao={(isSetorCompras || isSuperadmin) && moduloComprasHabilitado}
         podeGerenciarCotacao={podeInteragirSolicitacao}
+        podeCriarNovaSolicitacao={canCreateCompraSolicitacao(user)}
         onGerenciarItens={podeGerenciarItensCompra ? abrirGerenciamentoItensCompra : null}
         onUpdated={aoRecarregarSilencioso}
       />

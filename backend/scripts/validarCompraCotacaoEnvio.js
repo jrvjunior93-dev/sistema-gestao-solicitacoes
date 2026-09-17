@@ -45,6 +45,41 @@ function validarAprovacaoGeoDosItensCotaveis() {
   ], 'Compras deve receber somente itens aprovados pelo GEO, preservando itens legados sem status.');
 }
 
+function validarDecisaoGeoEmLoteEEncaminhamento() {
+  const etapasSource = fs.readFileSync(
+    path.join(__dirname, '../src/controllers/SolicitacaoCompraEtapasController.js'), 'utf8'
+  );
+  const compraSource = fs.readFileSync(
+    path.join(__dirname, '../src/controllers/SolicitacaoCompraController.js'), 'utf8'
+  );
+  const solicitacaoSource = fs.readFileSync(
+    path.join(__dirname, '../src/controllers/SolicitacaoController.js'), 'utf8'
+  );
+  const routesSource = fs.readFileSync(path.join(__dirname, '../src/routes.js'), 'utf8');
+  const detalheSource = fs.readFileSync(
+    path.join(__dirname, '../../frontend/src/pages/SolicitacaoDetalhe/CompraEtapas.jsx'), 'utf8'
+  );
+  assert(
+    etapasSource.includes('async aprovarItensEmLote(req, res)') &&
+      etapasSource.includes('lock: transaction.LOCK.UPDATE') &&
+      routesSource.includes("'/solicitacoes/:id/compra-itens/aprovacao-lote'"),
+    'Aprovacao em lote precisa estar exposta e protegida por transacao.'
+  );
+  assert(
+    compraSource.includes("status_aprovacao: 'APROVADO'") &&
+      compraSource.includes('totalRejeitadosImplicitamente = itensPendentes.length + itensManuaisPendentes.length') &&
+      compraSource.includes("acao: 'ITENS_COMPRA_REJEITADOS_GEO_IMPLICITO'") &&
+      compraSource.includes("PedidoCompraItem.findOne({ where: { [Op.or]: filtrosSemDecisao }, transaction })"),
+    'Encaminhamento deve exigir aprovacao explicita, rejeitar implicitamente os demais e proteger itens ja cotados/comprados.'
+  );
+  assert(
+    solicitacaoSource.includes('Para solicitacao de compra, aprove ou rejeite os itens no GEO') &&
+      detalheSource.includes('Selecionar todos') && detalheSource.includes('Aprovar selecionados') &&
+      detalheSource.includes('dados.revisao_geo_pendente && !item.status_aprovacao'),
+    'Detalhe da solicitacao deve exigir revisao dos itens legados sem decisao e permitir selecao em lote.'
+  );
+}
+
 function validarBaseFinanceiraDaCotacao() {
   assert.strictEqual(
     calcularValorMercadoriasCotacao({
@@ -539,6 +574,7 @@ function validarMultiplosArquivosRespostaCotacao() {
 
 validarItensPorFornecedor();
 validarAprovacaoGeoDosItensCotaveis();
+validarDecisaoGeoEmLoteEEncaminhamento();
 validarBaseFinanceiraDaCotacao();
 validarItensGlobaisLegados();
 validarFechamentoParcial();

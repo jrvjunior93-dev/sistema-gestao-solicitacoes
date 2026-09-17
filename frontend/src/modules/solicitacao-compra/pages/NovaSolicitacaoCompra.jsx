@@ -53,6 +53,7 @@ import {
   removeComprasDraft,
   writeComprasDraft
 } from '../utils/comprasDraftStorage';
+import { prepararItensReaproveitados } from '../utils/reaproveitamentoItensCompra';
 const ITEM_ATTACHMENT_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.png,.jpg,.jpeg,.html,.rar';
 const HEADER_ATTACHMENT_ACCEPT = '.pdf,.png,.jpg,.jpeg,.xml';
 
@@ -548,33 +549,13 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           obterEtapasCompraSolicitacao(reaproveitarSolicitacaoId)
             .then((origem) => {
               if (!ativo) return;
-              const rejeitados = (origem.itens || []).filter((item) => item.status_aprovacao === 'REJEITADO');
+              const naoAprovados = prepararItensReaproveitados(origem.itens);
+              hidratandoDraftRef.current = true;
               setObraId(String(origem.obra_id || obraIdInicial || ''));
               setObservacoes(`Itens reaproveitados da solicitação #${reaproveitarSolicitacaoId}. Revise quantidades, apropriações e datas antes de enviar.`);
-              setItens(rejeitados.map((item) => sincronizarItemComRateios({
-                insumo_id: item.item_tipo === 'MANUAL' ? null : item.insumo_id,
-                insumo_nome: item.item_tipo === 'MANUAL' ? item.nome_manual : item.insumo?.nome || item.nome,
-                unidade_id: item.item_tipo === 'MANUAL' ? null : item.unidade_id,
-                unidade_sigla: item.unidade_sigla_manual || '',
-                quantidade: String(item.quantidade || '1'),
-                valor_unitario: '',
-                valor_total: '',
-                especificacao: item.especificacao || '',
-                apropriacao_id: String(item.apropriacao_id || ''),
-                apropriacoes: (item.apropriacoes || []).map((rateio) => ({
-                  apropriacao_id: rateio.apropriacao_id,
-                  quantidade_apropriada: rateio.quantidade_apropriada
-                })),
-                necessario_para: item.necessario_para || '',
-                link_produto: item.link_produto || '',
-                arquivo_url: item.arquivo_url || '',
-                arquivo_nome_original: item.arquivo_nome_original || '',
-                manual: item.item_tipo === 'MANUAL',
-                nome_manual: item.item_tipo === 'MANUAL' ? item.nome_manual || '' : '',
-                unidade_sigla_manual: item.unidade_sigla_manual || ''
-              })));
-              if (!rejeitados.length) avisar.alerta('Não há mais itens rejeitados para reaproveitar nesta solicitação.');
-              else avisar.sucesso(`${rejeitados.length} item(ns) rejeitado(s) carregado(s). Revise antes de criar a nova solicitação.`);
+              setItens(naoAprovados);
+              if (!naoAprovados.length) avisar.alerta('Esta solicitação não possui itens não aprovados disponíveis para reaproveitar.');
+              else avisar.sucesso(`${naoAprovados.length} item(ns) carregado(s) em uma nova solicitação. Você pode editar, remover ou adicionar itens antes de criar.`);
             })
             .catch((error) => { if (ativo) avisar.erro(error.message || 'Não foi possível carregar os itens rejeitados.'); })
             .finally(() => { if (ativo) draftCarregadoRef.current = true; });
@@ -1697,7 +1678,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         : undefined;
 
       writeComprasDraft(draftKey, { payload, resumo, contexto }, user?.id);
-      navigate(modoCompraDireta ? '/solicitacoes-compra-direta/revisar' : '/solicitacoes-compra/revisar');
+      navigate(modoCompraDireta ? '/solicitacoes-compra-direta/revisar'
+        : reaproveitarSolicitacaoId > 0
+          ? `/solicitacoes-compra/revisar?reaproveitar_solicitacao=${reaproveitarSolicitacaoId}`
+          : '/solicitacoes-compra/revisar');
     } catch (error) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao preparar revisão da solicitação');
@@ -1755,6 +1739,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           : 'Monte os itens da compra e distribua a apropriacao por item antes de enviar.'}
         voltar={{ to: '/solicitacoes-compra', title: 'Voltar para solicitações de compra' }}
       />
+
+      {reaproveitarSolicitacaoId > 0 && <p className="text-sm text-[var(--c-muted)]">
+        Nova solicitação a partir dos itens não aprovados da solicitação #{reaproveitarSolicitacaoId}.
+        Os itens originais permanecem bloqueados; aqui você pode editar as cópias e adicionar outros itens.
+      </p>}
 
       {!algumModalAberto && faixaAvisos}
 

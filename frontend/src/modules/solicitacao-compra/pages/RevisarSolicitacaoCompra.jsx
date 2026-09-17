@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { criarSolicitacaoCompra, criarSolicitacaoCompraDireta, obterUrlAssinadaCompra } from '../../../services/compras';
 import CompraPreviewModal from '../components/CompraPreviewModal';
 import StatusBadge from '../../../components/StatusBadge';
@@ -70,11 +70,20 @@ function formatarFormasPagamento(formas) {
 
 export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  const draftKey = buildComprasDraftKey(user?.id, modoCompraDireta ? 'compra-direta' : 'solicitacao');
+  const reaproveitarSolicitacaoId = !modoCompraDireta ? Number(searchParams.get('reaproveitar_solicitacao') || 0) : 0;
+  const draftKey = buildComprasDraftKey(user?.id, reaproveitarSolicitacaoId > 0
+    ? `reaproveitar-${reaproveitarSolicitacaoId}`
+    : modoCompraDireta ? 'compra-direta' : 'solicitacao');
+  const rotaEdicao = modoCompraDireta ? '/solicitacoes-compra-direta/nova'
+    : reaproveitarSolicitacaoId > 0
+      ? `/solicitacoes-compra/nova?reaproveitar_solicitacao=${reaproveitarSolicitacaoId}`
+      : '/solicitacoes-compra/nova';
   const [draft, setDraft] = useState(null);
   const [confirmado, setConfirmado] = useState(false);
   const [loading, setLoading] = useState(false);
+  const criacaoEmAndamentoRef = useRef(false);
   const [previewVisualizado, setPreviewVisualizado] = useState(false);
   /*
     UM ÚNICO VISUALIZADOR NA TELA (R16, 05/09).
@@ -98,12 +107,12 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     try {
       const dados = readComprasDraft(draftKey);
       if (!dados) {
-        navigate(modoCompraDireta ? '/solicitacoes-compra-direta/nova' : '/solicitacoes-compra/nova', { replace: true });
+        navigate(rotaEdicao, { replace: true });
         return;
       }
       if (!dados?.payload?.obra_id || !Array.isArray(dados?.payload?.itens) || !dados.payload.itens.length) {
         removeComprasDraft(draftKey);
-        navigate(modoCompraDireta ? '/solicitacoes-compra-direta/nova' : '/solicitacoes-compra/nova', { replace: true });
+        navigate(rotaEdicao, { replace: true });
         return;
       }
 
@@ -111,9 +120,9 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     } catch (error) {
       console.error(error);
       removeComprasDraft(draftKey);
-      navigate(modoCompraDireta ? '/solicitacoes-compra-direta/nova' : '/solicitacoes-compra/nova', { replace: true });
+      navigate(rotaEdicao, { replace: true });
     }
-  }, [draftKey, modoCompraDireta, navigate]);
+  }, [draftKey, navigate, rotaEdicao]);
 
   const itensResumo = useMemo(() => draft?.resumo?.itens || [], [draft]);
   const totalItens = itensResumo.length;
@@ -323,7 +332,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
   }
 
   async function handleConfirmar() {
-    if (!draft) {
+    if (!draft || criacaoEmAndamentoRef.current) {
       return;
     }
 
@@ -338,6 +347,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     }
 
     try {
+      criacaoEmAndamentoRef.current = true;
       setLoading(true);
       const resposta = modoCompraDireta
         ? await criarSolicitacaoCompraDireta(draft.payload)
@@ -354,6 +364,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
       console.error(error);
       avisar.erro(error.message || 'Erro ao criar solicitacao de compra');
     } finally {
+      criacaoEmAndamentoRef.current = false;
       setLoading(false);
     }
   }
@@ -362,7 +373,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     if (draft) {
       writeComprasDraft(draftKey, draft, user?.id);
     }
-    navigate(modoCompraDireta ? '/solicitacoes-compra-direta/nova' : '/solicitacoes-compra/nova', {
+    navigate(rotaEdicao, {
       state: { preservarRascunhoCompra: true }
     });
   }

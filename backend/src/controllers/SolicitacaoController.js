@@ -4197,13 +4197,7 @@ module.exports = {
       const compraVinculadaPayload = compraVinculada
         ? (compraVinculada.toJSON ? compraVinculada.toJSON() : compraVinculada)
         : null;
-      if (
-        compraVinculadaPayload &&
-        normalizarTokenComparacao(compraVinculadaPayload.origem) !== 'COMPRA_DIRETA' &&
-        !['PENDENTE', 'ENVIADO', 'INTEGRADO_SIENGE'].includes(
-          normalizarTokenComparacao(compraVinculadaPayload.status)
-        )
-      ) {
+      if (compraVinculadaPayload && normalizarTokenComparacao(compraVinculadaPayload.origem) !== 'COMPRA_DIRETA') {
         podeAprovarPorTipo = false;
       }
       payload.compra_direta = normalizarTokenComparacao(compraVinculadaPayload?.origem) === 'COMPRA_DIRETA'
@@ -5354,7 +5348,6 @@ module.exports = {
 
   async aprovarPorTipo(req, res) {
     const transaction = await sequelize.transaction();
-    let solicitacaoCompraAtualizada = null;
 
     try {
       const solicitacao = await Solicitacao.findByPk(req.params.id, {
@@ -5426,19 +5419,10 @@ module.exports = {
       const ehCompraDireta = normalizarTokenComparacao(compraVinculada?.origem) === 'COMPRA_DIRETA';
 
       if (compraVinculada && !ehCompraDireta) {
-        const statusCompra = normalizarTokenComparacao(compraVinculada.status);
-        if (statusCompra === 'AGUARDANDO_DIRETORIA') {
-          await transaction.rollback();
-          return res.status(400).json({
-            error: 'A solicitacao de compra ainda aguarda aprovacao da diretoria.'
-          });
-        }
-        if (!['PENDENTE', 'ENVIADO', 'INTEGRADO_SIENGE'].includes(statusCompra)) {
-          await transaction.rollback();
-          return res.status(409).json({
-            error: 'A solicitacao de compra ja foi encaminhada ou nao esta pendente de revisao do GEO.'
-          });
-        }
+        await transaction.rollback();
+        return res.status(409).json({
+          error: 'Para solicitacao de compra, aprove ou rejeite os itens no GEO e depois use Encaminhar aprovados para Compras.'
+        });
       }
 
       await solicitacao.update({
@@ -5454,7 +5438,7 @@ module.exports = {
         transaction
       );
 
-      const historico = await Historico.create({
+      await Historico.create({
         solicitacao_id: solicitacao.id,
         usuario_responsavel_id: req.user.id,
         setor: areaAnterior,
@@ -5480,47 +5464,6 @@ module.exports = {
         observacao: `Aprovada pelo GEO e encaminhada conforme a configuracao do tipo`
       }, { transaction });
 
-      if (compraVinculada && !ehCompraDireta) {
-        const liberadoEm = compraVinculada.liberado_para_compra_em || new Date();
-        const statusAnteriorCompra = compraVinculada.status;
-        await compraVinculada.update({
-          status: 'LIBERADO_PARA_COMPRA',
-          liberado_para_compra_em: liberadoEm,
-          comprador_responsavel_id: null,
-          prazo_compra: null,
-          delegado_por: null,
-          delegado_em: null,
-          motivo_atraso: null,
-          motivo_atraso_em: null
-        }, { transaction });
-
-        await PedidoCompra.update({
-          atribuido_a: null,
-          prazo_finalizacao: null
-        }, {
-          where: { solicitacao_compra_id: compraVinculada.id },
-          transaction
-        });
-
-        await registrarLogSolicitacaoCompra({
-          solicitacaoCompraId: compraVinculada.id,
-          usuarioId: req.user.id,
-          tipoAcao: 'ENCAMINHAMENTO_COMPRAS',
-          descricao: 'Solicitacao aprovada e encaminhada conforme a configuracao do tipo',
-          metadados: {
-            status_anterior: statusAnteriorCompra,
-            status_novo: 'LIBERADO_PARA_COMPRA',
-            setor_destino: contexto.setorDestino,
-            status_destino_principal: contexto.statusDestino,
-            responsavel_removido: true,
-            historico_id: historico.id,
-            origem: 'APROVACAO_CONFIGURADA_POR_TIPO'
-          },
-          transaction
-        });
-        solicitacaoCompraAtualizada = compraVinculada;
-      }
-
       await transaction.commit();
 
       void criarNotificacao({
@@ -5544,20 +5487,12 @@ module.exports = {
         }
       }).catch((error) => console.error('[APROVACAO_SOLICITACAO] Falha no realtime.', error));
 
-      if (solicitacaoCompraAtualizada) {
-        void publishComprasRealtimeEventSafe({
-          action: 'SOLICITACAO_ENCAMINHADA_COMPRAS',
-          solicitacaoCompraId: solicitacaoCompraAtualizada.id,
-          actor: { id: req.user.id, nome: req.user?.nome || null }
-        });
-      }
-
       return res.json({
         ok: true,
         solicitacao_id: solicitacao.id,
         setor_destino: contexto.setorDestino,
         status_destino: contexto.statusDestino,
-        solicitacao_compra_id: solicitacaoCompraAtualizada?.id || null
+        solicitacao_compra_id: null
       });
     } catch (error) {
       if (!transaction.finished) await transaction.rollback();

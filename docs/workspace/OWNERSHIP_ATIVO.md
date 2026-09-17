@@ -1,5 +1,40 @@
 # Ownership Ativo
 
+Ownership temporario da sessao `/root` em 2026-09-17 para classificar itens
+legados sem decisao no reaproveitamento, sem duplicar os que ja entraram em
+cotacao ou pedido. Escopo: `backend/src/controllers/SolicitacaoCompraEtapasController.js`,
+`backend/src/controllers/SolicitacaoCompraController.js`,
+`frontend/src/pages/SolicitacaoDetalhe/CompraEtapas.jsx`,
+`frontend/src/modules/solicitacao-compra/utils/reaproveitamentoItensCompra.js`,
+`frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx`,
+`frontend/scripts/validarReaproveitamentoCompra.mjs` e handoff correspondente.
+Ownership liberado apos validacoes e atualizacao dos handoffs
+`docs/handoffs/2026-09-17-aprovacao-itens-geo-em-lote.md` e
+`docs/handoffs/2026-09-17-reaproveitamento-itens-compra.md`.
+
+Ownership temporario da sessao `/root` em 2026-09-17 para concluir o
+reaproveitamento de itens rejeitados apos encaminhamento da compra:
+`frontend/src/pages/SolicitacaoDetalhe/CompraEtapas.jsx`,
+`frontend/src/pages/SolicitacaoDetalhe/index.jsx`,
+`frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx`,
+`frontend/src/modules/solicitacao-compra/pages/RevisarSolicitacaoCompra.jsx` e
+`frontend/src/modules/solicitacao-compra/utils/reaproveitamentoItensCompra.js`, alem do
+`frontend/scripts/validarReaproveitamentoCompra.mjs` e `frontend/package.json`.
+Preservar mudancas existentes destes
+arquivos e demais alteracoes nao relacionadas no worktree.
+Ownership liberado apos validacoes e registro em
+`docs/handoffs/2026-09-17-reaproveitamento-itens-compra.md`.
+
+Ownership temporario da sessao `/root` em 2026-09-17 para alinhar a aprovacao de
+solicitacao de compra por item: `backend/src/controllers/SolicitacaoController.js`,
+`backend/src/controllers/SolicitacaoCompraController.js`,
+`backend/src/controllers/SolicitacaoCompraEtapasController.js`, `backend/src/routes.js`,
+`backend/scripts/validarCompraCotacaoEnvio.js`, `frontend/src/pages/SolicitacaoDetalhe/`
+e `frontend/src/services/compras.js`. Outros arquivos ja modificados no worktree
+nao fazem parte desta tarefa.
+Ownership liberado apos as verificacoes e o handoff em
+`docs/handoffs/2026-09-17-aprovacao-itens-geo-em-lote.md`.
+
 Ownership da sessao `/root` iniciado em 2026-09-17 para integrar a
 operacao de Compras ao detalhe da solicitacao, decidir e comentar itens por etapa,
 registrar recebimento por item e destacar novas interacoes nas listas. Escopo

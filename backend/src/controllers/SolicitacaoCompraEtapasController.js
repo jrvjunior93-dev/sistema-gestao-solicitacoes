@@ -60,6 +60,19 @@ function parseMetadata(value) {
   try { return JSON.parse(value); } catch { return {}; }
 }
 
+function revisaoGeoPendente(compra) {
+  return String(compra?.origem || '').toUpperCase() !== 'COMPRA_DIRETA'
+    && ['PENDENTE', 'ENVIADO', 'INTEGRADO_SIENGE'].includes(String(compra?.status || '').toUpperCase());
+}
+
+function compraEncaminhada(compra) {
+  const status = String(compra?.status || '').toUpperCase();
+  return String(compra?.origem || '').toUpperCase() !== 'COMPRA_DIRETA'
+    && (['LIBERADO_PARA_COMPRA', 'LIBERADO', 'COTACAO', 'COTACAO_ENVIADA',
+      'EM_COTACAO', 'FECHAMENTO_PARCIAL', 'ENCERRADO', 'FINALIZADA'].includes(status)
+      || status.startsWith('PEDIDO_'));
+}
+
 async function localizarReferencia(compra, escopo, referenciaId, itemTipo) {
   if (!Number.isInteger(referenciaId) || referenciaId <= 0) rejeitar('Referência inválida.');
   if (escopo === 'ITEM' || escopo === 'ITEM_APROVADO') {
@@ -120,6 +133,35 @@ module.exports = {
         })
       ]);
       const idsPedidoItens = pedidos.flatMap((pedido) => pedido.itens.map((item) => item.id));
+      const idsCadastrados = itens.map((item) => item.id);
+      const idsManuais = manuais.map((item) => item.id);
+      const filtrosCotacao = [];
+      if (idsCadastrados.length) filtrosCotacao.push({ solicitacao_compra_item_id: { [Op.in]: idsCadastrados } });
+      if (idsManuais.length) filtrosCotacao.push({ solicitacao_compra_item_manual_id: { [Op.in]: idsManuais } });
+      const itensCotados = filtrosCotacao.length
+        ? await SolicitacaoCompraFornecedorItem.findAll({
+          where: { [Op.or]: filtrosCotacao },
+          attributes: ['solicitacao_compra_item_id', 'solicitacao_compra_item_manual_id']
+        }) : [];
+      const chavesEmCompra = new Set();
+      for (const item of [...itensCotados, ...pedidos.flatMap((pedido) => pedido.itens)]) {
+        if (item.solicitacao_compra_item_id) chavesEmCompra.add(`CADASTRADO:${item.solicitacao_compra_item_id}`);
+        if (item.solicitacao_compra_item_manual_id) chavesEmCompra.add(`MANUAL:${item.solicitacao_compra_item_manual_id}`);
+      }
+      const revisaoPendente = revisaoGeoPendente(compra);
+      const encaminhada = compraEncaminhada(compra);
+      const itemComReaproveitamento = (item, tipo, nome) => {
+        const vinculadoCompra = chavesEmCompra.has(`${tipo}:${item.id}`);
+        const status = item.status_aprovacao;
+        const rejeicaoImplicita = encaminhada && !vinculadoCompra
+          && (status === null || status === 'PENDENTE');
+        return {
+          ...item.toJSON(), item_tipo: tipo, nome,
+          vinculado_compra: vinculadoCompra,
+          rejeicao_implicita: rejeicaoImplicita,
+          reaproveitavel: !vinculadoCompra && (status === 'REJEITADO' || rejeicaoImplicita)
+        };
+      };
       const recebimentos = idsPedidoItens.length
         ? await PedidoCompraItemRecebimento.findAll({
           where: { pedido_compra_item_id: { [Op.in]: idsPedidoItens } },
@@ -135,9 +177,10 @@ module.exports = {
         solicitacao_compra_id: compra.id,
         obra_id: compra.obra_id,
         status_compra: compra.status,
+        revisao_geo_pendente: revisaoPendente,
         itens: [
-          ...itens.map((item) => ({ ...item.toJSON(), item_tipo: 'CADASTRADO', nome: item.insumo?.nome || item.descricao || `Item ${item.id}` })),
-          ...manuais.map((item) => ({ ...item.toJSON(), item_tipo: 'MANUAL', nome: item.nome_manual || `Item ${item.id}` }))
+          ...itens.map((item) => itemComReaproveitamento(item, 'CADASTRADO', item.insumo?.nome || item.descricao || `Item ${item.id}`)),
+          ...manuais.map((item) => itemComReaproveitamento(item, 'MANUAL', item.nome_manual || `Item ${item.id}`))
         ],
         pedidos: pedidos.map((pedido) => ({
           ...pedido.toJSON(),
@@ -158,8 +201,7 @@ module.exports = {
     try {
       const { solicitacao, compra } = await buscarContexto(req, { interagir: true });
       await exigirSetor(req, 'eh_setor_geo');
-      if (compra.origem === 'COMPRA_DIRETA') rejeitar('Compra direta não usa aprovação de itens.');
-      if (!['PENDENTE', 'ENVIADO', 'INTEGRADO_SIENGE'].includes(String(compra.status || '').toUpperCase())) {
+      if (!revisaoGeoPendente(compra)) {
         rejeitar('A revisão dos itens pelo GEO já foi encerrada.', 409);
       }
       const itemTipo = String(req.params.tipo || '').toUpperCase();
@@ -175,6 +217,8 @@ module.exports = {
       const transaction = await Model.sequelize.transaction();
       let item;
       try {
+        const compraAtual = await SolicitacaoCompra.findByPk(compra.id, { transaction, lock: transaction.LOCK.UPDATE });
+        if (!revisaoGeoPendente(compraAtual)) rejeitar('A revisão dos itens pelo GEO já foi encerrada.', 409);
         item = await Model.findOne({
           where: { id: itemId, solicitacao_compra_id: compra.id },
           transaction, lock: transaction.LOCK.UPDATE
@@ -207,6 +251,87 @@ module.exports = {
       }
       await publishSolicitacaoRealtimeEvent({ action: 'PURCHASE_ITEM_DECIDED', solicitacao, actor: { id: req.user.id } });
       return res.json({ item_id: item.id, status_aprovacao: decisao });
+    } catch (error) { return responderErro(res, error); }
+  },
+
+  async aprovarItensEmLote(req, res) {
+    try {
+      const { solicitacao, compra } = await buscarContexto(req, { interagir: true });
+      await exigirSetor(req, 'eh_setor_geo');
+      if (!revisaoGeoPendente(compra)) rejeitar('A revisão dos itens pelo GEO já foi encerrada.', 409);
+      const itensRecebidos = req.body?.itens;
+      if (!Array.isArray(itensRecebidos) || !itensRecebidos.length || itensRecebidos.length > 1000) {
+        rejeitar('Selecione de 1 a 1.000 itens pendentes para aprovar.');
+      }
+      const chaves = new Set();
+      const idsPorTipo = { CADASTRADO: [], MANUAL: [] };
+      for (const entrada of itensRecebidos) {
+        const tipo = String(entrada?.item_tipo || '').toUpperCase();
+        const id = Number(entrada?.id);
+        if (!Object.hasOwn(idsPorTipo, tipo) || !Number.isInteger(id) || id <= 0) {
+          rejeitar('A seleção contém um item inválido.');
+        }
+        const chave = `${tipo}:${id}`;
+        if (chaves.has(chave)) continue;
+        chaves.add(chave);
+        idsPorTipo[tipo].push(id);
+      }
+      const transaction = await SolicitacaoCompra.sequelize.transaction();
+      const aprovados = [];
+      let jaAprovados = 0;
+      try {
+        const compraAtual = await SolicitacaoCompra.findByPk(compra.id, { transaction, lock: transaction.LOCK.UPDATE });
+        if (!revisaoGeoPendente(compraAtual)) rejeitar('A revisão dos itens pelo GEO já foi encerrada.', 409);
+        for (const [tipo, Model] of [['CADASTRADO', SolicitacaoCompraItem], ['MANUAL', SolicitacaoCompraItemManual]]) {
+          const ids = idsPorTipo[tipo];
+          if (!ids.length) continue;
+          const registros = await Model.findAll({
+            where: { id: { [Op.in]: ids }, solicitacao_compra_id: compra.id },
+            order: [['id', 'ASC']], transaction, lock: transaction.LOCK.UPDATE
+          });
+          if (registros.length !== ids.length) rejeitar('Um item selecionado não pertence a esta solicitação.', 404);
+          const alterar = [];
+          for (const item of registros) {
+            if (item.status_aprovacao === 'APROVADO') { jaAprovados += 1; continue; }
+            if (item.status_aprovacao === 'REJEITADO') rejeitar('Um item selecionado já foi rejeitado. Revise a seleção.', 409);
+            if (item.status_aprovacao !== null && item.status_aprovacao !== 'PENDENTE') {
+              rejeitar('Um item selecionado possui uma decisão não reconhecida.', 409);
+            }
+            alterar.push(item.id);
+          }
+          if (!alterar.length) continue;
+          const campoVinculo = tipo === 'MANUAL'
+            ? 'solicitacao_compra_item_manual_id' : 'solicitacao_compra_item_id';
+          const cotacaoVinculada = await SolicitacaoCompraFornecedorItem.findOne({
+            where: { [campoVinculo]: { [Op.in]: alterar } }, transaction
+          });
+          if (cotacaoVinculada) rejeitar('Um item selecionado já está em cotação.', 409);
+          await Model.update({ status_aprovacao: 'APROVADO' }, {
+            where: { id: { [Op.in]: alterar }, solicitacao_compra_id: compra.id }, transaction
+          });
+          aprovados.push(...alterar.map((id) => ({ item_tipo: tipo, id })));
+        }
+        if (aprovados.length) {
+          await Historico.create({
+            solicitacao_id: solicitacao.id,
+            usuario_responsavel_id: req.user.id,
+            setor: req.user.setor_id || solicitacao.area_responsavel,
+            acao: 'ITENS_COMPRA_APROVADOS_GEO',
+            descricao: `${aprovados.length} item(ns) aprovado(s) em lote pelo GEO.`,
+            metadata: JSON.stringify({ solicitacao_compra_id: compra.id, itens: aprovados })
+          }, { transaction });
+        }
+        await transaction.commit();
+      } catch (error) {
+        if (!transaction.finished) await transaction.rollback();
+        throw error;
+      }
+      if (aprovados.length) {
+        void publishSolicitacaoRealtimeEvent({
+          action: 'PURCHASE_ITEMS_DECIDED', solicitacao, actor: { id: req.user.id }
+        }).catch((error) => console.error('Aprovação em lote salva, mas atualização em tempo real falhou:', error));
+      }
+      return res.json({ aprovados: aprovados.length, ja_aprovados: jaAprovados, itens: aprovados });
     } catch (error) { return responderErro(res, error); }
   },
 

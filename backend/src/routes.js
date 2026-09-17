@@ -1651,6 +1651,7 @@ router.get('/solicitacoes/relatorios/operacional', allowSolicitacoesRelatorioOpe
 router.get('/solicitacoes/:id/resumo-lista', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoController.resumoLista);
 router.get('/solicitacoes/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoController.show);
 router.get('/solicitacoes/:id/compra-etapas', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.listar);
+router.patch('/solicitacoes/:id/compra-itens/aprovacao-lote', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.aprovarItensEmLote);
 router.patch('/solicitacoes/:id/compra-itens/:tipo/:itemId/decisao', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.decidirItem);
 router.post('/solicitacoes/:id/compra-etapas/comentarios', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.comentar);
 router.post('/solicitacoes/:id/pedidos-compra/:pedidoId/itens/:itemId/recebimentos', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.receberItem);

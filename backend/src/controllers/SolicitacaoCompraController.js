@@ -2111,11 +2111,17 @@ async function encaminharSolicitacaoCompraParaFilaCompras({ solicitacao, usuario
 
   const whereAprovados = {
     solicitacao_compra_id: solicitacao.id,
-    [Op.or]: [{ status_aprovacao: null }, { status_aprovacao: 'APROVADO' }]
+    status_aprovacao: 'APROVADO'
   };
-  const [itensAprovados, itensManuaisAprovados] = await Promise.all([
+  const wherePendentes = {
+    solicitacao_compra_id: solicitacao.id,
+    [Op.or]: [{ status_aprovacao: null }, { status_aprovacao: 'PENDENTE' }]
+  };
+  const [itensAprovados, itensManuaisAprovados, itensPendentes, itensManuaisPendentes] = await Promise.all([
     SolicitacaoCompraItem.count({ where: whereAprovados, transaction }),
-    SolicitacaoCompraItemManual.count({ where: whereAprovados, transaction })
+    SolicitacaoCompraItemManual.count({ where: whereAprovados, transaction }),
+    SolicitacaoCompraItem.findAll({ where: wherePendentes, attributes: ['id'], transaction }),
+    SolicitacaoCompraItemManual.findAll({ where: wherePendentes, attributes: ['id'], transaction })
   ]);
   if (itensAprovados + itensManuaisAprovados === 0) {
     const error = new Error('Aprove ao menos um item no GEO antes de encaminhar para Compras.');
@@ -2138,10 +2144,46 @@ async function encaminharSolicitacaoCompraParaFilaCompras({ solicitacao, usuario
     }
   }
 
+  const filtrosSemDecisao = [];
+  if (itensPendentes.length) filtrosSemDecisao.push({ solicitacao_compra_item_id: { [Op.in]: itensPendentes.map((item) => item.id) } });
+  if (itensManuaisPendentes.length) filtrosSemDecisao.push({ solicitacao_compra_item_manual_id: { [Op.in]: itensManuaisPendentes.map((item) => item.id) } });
+  if (filtrosSemDecisao.length) {
+    const [emCotacao, emPedido] = await Promise.all([
+      SolicitacaoCompraFornecedorItem.findOne({ where: { [Op.or]: filtrosSemDecisao }, transaction }),
+      PedidoCompraItem.findOne({ where: { [Op.or]: filtrosSemDecisao }, transaction })
+    ]);
+    if (emCotacao || emPedido) {
+      const error = new Error('Ha item sem decisao ja vinculado a cotacao ou pedido. Revise essa compra antes de encaminhar.');
+      error.statusCode = 409;
+      throw error;
+    }
+  }
+
   const setorCompras = await buscarSetorCompras(transaction);
   const setorGeo = await buscarSetorGerenciaProcessos(transaction);
   const liberadoEm = solicitacao.liberado_para_compra_em || new Date();
   const statusAnteriorCompra = solicitacao.status;
+
+  const totalRejeitadosImplicitamente = itensPendentes.length + itensManuaisPendentes.length;
+  if (totalRejeitadosImplicitamente > 0) {
+    await SolicitacaoCompraItem.update({ status_aprovacao: 'REJEITADO' }, { where: wherePendentes, transaction });
+    await SolicitacaoCompraItemManual.update({ status_aprovacao: 'REJEITADO' }, { where: wherePendentes, transaction });
+    if (solicitacao.solicitacao_principal_id) {
+      await Historico.create({
+        solicitacao_id: solicitacao.solicitacao_principal_id,
+        usuario_responsavel_id: usuario.id,
+        setor: usuario.setor_id || setorGeo,
+        acao: 'ITENS_COMPRA_REJEITADOS_GEO_IMPLICITO',
+        descricao: `${totalRejeitadosImplicitamente} item(ns) sem aprovacao explicita registrado(s) como rejeitado(s) na analise externa antes do encaminhamento a Compras.`,
+        metadata: JSON.stringify({
+          solicitacao_compra_id: solicitacao.id,
+          itens_cadastrados: itensPendentes.map((item) => item.id),
+          itens_manuais: itensManuaisPendentes.map((item) => item.id),
+          origem: 'ANALISE_GEO_EXTERNA'
+        })
+      }, { transaction });
+    }
+  }
 
   let historicoPrincipal = null;
   if (Number(solicitacao.solicitacao_principal_id || 0) > 0) {
@@ -2249,6 +2291,7 @@ async function encaminharSolicitacaoCompraParaFilaCompras({ solicitacao, usuario
       status_novo: 'LIBERADO_PARA_COMPRA',
       setor_destino: setorCompras,
       responsavel_removido: true,
+      rejeitados_implicitamente: totalRejeitadosImplicitamente,
       historico_id: historicoPrincipal?.id || null
     },
     transaction

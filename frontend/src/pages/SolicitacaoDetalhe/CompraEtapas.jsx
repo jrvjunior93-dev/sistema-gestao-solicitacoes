@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Avisos, BlocoConteudo, useAvisos } from '../../components/padrao';
+import { Avisos, BlocoConteudo, useAvisos, useConfirmacao } from '../../components/padrao';
 import { API_URL, authHeaders } from '../../services/api';
 import {
   anexarEspelhoPedidoCompra,
+  aprovarItensCompraSolicitacaoEmLote,
   comentarEtapaCompraSolicitacao,
   decidirItemCompraSolicitacao,
   encaminharSolicitacaoCompraParaCompras,
@@ -12,6 +13,7 @@ import {
   uploadAnexoTemporarioCompra
 } from '../../services/compras';
 import GerenciarCotacaoSolicitacao from '../../modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao';
+import { itemPodeSerReaproveitado } from '../../modules/solicitacao-compra/utils/reaproveitamentoItensCompra';
 
 function quantidade(value) {
   return Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
@@ -29,9 +31,10 @@ function Comentarios({ lista, escopo, referenciaId, itemTipo }) {
   </div>;
 }
 
-export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, podeAnexar, mostrarCotacao, podeGerenciarCotacao, onGerenciarItens, onUpdated }) {
+export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, podeAnexar, mostrarCotacao, podeGerenciarCotacao, podeCriarNovaSolicitacao, onGerenciarItens, onUpdated }) {
   const navigate = useNavigate();
   const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [processando, setProcessando] = useState('');
@@ -45,6 +48,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
   const [quantidadesEntrega, setQuantidadesEntrega] = useState({});
   const [chavesEntrega, setChavesEntrega] = useState({});
   const [cotacaoAberta, setCotacaoAberta] = useState(false);
+  const [selecionados, setSelecionados] = useState([]);
 
   async function carregar() {
     const retorno = await obterEtapasCompraSolicitacao(solicitacaoId);
@@ -53,6 +57,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
 
   useEffect(() => {
     let ativo = true;
+    setSelecionados([]);
     setCarregando(true);
     obterEtapasCompraSolicitacao(solicitacaoId)
       .then((retorno) => { if (ativo) setDados(retorno); })
@@ -60,6 +65,14 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; };
   }, [solicitacaoId]);
+
+  useEffect(() => {
+    if (!dados) return;
+    const pendentesAtuais = new Set(dados.itens.filter((item) => item.status_aprovacao === 'PENDENTE'
+      || (dados.revisao_geo_pendente && !item.status_aprovacao))
+      .map((item) => `${item.item_tipo}:${item.id}`));
+    setSelecionados((atuais) => atuais.filter((chave) => pendentesAtuais.has(chave)));
+  }, [dados]);
 
   useEffect(() => {
     let ativo = true;
@@ -147,18 +160,61 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
   if (carregando) return <BlocoConteudo titulo="Gestão dos itens">Carregando itens e pedidos...</BlocoConteudo>;
   if (!dados) return <BlocoConteudo titulo="Gestão dos itens"><Avisos avisos={avisos} aoFechar={fechar} /></BlocoConteudo>;
 
-  const pendentes = dados.itens.filter((item) => item.status_aprovacao === 'PENDENTE');
-  const aprovados = dados.itens.filter((item) => !item.status_aprovacao || item.status_aprovacao === 'APROVADO');
-  const rejeitados = dados.itens.filter((item) => item.status_aprovacao === 'REJEITADO');
+  const pendentes = dados.itens.filter((item) => dados.revisao_geo_pendente
+    && (item.status_aprovacao === 'PENDENTE' || !item.status_aprovacao));
+  const aprovados = dados.itens.filter((item) => item.status_aprovacao === 'APROVADO'
+    || (!dados.revisao_geo_pendente && !itemPodeSerReaproveitado(item)
+      && (!item.status_aprovacao || (item.status_aprovacao === 'PENDENTE' && item.vinculado_compra))));
+  const naoAprovados = dados.itens.filter(itemPodeSerReaproveitado);
+  const statusCompra = String(dados.status_compra || '').toUpperCase();
+  const compraEncaminhada = ['LIBERADO_PARA_COMPRA', 'LIBERADO', 'COTACAO', 'COTACAO_ENVIADA',
+    'EM_COTACAO', 'FECHAMENTO_PARCIAL', 'ENCERRADO', 'FINALIZADA'].includes(statusCompra)
+    || statusCompra.startsWith('PEDIDO_');
+  const chavesPendentes = new Set(pendentes.map((item) => `${item.item_tipo}:${item.id}`));
+  const chavesSelecionadas = new Set(selecionados);
+  const todosSelecionados = pendentes.length > 0 && selecionados.length === pendentes.length;
+
+  async function aprovarSelecionados() {
+    const itens = pendentes.filter((item) => chavesSelecionadas.has(`${item.item_tipo}:${item.id}`))
+      .map((item) => ({ item_tipo: item.item_tipo, id: item.id }));
+    if (!itens.length) return;
+    const concluido = await executar('aprovar-lote', () => aprovarItensCompraSolicitacaoEmLote(solicitacaoId, itens),
+      `${itens.length} item(ns) aprovado(s) pelo GEO.`);
+    if (concluido) setSelecionados([]);
+  }
+
+  async function encaminharAprovados() {
+    const compraId = dados.solicitacao_compra_id;
+    const quantidadeAprovados = aprovados.length;
+    const quantidadeSemDecisao = pendentes.length;
+    if (quantidadeSemDecisao > 0) {
+      const { ok } = await confirmar({
+        titulo: 'Encaminhar itens aprovados para Compras',
+        mensagem: `${quantidadeAprovados} item(ns) aprovado(s) seguirão para Compras. Os ${quantidadeSemDecisao} item(ns) ainda sem decisão serão registrados como rejeitados na análise externa e poderão ser reaproveitados em uma nova solicitação.`,
+        rotuloConfirmar: 'Encaminhar e registrar rejeições'
+      });
+      if (!ok) return;
+    }
+    await executar('encaminhar', () => encaminharSolicitacaoCompraParaCompras(compraId),
+      'Itens aprovados encaminhados para Compras. Os demais permaneceram disponíveis para reaproveitamento.');
+  }
   const cotacaoIniciada = ['COTACAO', 'COTACAO_ENVIADA', 'EM_COTACAO', 'FECHAMENTO_PARCIAL', 'ENCERRADO']
     .includes(String(dados.status_compra || '').toUpperCase());
 
   const linhaItem = (item, escopo) => <div key={`${item.item_tipo}-${item.id}`}
     className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2">
     <div className="flex flex-wrap items-center gap-2 text-sm">
+      {escopo === 'ITEM' && podeDecidir && chavesPendentes.has(`${item.item_tipo}:${item.id}`) &&
+        <input type="checkbox" className="h-4 w-4 shrink-0 accent-[var(--c-primary)]" disabled={!!processando}
+          aria-label={`Selecionar ${item.nome} para aprovação em lote`}
+          checked={chavesSelecionadas.has(`${item.item_tipo}:${item.id}`)}
+          onChange={(event) => setSelecionados((atuais) => event.target.checked
+            ? [...atuais, `${item.item_tipo}:${item.id}`]
+            : atuais.filter((chave) => chave !== `${item.item_tipo}:${item.id}`))} />}
       <span className="min-w-0 flex-1 font-semibold">{item.nome}</span>
+      {escopo === 'ITEM' && item.rejeicao_implicita && <span className="text-xs text-[var(--c-muted)]">Não aprovado na análise externa</span>}
       <span className="text-[var(--c-muted)]">{quantidade(item.quantidade)} {item.unidade_sigla_manual || item.unidade?.sigla || ''}</span>
-      {item.status_aprovacao === 'PENDENTE' && podeDecidir && <>
+      {escopo === 'ITEM' && chavesPendentes.has(`${item.item_tipo}:${item.id}`) && podeDecidir && <>
         <button type="button" className="btn btn-primary btn-sm" disabled={!!processando}
           onClick={() => decidir(item, 'APROVADO')}>Aprovar</button>
         <button type="button" className="btn btn-outline btn-sm" disabled={!!processando}
@@ -167,7 +223,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       {(!cotacaoIniciada || escopo === 'ITEM') && <button type="button" className="btn btn-outline btn-sm"
         onClick={() => abrirComentario(escopo, item.id, item.item_tipo)}>Comentar</button>}
     </div>
-    {item.status_aprovacao === 'PENDENTE' && podeDecidir && <input className="input mt-2 w-full"
+    {escopo === 'ITEM' && chavesPendentes.has(`${item.item_tipo}:${item.id}`) && podeDecidir && <input className="input mt-2 w-full"
       value={motivos[`${item.item_tipo}-${item.id}`] || ''}
       onChange={(event) => setMotivos((atuais) => ({ ...atuais, [`${item.item_tipo}-${item.id}`]: event.target.value }))}
       placeholder="Motivo para rejeição (obrigatório ao rejeitar)" />}
@@ -179,9 +235,22 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
 
   return <div className="space-y-3">
     <Avisos avisos={avisos} aoFechar={fechar} />
+    {elementoConfirmacao}
     <BlocoConteudo titulo="Itens da solicitação" contagem={`${pendentes.length} pendente(s)`} recolhivel
       acoes={onGerenciarItens ? <button type="button" className="btn btn-outline btn-sm" onClick={onGerenciarItens}>Gerenciar itens</button> : null}>
       <div className="space-y-2">
+        {podeDecidir && pendentes.length > 0 && <div className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-border)] px-3 py-2 text-sm">
+          <label className="flex cursor-pointer items-center gap-2">
+            <input type="checkbox" className="h-4 w-4 accent-[var(--c-primary)]" disabled={!!processando}
+              checked={todosSelecionados}
+              onChange={(event) => setSelecionados(event.target.checked
+                ? pendentes.map((item) => `${item.item_tipo}:${item.id}`) : [])} />
+            Selecionar todos
+          </label>
+          <span className="text-[var(--c-muted)]">{selecionados.length} de {pendentes.length} selecionado(s)</span>
+          <button type="button" className="btn btn-primary btn-sm ml-auto" disabled={!selecionados.length || !!processando}
+            onClick={aprovarSelecionados}>Aprovar selecionados</button>
+        </div>}
         {pendentes.length ? pendentes.map((item) => linhaItem(item, 'ITEM')) : <p className="text-sm text-[var(--c-muted)]">Nenhum item aguardando decisão do GEO.</p>}
       </div>
     </BlocoConteudo>
@@ -189,17 +258,24 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       <div className="space-y-2">
         {aprovados.length ? aprovados.map((item) => linhaItem(item, 'ITEM_APROVADO')) : <p className="text-sm text-[var(--c-muted)]">Aprovações do GEO aparecerão aqui.</p>}
       </div>
-      {podeDecidir && aprovados.length > 0 && dados.status_compra === 'PENDENTE' &&
+      {podeDecidir && dados.revisao_geo_pendente && pendentes.length > 0 &&
+        <p className="mt-3 text-xs text-[var(--c-muted)]">Ao encaminhar, os itens sem decisão serão registrados como rejeitados na análise externa.</p>}
+      {podeDecidir && aprovados.length > 0 && dados.revisao_geo_pendente &&
         <div className="mt-3 flex justify-end"><button type="button" className="btn btn-primary btn-sm" disabled={!!processando}
-          onClick={() => executar('encaminhar', () => encaminharSolicitacaoCompraParaCompras(dados.solicitacao_compra_id),
-            'Itens aprovados encaminhados para Compras.')}>Encaminhar aprovados para Compras</button></div>}
+          onClick={encaminharAprovados}>Encaminhar aprovados para Compras</button></div>}
     </BlocoConteudo>
-    {rejeitados.length > 0 && <BlocoConteudo titulo="Itens rejeitados" contagem={`${rejeitados.length} item(ns)`} recolhivel recolhidoPadrao>
-      <div className="space-y-2">{rejeitados.map((item) => linhaItem(item, 'ITEM'))}</div>
-      <button type="button" className="btn btn-outline btn-sm mt-3"
+    {naoAprovados.length > 0 && <BlocoConteudo titulo="Itens não aprovados" contagem={`${naoAprovados.length} item(ns)`} recolhivel recolhidoPadrao
+      controles={<span />}
+      acoes={compraEncaminhada && podeCriarNovaSolicitacao ? <button type="button" className="btn btn-outline btn-sm"
         onClick={() => navigate(`/solicitacoes-compra/nova?obra_id=${dados.obra_id}&reaproveitar_solicitacao=${solicitacaoId}`)}>
-        Criar nova solicitação com itens rejeitados
-      </button>
+        Reaproveitar em nova solicitação
+      </button> : null}>
+      <div className="space-y-2">{naoAprovados.map((item) => linhaItem(item, 'ITEM'))}</div>
+      {compraEncaminhada && <div className="mt-3 flex flex-wrap items-center gap-2">
+        <p className="min-w-0 flex-1 text-xs text-[var(--c-muted)]">Estes itens ficam bloqueados nesta solicitação. A nova solicitação terá cópias editáveis, sem alterar o pedido atual.</p>
+        {!podeCriarNovaSolicitacao && <span className="text-xs text-[var(--c-muted)]">Peça a um usuário com permissão para criar solicitações de compra.</span>}
+      </div>}
+      {!compraEncaminhada && <p className="mt-3 text-xs text-[var(--c-muted)]">Após encaminhar os itens aprovados para Compras, será possível criar outra solicitação com estes itens.</p>}
     </BlocoConteudo>}
     <BlocoConteudo titulo="Cotação" recolhivel recolhidoPadrao>
       <div className="flex flex-wrap items-center gap-2">
