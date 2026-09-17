@@ -167,10 +167,12 @@ function parseDate(value, label, { required = false } = {}) {
   else {
     const raw = String(value).trim();
     const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const persistedIso = raw.match(/^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/);
     const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (iso) {
-      expected = `${iso[1]}-${iso[2]}-${iso[3]}`;
-      date = new Date(Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])));
+    const isoParts = iso || persistedIso;
+    if (isoParts) {
+      expected = `${isoParts[1]}-${isoParts[2]}-${isoParts[3]}`;
+      date = new Date(Date.UTC(Number(isoParts[1]), Number(isoParts[2]) - 1, Number(isoParts[3])));
     } else if (br) {
       expected = `${br[3]}-${br[2]}-${br[1]}`;
       date = new Date(Date.UTC(Number(br[3]), Number(br[2]) - 1, Number(br[1])));
@@ -180,6 +182,14 @@ function parseDate(value, label, { required = false } = {}) {
   const formatted = dateOnly(date);
   if (expected && formatted !== expected) throw createHttpError(400, `${label} invalida.`);
   return formatted;
+}
+
+function normalizePayloadForStorage(payload = {}) {
+  return Object.fromEntries(Object.entries(payload).map(([key, value]) => {
+    if (!(value instanceof Date) || Number.isNaN(value.getTime())) return [key, value];
+    const normalizedDate = new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
+    return [key, dateOnly(normalizedDate)];
+  }));
 }
 
 function cellRawValue(cell) {
@@ -876,7 +886,7 @@ async function criarPreviewImportacao(req, file) {
       return {
         importacao_id: created.id, aba: row.sheetName, numero_linha: row.rowNumber,
         chave_importacao: normalizeText(row.payload.chave_importacao, 120) || `LINHA-${row.rowNumber}`,
-        fingerprint: lineFingerprint(row.sheetName, row), payload_json: JSON.stringify(row.payload),
+        fingerprint: lineFingerprint(row.sheetName, row), payload_json: JSON.stringify(normalizePayloadForStorage(row.payload)),
         status: lineErrors.length ? 'ERRO' : (lineWarnings.length ? 'AVISO' : 'VALIDO'),
         erros_json: JSON.stringify(lineErrors), avisos_json: JSON.stringify(lineWarnings)
       };
@@ -1111,6 +1121,8 @@ module.exports = {
   gerarModeloImportacao,
   carregarImportacao,
   mapParcelaTipo,
+  normalizePayloadForStorage,
+  parseDate,
   parseWorkbook,
   validateSheets
 };

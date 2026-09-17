@@ -6,6 +6,8 @@ const {
   TEMPLATE_VERSION,
   gerarModeloImportacao,
   mapParcelaTipo,
+  normalizePayloadForStorage,
+  parseDate,
   parseWorkbook
 } = require('../src/services/comercialContratoImportacaoService');
 const { validateComercialContratoUpdateBody } = require('../src/validators/commercialValidators');
@@ -16,6 +18,12 @@ async function run() {
   assert.deepEqual(mapParcelaTipo('Parcelas Semestrais'), ['INTERMEDIARIA', 'SEMESTRAL']);
   assert.deepEqual(mapParcelaTipo('Parcela anual'), ['BALAO', 'ANUAL']);
   assert.deepEqual(mapParcelaTipo('Entrega das chaves'), ['CHAVES', 'UNICA']);
+  assert.equal(parseDate('2026-07-15T00:00:00.000Z', 'Data'), '2026-07-15');
+  assert.equal(parseDate('2026-07-15T03:00:00.000Z', 'Data'), '2026-07-15');
+  assert.deepEqual(
+    normalizePayloadForStorage({ data_contrato: new Date(2026, 6, 15), chave_importacao: 'C-1' }),
+    { data_contrato: '2026-07-15', chave_importacao: 'C-1' }
+  );
   assert.deepEqual(validateComercialContratoUpdateBody({
     unidades: [
       { unidade_comercial_id: 20, valor_cadastro_referencia: 200000, valor_atribuido: 210000, principal: true },
