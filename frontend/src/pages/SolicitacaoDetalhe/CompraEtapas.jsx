@@ -14,18 +14,16 @@ import {
 } from '../../services/compras';
 import GerenciarCotacaoSolicitacao from '../../modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao';
 import { itemPodeSerReaproveitado } from '../../modules/solicitacao-compra/utils/reaproveitamentoItensCompra';
+import { comentariosDaEtapa, comentariosDoItem, comentariosDoItemPedido } from './comentariosCompra';
 
 function quantidade(value) {
   return Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
 }
 
-function Comentarios({ lista, escopo, referenciaId, itemTipo }) {
-  const relevantes = lista.filter((comentario) => comentario.escopo === escopo
-    && Number(comentario.referencia_id) === Number(referenciaId)
-    && (!itemTipo || comentario.item_tipo === itemTipo));
-  if (!relevantes.length) return null;
+function Comentarios({ lista }) {
+  if (!lista.length) return null;
   return <div className="space-y-1 border-l-2 border-[var(--c-border)] pl-3 text-sm">
-    {relevantes.map((comentario) => <p key={comentario.id}>
+    {lista.map((comentario) => <p key={comentario.id}>
       <strong>{comentario.usuario?.nome || 'Usuário'}:</strong> {comentario.descricao}
     </p>)}
   </div>;
@@ -229,7 +227,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       placeholder="Motivo para rejeição (obrigatório ao rejeitar)" />}
     {cotacaoIniciada && escopo === 'ITEM_APROVADO' && <p className="mt-1 text-xs text-[var(--c-muted)]">Em cotação ou pedido: comente no card da etapa correspondente.</p>}
     {item.especificacao && <p className="mt-1 text-sm text-[var(--c-muted)]">{item.especificacao}</p>}
-    <Comentarios lista={dados.comentarios} escopo={escopo} referenciaId={item.id} itemTipo={item.item_tipo} />
+    <Comentarios lista={comentariosDoItem(dados.comentarios, item)} />
     {formularioComentario(escopo, item.id, item.item_tipo)}
   </div>;
 
@@ -284,7 +282,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
         {mostrarCotacao && <button type="button" className="btn btn-outline btn-sm"
           onClick={() => setCotacaoAberta((aberta) => !aberta)}>{cotacaoAberta ? 'Recolher gestão da cotação' : 'Abrir gestão da cotação'}</button>}
       </div>
-      <Comentarios lista={dados.comentarios} escopo="COTACAO" referenciaId={dados.solicitacao_compra_id} />
+      <Comentarios lista={comentariosDaEtapa(dados.comentarios, 'COTACAO', dados.solicitacao_compra_id)} />
       {formularioComentario('COTACAO', dados.solicitacao_compra_id)}
       {mostrarCotacao && cotacaoAberta && <div className="mt-3">
         {!podeGerenciarCotacao && <p className="mb-2 text-xs text-[var(--c-muted)]">
@@ -321,7 +319,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
         {pedido.espelho_fornecedor_url && <p className="mt-2 text-xs text-[var(--c-muted)]">
           Documento anexado: {pedido.espelho_fornecedor_nome || 'arquivo do pedido'} · abra o pedido completo para visualizar.
         </p>}
-        <Comentarios lista={dados.comentarios} escopo="PEDIDO" referenciaId={pedido.id} />
+        <Comentarios lista={comentariosDaEtapa(dados.comentarios, 'PEDIDO', pedido.id)} />
         {formularioComentario('PEDIDO', pedido.id)}
         <div className="mt-3 space-y-2">{pedido.itens.map((item) => {
           const recebido = item.recebimentos.reduce((acc, linha) => acc + Number(linha.quantidade || 0), 0);
@@ -348,8 +346,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
                   setChavesEntrega((atual) => ({ ...atual, [item.id]: null }));
                 }, 'Entrega registrada para este item.')}>Marcar como entregue</button>
             </div>}
-            <Comentarios lista={dados.comentarios} escopo="PEDIDO_ITEM" referenciaId={item.id} />
-            <Comentarios lista={dados.comentarios} escopo="ENTREGA" referenciaId={item.id} />
+            <Comentarios lista={comentariosDoItemPedido(dados.comentarios, item)} />
             {formularioComentario('PEDIDO_ITEM', item.id)}{formularioComentario('ENTREGA', item.id)}
           </div>;
         })}</div>
