@@ -702,6 +702,7 @@ Se o grupo de destino já existir, parar e inspecioná-lo; não reaplicar o bloc
 
 ```bash
 set -euo pipefail
+export AWS_PAGER=""
 : "${REGIAO:?}" "${ENDPOINT_ALVO:?}" "${ENDPOINT_OUTRO:?}" "${GRUPO_NOVO:?}"
 
 ID_ALVO=$(aws rds describe-db-instances --region "$REGIAO" \
@@ -757,6 +758,16 @@ aws rds describe-db-instances --region "$REGIAO" \
   --query 'DBInstances[0].{endpoint:Endpoint.Address,grupo:DBParameterGroups[0].DBParameterGroupName,status:DBParameterGroups[0].ParameterApplyStatus}' \
   --output table
 ```
+
+Se a colagem for interrompida pelo paginador da AWS CLI após a criação do
+snapshot, sair do paginador com `q` e executar `export AWS_PAGER=""` no
+CloudShell. **Não** repetir o bloco inteiro: o grupo e o snapshot já existem.
+Consultar o status do snapshot e o grupo atualmente associado à instância;
+retomar a partir de `aws rds wait db-snapshot-available` e só associar o
+grupo depois de confirmar que `log_bin_trust_function_creators=1` no grupo
+novo. Este caso ocorreu em dev em 18/09/2026: o snapshot
+`fluxy-staging-pre-triggers-20260918071029` foi iniciado, mas a instância
+continuou no grupo `default.mysql8.4` (`in-sync`).
 
 Confirmar que o endpoint ainda é o alvo, o grupo é o novo e o status do grupo é
 `in-sync`. Em seguida, **na EC2 do ambiente alvo, executado pelo operador**,
