@@ -23,8 +23,6 @@ import {
   FormSecao,
   Pagina,
   PageHeader,
-  StatGrid,
-  StatTile,
   TabelaPadrao,
   useAvisos,
   useConfirmacao
@@ -37,7 +35,6 @@ import { getCpfCnpjError, maskCpfCnpj, onlyDigits } from '../../../utils/formatt
 import CompraPreviewModal from '../components/CompraPreviewModal';
 import { criarPreviewCompra } from '../utils/preview';
 import {
-  aplicarApropriacaoUnica,
   calcularResumoRateios,
   criarRateioBase,
   formatarQuantidade,
@@ -132,16 +129,6 @@ function criarNovoCredorPadrao() {
   };
 }
 
-function criarItemManualFormPadrao() {
-  return {
-    nome_manual: '',
-    unidade_id: '',
-    unidade_sigla_manual: '',
-    quantidade: '1',
-    especificacao: ''
-  };
-}
-
 function calcularValorTotalItem(item) {
   return arredondarMoeda(parseQuantidade(item?.quantidade) * parseValorMonetario(item?.valor_unitario));
 }
@@ -194,22 +181,25 @@ function criarItemManualBase(dados, necessarioParaPadrao) {
 function sincronizarQuantidadeRateioUnico(item, quantidade) {
   const rateios = normalizarRateiosEntrada(item);
   if (rateios.length !== 1) {
-    return sincronizarItemComRateios({
+    return {
       ...item,
-      quantidade
-    });
+      quantidade,
+      apropriacoes: rateios,
+      apropriacao_id: rateios[0]?.apropriacao_id || ''
+    };
   }
 
-  return sincronizarItemComRateios({
+  return {
     ...item,
     quantidade,
+    apropriacao_id: rateios[0]?.apropriacao_id || '',
     apropriacoes: [
       {
         ...rateios[0],
         quantidade_apropriada: quantidade
       }
     ]
-  });
+  };
 }
 
 export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
@@ -228,6 +218,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const suspenderAutosaveAteRef = useRef(0);
   const importacaoItensInputRef = useRef(null);
   const importacaoEmAndamentoRef = useRef(false);
+  const novoItemManualIndexRef = useRef(null);
   const buscaCredorRequestRef = useRef(0);
   const buscaCredorFreteRequestRef = useRef(0);
   const campoCredorRef = useRef(null);
@@ -278,9 +269,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     a seta que gira, que saiu de `group-open:` para a classe condicional,
     porque `group-open` só existe quando existe um `<details open>`.
 
-    O ref envolve o botão E o painel: marcar uma forma é clique DENTRO, o
-    hook não fecha no `mousedown` e o checkbox continua alternando. É de
-    propósito que a camada não feche ao marcar — a escolha é múltipla.
+    O ref envolve botão e painel. Marcar uma forma alterna sua seleção e
+    recolhe a lista; outras formas ainda podem ser adicionadas reabrindo-a.
   */
   const formasPagamentoRef = useRef(null);
   const [formasPagamentoAberto, setFormasPagamentoAberto] = useState(false);
@@ -330,8 +320,6 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   */
   const [errosCampo, setErrosCampo] = useState({});
   const [errosItem, setErrosItem] = useState({});
-  const [erroRateiosModal, setErroRateiosModal] = useState('');
-  const [erroRateiosItemManual, setErroRateiosItemManual] = useState('');
   const [novoCredor, setNovoCredor] = useState(criarNovoCredorPadrao);
   const [salvandoCredor, setSalvandoCredor] = useState(false);
   const [buscaInsumo, setBuscaInsumo] = useState('');
@@ -340,12 +328,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [uploadingAnexoCabecalho, setUploadingAnexoCabecalho] = useState(false);
   const [importandoItens, setImportandoItens] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [modalManualAberto, setModalManualAberto] = useState(false);
-  const [modalApropriacaoIndex, setModalApropriacaoIndex] = useState(null);
-  const [rateiosModal, setRateiosModal] = useState([]);
   const [previewArquivo, setPreviewArquivo] = useState(null);
-  const [itemManual, setItemManual] = useState(criarItemManualFormPadrao);
-  const [rateiosItemManual, setRateiosItemManual] = useState(() => [criarRateioBase('1')]);
 
   // O erro do campo sai assim que a pessoa mexe nele — mensagem de validação
   // que sobrevive à correção vira ruído e ensina a ignorar a próxima.
@@ -491,7 +474,6 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     }
   }, []);
 
-  const itemModalAtual = modalApropriacaoIndex !== null ? itens[modalApropriacaoIndex] || null : null;
   const formasPagamentoSelecionadas = useMemo(
     () => formasPagamento.filter((forma) => formaPagamentoIds.includes(String(forma.id))),
     [formasPagamento, formaPagamentoIds]
@@ -512,27 +494,6 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     () => anexosCabecalho.filter((anexo) => anexo?.tipo_documento === 'BOLETO'),
     [anexosCabecalho]
   );
-
-  const resumoModalApropriacao = useMemo(() => {
-    const total = parseQuantidade(itemModalAtual?.quantidade);
-    const distribuido = rateiosModal.reduce(
-      (acc, rateio) => acc + parseQuantidade(rateio.quantidade_apropriada),
-      0
-    );
-    const saldo = Number((total - distribuido).toFixed(4));
-
-    return {
-      total,
-      distribuido: Number(distribuido.toFixed(4)),
-      saldo,
-      fechado: Math.abs(saldo) <= 0.01 && total > 0
-    };
-  }, [itemModalAtual, rateiosModal]);
-
-  const resumoApropriacaoItemManual = useMemo(() => calcularResumoRateios({
-    quantidade: itemManual.quantidade,
-    apropriacoes: rateiosItemManual
-  }), [itemManual.quantidade, rateiosItemManual]);
 
   useEffect(() => {
     if (draftCarregadoRef.current) {
@@ -752,6 +713,17 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     () => itens.map((item, indice) => ({ ...item, __indice: indice })),
     [itens]
   );
+
+  useEffect(() => {
+    const indice = novoItemManualIndexRef.current;
+    if (indice === null) return;
+    const campos = document.querySelectorAll(`[data-nome-item-manual="${indice}"]`);
+    const campoVisivel = Array.from(campos).find((campo) => campo.getClientRects().length);
+    if (campoVisivel) {
+      campoVisivel.focus();
+      novoItemManualIndexRef.current = null;
+    }
+  }, [itens]);
 
   const itensPendentesApropriacao = useMemo(
     () => itens.filter((item) => !validarRateiosItem(item).ok).length,
@@ -1119,83 +1091,23 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     }
   }
 
-  function abrirModalItemManual() {
-    const formulario = criarItemManualFormPadrao();
-    setItemManual(formulario);
-    setRateiosItemManual([criarRateioBase(formulario.quantidade)]);
-    setErroRateiosItemManual('');
-    setErrosCampo((atual) => ({ ...atual, item_manual: '' }));
-    setModalManualAberto(true);
-  }
-
-  function fecharModalItemManual() {
-    setModalManualAberto(false);
-    setErroRateiosItemManual('');
-  }
-
-  function atualizarQuantidadeItemManual(quantidade) {
-    setItemManual((atual) => ({ ...atual, quantidade }));
-    setErroRateiosItemManual('');
-    setRateiosItemManual((atuais) => (
-      atuais.length === 1
-        ? [{ ...atuais[0], quantidade_apropriada: quantidade }]
-        : atuais
-    ));
-  }
-
-  function atualizarRateioItemManual(index, campo, valor) {
-    setErroRateiosItemManual('');
-    setRateiosItemManual((atuais) => atuais.map((rateio, rateioIndex) => (
-      rateioIndex === index ? { ...rateio, [campo]: valor } : rateio
-    )));
-  }
-
-  function adicionarRateioItemManual() {
-    setErroRateiosItemManual('');
-    setRateiosItemManual((atuais) => [...atuais, criarRateioBase('')]);
-  }
-
-  function removerRateioItemManual(index) {
-    setErroRateiosItemManual('');
-    setRateiosItemManual((atuais) => atuais.filter((_, rateioIndex) => rateioIndex !== index));
-  }
-
   function adicionarItemManual() {
     if (!obraId) {
-      /*
-        A obra vive no bloco "Dados gerais", ATRÁS deste modal — não há campo
-        aqui para receber a frase, então ela fica na faixa de avisos, que o
-        modal hospeda enquanto está aberto.
-      */
-      avisar.alerta('Selecione a obra antes de adicionar item manual.');
+      reprovarCampo('obra_id', 'Selecione a obra antes de adicionar itens.');
       return;
     }
-
-    if (!itemManual.nome_manual.trim() || !itemManual.unidade_sigla_manual.trim()) {
-      reprovarCampo('item_manual', 'Informe nome e unidade do item manual.');
+    if (itens.length >= 300) {
+      avisar.alerta('O limite é de 300 itens por solicitação.');
       return;
     }
-
-    const itemNovo = criarItemManualBase(
-      {
-        ...itemManual,
-        quantidade: itemManual.quantidade || '1',
-        apropriacoes: rateiosItemManual
-      },
-      necessarioPara
-    );
-    const validacaoRateios = validarRateiosItem(itemNovo);
-    if (!validacaoRateios.ok) {
-      setErroRateiosItemManual(validacaoRateios.mensagem);
-      return;
-    }
-
-    setItens((atual) => [...atual, itemNovo]);
-    setItemManual(criarItemManualFormPadrao());
-    setRateiosItemManual([criarRateioBase('1')]);
-    setErroRateiosItemManual('');
-    setErrosCampo({});
-    setModalManualAberto(false);
+    const novoItem = criarItemManualBase({
+      nome_manual: '',
+      unidade_sigla_manual: '',
+      quantidade: '1',
+      apropriacoes: []
+    }, necessarioPara);
+    novoItemManualIndexRef.current = itens.length;
+    setItens((atual) => [...atual, novoItem]);
   }
 
   function atualizarItem(index, campo, valor) {
@@ -1231,13 +1143,13 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         }
 
         if (campo === 'valor_unitario') {
-          return sincronizarItemComRateios({
+          return {
             ...atualizado,
             valor_total: modoCompraDireta ? String(calcularValorTotalItem(atualizado)) : atualizado.valor_total
-          });
+          };
         }
 
-        return sincronizarItemComRateios(atualizado);
+        return atualizado;
       })
     );
   }
@@ -1266,84 +1178,50 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           return item;
         }
 
-        return sincronizarItemComRateios({
+        return {
           ...item,
           ...campos
-        });
+        };
       })
     );
   }
 
-  function abrirModalApropriacao(index) {
-    const item = itens[index];
-    if (!parseQuantidade(item?.quantidade)) {
-      reprovarItem(index, 'quantidade', 'Informe a quantidade do item antes de distribuir a apropriacao.');
-      return;
-    }
-
-    const rateiosExistentes = normalizarRateiosEntrada(item);
-    setErroRateiosModal('');
-    setModalApropriacaoIndex(index);
-    setRateiosModal(
-      rateiosExistentes.length
-        ? rateiosExistentes
-        : [criarRateioBase(String(item.quantidade || ''))]
-    );
+  function atualizarRateiosItem(index, transformar) {
+    limparErroItem(index, 'apropriacao');
+    setItens((atual) => atual.map((item, itemIndex) => {
+      if (itemIndex !== index) return item;
+      const rateios = transformar(normalizarRateiosEntrada(item), item);
+      return {
+        ...item,
+        apropriacao_id: rateios[0]?.apropriacao_id || '',
+        apropriacoes: rateios
+      };
+    }));
   }
 
-  function fecharModalApropriacao() {
-    setModalApropriacaoIndex(null);
-    setRateiosModal([]);
-    setErroRateiosModal('');
-  }
-
-  function atualizarRateioModal(rateioIndex, campo, valor) {
-    setErroRateiosModal('');
-    setRateiosModal((atual) =>
-      atual.map((rateio, index) =>
-        index === rateioIndex
-          ? {
-              ...rateio,
-              [campo]: valor
-            }
-          : rateio
-      )
-    );
-  }
-
-  function adicionarRateioModal() {
-    setErroRateiosModal('');
-    setRateiosModal((atual) => [...atual, criarRateioBase('')]);
-  }
-
-  function removerRateioModal(rateioIndex) {
-    setErroRateiosModal('');
-    setRateiosModal((atual) => atual.filter((_, index) => index !== rateioIndex));
-  }
-
-  function salvarRateiosItem() {
-    if (modalApropriacaoIndex === null || !itemModalAtual) {
-      return;
-    }
-
-    const itemComRateios = sincronizarItemComRateios({
-      ...itemModalAtual,
-      apropriacoes: rateiosModal
+  function atualizarRateioItem(index, rateioIndex, campo, valor) {
+    atualizarRateiosItem(index, (rateios, item) => {
+      const linhas = rateios.length ? rateios : [criarRateioBase(item.quantidade)];
+      return linhas.map((rateio, linhaIndex) => (
+        linhaIndex === rateioIndex ? { ...rateio, [campo]: valor } : rateio
+      ));
     });
-    const validacao = validarRateiosItem(itemComRateios);
+  }
 
-    if (!validacao.ok) {
-      // A frase fica NO formulário do rateio (linha .form-error junto dos
-      // controles), com a mesma condição e a mesma mensagem de antes.
-      setErroRateiosModal(validacao.mensagem);
-      return;
-    }
+  function adicionarRateioItem(index) {
+    atualizarRateiosItem(index, (rateios, item) => [
+      ...(rateios.length ? rateios : [criarRateioBase(item.quantidade)]),
+      criarRateioBase('')
+    ]);
+  }
 
-    atualizarCamposItem(modalApropriacaoIndex, {
-      apropriacoes: rateiosModal
+  function removerRateioItem(index, rateioIndex) {
+    atualizarRateiosItem(index, (rateios, item) => {
+      const restantes = rateios.filter((_, linhaIndex) => linhaIndex !== rateioIndex);
+      return restantes.length === 1
+        ? [{ ...restantes[0], quantidade_apropriada: String(item.quantidade || '') }]
+        : restantes;
     });
-    limparErroItem(modalApropriacaoIndex, 'apropriacao');
-    fecharModalApropriacao();
   }
 
   function removerItem(index) {
@@ -1361,12 +1239,6 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       });
       return proximo;
     });
-
-    if (modalApropriacaoIndex === index) {
-      fecharModalApropriacao();
-    } else if (modalApropriacaoIndex !== null && modalApropriacaoIndex > index) {
-      setModalApropriacaoIndex((atual) => (atual !== null ? atual - 1 : atual));
-    }
   }
 
   /*
@@ -1392,7 +1264,6 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     setItens([]);
     setErrosItem({});
     setUploadingArquivos({});
-    fecharModalApropriacao();
   }
 
   async function handleSelecionarArquivo(index, file) {
@@ -1426,6 +1297,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     setFormaPagamentoIds((atual) =>
       atual.includes(id) ? atual.filter((item) => item !== id) : [...atual, id]
     );
+    setFormasPagamentoAberto(false);
   }
 
   async function handleSelecionarAnexoCabecalho(file, tipoDocumento = 'NOTA_FISCAL_GUIA') {
@@ -1530,17 +1402,16 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         reprovarItem(index, 'necessario_para', `Item ${index + 1}: o prazo de entrega é obrigatório.`);
         return;
       }
+      if (item.manual && (!String(item.nome_manual || '').trim() || !String(item.unidade_sigla_manual || '').trim())) {
+        reprovarItem(index, 'insumo', `Item manual ${index + 1}: informe nome e unidade.`);
+        return;
+      }
       const validacaoRateios = validarRateiosItem(item);
       if (!validacaoRateios.ok) {
         reprovarItem(index, 'apropriacao', `Item ${index + 1}: ${validacaoRateios.mensagem}`);
         return;
       }
-      if (item.manual) {
-        if (!item.nome_manual || !item.unidade_sigla_manual) {
-          reprovarItem(index, 'insumo', `Item manual ${index + 1}: informe nome e unidade.`);
-          return;
-        }
-      } else {
+      if (!item.manual) {
         if (!item.insumo_id) {
           reprovarItem(index, 'insumo', `Item ${index + 1}: informe o insumo.`);
           return;
@@ -1691,12 +1562,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }
 
   const modalCredorVisivel = modoCompraDireta && modalCredorAberto;
-  const modalApropriacaoVisivel = modalApropriacaoIndex !== null && Boolean(itemModalAtual);
-
-  // A faixa tem um dono so: com um modal aberto ela vive dentro dele (senao o
-  // aviso ficaria atras do fundo escuro); fora deles, no topo da pagina.
+  // A faixa fica no modal de credor quando aberto; fora dele, no topo.
   const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
-  const algumModalAberto = modalCredorVisivel || modalManualAberto || modalApropriacaoVisivel;
+  const algumModalAberto = modalCredorVisivel;
 
   const estiloFreteAtivo = {
     background: 'var(--sem-info-bg)',
@@ -2181,7 +2049,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           titulo="Insumos"
           className="compra-insumos-card"
           acoes={(
-            <button type="button" className="btn btn-outline btn-sm" onClick={abrirModalItemManual}>
+            <button type="button" className="btn btn-outline btn-sm" onClick={adicionarItemManual}>
               Item manual
             </button>
           )}
@@ -2296,6 +2164,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                           ? { borderColor: 'var(--sem-danger-border)', color: 'var(--sem-danger)' }
                           : undefined}
                         aria-label="Nome do insumo"
+                        data-nome-item-manual={item.manual ? item.__indice : undefined}
                         value={item.insumo_nome}
                         disabled={!item.manual}
                         onChange={(event) => atualizarItem(item.__indice, 'insumo_nome', event.target.value)}
@@ -2402,44 +2271,54 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                   titulo: 'Apropriação *',
                   tipo: 'texto',
                   render: (item) => {
-                    const linhasApropriacao = montarLinhasResumoApropriacao(item, apropriacoes);
                     const resumoApropriacao = calcularResumoRateios(item);
+                    const rateios = normalizarRateiosEntrada(item);
+                    const linhas = rateios.length ? rateios : [criarRateioBase(item.quantidade)];
 
                     return (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 min-w-0">
-                            {linhasApropriacao.length > 0 ? (
-                              <>
-                                <div className="grid gap-1 text-xs text-[var(--c-text)]">
-                                  {linhasApropriacao.slice(0, 2).map((linha, linhaIndex) => (
-                                    <div key={`${linha}-${linhaIndex}`} className="truncate">{linha}</div>
-                                  ))}
-                                  {linhasApropriacao.length > 2 && (
-                                    <div className="text-[var(--c-muted)]">+{linhasApropriacao.length - 2} rateio(s)</div>
-                                  )}
-                                </div>
-                                <div
-                                  className="text-xs font-semibold"
-                                  style={{ color: resumoApropriacao.fechado ? 'var(--sem-success)' : 'var(--sem-warning)' }}
+                      <div className="grid min-w-0 gap-2">
+                        {linhas.map((rateio, rateioIndex) => (
+                          <div key={`rateio-${rateioIndex}`} className="grid min-w-0 gap-1">
+                            <ApropriacaoAutocomplete
+                              value={rateio.apropriacao_id}
+                              options={apropriacoes}
+                              onChange={(id) => atualizarRateioItem(item.__indice, rateioIndex, 'apropriacao_id', id)}
+                              inputClassName="input w-full"
+                            />
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                className="input min-w-0 flex-1"
+                                aria-label={`Quantidade apropriada do rateio ${rateioIndex + 1}`}
+                                value={rateio.quantidade_apropriada}
+                                onChange={(event) => atualizarRateioItem(item.__indice, rateioIndex, 'quantidade_apropriada', event.target.value)}
+                              />
+                              {rateios.length > 1 && <button
+                                  type="button"
+                                  className="btn btn-outline btn-sm btn-perigo-suave shrink-0"
+                                  aria-label={`Remover rateio ${rateioIndex + 1}`}
+                                  onClick={() => removerRateioItem(item.__indice, rateioIndex)}
                                 >
-                                  {resumoApropriacao.fechado ? 'Fechado' : `Saldo ${formatarQuantidade(resumoApropriacao.saldo)}`}
-                                </div>
-                              </>
-                            ) : (
-                              <span className="text-xs text-[var(--c-muted)]">Nenhuma</span>
-                            )}
+                                  ×
+                              </button>}
+                            </div>
                           </div>
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-sm shrink-0"
-                            onClick={() => abrirModalApropriacao(item.__indice)}
+                        ))}
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                          <span
+                            className="text-xs font-semibold"
+                            style={{ color: resumoApropriacao.fechado ? 'var(--sem-success)' : 'var(--sem-warning)' }}
                           >
-                            {linhasApropriacao.length > 0 ? 'Editar' : 'Apropriar'}
+                            {resumoApropriacao.fechado ? 'Fechado' : `Saldo ${formatarQuantidade(resumoApropriacao.saldo)}`}
+                          </span>
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => adicionarRateioItem(item.__indice)}>
+                            + Rateio
                           </button>
                         </div>
                         <ErroCampo mensagem={erroDoItem(item.__indice, 'apropriacao')} />
-                      </>
+                      </div>
                     );
                   }
                 },
@@ -2543,7 +2422,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
               color: 'var(--sem-success)'
             }}
           >
-            Use o botao <strong>Apropriar</strong> em cada item para dividir a quantidade entre etapas da obra. O sistema mostra total, distribuido e saldo em tempo real.
+            Pesquise a <strong>apropriação</strong> em cada item. Se precisar dividir a quantidade entre etapas da obra, adicione outro rateio; o saldo aparece na própria linha.
           </div>
 
           {/* C5: UM primário sólido, secundário em contorno, destrutiva apartada. */}
@@ -2559,156 +2438,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         </BlocoConteudo>
       </div>
 
-      {/*
-        R9/R27 — os três modais abaixo INTERROMPEM o trabalho principal
-        (montar a compra): cadastrar um credor no meio da solicitação é o
-        exemplo literal da regra. O que mudou foi a casca: era `fixed inset-0`
-        à mão, com painel de altura livre e sem rolagem própria. Agora é o
-        `OverlayModal` do sistema, que resolve empilhamento, trava de rolagem,
-        Escape, foco e a rolagem do corpo com cabeçalho e rodapé FIXOS (R27).
-      */}
-      <OverlayModal
-        aberto={modalManualAberto}
-        rotulo="Novo item manual"
-        largura="var(--modal-max-w-lg, 960px)"
-        onFechar={fecharModalItemManual}
-      >
-        <div data-modal="cabecalho" className="app-bloco-head">
-          <h2 className="app-bloco-titulo">Novo item manual</h2>
-          <span className="app-bloco-acoes">
-            <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalItemManual}>Fechar</button>
-          </span>
-        </div>
-
-        <div className="p-4">
-          {modalManualAberto && faixaAvisos}
-          <FormSecao colunas={2}>
-            <CampoForm label="Nome" obrigatorio linha erro={errosCampo.item_manual}>
-              <input
-                className="input"
-                value={itemManual.nome_manual}
-                onChange={(event) => {
-                  limparErroCampo('item_manual');
-                  setItemManual((atual) => ({ ...atual, nome_manual: event.target.value }));
-                }}
-              />
-            </CampoForm>
-            <CampoForm label="Unidade" obrigatorio erro={errosCampo.item_manual}>
-              <select
-                className="input"
-                value={itemManual.unidade_id}
-                onChange={(event) => {
-                  limparErroCampo('item_manual');
-                  const unidade = unidades.find((item) => String(item.id) === String(event.target.value));
-                  setItemManual((atual) => ({
-                    ...atual,
-                    unidade_id: unidade?.id ? String(unidade.id) : '',
-                    unidade_sigla_manual: unidade?.sigla || unidade?.nome || ''
-                  }));
-                }}
-              >
-                <option value="">Selecione</option>
-                {unidades.map((unidade) => (
-                  <option key={unidade.id || unidade.sigla} value={unidade.id}>
-                    {unidade.sigla || unidade.nome} {unidade.nome && unidade.sigla ? `- ${unidade.nome}` : ''}
-                  </option>
-                ))}
-              </select>
-              {!unidades.length ? (
-                <span className="form-hint">Nenhuma unidade cadastrada encontrada.</span>
-              ) : null}
-            </CampoForm>
-            <CampoForm label="Quantidade" obrigatorio>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                className="input"
-                value={itemManual.quantidade}
-                onChange={(event) => atualizarQuantidadeItemManual(event.target.value)}
-              />
-            </CampoForm>
-            {!modoCompraDireta && (
-              <CampoForm label="Especificação" tipo="observacao">
-                <textarea
-                  className="input"
-                  rows={4}
-                  value={itemManual.especificacao}
-                  onChange={(event) => setItemManual((atual) => ({ ...atual, especificacao: event.target.value }))}
-                />
-              </CampoForm>
-            )}
-          </FormSecao>
-
-          <BlocoConteudo
-            titulo="Apropriação do item"
-            variante="secundario"
-            descricao="Distribua toda a quantidade do item antes de adicioná-lo à solicitação."
-            acoes={(
-              <button type="button" className="btn btn-outline btn-sm" onClick={adicionarRateioItemManual}>
-                Adicionar apropriação
-              </button>
-            )}
-          >
-            <StatGrid colunas={3}>
-              <StatTile label="Total" valor={formatarQuantidade(resumoApropriacaoItemManual.total)} />
-              <StatTile label="Distribuído" valor={formatarQuantidade(resumoApropriacaoItemManual.distribuido)} />
-              <StatTile
-                label="Saldo"
-                valor={formatarQuantidade(resumoApropriacaoItemManual.saldo)}
-                tom={resumoApropriacaoItemManual.fechado ? 'success' : 'warning'}
-              />
-            </StatGrid>
-
-            <div className="mt-3 grid gap-3">
-              {rateiosItemManual.map((rateio, index) => (
-                <div
-                  key={`rateio-item-manual-${index}`}
-                  className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] p-3"
-                >
-                  <FormSecao colunas={3}>
-                    <CampoForm label="Apropriação" span={2}>
-                      <ApropriacaoAutocomplete
-                        value={rateio.apropriacao_id}
-                        options={apropriacoes}
-                        onChange={(id) => atualizarRateioItemManual(index, 'apropriacao_id', id)}
-                      />
-                    </CampoForm>
-                    <CampoForm label="Quantidade apropriada">
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        className="input"
-                        value={rateio.quantidade_apropriada}
-                        onChange={(event) => atualizarRateioItemManual(index, 'quantidade_apropriada', event.target.value)}
-                      />
-                    </CampoForm>
-                  </FormSecao>
-                  <div className="app-actionbar">
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm btn-perigo-suave"
-                      onClick={() => removerRateioItemManual(index)}
-                      disabled={rateiosItemManual.length <= 1}
-                    >
-                      Remover
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <ErroCampo mensagem={erroRateiosItemManual} />
-          </BlocoConteudo>
-        </div>
-
-        <div data-modal="rodape" className="app-actionbar p-4">
-          <span className="app-actionbar-apartada">
-            <button type="button" className="btn btn-outline" onClick={fecharModalItemManual}>Cancelar</button>
-            <button type="button" className="btn btn-primary" onClick={adicionarItemManual}>Adicionar</button>
-          </span>
-        </div>
-      </OverlayModal>
+      {/* O cadastro de credor permanece no modal padrão do sistema. */}
 
       <OverlayModal
         aberto={modalCredorVisivel}
@@ -2781,102 +2511,6 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         </div>
       </OverlayModal>
 
-      <OverlayModal
-        aberto={modalApropriacaoVisivel}
-        rotulo="Apropriar item"
-        largura="var(--modal-max-w-lg, 860px)"
-        onFechar={fecharModalApropriacao}
-      >
-        <div
-          data-modal="cabecalho"
-          className="app-bloco-head border-b border-[var(--c-border)] px-4 py-3 sm:px-6"
-        >
-          <div>
-            <h2 className="app-bloco-titulo">Apropriar item</h2>
-            {/* 05/09 — apoio de bloco agora é UMA linha com reticências; o
-                `title` é a metade que torna a truncagem honesta (nome de
-                insumo é longo e o texto inteiro fica no tooltip). */}
-            <p
-              className="app-bloco-lead"
-              title={`${itemModalAtual?.insumo_nome || ''} · Quantidade total ${formatarQuantidade(itemModalAtual?.quantidade)}`}
-            >
-              {itemModalAtual?.insumo_nome} · Quantidade total {formatarQuantidade(itemModalAtual?.quantidade)}
-            </p>
-          </div>
-          <span className="app-bloco-acoes">
-            <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalApropriacao}>Fechar</button>
-          </span>
-        </div>
-
-        <div className="p-4">
-          {modalApropriacaoVisivel && faixaAvisos}
-
-          <StatGrid colunas={3}>
-            <StatTile label="Total" valor={formatarQuantidade(resumoModalApropriacao.total)} />
-            <StatTile label="Distribuído" valor={formatarQuantidade(resumoModalApropriacao.distribuido)} />
-            <StatTile
-              label="Saldo"
-              valor={formatarQuantidade(resumoModalApropriacao.saldo)}
-              tom={resumoModalApropriacao.fechado ? 'success' : 'warning'}
-            />
-          </StatGrid>
-
-          <div className="mt-4 grid gap-3">
-            {rateiosModal.map((rateio, rateioIndex) => (
-              <div key={`rateio-${rateioIndex}`} className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-                <FormSecao colunas={3}>
-                  <CampoForm label="Apropriação" span={2}>
-                    <ApropriacaoAutocomplete
-                      value={rateio.apropriacao_id}
-                      options={apropriacoes}
-                      onChange={(id) => atualizarRateioModal(rateioIndex, 'apropriacao_id', id)}
-                    />
-                  </CampoForm>
-
-                  <CampoForm label="Quantidade apropriada">
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      className="input"
-                      value={rateio.quantidade_apropriada}
-                      onChange={(event) => atualizarRateioModal(rateioIndex, 'quantidade_apropriada', event.target.value)}
-                    />
-                  </CampoForm>
-                </FormSecao>
-                <div className="app-actionbar">
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm btn-perigo-suave"
-                    onClick={() => removerRateioModal(rateioIndex)}
-                  >
-                    Remover
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <ErroCampo mensagem={erroRateiosModal} />
-
-          <div className="mt-4">
-            <button type="button" className="btn btn-outline" onClick={adicionarRateioModal}>
-              Adicionar apropriação
-            </button>
-          </div>
-        </div>
-
-        <div data-modal="rodape" className="app-actionbar border-t border-[var(--c-border)] p-4">
-          <span className="app-actionbar-apartada">
-            <button type="button" className="btn btn-outline" onClick={fecharModalApropriacao}>
-              Cancelar
-            </button>
-            <button type="button" className="btn btn-primary" onClick={salvarRateiosItem}>
-              Salvar distribuição
-            </button>
-          </span>
-        </div>
-      </OverlayModal>
 
       <CompraPreviewModal preview={previewArquivo} onClose={() => setPreviewArquivo(null)} />
       {elementoConfirmacao}

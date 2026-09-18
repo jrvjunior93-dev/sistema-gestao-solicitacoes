@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: edicao inline de item manual e
+apropriacoes com autocomplete, e fechamento da lista de formas de pagamento
+apos selecao, nos formularios compartilhados de Compra Direta e Solicitacao de
+Compra. Escopo: `frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx`,
+testes locais e handoff. Preservar `outputs/`. Sem EC2, RDS, commit ou deploy.
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-18-compra-itens-inline.md`.
+Commit e publicacao exclusivamente deste ajuste na `refactor/frontend`
+autorizados pelo usuario na continuacao. Preservar `outputs/`; deploy da EC2
+dev permanece com o usuario. Ownership de edicao liberado apos publicacao.
+
 Ownership temporario /root em 18/09/2026: corrigir criacao de titulo no
 detalhe da solicitacao. Escopo: FinanceiroCard.jsx, tituloFinanceiroService.js,
 financialValidators.js, teste de competencia DRE e handoff. Preservar
