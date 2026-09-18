@@ -18,6 +18,7 @@ const NOTIFICACAO_EVENTOS = [
       ['MENCAO_COMENTARIO', 'Mencao em comentario', 'Usuario foi mencionado em comentario.'],
       ['RETORNO_SOLICITADO', 'Retorno solicitado', 'Outro setor pediu a devolucao da solicitacao para continuar o trabalho.'],
       ['RETORNO_APROVADO', 'Retorno aprovado', 'O setor atual devolveu a solicitacao ao setor solicitante.'],
+      ['RETORNO_DEVOLVIDO', 'Solicitacao devolvida', 'O setor solicitante devolveu a solicitacao ao setor que aprovou o retorno.'],
       ['RETORNO_REJEITADO', 'Retorno rejeitado', 'O setor atual rejeitou o pedido de devolucao da solicitacao.'],
       ['RETORNO_CANCELADO', 'Pedido de retorno cancelado', 'O solicitante cancelou o pedido de devolucao.']
     ]

@@ -1,5 +1,39 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: alinhar valores exibidos, validados
+e enviados para todas as formas de pagamento no modal de titulo da solicitacao.
+Escopo: `frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx`, teste local
+e handoff. Preservar alteracoes existentes e `outputs/`; sem EC2, RDS,
+commit ou deploy nesta tarefa.
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-18-valor-formas-titulo-solicitacao.md`.
+
+Ownership temporario /root em 18/09/2026: permitir devolver a solicitacao
+ao setor que aprovou o ultimo retorno, com destino derivado no backend,
+permissao e idempotencia. Escopo: `backend/src/services/solicitacaoRetornoService.js`,
+`backend/src/controllers/SolicitacaoRetornoController.js`, `backend/src/routes.js`,
+`backend/src/constants/notificacaoEventos.js`, `frontend/src/services/solicitacoes.js`,
+`frontend/src/pages/SolicitacaoDetalhe/RetornoSolicitacaoBar.jsx`, testes e handoff.
+Preservar alteracoes locais anteriores e `outputs/`. Sem EC2, RDS, commit ou deploy.
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-18-devolucao-apos-retorno-aprovado.md`.
+
+Ownership temporario /root em 18/09/2026: carregar automaticamente a lista
+global paginada de colaboradores na aba de transferencias, preservando a
+busca, as permissoes e a projecao sem dados financeiros. Escopo:
+`frontend/src/pages/RhDpTransferencias.jsx` e
+`frontend/scripts/validarRhPessoalTransferencias.mjs`. Preservar as mudancas
+locais anteriores e `outputs/`; sem EC2, RDS, commit ou deploy.
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-18-rh-diretorio-global-paginado.md`.
+
+Ownership temporario /root em 18/09/2026: remover apenas o aviso sobre UN
+nao cadastrada do formulario compartilhado de Solicitacao de Compra e
+Compra Direta. Escopo: `frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx`
+e `frontend/scripts/validarModalApropriacaoCompra.mjs`. Preservar `outputs/`,
+sem alterar o tratamento do item manual, sem EC2, RDS, commit ou deploy.
+Implementacao local e teste nos dois modos concluidos; ownership de edicao liberado.
+
 Ownership temporario /root em 18/09/2026: restaurar o modal de apropriacao
 nos formularios compartilhados de Solicitacao de Compra e Compra Direta,
 preservando a inclusao inline do item manual. Escopo:

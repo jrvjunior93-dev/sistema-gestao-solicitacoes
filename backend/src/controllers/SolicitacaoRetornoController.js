@@ -3,6 +3,7 @@
 const {
   cancelarRetorno,
   decidirRetorno,
+  devolverAoSetorAnterior,
   solicitarRetorno
 } = require('../services/solicitacaoRetornoService');
 
@@ -42,6 +43,14 @@ module.exports = {
       return res.json(await cancelarRetorno(req, Number(req.params.pedidoId)));
     } catch (error) {
       return responderErro(res, error, 'Erro ao cancelar o pedido de retorno');
+    }
+  },
+
+  async devolver(req, res) {
+    try {
+      return res.json(await devolverAoSetorAnterior(req, Number(req.params.id)));
+    } catch (error) {
+      return responderErro(res, error, 'Erro ao devolver a solicitacao ao setor anterior');
     }
   }
 };

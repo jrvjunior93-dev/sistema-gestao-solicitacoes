@@ -2239,11 +2239,6 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                           />
                         ))}
                       </datalist>
-                      {!item.unidade_id && item.unidade_sigla ? (
-                        <p className="mt-1 text-xs text-[var(--sem-warning)]">
-                          UN ainda não cadastrada; será mantida neste item para tratamento pelo GEO.
-                        </p>
-                      ) : null}
                       <ErroCampo mensagem={erroDoItem(item.__indice, 'unidade')} />
                     </>
                   )

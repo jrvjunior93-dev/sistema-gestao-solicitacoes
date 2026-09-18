@@ -118,6 +118,8 @@ try {
     const row = page.getByTestId('item-0');
     await row.getByRole('textbox', { name: 'Nome do insumo' }).fill('Cimento');
     await row.locator('input[aria-label="Unidade do item"]').fill('sc');
+    assert.equal(await row.getByText(/UN ainda não cadastrada/).count(), 0, 'Aviso interno sobre UN não deve aparecer ao usuário');
+    assert.equal(await row.locator('input[aria-label="Unidade do item"]').inputValue(), 'sc', 'UN digitada deve permanecer no item');
     await row.getByRole('button', { name: /Apropriar Cimento/ }).click();
 
     const modal = page.getByRole('dialog', { name: 'Apropriar item' });

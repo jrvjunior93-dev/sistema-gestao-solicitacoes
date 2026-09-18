@@ -393,6 +393,28 @@ function buildParcelasDetalhadas(
   }));
 }
 
+export function prepararPagamentoParaForma(pagamento, forma) {
+  if (!formaUsaParcelasDetalhadas(forma)) return pagamento;
+  const quantidade = Math.max(Number(pagamento.quantidade_parcelas || 1), 1);
+  if (Array.isArray(pagamento.parcelas) && pagamento.parcelas.length === quantidade) return pagamento;
+  return {
+    ...pagamento,
+    parcelas: buildParcelasDetalhadas(
+      pagamento.parcelas,
+      quantidade,
+      pagamento.data_vencimento || today(),
+      pagamento.valor
+    )
+  };
+}
+
+export function calcularValorPagamento(pagamento, forma) {
+  if (formaUsaParcelasDetalhadas(forma)) {
+    return roundCurrency((pagamento.parcelas || []).reduce((acc, parcela) => acc + currencyToNumber(parcela.valor), 0));
+  }
+  return roundCurrency(currencyToNumber(pagamento?.valor));
+}
+
 function getFreteTerceiroCompraDireta(solicitacao) {
   const compraDireta = solicitacao?.compra_direta;
   if (String(compraDireta?.frete_tipo || '').toUpperCase() !== 'TERCEIRO') return null;
@@ -431,7 +453,7 @@ function createRateio(valor = '') {
   };
 }
 
-function buildDefaultForm(solicitacao) {
+export function buildDefaultForm(solicitacao) {
   const valorSolicitacao = solicitacao?.valor ? formatCurrencyInput(solicitacao.valor) : '';
   const freteTerceiro = getFreteTerceiroCompraDireta(solicitacao);
   const valorItens = freteTerceiro
@@ -1494,15 +1516,19 @@ export default function FinanceiroCard({
   }
 
   function getValorPagamento(pagamento) {
-    if (pagamentoUsaParcelasDetalhadas(pagamento)) {
-      return roundCurrency((pagamento.parcelas || []).reduce((acc, parcela) => acc + currencyToNumber(parcela.valor), 0));
-    }
-    return roundCurrency(currencyToNumber(pagamento?.valor));
+    return calcularValorPagamento(pagamento, getFormaPagamento(pagamento.forma_pagamento_id));
   }
 
+  // O valor exibido pode chegar antes do cadastro das formas ou apos um reset da
+  // solicitacao. Preparar as parcelas na leitura evita validar/enviar um estado
+  // diferente do que o usuario esta vendo, sem depender da ordem dos efeitos.
+  const pagamentosPreparados = useMemo(() => (form.pagamentos || []).map((pagamento) =>
+    prepararPagamentoParaForma(pagamento, getFormaPagamento(pagamento.forma_pagamento_id))
+  ), [form.pagamentos, formasPagamento]);
+
   const totalPagamentos = useMemo(() => {
-    return roundCurrency((form.pagamentos || []).reduce((acc, pagamento) => acc + getValorPagamento(pagamento), 0));
-  }, [form.pagamentos, formasPagamento]);
+    return roundCurrency(pagamentosPreparados.reduce((acc, pagamento) => acc + getValorPagamento(pagamento), 0));
+  }, [pagamentosPreparados, formasPagamento]);
 
   const valorSolicitacao = useMemo(() => roundCurrency(currencyToNumber(form.valor)), [form.valor]);
   const descontoFinanceiro = useMemo(() => roundCurrency(currencyToNumber(form.desconto_financeiro)), [form.desconto_financeiro]);
@@ -1807,7 +1833,7 @@ export default function FinanceiroCard({
       return 'O valor liquido do titulo precisa ser maior que zero.';
     }
 
-    const pagamentos = Array.isArray(form.pagamentos) ? form.pagamentos : [];
+    const pagamentos = pagamentosPreparados;
     if (pagamentos.length === 0) {
       return 'Informe pelo menos uma forma de pagamento.';
     }
@@ -1821,6 +1847,10 @@ export default function FinanceiroCard({
 
       if (!pagamento.forma_pagamento_id) {
         return `Selecione a ${labelForma}.`;
+      }
+
+      if (!forma) {
+        return `A ${labelForma} nao esta disponivel. Selecione novamente.`;
       }
 
       if (geracaoMultiplaTitulos && !pagamento.parceiro_id) {
@@ -1975,9 +2005,9 @@ export default function FinanceiroCard({
         empresa_id: Number(form.empresa_id),
         status: form.status || 'ABERTO',
         parceiro_id: selectedPartner?.id || form.parceiro_id,
-        categoria_financeira_id: form.pagamentos?.[0]?.categoria_financeira_id || undefined,
+        categoria_financeira_id: pagamentosPreparados[0]?.categoria_financeira_id || undefined,
         forma_cobranca: form.tipo === 'PAGAR'
-          ? (form.forma_cobranca || resolveFormaCobrancaPagamentos(form.pagamentos, getFormaPagamento))
+          ? (form.forma_cobranca || resolveFormaCobrancaPagamentos(pagamentosPreparados, getFormaPagamento))
           : form.forma_cobranca || undefined,
         banco_cobranca: form.banco_cobranca || undefined,
         linha_digitavel: form.linha_digitavel || undefined,
@@ -2005,7 +2035,7 @@ export default function FinanceiroCard({
           valor_rateio: rateio.tipo_rateio === 'VALOR' ? rateio.valor_rateio : undefined,
           observacoes: rateio.observacoes || undefined
         })),
-        pagamentos: (form.pagamentos || []).map((pagamento) => {
+        pagamentos: pagamentosPreparados.map((pagamento) => {
           const forma = getFormaPagamento(pagamento.forma_pagamento_id);
           const usaDetalhe = formaUsaParcelasDetalhadas(forma);
           return {
@@ -3198,7 +3228,7 @@ export default function FinanceiroCard({
                   </button>
                 </div>
 
-                {(form.pagamentos || []).map((pagamento, pagamentoIndex) => {
+                {pagamentosPreparados.map((pagamento, pagamentoIndex) => {
                   const forma = getFormaPagamento(pagamento.forma_pagamento_id);
                   const quantidade = getQuantidadeParcelas(pagamento);
                   const usaDetalhe = formaUsaParcelasDetalhadas(forma);
@@ -3496,9 +3526,9 @@ export default function FinanceiroCard({
               type="submit"
               form="form-gerar-conta"
               className="btn btn-primary"
-              disabled={saving || loadingPaymentContexts}
+              disabled={saving || loadingPaymentContexts || loadingPagamento}
             >
-              {saving ? 'Gerando...' : loadingPaymentContexts ? 'Carregando favorecidos...' : 'Confirmar'}
+              {saving ? 'Gerando...' : loadingPaymentContexts || loadingPagamento ? 'Carregando formas e favorecidos...' : 'Confirmar'}
             </button>
           </div>
         </OverlayModal>

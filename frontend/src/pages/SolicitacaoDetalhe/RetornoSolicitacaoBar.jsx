@@ -8,17 +8,20 @@ import {
 import {
   cancelarRetornoSolicitacao,
   decidirRetornoSolicitacao,
+  devolverSolicitacaoAposRetorno,
   solicitarRetornoSolicitacao
 } from '../../services/solicitacoes';
-import { Avisos, CampoForm, useAvisos } from '../../components/padrao';
+import { Avisos, CampoForm, useAvisos, useConfirmacao } from '../../components/padrao';
 
 /**
  * BARRA DE RETORNO DA SOLICITACAO — condicao do fluxo, nao card de conteudo.
  *
- * Ela existe em dois estados, e os dois continuam iguais em capacidade:
+ * Ela existe em tres estados:
  *   1. a solicitacao esta em OUTRO setor: comentarios nos itens livres;
  *      conversa geral e demais acoes bloqueadas, com o pedido de retorno;
  *   2. ha pedidos de retorno esperando decisao NESTE setor: aprovar/rejeitar cada um.
+ *   3. o retorno foi aprovado e o setor solicitante pode devolver a solicitacao
+ *      diretamente ao setor que autorizou o retorno.
  *
  * O que a rodada de 05/09 mudou:
  * - **R25**: as duas faixas eram paleta crua do Tailwind (`bg-amber-50`, `text-amber-950`,
@@ -42,6 +45,7 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
   const [motivoRejeicao, setMotivoRejeicao] = useState('');
   const [processando, setProcessando] = useState('');
   const { avisos, avisar, fechar } = useAvisos();
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   if (!contexto) return null;
 
@@ -49,7 +53,8 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
     ? contexto.pedidos_retorno_para_decisao
     : [];
   const pedidoPendente = contexto.pedido_retorno_pendente;
-  const exibir = !contexto.pode_interagir || pedidos.length > 0;
+  const devolucao = contexto.devolucao_retorno;
+  const exibir = !contexto.pode_interagir || pedidos.length > 0 || Boolean(devolucao);
   if (!exibir) return null;
 
   async function atualizar(callback, chave) {
@@ -97,6 +102,17 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
       }),
       `${aprovar ? 'aprovar' : 'rejeitar'}-${alvo.id}`
     );
+  }
+
+  async function devolver() {
+    if (!devolucao?.pedido_id || processando) return;
+    const { ok } = await confirmar({
+      titulo: 'Devolver solicitação ao setor anterior',
+      mensagem: `A solicitação sairá de ${contexto.setor_atual} e voltará para ${devolucao.setor_destino}, que aprovou o retorno.`,
+      rotuloConfirmar: `Devolver para ${devolucao.setor_destino}`
+    });
+    if (!ok) return;
+    return atualizar(() => devolverSolicitacaoAposRetorno(solicitacao.id), 'devolver');
   }
 
   if (!contexto.pode_interagir) {
@@ -178,6 +194,30 @@ export default function RetornoSolicitacaoBar({ solicitacao, onMudou }) {
           </div>
         )}
       </section>
+    );
+  }
+
+  if (devolucao && !pedidos.length) {
+    return (
+      <>
+        <section
+          className="tarja tarja--info rounded-xl border border-[var(--sem-info-border)] bg-[var(--sem-info-bg)] px-4 py-3 text-sm text-[var(--sem-info)]"
+          aria-label="Devolução após retorno aprovado"
+          data-testid="devolucao-retorno-aprovado"
+        >
+          <Avisos avisos={avisos} aoFechar={fechar} />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <HiOutlineArrowUturnLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <p>Retorno aprovado. Quando concluir o trabalho neste setor, devolva a solicitação para {devolucao.setor_destino}.</p>
+            </div>
+            <button type="button" className="btn btn-outline btn-sm" disabled={Boolean(processando)} onClick={devolver}>
+              {processando === 'devolver' ? 'Devolvendo...' : `Devolver para ${devolucao.setor_destino}`}
+            </button>
+          </div>
+        </section>
+        {elementoConfirmacao}
+      </>
     );
   }
 

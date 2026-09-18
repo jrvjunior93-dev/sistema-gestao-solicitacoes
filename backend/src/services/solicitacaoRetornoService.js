@@ -15,6 +15,7 @@ const {
   userHasAreaPermission
 } = require('./authorizationService');
 const { criarNotificacao } = require('./notificacoes');
+const { registrarAtencaoSolicitacao } = require('./solicitacaoAtencaoService');
 const { publishSolicitacaoRealtimeEvent } = require('./solicitacaoRealtimeService');
 const {
   bloquearTitulosVinculados,
@@ -135,11 +136,10 @@ async function podeDecidirRetorno(user) {
 }
 
 async function buscarPedidosPendentesAtuais(solicitacao) {
-  return SolicitacaoPedidoRetorno.findAll({
+  const pedidos = await SolicitacaoPedidoRetorno.findAll({
     where: {
       solicitacao_id: solicitacao.id,
-      status: STATUS.PENDENTE,
-      setor_atual_pedido: solicitacao.area_responsavel
+      status: STATUS.PENDENTE
     },
     include: [
       { model: User, as: 'solicitante', attributes: ['id', 'nome', 'email'], required: false },
@@ -147,6 +147,39 @@ async function buscarPedidosPendentesAtuais(solicitacao) {
     ],
     order: [['createdAt', 'ASC']]
   });
+  return pedidos.filter((pedido) => setoresEquivalentes(pedido.setor_atual_pedido, solicitacao.area_responsavel));
+}
+
+function metadataDoHistorico(registro) {
+  try {
+    return typeof registro?.metadata === 'string'
+      ? JSON.parse(registro.metadata)
+      : (registro?.metadata || {});
+  } catch {
+    return {};
+  }
+}
+
+async function buscarRetornoAprovadoDevolvivel(solicitacao, transaction = null) {
+  const ultimaTroca = await Historico.findOne({
+    where: { solicitacao_id: solicitacao.id, acao: 'ENVIADA_SETOR' },
+    attributes: ['id', 'metadata'],
+    order: [['id', 'DESC']],
+    transaction
+  });
+  const metadata = metadataDoHistorico(ultimaTroca);
+  const pedidoId = Number(metadata.pedido_retorno_id);
+  if (metadata.retorno_aprovado !== true || !Number.isInteger(pedidoId) || pedidoId <= 0) return null;
+
+  const pedido = await SolicitacaoPedidoRetorno.findByPk(pedidoId, {
+    attributes: ['id', 'solicitacao_id', 'status', 'setor_solicitante', 'setor_atual_pedido', 'decidido_por'],
+    transaction
+  });
+  if (!pedido || Number(pedido.solicitacao_id) !== Number(solicitacao.id)
+    || pedido.status !== STATUS.APROVADO
+    || !setoresEquivalentes(pedido.setor_solicitante, solicitacao.area_responsavel)
+    || setoresEquivalentes(pedido.setor_atual_pedido, solicitacao.area_responsavel)) return null;
+  return pedido;
 }
 
 async function montarContextoInteracao(req, solicitacao, contextoBase = null) {
@@ -160,6 +193,9 @@ async function montarContextoInteracao(req, solicitacao, contextoBase = null) {
   ]);
   const pedidoDoUsuario = pedidos.find((item) => Number(item.solicitado_por) === Number(req.user.id));
   const podeInteragir = Boolean(contexto.estaNoSetorUsuario);
+  const retornoDevolvivel = podeInteragir && solicitarPermitido && !pedidos.length
+    ? await buscarRetornoAprovadoDevolvivel(solicitacao)
+    : null;
 
   return {
     allowed: true,
@@ -173,6 +209,9 @@ async function montarContextoInteracao(req, solicitacao, contextoBase = null) {
       ? null
       : `A solicitacao esta no setor ${solicitacao.area_responsavel}. Comentarios nos itens continuam disponiveis; para comentar na conversa geral, anexar ou executar outras acoes, solicite o retorno ao seu setor.`,
     pedido_retorno_pendente: serializarPedido(pedidoDoUsuario),
+    devolucao_retorno: retornoDevolvivel
+      ? { pedido_id: retornoDevolvivel.id, setor_destino: retornoDevolvivel.setor_atual_pedido }
+      : null,
     pedidos_retorno_para_decisao: podeInteragir && decidirPermitido
       ? pedidos.map(serializarPedido)
       : []
@@ -479,6 +518,95 @@ async function decidirRetorno(req, pedidoId, { aprovar, motivoDecisao }) {
   return { pedido: serializarPedido(resultado.pedido), solicitacao: resultado.solicitacao };
 }
 
+async function devolverAoSetorAnterior(req, solicitacaoId) {
+  if (!(await podeSolicitarRetorno(req.user))) {
+    throw erro('Voce nao tem permissao para devolver a solicitacao apos o retorno.', 403);
+  }
+
+  const resultado = await sequelize.transaction(async (transaction) => {
+    const solicitacao = await Solicitacao.findByPk(Number(solicitacaoId), {
+      attributes: ['id', 'codigo', 'obra_id', 'criado_por', 'tipo_solicitacao_id', 'area_responsavel', 'status_global'],
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!solicitacao) throw erro('Solicitacao nao encontrada.', 404);
+
+    const contexto = await avaliarInteracao(req, solicitacao);
+    if (!contexto.allowed) throw erro(contexto.error || 'Acesso negado.', contexto.status || 403);
+    if (!contexto.estaNoSetorUsuario) throw erro('Somente o setor atual pode devolver a solicitacao.', 403);
+    if (/CANCELAD/i.test(String(solicitacao.status_global || ''))) {
+      throw erro('Nao e possivel devolver uma solicitacao cancelada.', 409);
+    }
+
+    const pendentes = await SolicitacaoPedidoRetorno.findAll({
+      where: { solicitacao_id: solicitacao.id, status: STATUS.PENDENTE },
+      attributes: ['id', 'setor_atual_pedido'],
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (pendentes.some((pedido) => setoresEquivalentes(pedido.setor_atual_pedido, solicitacao.area_responsavel))) {
+      throw erro('Decida os pedidos de retorno pendentes antes de devolver a solicitacao.', 409);
+    }
+
+    const pedido = await buscarRetornoAprovadoDevolvivel(solicitacao, transaction);
+    if (!pedido) throw erro('O retorno aprovado nao esta mais disponivel para devolucao.', 409);
+
+    const setorOrigem = solicitacao.area_responsavel;
+    const setorDestino = pedido.setor_atual_pedido;
+    await solicitacao.update({ area_responsavel: setorDestino }, { transaction });
+    await Historico.create({
+      solicitacao_id: solicitacao.id,
+      usuario_responsavel_id: req.user.id,
+      setor: setorDestino,
+      acao: 'ENVIADA_SETOR',
+      descricao: `De ${setorOrigem} para ${setorDestino}`,
+      observacao: `Devolvida ao setor que aprovou o retorno`,
+      status_anterior: solicitacao.status_global,
+      status_novo: solicitacao.status_global,
+      metadata: JSON.stringify({ pedido_retorno_id: pedido.id, retorno_devolvido: true })
+    }, { transaction });
+    await Historico.create({
+      solicitacao_id: solicitacao.id,
+      usuario_responsavel_id: req.user.id,
+      setor: setorDestino,
+      acao: 'RETORNO_DEVOLVIDO',
+      descricao: `Solicitacao devolvida de ${setorOrigem} para ${setorDestino} apos o retorno aprovado.`,
+      metadata: JSON.stringify({ pedido_retorno_id: pedido.id })
+    }, { transaction });
+    await sincronizarAposEncerramentoPedido({
+      solicitacaoId: solicitacao.id,
+      pedidoId: pedido.id,
+      transaction
+    });
+    return { solicitacao, pedido, setorDestino };
+  });
+
+  try {
+    const destinatarios = await destinatariosQuePodemDecidir(resultado.solicitacao);
+    await notificarSemInterromperFluxo({
+      solicitacao: resultado.solicitacao,
+      tipo: 'RETORNO_DEVOLVIDO',
+      mensagem: `A solicitacao ${resultado.solicitacao.codigo} foi devolvida para ${resultado.setorDestino} apos o retorno aprovado.`,
+      createdBy: req.user.id,
+      destinatarios: [...new Set([...destinatarios, resultado.pedido.decidido_por].map(Number).filter(Boolean))],
+      pedido: resultado.pedido
+    });
+  } catch (error) {
+    console.error('Devolucao concluida, mas a notificacao do setor falhou:', error);
+  }
+  try {
+    await registrarAtencaoSolicitacao({
+      solicitacao: resultado.solicitacao,
+      atorId: req.user.id,
+      tipo: 'RETORNO_DEVOLVIDO',
+      resumo: `Devolvida para ${resultado.setorDestino} apos retorno aprovado`
+    });
+  } catch (error) {
+    console.error('Devolucao concluida, mas o destaque da solicitacao falhou:', error);
+  }
+  return { solicitacao: resultado.solicitacao, pedido: serializarPedido(resultado.pedido) };
+}
+
 async function cancelarRetorno(req, pedidoId) {
   const resultado = await sequelize.transaction(async (transaction) => {
     const pedido = await SolicitacaoPedidoRetorno.findByPk(Number(pedidoId), {
@@ -540,6 +668,7 @@ module.exports = {
   assertPodeVisualizarSolicitacao,
   cancelarRetorno,
   decidirRetorno,
+  devolverAoSetorAnterior,
   montarContextoInteracao,
   solicitarRetorno
 };

@@ -182,6 +182,19 @@ export async function solicitarRetornoSolicitacao(id, motivo) {
   return res.json();
 }
 
+export async function devolverSolicitacaoAposRetorno(id) {
+  const res = await fetch(`${API_URL}/solicitacoes/${id}/retorno/devolver`, {
+    method: 'POST',
+    headers: authHeaders()
+  });
+
+  if (!res.ok) {
+    throw buildResponseError(res.status, 'Erro ao devolver a solicitacao ao setor anterior', await parseJsonSafe(res));
+  }
+
+  return res.json();
+}
+
 export async function decidirRetornoSolicitacao(pedidoId, { aprovar, motivo_decisao = '' }) {
   const res = await fetch(`${API_URL}/solicitacoes/retornos/${pedidoId}/decisao`, {
     method: 'POST',

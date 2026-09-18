@@ -13,6 +13,7 @@ export default function RhDpTransferencias() {
   const [lista, setLista] = useState([]);
   const [diretorio, setDiretorio] = useState({ itens: [], total: 0, pagina: 1 });
   const [busca, setBusca] = useState('');
+  const [buscaAplicada, setBuscaAplicada] = useState('');
   const [carregando, setCarregando] = useState(false);
   const [form, setForm] = useState(null);
   const [aberta, setAberta] = useState(null);
@@ -27,24 +28,31 @@ export default function RhDpTransferencias() {
     catch (e) { avisar.erro(e.message); }
   }, [avisar]);
 
+  const pesquisar = useCallback(async (pagina = 1, termo = '') => {
+    const versao = ++versaoBusca.current;
+    setCarregando(true);
+    try {
+      const resultado = await rhTransferencias('/diretorio', { params: { busca: termo, pagina } });
+      if (versao === versaoBusca.current) {
+        setDiretorio(resultado);
+        setBuscaAplicada(termo);
+      }
+    } catch (e) {
+      if (versao === versaoBusca.current) avisar.erro(e.message);
+    } finally {
+      if (versao === versaoBusca.current) setCarregando(false);
+    }
+  }, [avisar]);
+
   useEffect(() => {
     rhTransferencias('/configuracao').then(setConfig).catch(e => avisar.erro(e.message));
     atualizar();
+    pesquisar(1);
     const atualizarVisivel = () => { if (!document.hidden) atualizar(); };
     const timer = setInterval(atualizarVisivel, 30000);
     window.addEventListener('focus', atualizarVisivel);
     return () => { clearInterval(timer); window.removeEventListener('focus', atualizarVisivel); };
-  }, [atualizar, avisar]);
-
-  async function pesquisar(pagina = 1) {
-    const versao = ++versaoBusca.current;
-    setCarregando(true);
-    try {
-      const resultado = await rhTransferencias('/diretorio', { params: { busca, pagina } });
-      if (versao === versaoBusca.current) setDiretorio(resultado);
-    } catch (e) { avisar.erro(e.message); }
-    finally { if (versao === versaoBusca.current) setCarregando(false); }
-  }
+  }, [atualizar, avisar, pesquisar]);
 
   async function abrir(s) {
     try {
@@ -99,13 +107,13 @@ export default function RhDpTransferencias() {
     <section aria-label="Diretório global de colaboradores">
       <h3 className="app-bloco-titulo">Lista global de colaboradores</h3>
       <p className="form-hint">Somente identificação profissional e obra atual. Sem dados financeiros ou documentos pessoais.</p>
-      <form className="app-page-actions" onSubmit={e => { e.preventDefault(); pesquisar(); }}>
+      <form className="app-page-actions" onSubmit={e => { e.preventDefault(); pesquisar(1, busca.trim()); }}>
         <label className="form-field flex-1 min-w-0"><span className="form-label">Nome, matrícula ou função</span>
           <input className="form-control" value={busca} onChange={e => setBusca(e.target.value)} maxLength={100} /></label>
         <button className="btn btn-outline" disabled={carregando}>{carregando ? 'Pesquisando…' : 'Pesquisar'}</button>
       </form>
       <TabelaPadrao storageKey="tabela:rh-diretorio-global" itens={diretorio.itens} carregando={carregando}
-        vazio="Pesquise para localizar colaboradores ativos de todas as obras."
+        vazio={buscaAplicada ? 'Nenhum colaborador encontrado para esta pesquisa.' : 'Nenhum colaborador ativo encontrado.'}
         colunas={[
           { id: 'nome', titulo: 'Nome', tipo: 'identidade', noCard: 'titulo', render: c => c.nome },
           { id: 'matricula', titulo: 'Matrícula', tipo: 'codigo', render: c => c.matricula || '—' },
@@ -113,9 +121,9 @@ export default function RhDpTransferencias() {
           { id: 'obra', titulo: 'Obra atual', tipo: 'texto', render: c => c.obra?.nome || 'Sem obra' }
         ]} acoesLinha={c => c.obra_id && minhas.length ? <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionar(c)}>Solicitar transferência</button> : null} />
       <div className="app-page-actions">
-        <span>{diretorio.total} colaborador(es) · Página {diretorio.pagina}</span>
-        <button type="button" className="btn btn-outline btn-sm" disabled={carregando || diretorio.pagina <= 1} onClick={() => pesquisar(diretorio.pagina - 1)}>Anterior</button>
-        <button type="button" className="btn btn-outline btn-sm" disabled={carregando || diretorio.pagina * 50 >= diretorio.total} onClick={() => pesquisar(diretorio.pagina + 1)}>Próxima</button>
+        <span aria-live="polite">{diretorio.total} colaborador(es) · Página {diretorio.pagina} de {Math.max(1, Math.ceil(diretorio.total / 50))}</span>
+        <button type="button" className="btn btn-outline btn-sm" disabled={carregando || diretorio.pagina <= 1} onClick={() => pesquisar(diretorio.pagina - 1, buscaAplicada)}>Anterior</button>
+        <button type="button" className="btn btn-outline btn-sm" disabled={carregando || diretorio.pagina * 50 >= diretorio.total} onClick={() => pesquisar(diretorio.pagina + 1, buscaAplicada)}>Próxima</button>
       </div>
     </section>
     {form && <OverlayModal rotulo="Solicitar transferência entre obras" onFechar={() => { if (!ocupado) setForm(null); }}>

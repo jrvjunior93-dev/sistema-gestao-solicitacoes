@@ -13,9 +13,14 @@ createRoot(document.getElementById('root')).render(<MemoryRouter><main className
 const mocks = `const obras=[{id:1,nome:'Obra de origem',codigo:'101'},{id:2,nome:'Obra de destino',codigo:'102'}];
 const s={id:10,colaborador:{id:7,nome:'Ana Teste'},obra:obras[0],obra_id:1,obra_destino_id:2,obra_destino_nome:obras[1].nome,
 obra_aprovadora_id:1,situacao:'ABERTA',nao_lida:true,pode_decidir:true,pode_cancelar:false,atividade_em:'2026-09-18T15:00:00Z',historicos:[{id:1,descricao:'Transferência solicitada',usuario_id:22,createdAt:'2026-09-18T15:00:00Z'}]};
+const colaboradores=Array.from({length:51},(_,i)=>({id:i+7,nome:i===0?'Ana Teste':i===50?'Zilda Teste':'Colaborador '+String(i).padStart(2,'0'),matricula:'M'+(i+7),cargo:'Pedreira',obra_id:1,obra:obras[0]}));
 export async function rhTransferencias(path='',opts={}){
 if(path==='/configuracao')return {obras,obras_responsavel_ids:[1]};
-if(path==='/diretorio')return {itens:[{id:7,nome:'Ana Teste',matricula:'M7',cargo:'Pedreira',obra_id:1,obra:obras[0]}],total:1,pagina:1};
+if(path==='/diretorio'){
+const busca=String(opts.params?.busca||'').toLowerCase();const pagina=Number(opts.params?.pagina||1);
+window.consultasDiretorio=[...(window.consultasDiretorio||[]),{busca,pagina}];
+const itens=colaboradores.filter(c=>[c.nome,c.matricula,c.cargo].some(v=>v.toLowerCase().includes(busca)));
+return {itens:itens.slice((pagina-1)*50,pagina*50),total:itens.length,pagina};}
 if(opts.method==='POST'){window.envios=(window.envios||[]);window.envios.push({path,...opts});await new Promise(r=>setTimeout(r,200));return {id:10};}
 if(path==='/10')return s;
 return [s];}`;
@@ -39,12 +44,23 @@ try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/fixture`);
   const css = fs.readFileSync(path.join(root, 'dist/index.html'), 'utf8').match(/href="\/assets\/([^\"]+\.css)"/)[1];
   await page.addStyleTag({ path: path.join(root, 'dist/assets', css) });
+  const diretorio = page.getByRole('region', { name: 'Diretório global de colaboradores' });
+  await diretorio.getByText('51 colaborador(es) · Página 1 de 2').waitFor();
+  await diretorio.getByText('Ana Teste').waitFor();
+  assert.deepEqual((await page.evaluate(() => window.consultasDiretorio))[0], { busca: '', pagina: 1 }, 'Diretório deve carregar automaticamente sem busca');
+  await diretorio.getByRole('button', { name: 'Próxima' }).click();
+  await diretorio.getByText('Zilda Teste').waitFor();
+  await diretorio.getByText('51 colaborador(es) · Página 2 de 2').waitFor();
+  await diretorio.getByRole('button', { name: 'Anterior' }).click();
+  await diretorio.getByText('Ana Teste').waitFor();
   await page.getByRole('button', { name: 'Abrir', exact: true }).click();
   await page.getByRole('button', { name: 'Aprovar transferência', exact: true }).click();
   await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
   assert.equal(await page.evaluate(() => (window.envios || []).length), 0, 'Cancelar confirmacao nao deve aprovar');
   await page.getByRole('button', { name: 'Fechar', exact: true }).click();
+  await diretorio.getByRole('textbox', { name: 'Nome, matrícula ou função' }).fill('Ana');
   await page.getByRole('button', { name: 'Pesquisar', exact: true }).click();
+  await diretorio.getByText('1 colaborador(es) · Página 1 de 1').waitFor();
   await page.getByRole('button', { name: 'Solicitar transferência', exact: true }).click();
   await page.getByLabel('Obra de destino', { exact: true }).selectOption('2');
   await page.getByLabel('Justificativa', { exact: true }).fill('Apoio à etapa da obra de destino');
@@ -56,7 +72,7 @@ try {
       return { left: panel.left, right: panel.right, width: innerWidth };
     });
     assert(bounds.left >= 0 && bounds.right <= bounds.width + 1, JSON.stringify(bounds));
-    await page.screenshot({ path: path.join(out, `transferencia-${width}.png`) });
+    if (!process.env.RH_NO_SCREENSHOTS) await page.screenshot({ path: path.join(out, `transferencia-${width}.png`) });
   }
   await page.getByRole('button', { name: 'Enviar para aprovação', exact: true }).click();
   await page.getByRole('dialog', { name: 'Solicitar transferência entre obras' }).waitFor({ state: 'hidden' });
@@ -65,5 +81,5 @@ try {
   assert.equal(envios[0].data.obra_solicitante_id, 1); assert.equal(envios[0].data.obra_destino_id, 2);
   assert(!('data_vigencia' in envios[0].data));
   assert.deepEqual(errors, []);
-  console.log('OK: transferencia na UI, cancelamento seguro, diretorio, envio, responsividade desktop/mobile. Sem API externa.');
+  console.log('OK: transferencia na UI, diretorio global paginado desde a abertura, busca, envio e responsividade desktop/mobile. Sem API externa.');
 } finally { await browser.close(); await server.close(); }
