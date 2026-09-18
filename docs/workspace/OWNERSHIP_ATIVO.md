@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: corrigir criacao de titulo no
+detalhe da solicitacao. Escopo: FinanceiroCard.jsx, tituloFinanceiroService.js,
+financialValidators.js, teste de competencia DRE e handoff. Preservar
+`outputs/`. Sem EC2, RDS, migration, commit ou deploy nesta tarefa.
+Correcao e testes locais concluidos; ownership de edicao liberado.
+Handoff: `docs/handoffs/2026-09-18-competencia-dre-titulos-solicitacao.md`.
+
+Ownership temporario /root em 18/09/2026: conferir, commitar e publicar
+exclusivamente a correcao da competencia DRE da solicitacao na
+`refactor/frontend`, conforme autorizacao do usuario. Preservar `outputs/`.
+Deploy EC2 dev sera executado somente pelo usuario. Ownership de edicao
+liberado apos verificacoes e publicacao da branch.
+
 Ownership temporario /root em 18/09/2026: atalho de credito de rendimento
 na conciliacao OFX. Escopo: configuracao de atalhos e validadores,
 conciliacao/controller/rotas, DRE e relatorio bancario, telas financeiras,

@@ -1341,6 +1341,10 @@ function validarCategoriaDreTitulo(categoria, payload = {}) {
   }
 }
 
+function categoriaClassificadaParaDre(categoria) {
+  return Boolean(categoria && categoria.considera_dre !== false && String(categoria.dre_grupo || '').trim());
+}
+
 async function validarFormaPagamentoFinanceira(
   formaPagamentoId,
   payload = {},
@@ -1716,6 +1720,23 @@ function resolverCompetenciaCriacaoTitulo() {
   // A competencia de novos titulos acompanha o dia em que o registro e criado.
   // Nao usa vencimento, emissao ou um valor enviado pela interface.
   return getHoje();
+}
+
+function resolverCompetenciaCriacaoSolicitacao(solicitacao) {
+  const criadaEm = solicitacao?.createdAt;
+  const instante = criadaEm instanceof Date ? criadaEm : new Date(criadaEm);
+  if (!criadaEm || Number.isNaN(instante.getTime())) {
+    throw createHttpError(409, 'A data de criacao da solicitacao nao esta disponivel para definir a competencia DRE.');
+  }
+
+  const partes = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(instante);
+  const valores = Object.fromEntries(partes.map(({ type, value }) => [type, value]));
+  return `${valores.year}-${valores.month}-${valores.day}`;
 }
 
 async function validarIntercompanyTitulo(payload = {}) {
@@ -2597,6 +2618,7 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
 async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   await assertFinanceAccess(req);
   const solicitacao = await carregarSolicitacaoFinanceira(req, solicitacaoId);
+  const competenciaSolicitacao = resolverCompetenciaCriacaoSolicitacao(solicitacao);
   const recargaAutomatica = await SolicitacaoRecargaCartao.findOne({
     where: { solicitacao_id: solicitacao.id },
     attributes: ['id', 'titulo_financeiro_id']
@@ -2627,7 +2649,9 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     validarEmpresaGrupo(empresaTituloId),
     validarCategoriaFinanceira(payload.categoria_financeira_id, tipo)
   ]);
-  validarCategoriaDreTitulo(categoriaPadrao, payload);
+  validarCategoriaDreTitulo(categoriaPadrao, {
+    considera_dre: payload.considera_dre !== false && categoriaClassificadaParaDre(categoriaPadrao)
+  });
   const intercompanyFieldsPadrao = await validarIntercompanyTitulo(payload);
 
   const pagamentosPayload = Array.isArray(payload.pagamentos) && payload.pagamentos.length > 0
@@ -2659,7 +2683,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     const categoriaPagamento = pagamentoPayload.categoria_financeira_id
       ? await validarCategoriaFinanceira(pagamentoPayload.categoria_financeira_id, tipo)
       : categoriaPadrao;
-    validarCategoriaDreTitulo(categoriaPagamento, { ...payload, ...pagamentoPayload });
+    const consideraDrePagamento = payload.considera_dre !== false && categoriaClassificadaParaDre(categoriaPagamento);
+    validarCategoriaDreTitulo(categoriaPagamento, { considera_dre: consideraDrePagamento });
     const formaPagamento = await validarFormaPagamentoFinanceira(pagamentoPayload.forma_pagamento_id, pagamentoPayload);
     const intercompanyFields = await resolverIntercompanyPagamento({
       formaPagamento,
@@ -2700,6 +2725,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
       parceiro: parceiroPagamento,
       paymentBeneficiary,
       categoria: categoriaPagamento,
+      consideraDre: consideraDrePagamento,
       formaPagamento,
       intercompanyFields,
       payload: pagamentoPayload,
@@ -2775,8 +2801,8 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           numero_parcela: totalParcelasDoGrupo > 1 ? numeroParcela : null,
           total_parcelas: totalParcelasDoGrupo > 1 ? totalParcelasDoGrupo : null,
           data_compra: pagamento.dataCompra,
-          competencia_data: resolverCompetenciaCriacaoTitulo(),
-          considera_dre: pagamento.payload.considera_dre !== false,
+          competencia_data: competenciaSolicitacao,
+          considera_dre: pagamento.consideraDre,
           origem_titulo: 'SOLICITACAO',
           tipo,
           status: statusTitulo,
@@ -5090,6 +5116,7 @@ async function listarChequesTerceirosDisponiveis(req, filters = {}) {
 }
 
 module.exports = {
+  resolverCompetenciaCriacaoSolicitacao,
   atualizarCobrancaTitulo,
   atualizarTitulo,
   baixarTitulo,

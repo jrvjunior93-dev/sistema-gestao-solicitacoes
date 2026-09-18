@@ -8,6 +8,7 @@ const {
   validateFinanceTituloCreateBody,
   validateFinanceTituloCreateFromSolicitacaoBody
 } = require('../src/validators/financialValidators');
+const { resolverCompetenciaCriacaoSolicitacao } = require('../src/services/tituloFinanceiroService');
 
 const backendRoot = path.resolve(__dirname, '..');
 const repositoryRoot = path.resolve(backendRoot, '..');
@@ -28,8 +29,21 @@ assert(
 );
 assert.strictEqual(
   (service.match(/competencia_data: resolverCompetenciaCriacaoTitulo\(\)/g) || []).length,
-  3,
-  'Os tres fluxos interativos de criacao devem usar a competencia automatica.'
+  2,
+  'Os fluxos manuais e de conciliacao devem usar a data de criacao do titulo.'
+);
+assert(
+  service.includes('competencia_data: competenciaSolicitacao'),
+  'Titulos vinculados a solicitacao devem usar a data de criacao da solicitacao.'
+);
+assert.strictEqual(
+  resolverCompetenciaCriacaoSolicitacao({ createdAt: new Date('2026-09-18T02:30:00.000Z') }),
+  '2026-09-17',
+  'A competencia deve respeitar a data da solicitacao no fuso de Sao Paulo.'
+);
+assert.throws(
+  () => resolverCompetenciaCriacaoSolicitacao({ createdAt: null }),
+  /data de criacao da solicitacao nao esta disponivel/i
 );
 assert(
   service.includes('const competenciaData = resolverCompetenciaTitulo(payload);'),
@@ -77,4 +91,17 @@ creationScreens.forEach((relativePath) => {
   );
 });
 
-console.log('Competencia DRE automatica na criacao de titulos validada com sucesso.');
+const financeiroCard = readRepository('frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx');
+const envioTituloSolicitacao = financeiroCard.split('await gerarContaPorSolicitacao(solicitacao.id, {')[1]?.split('setModalOpen(false)')[0];
+assert(envioTituloSolicitacao && !envioTituloSolicitacao.includes('considera_dre:'), 'A DRE nao deve ser enviada pela tela dentro dos pagamentos.');
+const pagamentoValido = { forma_pagamento_id: 1, categoria_financeira_id: 1, payment_beneficiary_id: 2, valor: 100 };
+assert.strictEqual(
+  validateFinanceTituloCreateFromSolicitacaoBody({ categoria_financeira_id: 1, pagamentos: [pagamentoValido] }).pagamentos[0].payment_beneficiary_id,
+  2
+);
+assert.throws(
+  () => validateFinanceTituloCreateFromSolicitacaoBody({ categoria_financeira_id: 1, pagamentos: [{ ...pagamentoValido, considera_dre: true }] }),
+  /campos nao permitidos: considera_dre/i
+);
+
+console.log('Competencia DRE automatica na criacao de titulos e nos pagamentos de solicitacao validada com sucesso.');

@@ -1986,9 +1986,6 @@ export default function FinanceiroCard({
         valor_bruto: form.valor,
         valor_liquido: formatCurrencyInput(valorLiquidoPrevisto),
         impostos: impostosPayload,
-        considera_dre: isCategoriaClassificadaParaDre(
-          categoriasCompativeis.find((item) => String(item.id) === String(form.pagamentos?.[0]?.categoria_financeira_id))
-        ),
         intercompany: Boolean(form.intercompany),
         empresa_contraparte_id: form.intercompany
           ? Number(form.tipo === 'PAGAR' ? form.empresa_origem_id : form.empresa_destino_id) || undefined
@@ -2014,9 +2011,6 @@ export default function FinanceiroCard({
           return {
             parceiro_id: pagamento.parceiro_id || undefined,
             categoria_financeira_id: pagamento.categoria_financeira_id || undefined,
-            considera_dre: isCategoriaClassificadaParaDre(
-              categoriasCompativeis.find((item) => String(item.id) === String(pagamento.categoria_financeira_id))
-            ),
             payment_beneficiary_id: beneficiaryIds.get(pagamento.id) || undefined,
             valor: usaDetalhe ? undefined : pagamento.valor,
             forma_pagamento_id: pagamento.forma_pagamento_id || undefined,
