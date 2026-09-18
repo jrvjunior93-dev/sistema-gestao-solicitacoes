@@ -23,6 +23,8 @@ import {
   FormSecao,
   Pagina,
   PageHeader,
+  StatGrid,
+  StatTile,
   TabelaPadrao,
   useAvisos,
   useConfirmacao
@@ -320,6 +322,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   */
   const [errosCampo, setErrosCampo] = useState({});
   const [errosItem, setErrosItem] = useState({});
+  const [erroRateiosModal, setErroRateiosModal] = useState('');
   const [novoCredor, setNovoCredor] = useState(criarNovoCredorPadrao);
   const [salvandoCredor, setSalvandoCredor] = useState(false);
   const [buscaInsumo, setBuscaInsumo] = useState('');
@@ -328,6 +331,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [uploadingAnexoCabecalho, setUploadingAnexoCabecalho] = useState(false);
   const [importandoItens, setImportandoItens] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [modalApropriacaoIndex, setModalApropriacaoIndex] = useState(null);
+  const [rateiosModal, setRateiosModal] = useState([]);
   const [previewArquivo, setPreviewArquivo] = useState(null);
 
   // O erro do campo sai assim que a pessoa mexe nele — mensagem de validação
@@ -463,6 +468,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     setItens([]);
     setErrosCampo({});
     setErrosItem({});
+    fecharModalApropriacao();
   }
 
   useEffect(() => {
@@ -474,6 +480,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     }
   }, []);
 
+  const itemModalAtual = modalApropriacaoIndex !== null ? itens[modalApropriacaoIndex] || null : null;
   const formasPagamentoSelecionadas = useMemo(
     () => formasPagamento.filter((forma) => formaPagamentoIds.includes(String(forma.id))),
     [formasPagamento, formaPagamentoIds]
@@ -494,6 +501,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     () => anexosCabecalho.filter((anexo) => anexo?.tipo_documento === 'BOLETO'),
     [anexosCabecalho]
   );
+
+  const resumoModalApropriacao = useMemo(() => calcularResumoRateios({
+    quantidade: itemModalAtual?.quantidade,
+    apropriacoes: rateiosModal
+  }), [itemModalAtual?.quantidade, rateiosModal]);
 
   useEffect(() => {
     if (draftCarregadoRef.current) {
@@ -1186,42 +1198,64 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     );
   }
 
-  function atualizarRateiosItem(index, transformar) {
-    limparErroItem(index, 'apropriacao');
-    setItens((atual) => atual.map((item, itemIndex) => {
-      if (itemIndex !== index) return item;
-      const rateios = transformar(normalizarRateiosEntrada(item), item);
-      return {
-        ...item,
-        apropriacao_id: rateios[0]?.apropriacao_id || '',
-        apropriacoes: rateios
-      };
-    }));
+  function abrirModalApropriacao(index) {
+    const item = itens[index];
+    if (!parseQuantidade(item?.quantidade)) {
+      reprovarItem(index, 'quantidade', 'Informe a quantidade do item antes de distribuir a apropriação.');
+      return;
+    }
+
+    const rateiosExistentes = normalizarRateiosEntrada(item);
+    setErroRateiosModal('');
+    setModalApropriacaoIndex(index);
+    setRateiosModal(rateiosExistentes.length
+      ? rateiosExistentes
+      : [criarRateioBase(String(item.quantidade || ''))]);
   }
 
-  function atualizarRateioItem(index, rateioIndex, campo, valor) {
-    atualizarRateiosItem(index, (rateios, item) => {
-      const linhas = rateios.length ? rateios : [criarRateioBase(item.quantidade)];
-      return linhas.map((rateio, linhaIndex) => (
-        linhaIndex === rateioIndex ? { ...rateio, [campo]: valor } : rateio
-      ));
+  function fecharModalApropriacao() {
+    setModalApropriacaoIndex(null);
+    setRateiosModal([]);
+    setErroRateiosModal('');
+  }
+
+  function atualizarRateioModal(rateioIndex, campo, valor) {
+    setErroRateiosModal('');
+    setRateiosModal((atual) => atual.map((rateio, index) => (
+      index === rateioIndex ? { ...rateio, [campo]: valor } : rateio
+    )));
+  }
+
+  function adicionarRateioModal() {
+    setErroRateiosModal('');
+    setRateiosModal((atual) => [...atual, criarRateioBase('')]);
+  }
+
+  function removerRateioModal(rateioIndex) {
+    setErroRateiosModal('');
+    setRateiosModal((atual) => atual.filter((_, index) => index !== rateioIndex));
+  }
+
+  function salvarRateiosItem() {
+    if (modalApropriacaoIndex === null || !itemModalAtual) return;
+
+    const itemComRateios = sincronizarItemComRateios({
+      ...itemModalAtual,
+      apropriacao_id: '',
+      apropriacoes: rateiosModal
     });
-  }
+    const validacao = validarRateiosItem(itemComRateios);
+    if (!validacao.ok) {
+      setErroRateiosModal(validacao.mensagem);
+      return;
+    }
 
-  function adicionarRateioItem(index) {
-    atualizarRateiosItem(index, (rateios, item) => [
-      ...(rateios.length ? rateios : [criarRateioBase(item.quantidade)]),
-      criarRateioBase('')
-    ]);
-  }
-
-  function removerRateioItem(index, rateioIndex) {
-    atualizarRateiosItem(index, (rateios, item) => {
-      const restantes = rateios.filter((_, linhaIndex) => linhaIndex !== rateioIndex);
-      return restantes.length === 1
-        ? [{ ...restantes[0], quantidade_apropriada: String(item.quantidade || '') }]
-        : restantes;
+    atualizarCamposItem(modalApropriacaoIndex, {
+      apropriacao_id: itemComRateios.apropriacao_id,
+      apropriacoes: itemComRateios.apropriacoes
     });
+    limparErroItem(modalApropriacaoIndex, 'apropriacao');
+    fecharModalApropriacao();
   }
 
   function removerItem(index) {
@@ -1239,6 +1273,12 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       });
       return proximo;
     });
+
+    if (modalApropriacaoIndex === index) {
+      fecharModalApropriacao();
+    } else if (modalApropriacaoIndex !== null && modalApropriacaoIndex > index) {
+      setModalApropriacaoIndex((atual) => atual - 1);
+    }
   }
 
   /*
@@ -1264,6 +1304,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     setItens([]);
     setErrosItem({});
     setUploadingArquivos({});
+    fecharModalApropriacao();
   }
 
   async function handleSelecionarArquivo(index, file) {
@@ -1562,9 +1603,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }
 
   const modalCredorVisivel = modoCompraDireta && modalCredorAberto;
-  // A faixa fica no modal de credor quando aberto; fora dele, no topo.
+  const modalApropriacaoVisivel = modalApropriacaoIndex !== null && Boolean(itemModalAtual);
+  // A faixa de avisos acompanha o modal aberto para não ficar atrás do fundo.
   const faixaAvisos = <Avisos avisos={avisos} aoFechar={fechar} />;
-  const algumModalAberto = modalCredorVisivel;
+  const algumModalAberto = modalCredorVisivel || modalApropriacaoVisivel;
 
   const estiloFreteAtivo = {
     background: 'var(--sem-info-bg)',
@@ -2271,54 +2313,45 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                   titulo: 'Apropriação *',
                   tipo: 'texto',
                   render: (item) => {
+                    const linhasApropriacao = montarLinhasResumoApropriacao(item, apropriacoes);
                     const resumoApropriacao = calcularResumoRateios(item);
-                    const rateios = normalizarRateiosEntrada(item);
-                    const linhas = rateios.length ? rateios : [criarRateioBase(item.quantidade)];
 
                     return (
-                      <div className="grid min-w-0 gap-2">
-                        {linhas.map((rateio, rateioIndex) => (
-                          <div key={`rateio-${rateioIndex}`} className="grid min-w-0 gap-1">
-                            <ApropriacaoAutocomplete
-                              value={rateio.apropriacao_id}
-                              options={apropriacoes}
-                              onChange={(id) => atualizarRateioItem(item.__indice, rateioIndex, 'apropriacao_id', id)}
-                              inputClassName="input w-full"
-                            />
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="number"
-                                min="0.01"
-                                step="0.01"
-                                className="input min-w-0 flex-1"
-                                aria-label={`Quantidade apropriada do rateio ${rateioIndex + 1}`}
-                                value={rateio.quantidade_apropriada}
-                                onChange={(event) => atualizarRateioItem(item.__indice, rateioIndex, 'quantidade_apropriada', event.target.value)}
-                              />
-                              {rateios.length > 1 && <button
-                                  type="button"
-                                  className="btn btn-outline btn-sm btn-perigo-suave shrink-0"
-                                  aria-label={`Remover rateio ${rateioIndex + 1}`}
-                                  onClick={() => removerRateioItem(item.__indice, rateioIndex)}
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            {linhasApropriacao.length > 0 ? (
+                              <>
+                                <div className="grid gap-1 text-xs text-[var(--c-text)]">
+                                  {linhasApropriacao.slice(0, 2).map((linha, linhaIndex) => (
+                                    <div key={`${linha}-${linhaIndex}`} className="truncate" title={linha}>{linha}</div>
+                                  ))}
+                                  {linhasApropriacao.length > 2 && (
+                                    <div className="text-[var(--c-muted)]">+{linhasApropriacao.length - 2} rateio(s)</div>
+                                  )}
+                                </div>
+                                <div
+                                  className="text-xs font-semibold"
+                                  style={{ color: resumoApropriacao.fechado ? 'var(--sem-success)' : 'var(--sem-warning)' }}
                                 >
-                                  ×
-                              </button>}
-                            </div>
+                                  {resumoApropriacao.fechado ? 'Fechado' : `Saldo ${formatarQuantidade(resumoApropriacao.saldo)}`}
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-xs text-[var(--c-muted)]">Nenhuma</span>
+                            )}
                           </div>
-                        ))}
-                        <div className="flex flex-wrap items-center justify-between gap-1">
-                          <span
-                            className="text-xs font-semibold"
-                            style={{ color: resumoApropriacao.fechado ? 'var(--sem-success)' : 'var(--sem-warning)' }}
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm shrink-0"
+                            onClick={() => abrirModalApropriacao(item.__indice)}
+                            aria-label={`${linhasApropriacao.length > 0 ? 'Editar apropriação' : 'Apropriar'} ${item.insumo_nome || `item ${item.__indice + 1}`}`}
                           >
-                            {resumoApropriacao.fechado ? 'Fechado' : `Saldo ${formatarQuantidade(resumoApropriacao.saldo)}`}
-                          </span>
-                          <button type="button" className="btn btn-outline btn-sm" onClick={() => adicionarRateioItem(item.__indice)}>
-                            + Rateio
+                            {linhasApropriacao.length > 0 ? 'Editar' : 'Apropriar'}
                           </button>
                         </div>
                         <ErroCampo mensagem={erroDoItem(item.__indice, 'apropriacao')} />
-                      </div>
+                      </>
                     );
                   }
                 },
@@ -2422,7 +2455,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
               color: 'var(--sem-success)'
             }}
           >
-            Pesquise a <strong>apropriação</strong> em cada item. Se precisar dividir a quantidade entre etapas da obra, adicione outro rateio; o saldo aparece na própria linha.
+            Use o botão <strong>Apropriar</strong> em cada item para distribuir a quantidade entre etapas da obra. O modal mostra total, distribuído e saldo antes de salvar.
           </div>
 
           {/* C5: UM primário sólido, secundário em contorno, destrutiva apartada. */}
@@ -2507,6 +2540,92 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
             <button type="button" className="btn btn-primary" onClick={cadastrarCredorCompraDireta} disabled={salvandoCredor}>
               {salvandoCredor ? 'Salvando...' : 'Salvar credor'}
             </button>
+          </span>
+        </div>
+      </OverlayModal>
+
+      <OverlayModal
+        aberto={modalApropriacaoVisivel}
+        rotulo="Apropriar item"
+        largura="var(--modal-max-w-lg, 860px)"
+        onFechar={fecharModalApropriacao}
+      >
+        <div data-modal="cabecalho" className="app-bloco-head border-b border-[var(--c-border)] px-4 py-3 sm:px-6">
+          <div>
+            <h2 className="app-bloco-titulo">Apropriar item</h2>
+            <p
+              className="app-bloco-lead"
+              title={`${itemModalAtual?.insumo_nome || 'Item manual'} · Quantidade total ${formatarQuantidade(itemModalAtual?.quantidade)}`}
+            >
+              {itemModalAtual?.insumo_nome || 'Item manual'} · Quantidade total {formatarQuantidade(itemModalAtual?.quantidade)}
+            </p>
+          </div>
+          <span className="app-bloco-acoes">
+            <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalApropriacao}>Fechar</button>
+          </span>
+        </div>
+
+        <div className="p-4">
+          {modalApropriacaoVisivel && faixaAvisos}
+          <StatGrid colunas={3}>
+            <StatTile label="Total" valor={formatarQuantidade(resumoModalApropriacao.total)} />
+            <StatTile label="Distribuído" valor={formatarQuantidade(resumoModalApropriacao.distribuido)} />
+            <StatTile
+              label="Saldo"
+              valor={formatarQuantidade(resumoModalApropriacao.saldo)}
+              tom={resumoModalApropriacao.fechado ? 'success' : 'warning'}
+            />
+          </StatGrid>
+
+          <div className="mt-4 grid gap-3">
+            {rateiosModal.map((rateio, rateioIndex) => (
+              <div key={`rateio-${rateioIndex}`} className="rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
+                <FormSecao colunas={3}>
+                  <CampoForm label="Apropriação" span={2}>
+                    <ApropriacaoAutocomplete
+                      value={rateio.apropriacao_id}
+                      options={apropriacoes}
+                      onChange={(id) => atualizarRateioModal(rateioIndex, 'apropriacao_id', id)}
+                    />
+                  </CampoForm>
+                  <CampoForm label="Quantidade apropriada">
+                    <input
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      className="input"
+                      aria-label={`Quantidade apropriada do rateio ${rateioIndex + 1}`}
+                      value={rateio.quantidade_apropriada}
+                      onChange={(event) => atualizarRateioModal(rateioIndex, 'quantidade_apropriada', event.target.value)}
+                    />
+                  </CampoForm>
+                </FormSecao>
+                <div className="app-actionbar">
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm btn-perigo-suave"
+                    onClick={() => removerRateioModal(rateioIndex)}
+                    disabled={rateiosModal.length <= 1}
+                  >
+                    Remover
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <ErroCampo mensagem={erroRateiosModal} />
+          <div className="mt-4">
+            <button type="button" className="btn btn-outline" onClick={adicionarRateioModal}>
+              Adicionar apropriação
+            </button>
+          </div>
+        </div>
+
+        <div data-modal="rodape" className="app-actionbar border-t border-[var(--c-border)] p-4">
+          <span className="app-actionbar-apartada">
+            <button type="button" className="btn btn-outline" onClick={fecharModalApropriacao}>Cancelar</button>
+            <button type="button" className="btn btn-primary" onClick={salvarRateiosItem}>Salvar distribuição</button>
           </span>
         </div>
       </OverlayModal>

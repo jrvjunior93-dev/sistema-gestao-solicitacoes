@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test:pedido-entregas": "node scripts/validarPedidoEntregaUI.mjs",
+    "test:apropriacao-compra": "node scripts/validarModalApropriacaoCompra.mjs",
     "dev": "vite",
     "gerar:navegacao": "node scripts/gerarCatalogoNavegacaoBackend.mjs",
     "prebuild": "npm run gerar:navegacao",

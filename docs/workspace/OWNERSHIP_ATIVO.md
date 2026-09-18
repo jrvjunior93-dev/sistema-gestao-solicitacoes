@@ -1,5 +1,14 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: restaurar o modal de apropriacao
+nos formularios compartilhados de Solicitacao de Compra e Compra Direta,
+preservando a inclusao inline do item manual. Escopo:
+`frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx`,
+`frontend/scripts/validarModalApropriacaoCompra.mjs`, `frontend/package.json`
+e handoff. Preservar `outputs/`. Sem EC2, RDS ou deploy nesta tarefa.
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-18-apropriacao-compra-modal.md`.
+
 Ownership temporario /root em 18/09/2026: corrigir as 27 falhas da checagem
 geral de layout. Escopo: `frontend/src/pages/ComercialUnidades.jsx`,
 `CartoesRecarga.jsx`, `RhDpTransferencias.jsx`, `SolicitacaoDetalhe/PedidoEntrega.jsx`,
