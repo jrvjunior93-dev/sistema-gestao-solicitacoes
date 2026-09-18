@@ -11,7 +11,17 @@ import {
 import { corrigirTextoCorrompido } from '../../utils/texto';
 import { extrairParesDescricao } from '../../utils/formatarTexto';
 import { formatarDataLocalPtBr } from '../../utils/dateLocal';
+import { maskCpfCnpj } from '../../utils/formatters';
 import { formaPagamentoEhPix } from '../../utils/formaPagamento';
+
+const ESTADO_CIVIL_REPRESENTANTE = {
+  SOLTEIRO: 'Solteiro(a)',
+  CASADO: 'Casado(a)',
+  DIVORCIADO: 'Divorciado(a)',
+  VIUVO: 'Viúvo(a)',
+  SEPARADO: 'Separado(a)',
+  UNIAO_ESTAVEL: 'União estável'
+};
 
 /*
   DADOS DO REGISTRO — o bloco principal do detalhe (migração de 05/09).
@@ -209,6 +219,12 @@ export default function Header({
     .join(' · ');
 
   const temContrato = Boolean(contratoDoFluxo);
+  const qualificacaoRepresentante = contratoDoFluxo?.representante_legal_qualificacao;
+  const representanteLegal = qualificacaoRepresentante && typeof qualificacaoRepresentante === 'object'
+    && !Array.isArray(qualificacaoRepresentante) ? qualificacaoRepresentante : null;
+  const qualificacaoConjuge = representanteLegal?.conjuge;
+  const conjugeRepresentante = qualificacaoConjuge && typeof qualificacaoConjuge === 'object'
+    && !Array.isArray(qualificacaoConjuge) ? qualificacaoConjuge : null;
   const rotuloParceiro = solicitacao?.parceiro
     ? (solicitacao.parceiro.cpf_cnpj
       ? `${solicitacao.parceiro.nome} — ${solicitacao.parceiro.cpf_cnpj}`
@@ -289,6 +305,27 @@ export default function Header({
     { label: 'Favorecido do contrato', contexto: temContrato, valor: rotuloFavorecidoContrato, span: 2 },
     { label: 'Chave PIX', contexto: temContrato, valor: rotuloChavePixContrato, span: 2 }
   ];
+  const camposRepresentante = representanteLegal ? [
+    { label: 'Nome completo', valor: representanteLegal.nome, span: 2 },
+    { label: 'CPF', valor: maskCpfCnpj(representanteLegal.cpf) },
+    { label: 'RG', valor: representanteLegal.rg },
+    { label: 'Cargo ou função', valor: representanteLegal.cargo },
+    { label: 'Nacionalidade', valor: representanteLegal.nacionalidade },
+    {
+      label: 'Estado civil',
+      valor: ESTADO_CIVIL_REPRESENTANTE[representanteLegal.estado_civil]
+        || representanteLegal.estado_civil
+    },
+    { label: 'Profissão', valor: representanteLegal.profissao }
+  ] : [];
+  const camposConjuge = conjugeRepresentante ? [
+    { label: 'Nome completo', valor: conjugeRepresentante.nome, span: 2 },
+    { label: 'CPF', valor: maskCpfCnpj(conjugeRepresentante.cpf) },
+    { label: 'RG', valor: conjugeRepresentante.rg },
+    { label: 'Nacionalidade', valor: conjugeRepresentante.nacionalidade },
+    { label: 'Profissão', valor: conjugeRepresentante.profissao },
+    { label: 'Regime de bens', valor: conjugeRepresentante.regime_bens, span: 2 }
+  ] : [];
 
   return (
     <>
@@ -300,6 +337,19 @@ export default function Header({
       >
         <Avisos avisos={avisos} aoFechar={fechar} />
         <CamposComVazios colunas={4} campos={campos} />
+
+        {representanteLegal && (
+          <section className="mt-4 border-t border-[var(--c-border)] pt-3" aria-label="Qualificação do representante legal">
+            <h3 className="mb-2 text-sm font-semibold text-[var(--c-text)]">Representante legal</h3>
+            <CamposComVazios colunas={4} campos={camposRepresentante} />
+          </section>
+        )}
+        {conjugeRepresentante && (
+          <section className="mt-4 border-t border-[var(--c-border)] pt-3" aria-label="Dados do cônjuge">
+            <h3 className="mb-2 text-sm font-semibold text-[var(--c-text)]">Cônjuge do representante</h3>
+            <CamposComVazios colunas={4} campos={camposConjuge} />
+          </section>
+        )}
 
         {/* Pares "Rótulo: valor" da DESCRIÇÃO: leitura do texto livre,
             não são campos do sistema — não alimentam título, previsão

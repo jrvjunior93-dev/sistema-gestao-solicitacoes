@@ -1,5 +1,8 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: exibir no card Dados da solicitacao a qualificacao do representante legal e do conjuge preenchida em contratos acima da variavel configuravel. Escopo: `backend/src/services/contratoFluxoNovoService.js`, `frontend/src/pages/SolicitacaoDetalhe/Header.jsx`, validacoes e handoff. Preservar `outputs/`; sem EC2, RDS, migration ou deploy pelo agente. Commit e push autorizados pelo usuario na etapa seguinte.
+Implementacao local concluida; ownership de edicao liberado. Handoff: `docs/handoffs/2026-09-18-qualificacao-representante-detalhe-contrato.md`.
+
 Ownership temporario /root em 18/09/2026: encurtar a descricao dos titulos de solicitacao e ordenar todas as colunas de Contas a Pagar/Receber no servidor, preservando paginacao e permissoes. Escopo: `backend/src/services/tituloFinanceiroService.js`, `backend/src/validators/financialValidators.js`, `backend/scripts/validarFiltroValorTitulos.js`, `frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx`, `frontend/src/pages/FinanceiroTitulos.jsx`, testes e handoff. Preservar `outputs/`. Sem EC2, RDS, commit ou deploy nesta tarefa.
 Implementacao local concluida; ownership de edicao liberado. Handoff: `docs/handoffs/2026-09-18-compra-direta-fila-ordenacao-titulos.md`.
 

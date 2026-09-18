@@ -2236,7 +2236,7 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
       'favorecido_id',
       // Cabecalho novo (23/08): OBJETO, CONTRATADO e RESPONSAVEL existiam no banco e nunca chegavam
       // a tela. `objeto` e `responsavel_id` saem daqui; os contratados vem de `contrato_credores`.
-      'objeto', 'responsavel_id']
+      'objeto', 'responsavel_id', 'representante_legal_qualificacao']
   });
   if (!contrato) {
     throw Object.assign(new Error('Contrato nao encontrado.'), { statusCode: 404 });
@@ -2468,6 +2468,9 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
         }
         : null,
       objeto: contrato.objeto || null,
+      // Fotografia informada na abertura, sem buscar dados atuais do parceiro. A rota de
+      // parcelas ja exige acesso ao contrato; o detalhe usa estes dados somente no contrato dono.
+      representante_legal_qualificacao: contrato.representante_legal_qualificacao || null,
       responsavel: responsavelRegistro ? { id: responsavelRegistro.id, nome: responsavelRegistro.nome } : null,
       // PI-12: todos os contratados respondem pelo contrato, e podem ser varios.
       contratados: contratadosRegistros.map((c) => ({
