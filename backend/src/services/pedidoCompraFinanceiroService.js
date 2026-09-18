@@ -166,6 +166,7 @@ async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = tru
     lock: transaction?.LOCK?.UPDATE,
     order: [['numero_parcela', 'ASC'], ['id', 'ASC']]
   });
+  await require('./tituloRenegociacaoVinculos').projetarAssociacoes(vinculos, 'titulo', { transaction });
   const resultado = vinculos.map((vinculo) => ({
     vinculo_id: vinculo.id,
     origem: vinculo.origem,
@@ -190,20 +191,22 @@ async function buscarTitulosPedido(pedidoId, { transaction, incluirLegados = tru
     lock: transaction?.LOCK?.UPDATE,
     order: [['data_vencimento', 'ASC'], ['id', 'ASC']]
   });
-  return resultado.concat(titulosLegados.map((titulo) => ({
+  const legadosEfetivos = await require('./tituloRenegociacaoVinculos').projetarOrigens(titulosLegados, { transaction });
+  return resultado.concat(legadosEfetivos.map((titulo) => ({
     vinculo_id: null,
     origem: 'LEGADO_DETECTADO',
     status_liberacao: normalize(titulo.status) === 'PREVISAO' ? 'PREVISAO' : 'LIBERADO',
     numero_parcela: titulo.numero_parcela,
     total_parcelas: titulo.total_parcelas,
-    titulo: titulo.toJSON()
+    titulo: titulo.toJSON ? titulo.toJSON() : titulo
   })));
 }
 
 function derivarStatusFinanceiro(pedido, titulos = []) {
   if (normalize(pedido.status) === 'CANCELADO') return STATUS_FLUXO.CANCELADO;
   const ativos = titulos.filter((item) => !STATUS_TITULO_ENCERRADO.has(normalize(item.titulo?.status)));
-  if (ativos.some((item) => STATUS_TITULO_PAGO.has(normalize(item.titulo?.status)))) {
+  if (ativos.some((item) => STATUS_TITULO_PAGO.has(normalize(item.titulo?.status))
+    || normalize(item.titulo?.status) === 'PARCIAL' || Number(item.titulo?.valor_baixado || 0) > 0)) {
     return ativos.every((item) => STATUS_TITULO_PAGO.has(normalize(item.titulo?.status)))
       ? STATUS_FLUXO.CONCLUIDO
       : STATUS_FLUXO.PAGO_PARCIALMENTE;
@@ -331,6 +334,7 @@ async function aplicarResumoFinanceiroPedidos(pedidos = [], options = {}) {
     })
   ]);
 
+  await require('./tituloRenegociacaoVinculos').projetarAssociacoes(vinculos, 'titulo', { transaction: options.transaction });
   const titulosPorPedido = new Map(ids.map((id) => [id, []]));
   const tituloIdsExplicitamenteVinculados = new Set();
   for (const vinculo of vinculos) {
@@ -357,7 +361,8 @@ async function aplicarResumoFinanceiroPedidos(pedidos = [], options = {}) {
         raw: true
       })
     : [];
-  const mapaTitulosLegados = new Map(titulosLegados.map((titulo) => [Number(titulo.id), titulo]));
+  const legadosEfetivos = await require('./tituloRenegociacaoVinculos').projetarOrigens(titulosLegados, { transaction: options.transaction });
+  const mapaTitulosLegados = new Map(legadosEfetivos.map((titulo) => [Number(titulo.id), titulo]));
   for (const [pedidoId, tituloIds] of legadosPorPedido.entries()) {
     for (const tituloId of tituloIds) {
       const titulo = mapaTitulosLegados.get(tituloId);

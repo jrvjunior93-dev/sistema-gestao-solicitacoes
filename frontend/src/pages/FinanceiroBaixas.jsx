@@ -206,6 +206,7 @@ export default function FinanceiroBaixas() {
   }
 
   async function estornarBaixa(baixa) {
+    if (baixa.renegociacao_alocacao_id || baixa.titulo?.renegociado_por_id) return;
     if (String(baixa.status || '').toUpperCase() !== 'ATIVO') {
       return;
     }
@@ -427,7 +428,7 @@ export default function FinanceiroBaixas() {
         titulo="Movimentos de baixa"
         variante="primario"
         cor="var(--module-financeiro)"
-        descricao="Estornar libera o título para nova baixa, mantendo histórico e auditoria."
+        descricao="Negociações são detalhadas por rateio. Para estornar uma baixa negociada, abra o título e confira o valor integral. Baixas anteriores ao acordo permanecem preservadas."
       >
         <TabelaPadrao
           colunas={[
@@ -482,6 +483,7 @@ export default function FinanceiroBaixas() {
             { id: 'status', titulo: 'Status', tipo: 'status', render: (baixa) => <StatusBadge status={baixa.status} /> }
           ]}
           itens={loading ? [] : baixasPaginadas}
+          getId={(baixa) => `${baixa.id}:${baixa.renegociacao_alocacao_id || 0}`}
           carregando={loading}
           vazio="Nenhuma baixa encontrada."
           /* A descrição completa do título, sem reticências (T7). */
@@ -500,8 +502,8 @@ export default function FinanceiroBaixas() {
                 type="button"
                 className="btn btn-outline btn-sm btn-perigo-suave"
                 onClick={() => estornarBaixa(baixa)}
-                disabled={processingId === baixa.id || String(baixa.status || '').toUpperCase() !== 'ATIVO'}
-                title="Estornar baixa"
+                disabled={Boolean(baixa.renegociacao_alocacao_id || baixa.titulo?.renegociado_por_id) || processingId === baixa.id || String(baixa.status || '').toUpperCase() !== 'ATIVO'}
+                title={baixa.renegociacao_alocacao_id ? 'Abra o título para estornar o valor integral da baixa' : baixa.titulo?.renegociado_por_id ? 'Baixa anterior preservada pela negociação' : 'Estornar baixa'}
               >
                 {processingId === baixa.id ? <HiOutlineArrowPath className="h-4 w-4 animate-spin" /> : <HiOutlineBanknotes className="h-4 w-4" />}
               </button>

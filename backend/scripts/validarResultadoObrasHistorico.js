@@ -14,10 +14,14 @@ async function main() {
     { id: 1, codigo: '1', nome: 'Obra A', classificacao: 'PRIVADA', vgv: 500 },
     { id: 2, codigo: '2', nome: 'Obra B', classificacao: 'PUBLICA', planilha_geral: 300 }
   ];
-  TituloFinanceiro.findAll = async () => [
+  TituloFinanceiro.findAll = async (options) => {
+    if (!options.group) return []; // Nenhuma parcela de negociação nesta fixture de legado.
+    assert.equal(options.where.renegociacao_id, null, 'Agregado direto não pode duplicar parcelas rateadas');
+    return [
     { obra_id: 1, tipo: 'PAGAR', total_valor_original: '100.00', total_valor_baixado: '60.00', total_valor_saldo: '40.00', quantidade: '1' },
     { obra_id: 1, tipo: 'RECEBER', total_valor_original: '200.00', total_valor_baixado: '100.00', total_valor_saldo: '100.00', quantidade: '1' }
-  ];
+    ];
+  };
   TituloFinanceiroRateio.findAll = async () => [{
     obra_id: 2,
     valor_rateio: '50.00',

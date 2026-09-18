@@ -20,6 +20,22 @@ function buildQuery(params = {}) {
   ).toString();
 }
 
+export async function rhTransferencias(path = '', { method = 'GET', data, params } = {}) {
+  const query = buildQuery(params);
+  const response = await fetch(`${API_URL}/rh/transferencias${path}${query ? `?${query}` : ''}`, {
+    method, headers: authHeaders({ 'Content-Type': 'application/json' }),
+    ...(data ? { body: JSON.stringify(data) } : {})
+  });
+  return parseJson(response, 'Erro ao consultar transferências entre obras');
+}
+
+export async function comentarRhSolicitacao(id, texto) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/comentar`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ texto })
+  });
+  return parseJson(response, 'Erro ao comentar na solicitação');
+}
+
 export async function getRhEmpresasGrupo(params = {}) {
   const query = buildQuery(params);
   const url = query ? `${API_URL}/rh/empresas-grupo?${query}` : `${API_URL}/rh/empresas-grupo`;

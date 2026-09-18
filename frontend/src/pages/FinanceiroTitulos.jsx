@@ -44,6 +44,7 @@ import {
 } from '../utils/acessoProduto';
 import FinanceiroTitulosImportacaoPanel from '../components/financeiro/FinanceiroTitulosImportacaoPanel';
 import BaixaCompostaModal from '../components/financeiro/BaixaCompostaModal';
+import TituloNegociacaoModal, { podeNegociarTitulos } from '../components/financeiro/TituloNegociacaoModal';
 import ChequePagamentoFields from '../components/financeiro/ChequePagamentoFields';
 import {
   Pagina,
@@ -875,6 +876,7 @@ function isTituloExcluivel(titulo) {
 }
 
 function isTituloEditavel(titulo) {
+  if (titulo?.renegociacao_id || titulo?.renegociado_por_id) return false;
   return ['PREVISAO', 'ABERTO'].includes(String(titulo?.status || '').trim().toUpperCase()) && Number(titulo?.valor_baixado || 0) === 0;
 }
 
@@ -976,6 +978,8 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const { avisos, avisar, fechar: fecharAviso } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const canDeleteTitulos = canDeleteTitulosFinanceiros(user);
+  const canNegociar = hasPermissao(user, 'financeiro.titulos.renegociar');
+  const [titulosNegociacao, setTitulosNegociacao] = useState(null);
   const canImportTitulos = canImportTitulosFinanceiros(user);
   const canPrepareFila = canPrepareFilaPagamentos(user);
   // `financeiro.cadastros.visualizar` só existia aqui para pintar um link
@@ -1454,7 +1458,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }, [parceiros, draftFilters.tipo]);
 
   const resumo = useMemo(() => titulos.reduce((acc, item) => {
-    acc.total += Number(item.valor_original || 0);
+    acc.total += Number((item.renegociado_por_id ? item.valor_baixado : item.valor_original) || 0);
     acc.saldo += Number(item.valor_saldo || 0);
     acc.quantidade += 1;
     if (isOverdue(item)) {
@@ -2449,6 +2453,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               <option value="QUITADO">Quitado</option>
               <option value="CANCELADO">Cancelado</option>
               <option value="ESTORNADO">Estornado</option>
+              <option value="RENEGOCIADO">Renegociado</option>
             </select>
           </label>
         );
@@ -3038,6 +3043,10 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               Baixar selecionados
               {selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}
             </button>
+            {canNegociar && <button type="button" className="btn btn-outline btn-sm"
+              disabled={!podeNegociarTitulos(selectedTitulos, 2) || savingBaixaMassa}
+              title="Selecione de 2 a 100 títulos com saldo, do mesmo parceiro, empresa e tipo"
+              onClick={() => setTitulosNegociacao([...selectedTitulos])}>Negociar selecionados</button>}
             {canPrepareFila && tipoReferencia === 'PAGAR' ? (
               <button
                 type="button"
@@ -3216,7 +3225,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 id: 'obra',
                 titulo: 'Obra',
                 tipo: 'texto',
-                render: (titulo) => <span className="text-[var(--c-muted)]">{titulo.obra?.nome || '-'}</span>
+                  render: (titulo) => <span className="text-[var(--c-muted)]">{titulo.obra?.nome || (titulo.renegociacao_id && titulo.possui_rateio ? 'Várias obras · rateado' : '-')}</span>
               },
               {
                 id: 'categoria',
@@ -3312,9 +3321,12 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               aoAlternar: (id, titulo) => toggleTituloSelecionado(titulo, !selectedTituloSet.has(Number(id))),
               aoAlternarTodos: (marcar) => toggleTodosBaixaveis(marcar)
             }}
-            larguraAcoes={160}
+            larguraAcoes={canNegociar ? 240 : 160}
             acoesLinha={(titulo) => (
               <>
+                {canNegociar && podeNegociarTitulos([titulo]) && <button type="button"
+                  className="btn btn-outline btn-sm" onClick={() => setTitulosNegociacao([titulo])}
+                  title="Parcelar o saldo deste título">Parcelar</button>}
                 <Link
                   className="btn btn-outline btn-sm"
                   to={`/financeiro/titulos/${titulo.id}`}
@@ -4028,6 +4040,11 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       ) : null}
 
       {/* R19: modal de confirmação do sistema (exclusão em massa). */}
+      {titulosNegociacao && <TituloNegociacaoModal titulos={titulosNegociacao}
+        onClose={() => setTitulosNegociacao(null)} onConfirmed={() => {
+          setSelectedTituloIds([]);
+          setAppliedFilters(current => current ? { ...current } : current);
+        }} />}
       {elementoConfirmacao}
     </Pagina>
   );

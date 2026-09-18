@@ -447,6 +447,7 @@ const ProvisaoFinanceiraDashboardController = require('./controllers/ProvisaoFin
 const RhEmpresaGrupoController = require('./controllers/RhEmpresaGrupoController');
 const RhColaboradorController = require('./controllers/RhColaboradorController');
 const RhSolicitacaoController = require('./controllers/RhSolicitacaoController');
+const RhTransferenciaController = require('./controllers/RhTransferenciaController');
 const RhJornadaController = require('./controllers/RhJornadaController');
 const RhDocumentoController = require('./controllers/RhDocumentoController');
 const RhImportacaoController = require('./controllers/RhImportacaoController');
@@ -1941,6 +1942,13 @@ router.patch('/rh/colaboradores/:id', allowRhDpColaboradoresWrite, criticalRateL
 router.post('/rh/colaboradores/importar-massa', allowRhDpColaboradoresWrite, uploadRateLimit, uploadComprovantes.single('file'), RhColaboradorController.importarMassa);
 
 // --- Pedido de pessoal: a Obra pede, o DP decide (Fase 6 do modulo DP, 26/08) ---
+// Aprovação de transferência usa os responsáveis vigentes, não a permissão de decidir do DP.
+router.get('/rh/transferencias/configuracao', allowRhDpSolicitacaoVer, RhTransferenciaController.configuracao);
+router.get('/rh/transferencias/diretorio', allowRhDpSolicitacaoVer, RhTransferenciaController.diretorio);
+router.get('/rh/transferencias', allowRhDpSolicitacaoVer, RhTransferenciaController.index);
+router.post('/rh/transferencias', allowRhDpSolicitacaoVer, criticalRateLimit, RhTransferenciaController.create);
+router.get('/rh/transferencias/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Transferencia') }), RhTransferenciaController.show);
+router.post('/rh/transferencias/:id/:acao', allowRhDpSolicitacaoVer, criticalRateLimit, RhTransferenciaController.agir);
 router.get('/rh/solicitacoes', allowRhDpSolicitacaoVer, RhSolicitacaoController.index);
 router.get('/rh/solicitacoes/checklist', allowRhDpSolicitacaoVer, RhSolicitacaoController.checklistDoTipo);
 router.get('/rh/solicitacoes/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.show);
@@ -1951,6 +1959,7 @@ router.post('/rh/solicitacoes/:id/aprovar', allowRhDpSolicitacaoDecidir, critica
 router.post('/rh/solicitacoes/:id/rejeitar', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.rejeitar);
 router.post('/rh/solicitacoes/:id/reenviar', allowRhDpSolicitacaoAbrir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.reenviar);
 router.post('/rh/solicitacoes/:id/cancelar', allowRhDpSolicitacaoAbrir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.cancelar);
+router.post('/rh/solicitacoes/:id/comentar', allowRhDpSolicitacaoAbrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.comentar);
 // --- Fases 9 a 11 do DP (27/08). O checklist do TIPO vem antes do `:id` de proposito: sem barra
 // numerica, `/rh/solicitacoes/checklist` seria capturado por `/rh/solicitacoes/:id` se viesse depois.
 router.post('/rh/solicitacoes/:id/enviar', allowRhDpSolicitacaoAbrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.enviar);
@@ -2125,6 +2134,9 @@ router.get('/financeiro/financiamentos-bancarios/:id/auditoria', allowFinanceiro
 router.post('/financeiro/financiamentos-bancarios/:id/gerar-titulos', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Financiamento bancario') }), FinanciamentoBancarioController.gerarTitulos);
 router.patch('/financeiro/financiamentos-bancarios/parcelas/:id', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Parcela do financiamento bancario') }), FinanciamentoBancarioController.atualizarParcela);
 router.get('/financeiro/titulos', allowFinanceiro, validateRequest({ query: validateFinanceTituloQuery }), TituloFinanceiroController.index);
+router.post('/financeiro/titulos/negociacoes/preview', allowFinanceiro, criticalRateLimit, require('./controllers/TituloRenegociacaoController').preview);
+router.post('/financeiro/titulos/negociacoes/confirmar', allowFinanceiro, criticalRateLimit, require('./controllers/TituloRenegociacaoController').confirmar);
+router.get('/financeiro/titulos/:id/negociacao', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), require('./controllers/TituloRenegociacaoController').consultar);
 router.get('/financeiro/titulos/relatorio.pdf', allowFinanceiro, validateRequest({ query: validateFinanceTituloQuery }), TituloFinanceiroController.relatorioPdf);
 router.post('/financeiro/titulos', allowFinanceiro, criticalRateLimit, validateRequest({ body: validateFinanceTituloCreateBody }), TituloFinanceiroController.create);
 router.get('/financeiro/titulos/importacoes/modelo', allowTituloImportar, TituloFinanceiroImportacaoController.modelo);

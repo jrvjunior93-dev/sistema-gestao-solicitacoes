@@ -2466,6 +2466,7 @@ function SecaoComparativo({
       */}
       <BlocoConteudo
         titulo="Comparativo por item"
+        className="cotacao-comparativo-panel min-w-0 max-w-full"
         recolhivel={embedded}
         variante="primario"
         cor="var(--sem-info)"
@@ -2638,11 +2639,11 @@ function SecaoComparativo({
         )}
 
         {modoVisualizacao === 'cards' && (
-        <div className="app-list-stack gap-2">
+        <div className="app-list-stack min-w-0 max-w-full grid-cols-1 gap-2">
           {comparativo.itens.map((item) => (
-            <div key={buildItemKey(item)} className="cotacao-comparativo-item app-list-card px-3 py-3">
+            <div key={buildItemKey(item)} className="cotacao-comparativo-item app-list-card min-w-0 max-w-full px-3 py-3">
               <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0 max-w-full [overflow-wrap:anywhere]">
                   <div className="text-sm font-semibold">{item.nome}</div>
                   <div className="text-xs" style={{ color: 'var(--c-muted)' }}>
                     {formatNumeroCompra(item.quantidade_atual ?? item.quantidade)} {item.unidade} - {item.item_tipo === 'MANUAL' ? 'Manual' : 'Cadastrado'}

@@ -48,7 +48,7 @@ function statusEfetivo(parcela) {
   return {
     status: statusTitulo || parcela.status,
     origem: statusTitulo ? 'TITULO' : 'PARCELA',
-    editavel: statusTitulo
+    editavel: parcela.titulo?.renegociado_por_id ? false : statusTitulo
       ? STATUS_TITULO_EDITAVEL.has(statusTitulo)
       : STATUS_PARCELA_EDITAVEL.has(parcela.status)
   };
@@ -864,6 +864,7 @@ async function calcularStatusDaSolicitacaoDoContrato(contratoId, transaction) {
     transaction
   });
   if (parcelas.length === 0) return null;
+  await require('./tituloRenegociacaoVinculos').projetarAssociacoes(parcelas, 'titulo', { transaction });
 
   const medidas = new Set(
     (await MedicaoParcela.findAll({
@@ -1012,7 +1013,7 @@ async function reconciliarParcelasComOPago(contratoId, { usuarioId = null, setor
   const origens = trabalho
     .map((t) => {
       const titulo = t.parcela.titulo;
-      if (!titulo) return null;
+      if (!titulo || titulo.status === 'RENEGOCIADO') return null;
       const baixadoCent = paraCentavos(titulo.valor_baixado || 0);
       // Sem baixa, o alvo e o que foi cobrado. E o que faz o estorno se desfazer sozinho.
       const alvoCent = baixadoCent > 0 ? baixadoCent : paraCentavos(titulo.valor_original || 0);

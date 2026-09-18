@@ -370,6 +370,12 @@ async function abrirSolicitacao(payload = {}, contexto = {}) {
     if (colaboradorId) {
       const colaborador = await RhColaborador.findByPk(colaboradorId, { transaction });
       if (!colaborador) throw new ValidationError('Colaborador nao encontrado.', 404);
+      if (require('./rhPessoalDomain').ehTransferencia({ tipo, subtipo, obra_id: colaborador.obra_id })) {
+        throw new ValidationError('Use o fluxo de transferencia entre os responsaveis das obras.');
+      }
+      if (tipo === 'TROCA_OBRA' || (tipo === 'MOVIMENTACAO' && subtipo === 'TRANSFERENCIA_OBRA')) {
+        dados.primeira_lotacao = !colaborador.obra_id;
+      }
 
       // Um pedido aberto por vez, por tipo: dois pedidos de troca de obra do mesmo colaborador
       // aprovados em sequencia produziriam duas transferencias, e a segunda apagaria a primeira.
@@ -481,6 +487,10 @@ async function marcarNoChecklist(solicitacaoId, documentoTipoIds = [], contexto 
     );
   }
 
+  if (paraRemover.length || pedidos.some(id => !jaMarcadosIds.has(id))) {
+    await registrarHistorico(solicitacao, { acao: 'CHECKLIST', descricao: 'Checklist de documentos atualizado.',
+      usuarioId: contexto.usuarioId, setor: contexto.setor }, transaction);
+  }
   return { marcados: pedidos.length, removidos: paraRemover.length };
 }
 
@@ -753,8 +763,11 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
   }
 
   if (efeito === 'TROCA_OBRA') {
-    const colaborador = await RhColaborador.findByPk(solicitacao.colaborador_id, { transaction });
+    const colaborador = await RhColaborador.findByPk(solicitacao.colaborador_id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!colaborador) throw new ValidationError('Colaborador da solicitacao nao existe mais.', 404);
+    if (colaborador.obra_id) {
+      throw new ValidationError('O colaborador ja tem obra. A transferencia precisa da aprovacao do responsavel da outra obra.', 409);
+    }
 
     const vigencia = paraDataIso(dados.data_vigencia) || hojeIso();
 
@@ -946,7 +959,7 @@ async function transferirSeJaTemColaborador(solicitacao, contexto, transaction) 
 /** Aprova o pedido e aplica o efeito. Recusa decidir de novo o que ja foi decidido. */
 async function aprovarSolicitacao(id, contexto = {}) {
   return sequelize.transaction(async (transaction) => {
-    const solicitacao = await RhSolicitacao.findByPk(id, { transaction });
+    const solicitacao = await RhSolicitacao.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!solicitacao) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
 
     if (solicitacao.situacao !== SITUACOES.ABERTA) {
@@ -1062,6 +1075,8 @@ async function reenviarSolicitacao(id, payload = {}, contexto = {}) {
     }
 
     const dados = payload.dados ? payload.dados : dadosDo(solicitacao);
+    // A classificação de primeira lotação vem do servidor e não pode ser alterada no reenvio.
+    if (dadosDo(solicitacao).primeira_lotacao === true) dados.primeira_lotacao = true;
     // O subtipo entra aqui tambem: sem ele, o reenvio viraria a porta para gravar um pedido que a
     // abertura recusaria — que e exatamente o que `validarPedido` existe para impedir.
     validarPedido(solicitacao.tipo, dados, solicitacao.colaborador_id, solicitacao.subtipo);
@@ -1162,6 +1177,7 @@ async function pedidosAbertosPorColaborador(obraIds = null) {
 
   const porColaborador = new Map();
   for (const pedido of abertas) {
+    if (require('./rhPessoalDomain').ehTransferencia(pedido)) continue;
     if (!pedido.colaborador_id) continue;
     const lista = porColaborador.get(pedido.colaborador_id) || [];
     lista.push(pedido);

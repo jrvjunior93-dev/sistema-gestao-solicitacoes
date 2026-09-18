@@ -98,6 +98,7 @@ function linhaVazia(colaborador) {
     nome: colaborador.nome,
     tipo_vinculo: colaborador.tipo_vinculo,
     salario_base: colaborador.salario_base,
+    diasVinculados: Number(colaborador.dias_vinculados ?? 0),
     jaInformado: Boolean(colaborador.jornada_informada),
     jornadaLinhaId: colaborador.jornada_linha_id || null,
     edicaoId: edicao?.id || null,
@@ -373,7 +374,7 @@ export default function RhDpJornada() {
     setLinhas((atuais) => atuais.map((linha) => (
       linha.aindaNaoComecou || !podeEditarLinha(linha) ? linha : {
       ...linha,
-      dias_trabalhados: linha.dias_trabalhados === '' ? String(diasBase) : linha.dias_trabalhados,
+      dias_trabalhados: linha.dias_trabalhados === '' ? String(Math.max(0, Math.min(Number(diasBase), linha.diasVinculados) - Number(linha.faltas || 0))) : linha.dias_trabalhados,
       faltas: linha.faltas === '' ? '0' : linha.faltas
       }
     )));
@@ -391,7 +392,7 @@ export default function RhDpJornada() {
   const comProblema = useMemo(() => linhas.filter((linha) => {
     const dias = Number(linha.dias_trabalhados || 0);
     const faltas = Number(linha.faltas || 0);
-    return linha.dias_trabalhados !== '' && dias + faltas > Number(diasBase);
+    return dias + faltas > Math.min(Number(diasBase), linha.diasVinculados);
   }), [linhas, diasBase]);
 
   const dimensoesFiltro = useMemo(() => {
@@ -521,8 +522,8 @@ export default function RhDpJornada() {
 
     if (comProblema.length) {
       avisar.erro(
-        `Dias trabalhados mais faltas passam de ${diasBase} em: `
-        + `${comProblema.map((l) => l.nome).join(', ')}.`
+        'Dias trabalhados mais faltas ultrapassam o limite do vínculo no período: '
+        + `${comProblema.map((l) => `${l.nome} (máximo ${Math.min(Number(diasBase), l.diasVinculados)})`).join(', ')}.`
       );
       return;
     }
@@ -824,6 +825,7 @@ export default function RhDpJornada() {
                   tipo: 'badge',
                   render: (linha) => linha.tipo_vinculo
                 },
+                { id: 'limiteVinculo', titulo: 'Dias na obra', tipo: 'numero', render: linha => linha.diasVinculados },
                 {
                   id: 'salario',
                   titulo: 'Salário',
@@ -840,7 +842,8 @@ export default function RhDpJornada() {
                       className="form-control rh-jornada-numero"
                       type="number"
                       min="0"
-                      max={diasBase}
+                      max={Math.min(Number(diasBase), linha.diasVinculados)}
+                      title={`Limite: ${linha.diasVinculados} dia(s) de vínculo no período`}
                       aria-label={`Dias trabalhados de ${linha.nome}`}
                       value={linha.dias_trabalhados}
                       disabled={!podeEditarLinha(linha)}
@@ -857,7 +860,7 @@ export default function RhDpJornada() {
                       className="form-control rh-jornada-numero"
                       type="number"
                       min="0"
-                      max={diasBase}
+                      max={Math.min(Number(diasBase), linha.diasVinculados)}
                       aria-label={`Faltas de ${linha.nome}`}
                       value={linha.faltas}
                       disabled={!podeEditarLinha(linha)}
@@ -975,7 +978,7 @@ export default function RhDpJornada() {
               // A tarja substitui as classes de linha do markup antigo: dias +
               // faltas acima da base é erro; quem ainda nao comecou é aviso.
               urgencia={(linha) => {
-                if (Number(linha.dias_trabalhados || 0) + Number(linha.faltas || 0) > Number(diasBase)) return 'danger';
+                if (Number(linha.dias_trabalhados || 0) + Number(linha.faltas || 0) > Math.min(Number(diasBase), linha.diasVinculados)) return 'danger';
                 return linha.aindaNaoComecou ? 'warning' : null;
               }}
               vazio="Nenhum colaborador nesta obra e período."
@@ -984,7 +987,7 @@ export default function RhDpJornada() {
 
           {comProblema.length ? (
             <div className="app-alert app-alert--error">
-              Dias mais faltas passam de {diasBase} em: {comProblema.map((l) => l.nome).join(', ')}.
+              Dias mais faltas ultrapassam o limite por vínculo: {comProblema.map((l) => `${l.nome} (máximo ${Math.min(Number(diasBase), l.diasVinculados)})`).join(', ')}.
             </div>
           ) : null}
 

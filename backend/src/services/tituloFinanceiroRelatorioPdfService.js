@@ -293,7 +293,7 @@ function drawTableRow(doc, titulo, y, index) {
 function buildSummary(titulos) {
   const now = new Date();
   return titulos.reduce((summary, titulo) => {
-    const total = toNumber(titulo.valor_original);
+    const total = toNumber(titulo.renegociado_por_id ? titulo.valor_baixado : titulo.valor_original);
     const balance = toNumber(titulo.valor_saldo);
     const paid = Math.max(toNumber(titulo.valor_baixado), total - balance, 0);
     const dueDate = titulo.data_vencimento ? new Date(`${titulo.data_vencimento}T23:59:59`) : null;

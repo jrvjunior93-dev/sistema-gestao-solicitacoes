@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import TituloNegociacaoHistorico from '../components/financeiro/TituloNegociacaoHistorico';
 import { Link, useParams } from 'react-router-dom';
 import {
   atualizarCobrancaTituloFinanceiro,
@@ -452,6 +453,7 @@ export default function FinanceiroTituloDetalhe() {
     ? pagamentosAtivos.length
     : Number(titulo?.payment_intents_ativos_count || 0);
   const podeEditarTitulo = ['PREVISAO', 'ABERTO'].includes(String(titulo?.status || '').toUpperCase())
+    && !titulo?.renegociacao_id && !titulo?.renegociado_por_id
     && Number(titulo?.valor_baixado || 0) === 0
     && movimentosAtivosCount === 0
     && pagamentosAtivosCount === 0;
@@ -756,6 +758,7 @@ export default function FinanceiroTituloDetalhe() {
         />
 
         <Avisos avisos={avisos} aoFechar={fechar} />
+        <TituloNegociacaoHistorico titulo={titulo} />
 
         {error && (
           <div className="app-alert app-alert--error">
@@ -1170,7 +1173,8 @@ export default function FinanceiroTituloDetalhe() {
                           <button
                             type="button"
                             className="btn btn-outline btn-sm"
-                            disabled={estornandoId === movimento.id || savingBaixa}
+                            disabled={Boolean(titulo.renegociado_por_id) || estornandoId === movimento.id || savingBaixa}
+                            title={titulo.renegociado_por_id ? 'Baixa anterior preservada pela negociação. Consulte os novos títulos.' : undefined}
                             onClick={() => handleCorrigirBaixa(movimento)}
                           >
                             {corrigindoMovimentoId === movimento.id && estornandoId === movimento.id
@@ -1181,7 +1185,8 @@ export default function FinanceiroTituloDetalhe() {
                             <button
                               type="button"
                               className="btn btn-outline btn-sm btn-perigo-suave"
-                              disabled={estornandoId === movimento.id || savingBaixa}
+                              disabled={Boolean(titulo.renegociado_por_id) || estornandoId === movimento.id || savingBaixa}
+                              title={titulo.renegociado_por_id ? 'Baixa anterior preservada pela negociação. Consulte os novos títulos.' : undefined}
                               onClick={() => handleEstornar(movimento.id)}
                             >
                               {estornandoId === movimento.id && corrigindoMovimentoId !== movimento.id

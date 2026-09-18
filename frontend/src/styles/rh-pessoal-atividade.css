@@ -1,0 +1,4 @@
+.app-tabela-linha.rh-solicitacao-nao-lida > td {
+  background: color-mix(in srgb, var(--sem-warning) 12%, var(--ui-surface));
+}
+.rh-solicitacao-nao-lida { font-weight: 500; }

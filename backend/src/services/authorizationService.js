@@ -31,6 +31,7 @@ const FINANCEIRO_RELATORIOS_PERMISSION_KEYS = [
 const FINANCEIRO_PERMISSION_KEYS = [
   'financeiro.titulos.visualizar',
   'financeiro.titulos.criar',
+  'financeiro.titulos.renegociar',
   'financeiro.titulos.importar',
   'financeiro.titulos.exportar',
   'financeiro.titulos.importar_codigos',

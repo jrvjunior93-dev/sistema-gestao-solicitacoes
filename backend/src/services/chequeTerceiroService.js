@@ -1029,8 +1029,10 @@ async function estornarBaixaComposta(req, id, payload = {}) {
       const novoBaixado = Math.max(0, round(Number(titulo.valor_baixado || 0) - (totalPorTitulo.get(Number(titulo.id)) || 0)));
       const saldo = Math.max(0, round(Number(titulo.valor_original || 0) - novoBaixado));
       const status = novoBaixado <= 0 ? 'ABERTO' : (saldo <= 0 ? 'QUITADO' : 'PARCIAL');
-      await titulo.update({ valor_baixado: novoBaixado, valor_saldo: saldo, status, data_quitacao: status === 'QUITADO' ? titulo.data_quitacao : null, atualizado_por: req.user?.id || null }, { transaction });
-      await sincronizarRealizacaoCompraPorTitulo({ titulo, statusTitulo: status, transaction });
+      await titulo.update({ valor_baixado: novoBaixado, valor_saldo: saldo, status, data_quitacao: status === 'QUITADO' ? titulo.data_quitacao : null, atualizado_por: req.user?.id || null }, { transaction, adiarSincronizacaoRenegociacao: true });
+    }
+    for (const titulo of titulos) {
+      await sincronizarRealizacaoCompraPorTitulo({ titulo, statusTitulo: titulo.status, transaction });
       await sincronizarStatusSolicitacaoPorBaixaTitulos({
         solicitacaoId: titulo.solicitacao_id,
         usuarioId: req.user?.id || null,
@@ -1040,6 +1042,12 @@ async function estornarBaixaComposta(req, id, payload = {}) {
       });
     }
 
+    // Todos os movimentos do grupo já foram estornados. Resolver os vínculos
+    // apenas após atualizar TODOS os títulos evita ler parcelas intermediárias.
+    const negociados = titulos.filter(titulo => titulo.renegociacao_id).map(titulo => titulo.id);
+    if (negociados.length) await require('./tituloRenegociacaoSincronizacao').sincronizarDestinos(negociados, {
+      transaction, usuarioId: req.user?.id || null
+    });
     const componentes = await BaixaFinanceiraComponente.findAll({ where: { baixa_grupo_id: grupo.id }, transaction });
     for (const componente of componentes.filter((item) => item.cheque_terceiro_id)) {
       const cheque = await ChequeTerceiro.findByPk(componente.cheque_terceiro_id, { transaction, lock: transaction.LOCK.UPDATE });

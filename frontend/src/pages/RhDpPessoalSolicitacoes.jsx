@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Avisos,
   BarraFiltros,
@@ -8,6 +8,7 @@ import {
   useConfirmacao
 } from '../components/padrao';
 import OverlayModal from '../components/ui/OverlayModal';
+import '../styles/rh-pessoal-atividade.css';
 import {
   anexarNaRhSolicitacao,
   aprovarRhSolicitacao,
@@ -15,6 +16,8 @@ import {
   conferirDocumentacaoRhSolicitacao,
   listarAnexosRhSolicitacao,
   listarRhSolicitacoes,
+  getRhSolicitacao,
+  comentarRhSolicitacao,
   reenviarRhSolicitacao,
   rejeitarRhSolicitacao,
   validarAnexoRhSolicitacao,
@@ -109,6 +112,10 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
   const filtroTipo = useMemo(() => primeiroValor(ativos.tipo), [ativos]);
 
   const [aberta, setAberta] = useState(null);
+  const [comentario, setComentario] = useState('');
+  const [comentando, setComentando] = useState(false);
+  const travaComentario = useRef(false);
+  const detalheAtual = useRef(null);
   const [anexos, setAnexos] = useState([]);
   const [conferencia, setConferencia] = useState(null);
   const [tiposDocumento, setTiposDocumento] = useState([]);
@@ -131,6 +138,18 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
   }, [filtroSituacao, filtroTipo, avisar, limpar]);
 
   useEffect(() => { carregar(); }, [carregar]);
+  useEffect(() => {
+    const atualizar = async () => {
+      if (document.hidden) return;
+      try {
+        const lista = await listarRhSolicitacoes({ situacao: filtroSituacao || undefined, tipo: filtroTipo || undefined });
+        setSolicitacoes(Array.isArray(lista) ? lista : []);
+      } catch { /* A atualização manual mantém o tratamento visível de erros. */ }
+    };
+    const timer = setInterval(atualizar, 30000);
+    window.addEventListener('focus', atualizar);
+    return () => { clearInterval(timer); window.removeEventListener('focus', atualizar); };
+  }, [filtroSituacao, filtroTipo]);
 
   const contagem = useMemo(() => {
     const porTipo = {};
@@ -162,14 +181,20 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
 
   async function abrirDetalhe(solicitacao) {
     limpar();
+    detalheAtual.current = solicitacao.id;
+    setComentario('');
     setAberta(solicitacao);
     setAnexos([]);
     setConferencia(null);
     try {
-      const [listaAnexos, conferido] = await Promise.all([
+      const [listaAnexos, conferido, detalhe] = await Promise.all([
         listarAnexosRhSolicitacao(solicitacao.id),
-        conferirDocumentacaoRhSolicitacao(solicitacao.id)
+        conferirDocumentacaoRhSolicitacao(solicitacao.id),
+        getRhSolicitacao(solicitacao.id)
       ]);
+      if (detalheAtual.current !== solicitacao.id) return;
+      setAberta(detalhe);
+      setSolicitacoes(lista => lista.map(s => s.id === solicitacao.id ? { ...s, nao_lida: false } : s));
       setAnexos(Array.isArray(listaAnexos) ? listaAnexos : []);
       setConferencia(conferido);
       if (!tiposDocumento.length) {
@@ -493,9 +518,9 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
             },
             {
               id: 'aberta',
-              titulo: 'Aberta em',
+              titulo: 'Última interação',
               tipo: 'data',
-              render: (s) => (s.createdAt ? new Date(s.createdAt).toLocaleDateString('pt-BR') : '—')
+              render: (s) => <>{s.atividade_em ? new Date(s.atividade_em).toLocaleString('pt-BR') : '—'}{s.nao_lida && <span className="rh-chip rh-chip--aberta">Nova interação</span>}</>
             }
           ]}
           itens={solicitacoes}
@@ -504,7 +529,8 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
           carregando={carregando}
           vazio="Nenhuma solicitação neste filtro."
           // Rascunho e aberta ainda esperam alguem: a linha fica marcada.
-          urgencia={(s) => (['RASCUNHO', 'ABERTA'].includes(s.situacao) ? 'warning' : null)}
+          urgencia={(s) => (s.nao_lida ? 'warning' : null)}
+          classeLinha={(s) => (s.nao_lida ? 'rh-solicitacao-nao-lida' : '')}
           acoesLinha={(s) => (
             <>
               <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirDetalhe(s)}>
@@ -555,7 +581,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
         <OverlayModal
           rotulo={`${ROTULO_TIPO[aberta.tipo] || aberta.tipo} #${aberta.id}`}
           largura="900px"
-          onFechar={() => setAberta(null)}
+          onFechar={() => { detalheAtual.current = null; setAberta(null); }}
         >
         <div className="rh-modal-conteudo space-y-4">
           {faixaAvisos}
@@ -580,7 +606,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
                 {aberta.justificativa ? ` — ${aberta.justificativa}` : ''}
               </p>
             </div>
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => setAberta(null)}>Fechar</button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => { detalheAtual.current = null; setAberta(null); }}>Fechar</button>
           </div>
 
           {conferencia?.exigeConferencia ? (
@@ -691,6 +717,17 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
             )}
           </div>
 
+          {podeAbrir && <form className="space-y-2" onSubmit={async e => {
+            e.preventDefault();
+            if (travaComentario.current || !comentario.trim()) return;
+            travaComentario.current = true; setComentando(true);
+            try { await comentarRhSolicitacao(aberta.id, comentario); await abrirDetalhe(aberta); await carregar(); }
+            catch (erro) { avisar.erro(erro.message); }
+            finally { travaComentario.current = false; setComentando(false); }
+          }}>
+            <label className="form-field"><span className="form-label">Comentário</span><textarea className="form-control" required maxLength={2000} value={comentario} onChange={e => setComentario(e.target.value)} /></label>
+            <button className="btn btn-outline btn-sm" disabled={comentando || !comentario.trim()}>{comentando ? 'Enviando…' : 'Comentar'}</button>
+          </form>}
           {aberta.historicos?.length ? (
             <div>
               <h3 className="app-bloco-titulo mb-2">Histórico</h3>

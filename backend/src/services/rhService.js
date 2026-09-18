@@ -1139,7 +1139,7 @@ async function atualizarColaboradorRh(id, data, user) {
       if (obraPedida !== obraAtual) {
         throw new ValidationError(
           'A obra do colaborador nao e alterada pelo cadastro. Abra uma solicitacao de troca de '
-          + 'obra para que o Departamento Pessoal decida.'
+          + 'obra pela aba Transferencias entre obras, para aprovacao do outro responsavel.'
         );
       }
     }

@@ -12,6 +12,7 @@ const {
 } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
 const rhVinculoObraService = require('./rhVinculoObraService');
+const { diasVinculados } = require('./rhPessoalDomain');
 
 /**
  * JORNADA PELO FORMULARIO, sem planilha (Fase 4 do modulo DP, 26/08).
@@ -176,6 +177,9 @@ async function registrarJornada(dados = {}, contexto = {}) {
       : 'FORMULARIO';
 
     const diasBase = Number(dados.dias_base || 30);
+    if (!Number.isFinite(diasBase) || diasBase <= 0 || diasBase > 31) {
+      throw new ValidationError('A base de dias deve estar entre 1 e 31.');
+    }
 
     // Um colaborador so pode aparecer uma vez: repetido, a agregacao somaria as duas linhas e o
     // sujeito trabalharia dois meses no mesmo mes.
@@ -191,7 +195,9 @@ async function registrarJornada(dados = {}, contexto = {}) {
 
     const colaboradores = await RhColaborador.findAll({
       where: { id: Array.from(vistos) },
-      transaction
+      order: [['id', 'ASC']],
+      transaction,
+      lock: transaction.LOCK.UPDATE
     });
     const porId = new Map(colaboradores.map((c) => [Number(c.id), c]));
 
@@ -209,7 +215,8 @@ async function registrarJornada(dados = {}, contexto = {}) {
     const vinculosDaObra = await rhVinculoObraService.colaboradoresDaObraEm(
       obraId,
       periodo.inicio,
-      periodo.fim
+      periodo.fim,
+      transaction
     );
     const estiveramNaObra = new Set(vinculosDaObra.map((v) => Number(v.colaborador_id)));
 
@@ -310,6 +317,10 @@ async function registrarJornada(dados = {}, contexto = {}) {
 
       const dias = numeroNaoNegativo(linha.dias_trabalhados, 'Dias trabalhados', colaboradorId);
       const faltas = numeroNaoNegativo(linha.faltas, 'Faltas', colaboradorId);
+      const limiteVinculo = diasVinculados(vinculosDaObra, porId.get(colaboradorId), periodo);
+      if (dias + faltas > limiteVinculo) {
+        throw new ValidationError(`${porId.get(colaboradorId).nome}: dias trabalhados mais faltas nao podem ultrapassar ${limiteVinculo} dia(s) de vinculo nesta obra no periodo.`);
+      }
 
       if (dias > diasBase) {
         throw new ValidationError(
@@ -473,18 +484,23 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
     jornada_linha_id: porColaborador.get(Number(vinculo.colaborador_id))?.linha?.id || null,
     edicao_jornada: porColaborador.get(Number(vinculo.colaborador_id))?.edicao || null,
     periodo_jornada: periodo,
+    dias_vinculados: diasVinculados(vinculos, vinculo.colaborador, periodo),
     ainda_nao_comecou: false,
     comeca_em: null,
     ...extras
   });
 
-  return [
-    ...vinculos.filter((v) => v.colaborador).map((v) => linhaDe(v)),
+  const linhasUnicas = new Map();
+  for (const linha of [
+    ...Array.from(new Map(vinculos.filter((v) => v.colaborador).map((v) => [Number(v.colaborador_id), v])).values()).map((v) => linhaDe(v)),
     ...futuros.filter((v) => v.colaborador).map((v) => linhaDe(v, {
       ainda_nao_comecou: true,
       comeca_em: paraDataIso(v.vigencia_inicio)
     }))
-  ];
+  ]) {
+    if (!linhasUnicas.has(linha.colaborador_id)) linhasUnicas.set(linha.colaborador_id, linha);
+  }
+  return [...linhasUnicas.values()];
 }
 
 async function solicitarEdicaoJornada(dados = {}, contexto = {}) {

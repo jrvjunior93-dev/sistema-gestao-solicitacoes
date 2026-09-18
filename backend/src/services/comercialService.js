@@ -1044,11 +1044,11 @@ function mergeIndicadoresNoContrato(contrato) {
   };
 }
 
-async function sincronizarContratoComercialPorTituloEditado({ tituloId, dataVencimento, usuarioId }) {
+async function sincronizarContratoComercialPorTituloEditado({ tituloId, dataVencimento, usuarioId, transaction: externa }) {
   const idTitulo = Number(tituloId || 0);
   if (!Number.isInteger(idTitulo) || idTitulo <= 0) return [];
 
-  return sequelize.transaction(async (transaction) => {
+  const executar = async (transaction) => {
     const parcelasVinculadas = await ContratoComercialParcela.findAll({
       where: { titulo_financeiro_id: idTitulo },
       attributes: ['id', 'contrato_comercial_id', 'data_vencimento'],
@@ -1094,6 +1094,7 @@ async function sincronizarContratoComercialPorTituloEditado({ tituloId, dataVenc
         }],
         transaction
       });
+      await require('./tituloRenegociacaoVinculos').projetarAssociacoes(parcelasContrato, 'tituloFinanceiro', { transaction });
       const indicadores = calcularIndicadoresFinanceirosContrato(parcelasContrato);
       const statusAnterior = String(contrato.status || '').trim().toUpperCase();
       const statusSugerido = String(indicadores.status_sugerido || 'ATIVO').trim().toUpperCase();
@@ -1130,7 +1131,8 @@ async function sincronizarContratoComercialPorTituloEditado({ tituloId, dataVenc
     }
 
     return resultados;
-  });
+  };
+  return externa ? executar(externa) : sequelize.transaction(executar);
 }
 
 async function registrarEventoContratoComercial({ transaction, contratoId, tipoEvento, dataEvento, descricao, metadata, usuarioId }) {
@@ -1676,6 +1678,7 @@ async function anexarIndicadoresContratos(contratos = [], { manterParcelas = fal
     order: [['sequencia', 'ASC']]
   });
 
+  await require('./tituloRenegociacaoVinculos').projetarAssociacoes(parcelas, 'tituloFinanceiro');
   const porContrato = new Map();
   for (const parcela of parcelas) {
     const contratoId = Number(parcela.contrato_comercial_id);

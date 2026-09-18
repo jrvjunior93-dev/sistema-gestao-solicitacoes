@@ -28,6 +28,26 @@ export async function getTitulosFinanceiros(params = {}) {
   return parseJson(response, 'Erro ao buscar titulos financeiros');
 }
 
+export async function previewNegociacaoTitulos(payload) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/negociacoes/preview`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload)
+  });
+  return parseJson(response, 'Não foi possível preparar a negociação.');
+}
+
+export async function confirmarNegociacaoTitulos(payload, chave) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/negociacoes/confirmar`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json', 'Idempotency-Key': chave }),
+    body: JSON.stringify(payload)
+  });
+  return parseJson(response, 'Não foi possível confirmar a negociação. Verifique antes de tentar novamente.');
+}
+
+export async function getNegociacaoTitulo(id) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/${id}/negociacao`, { headers: authHeaders(), cache: 'no-store' });
+  return parseJson(response, 'Não foi possível consultar a negociação.');
+}
+
 function buildFilaPagamentosQuery(params = {}) {
   return new URLSearchParams(
     Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')

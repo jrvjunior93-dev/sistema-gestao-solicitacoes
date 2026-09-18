@@ -92,6 +92,8 @@ try {
   await page.setViewportSize({width:1200,height:900});
   assert.equal(await page.getByText('GESTÃO DA COTAÇÃO MONTADA').count(),0);
   await page.getByRole('button',{name:/^Cotação/}).click();
+  assert.equal(await page.getByRole('button',{name:'Comentários: Cotação',exact:true}).count(),0,
+    'Cotação deve oferecer comentários somente por item');
   await page.getByText('GESTÃO DA COTAÇÃO MONTADA').waitFor();
   await page.getByRole('button',{name:'Comentários: Arame',exact:true}).nth(2).click();
   await comentarios.getByText('Mensagem preservada entre etapas',{exact:true}).waitFor();

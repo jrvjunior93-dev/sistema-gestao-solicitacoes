@@ -24,6 +24,8 @@ const {
   userHasAreaPermission
 } = require('../services/authorizationService');
 const { ValidationError } = require('../middlewares/validation');
+const { ehTransferencia } = require('../services/rhPessoalDomain');
+const { comAtividade, marcarLida } = require('../services/rhSolicitacaoAtividadeService');
 
 /**
  * A camada HTTP do pedido de pessoal (Fase 6 do modulo DP, 26/08).
@@ -86,6 +88,13 @@ async function exigirColaboradorNoEscopoDoUsuario(req, colaboradorId) {
 }
 
 async function exigirSolicitacaoNoEscopoDoUsuario(req, solicitacaoId) {
+  const pedido = await RhSolicitacao.findByPk(solicitacaoId);
+  if (!pedido) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
+  if (ehTransferencia(pedido)) throw new ValidationError('Use a aba Transferencias entre obras. A decisao cabe aos responsaveis das obras.', 403);
+  const visiveis = await obrasVisiveis(req);
+  if (Array.isArray(visiveis) && (!visiveis.length || (pedido.obra_id && !visiveis.includes(Number(pedido.obra_id))))) {
+    throw new ValidationError('Acesso negado a esta solicitacao de pessoal.', 403);
+  }
   const escopo = await getRhDpObraScopeIds(req.user);
   if (!Array.isArray(escopo)) return;
 
@@ -145,7 +154,7 @@ module.exports = {
        *
        * Uma consulta para todos os destinos da pagina, e nao uma por linha.
        */
-      const planos = dados.map((linha) => linha.get({ plain: true }));
+      const planos = dados.filter(linha => !ehTransferencia(linha)).map((linha) => linha.get({ plain: true }));
       const idsDestino = Array.from(new Set(
         planos
           .map((linha) => Number(linha.dados_json?.obra_destino_id))
@@ -161,7 +170,7 @@ module.exports = {
         });
       }
 
-      return res.json(planos);
+      return res.json(await comAtividade(planos, req.user.id));
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao listar solicitacoes de pessoal');
@@ -171,7 +180,11 @@ module.exports = {
   async show(req, res) {
     try {
       await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
-      return res.json(await detalharSolicitacao(req.params.id));
+      const detalhe = await detalharSolicitacao(req.params.id);
+      const plano = detalhe.get ? detalhe.get({ plain: true }) : detalhe;
+      const ultimo = (plano.historicos || []).reduce((n, h) => Math.max(n, Number(h.id)), 0);
+      await marcarLida(req.params.id, req.user.id, ultimo);
+      return res.json(plano);
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao buscar a solicitacao de pessoal');
@@ -181,6 +194,10 @@ module.exports = {
   async create(req, res) {
     try {
       const payload = req.body || {};
+      if (payload.tipo === 'TROCA_OBRA' || (payload.tipo === 'MOVIMENTACAO' && payload.subtipo === 'TRANSFERENCIA_OBRA')) {
+        const colaborador = await RhColaborador.findByPk(payload.colaborador_id, { attributes: ['id', 'obra_id'] });
+        if (colaborador?.obra_id) throw new ValidationError('Solicite a transferencia pela aba Transferencias entre obras.');
+      }
       await exigirObraNoEscopoDoUsuario(req, payload.obra_id || payload.dados?.obra_id);
       if (payload.colaborador_id) {
         await exigirColaboradorNoEscopoDoUsuario(req, payload.colaborador_id);
@@ -202,6 +219,18 @@ module.exports = {
       console.error(error);
       return responderErroController(res, error, 'Erro ao aprovar a solicitacao de pessoal');
     }
+  },
+
+  async comentar(req, res) {
+    try {
+      await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
+      const texto = String(req.body?.texto || '').trim();
+      if (!texto || texto.length > 2000) throw new ValidationError('Informe um comentario de ate 2000 caracteres.');
+      const { RhSolicitacaoHistorico } = require('../models');
+      const evento = await RhSolicitacaoHistorico.create({ solicitacao_id: req.params.id,
+        usuario_id: req.user.id, setor: codigoDoSetor(req.user), acao: 'COMENTARIO', descricao: texto });
+      return res.status(201).json({ id: evento.id });
+    } catch (error) { return responderErroController(res, error, 'Erro ao comentar na solicitacao'); }
   },
 
   async rejeitar(req, res) {

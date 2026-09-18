@@ -68,7 +68,8 @@ async function devolverAoSetorCriadorAposQuitacao({ solicitacao, usuarioId, tran
     transaction,
     lock: transaction?.LOCK?.UPDATE
   });
-  const idsQuitados = titulosQuitados.filter(tituloQuitado).map((titulo) => Number(titulo.id));
+  const idsQuitados = (await require('./tituloRenegociacaoVinculos').projetarOrigens(titulosQuitados, { transaction }))
+    .filter(tituloQuitado).map((titulo) => Number(titulo.id));
   if (idsQuitados.length === 0) return false;
 
   // Cada titulo quitado provoca no maximo um retorno automatico. Sem esta marca, um retry de
@@ -262,7 +263,8 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
   }
 
   const statusAnterior = solicitacao.status_global || null;
-  const statusNovo = calcularStatusSolicitacaoPorTitulos(titulos, statusAnterior);
+  const titulosEfetivos = await require('./tituloRenegociacaoVinculos').projetarOrigens(titulos, { transaction });
+  const statusNovo = calcularStatusSolicitacaoPorTitulos(titulosEfetivos, statusAnterior);
   if (!statusNovo || normalizarStatus(statusAnterior) === normalizarStatus(statusNovo)) {
     await devolverAoSetorCriadorAposQuitacao({ solicitacao, usuarioId, transaction });
     return statusAnterior;

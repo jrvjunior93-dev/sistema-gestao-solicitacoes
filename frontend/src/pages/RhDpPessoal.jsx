@@ -38,6 +38,7 @@ import {
   anexarNaRhSolicitacao,
   getRhChecklistDoTipo} from '../services/rhDp';
 import RhDpPessoalSolicitacoes from './RhDpPessoalSolicitacoes';
+import RhDpTransferencias from './RhDpTransferencias';
 import RhDpJornada from './RhDpJornada';
 import RhDpApuracao from './RhDpApuracao';
 import { canViewRhDpApuracao, hasAnyExplicitPermissao, isBusinessAdmin } from '../utils/acessoProduto';
@@ -161,7 +162,7 @@ function rotuloDaTransferencia(origem) {
 
 /** Os subtipos como a tela deve mostra-los para ESTE colaborador. */
 function subtiposParaColaborador(colaborador) {
-  return SUBTIPOS_MOVIMENTACAO.map((subtipo) => (
+  return SUBTIPOS_MOVIMENTACAO.filter(subtipo => subtipo.valor !== 'TRANSFERENCIA_OBRA' || colaborador?.primeiraLotacao === true || !colaborador?.obra_id).map((subtipo) => (
     subtipo.valor === 'TRANSFERENCIA_OBRA'
       ? { ...subtipo, rotulo: rotuloDaTransferencia(colaborador) }
       : subtipo
@@ -368,6 +369,7 @@ export default function RhDpPessoal() {
       rotulo: 'Colaboradores',
       apoio: 'Quem está na obra hoje, com o que cada um tem em curso.'
     },
+    { id: 'transferencias', rotulo: 'Transferências entre obras', apoio: 'Consulta global e transferências aprovadas pelos responsáveis das obras, sem passar pelo DP.' },
     {
       id: 'jornada',
       rotulo: 'Jornada',
@@ -1167,6 +1169,7 @@ export default function RhDpPessoal() {
         Montadas so quando a aba esta ativa: cada uma carrega obras, empresas e a propria lista, e
         deixa-las montadas em segundo plano faria tres telas buscarem dados a cada visita.
       */}
+      {abaAtiva === 'transferencias' ? <RhDpTransferencias /> : null}
       {abaAtiva === 'jornada' ? <RhDpJornada /> : null}
       {abaAtiva === 'apuracao' && podeVerApuracao ? <RhDpApuracao /> : null}
 

@@ -2256,6 +2256,7 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
     order: [['numero', 'ASC']]
   });
 
+  await require('./tituloRenegociacaoVinculos').projetarAssociacoes(parcelas, 'titulo');
   // Soma em centavos: somar float e arredondar no fim ja divergiu do DECIMAL do MySQL antes.
   const somaCent = (lista) => lista.reduce((acc, p) => acc + paraCentavos(p.valor), 0);
   const aprovadasCent = somaCent(parcelas.filter((p) => p.status === STATUS_PARCELA.APROVADA));
@@ -2552,6 +2553,8 @@ async function listarParcelasDoContrato(contratoId, { usuario = null } = {}) {
         titulo_financeiro_id: p.titulo_financeiro_id,
         titulo_valor_baixado: p.titulo ? Number(p.titulo.valor_baixado || 0) : null,
         titulo_valor_saldo: p.titulo ? Number(p.titulo.valor_saldo || 0) : null,
+        renegociado_por_id: p.titulo?.renegociado_por_id || null,
+        renegociacao_titulos: p.titulo?.renegociacao_titulos || [],
         parceiro_id: p.parceiro_id,
         forma_pagamento_id: p.forma_pagamento_id,
         // Nulo enquanto a parcela nao foi medida — o titulo existe, a medicao ainda nao.

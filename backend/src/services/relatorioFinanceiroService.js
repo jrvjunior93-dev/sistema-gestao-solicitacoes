@@ -342,7 +342,7 @@ async function carregarTitulosPrevistos(periodo, obraWhere) {
     ...obraWhere
   }, true);
 
-  return TituloFinanceiro.findAll({
+  return require('./tituloRenegociacaoLeitura').buscarTitulos({
     attributes: ['id', 'tipo', 'data_vencimento', 'valor_saldo', 'intercompany', 'elimina_consolidado'],
     where,
     include: [{
@@ -369,7 +369,7 @@ async function carregarMovimentosRealizados(periodo, obraWhere) {
     true
   );
 
-  return MovimentoFinanceiro.findAll({
+  return require('./tituloRenegociacaoLeitura').buscarMovimentos({
     attributes: [
       'id',
       'data_movimento',
@@ -665,7 +665,7 @@ function addFluxoObra(map, obraId, obrasById, vazioLabel, tipo, valor, origem) {
 }
 
 async function carregarTitulosFluxoConsolidado(periodo, tituloScopeWhere) {
-  return TituloFinanceiro.findAll({
+  return require('./tituloRenegociacaoLeitura').buscarTitulos({
     attributes: [
       'id',
       'codigo',
@@ -698,7 +698,7 @@ async function carregarTitulosFluxoConsolidado(periodo, tituloScopeWhere) {
 }
 
 async function carregarMovimentosFluxoConsolidado(periodo, tituloScopeWhere, movimentoScopeWhere = {}) {
-  return MovimentoFinanceiro.findAll({
+  return require('./tituloRenegociacaoLeitura').buscarMovimentos({
     attributes: ['id', 'empresa_id', 'data_movimento', 'valor_quitacao'],
     where: {
       status: 'ATIVO',
@@ -1126,7 +1126,7 @@ async function gerarRelatorioAnalitico(req, filters = {}) {
   }
 
   const hasMovimentoFilter = Object.keys(movimentoWhere).length > 0;
-  const titulos = await TituloFinanceiro.findAll({
+  const titulos = await require('./tituloRenegociacaoLeitura').buscarTitulos({
     where: tituloWhere,
     include: [
       {
@@ -1211,7 +1211,7 @@ async function gerarRelatorioAnalitico(req, filters = {}) {
       }
 
       linhas.push({
-        id: `titulo-${titulo.id}`,
+        id: `titulo-${titulo.id}${titulo.renegociacao_alocacao_id ? `-rateio-${titulo.renegociacao_alocacao_id}` : ''}`,
         titulo_id: titulo.id,
         titulo_codigo: titulo.codigo,
         tipo: titulo.tipo,
@@ -1251,7 +1251,7 @@ async function gerarRelatorioAnalitico(req, filters = {}) {
       totalDesconto = roundCurrency(totalDesconto + Number(movimento.desconto || 0));
 
       linhas.push({
-        id: `movimento-${movimento.id}`,
+        id: `movimento-${movimento.id}${movimento.renegociacao_alocacao_id ? `-rateio-${movimento.renegociacao_alocacao_id}` : ''}`,
         titulo_id: titulo.id,
         titulo_codigo: titulo.codigo,
         tipo: titulo.tipo,
@@ -1405,6 +1405,7 @@ function getCreditoDebitoFromTitulo(titulo, valor) {
 function buildFinanceiroObrasLinhaBase(titulo, analise) {
   return {
     titulo_id: titulo.id,
+    renegociacao_alocacao_id: titulo.renegociacao_alocacao_id || null,
     // ITEM 22 (23/08): a linha precisa dizer QUAL solicitacao, porque e por ela que se chega aos
     // arquivos — nem `anexos` nem `comprovantes` apontam para o titulo. Nulo aqui significa titulo
     // sem solicitacao (importado do historico, lancado a mao), e a tela avisa em vez de abrir vazio.
@@ -1441,7 +1442,7 @@ function buildFinanceiroObrasLinhaTitulo(titulo, analise) {
   const { credito, debito } = getCreditoDebitoFromTitulo(titulo, valorBase);
 
   return {
-    id: `titulo-${titulo.id}-${analise}`,
+    id: `titulo-${titulo.id}-${analise}${titulo.renegociacao_alocacao_id ? `-rateio-${titulo.renegociacao_alocacao_id}` : ''}`,
     ...buildFinanceiroObrasLinhaBase(titulo, analise),
     data_baixa: null,
     movimento_id: null,
@@ -1459,7 +1460,7 @@ function buildFinanceiroObrasLinhaMovimento(movimento) {
   const { credito, debito } = getCreditoDebitoFromTitulo(titulo, valorBase);
 
   return {
-    id: `movimento-${movimento.id}`,
+    id: `movimento-${movimento.id}${movimento.renegociacao_alocacao_id ? `-rateio-${movimento.renegociacao_alocacao_id}` : ''}`,
     ...buildFinanceiroObrasLinhaBase(titulo, 'REALIZADO'),
     data_baixa: movimento.data_movimento,
     movimento_id: movimento.id,
@@ -1714,8 +1715,9 @@ function summarizeFinanceiroObras(linhas = []) {
   const debito = linhas.reduce((sum, linha) => roundCurrency(sum + Number(linha.debito || 0)), 0);
   const titulosMap = new Map();
   linhas.forEach((linha) => {
-    if (!linha.titulo_id || titulosMap.has(linha.titulo_id)) return;
-    titulosMap.set(linha.titulo_id, linha);
+    const chave = `${linha.titulo_id}-${linha.renegociacao_alocacao_id || 0}`;
+    if (!linha.titulo_id || titulosMap.has(chave)) return;
+    titulosMap.set(chave, linha);
   });
   const movimentoIds = new Set(linhas.map((linha) => linha.movimento_id).filter(Boolean));
   const historicos = linhas.filter((linha) => linha.origem_linha === 'HISTORICO_LEGADO').length;
@@ -1724,7 +1726,7 @@ function summarizeFinanceiroObras(linhas = []) {
 
   return {
     quantidade_linhas: linhas.length,
-    titulos: titulosMap.size,
+    titulos: new Set(linhas.map(l => l.titulo_id).filter(Boolean)).size,
     movimentos: movimentoIds.size,
     historicos,
     fretes,
@@ -1817,7 +1819,7 @@ async function gerarRelatorioFinanceiroObras(req, filters = {}) {
   let linhas = [];
 
   if (analise === 'REALIZADO') {
-    const movimentos = await MovimentoFinanceiro.findAll({
+    const movimentos = await require('./tituloRenegociacaoLeitura').buscarMovimentos({
       where: {
         status: 'ATIVO',
         data_movimento: {
@@ -1905,7 +1907,7 @@ async function gerarRelatorioFinanceiroObras(req, filters = {}) {
     });
     if (limit) linhas = linhas.slice(0, limit);
   } else {
-    const titulos = await TituloFinanceiro.findAll({
+    const titulos = await require('./tituloRenegociacaoLeitura').buscarTitulos({
       where: tituloWhere,
       include: getFinanceiroObrasTituloIncludes(),
       order: [
@@ -2323,7 +2325,9 @@ function summarizeDreRows(titulos = [], empresas = [], movimentosAvulsos = []) {
     if (!linha.considera_dre || titulo.considera_dre === false) continue;
 
     const tipo = String(titulo.tipo || '').toUpperCase();
-    const rawValue = Number(titulo.valor_original || 0);
+    const rawValue = titulo.renegociacao_id
+      ? Number(titulo.juros_renegociacao || 0) + Number(titulo.multa_renegociacao || 0)
+      : Number(titulo.valor_original || 0);
     const baseSignedValue = tipo === 'RECEBER' ? rawValue : -rawValue;
     const signedValue = isCategoriaRedutora(titulo.categoriaFinanceira)
       ? baseSignedValue * -1
@@ -2456,7 +2460,8 @@ async function gerarDreGerencial(req, filters = {}) {
     });
   }
 
-  const titulos = await TituloFinanceiro.findAll({
+  const titulos = await require('./tituloRenegociacaoLeitura').buscarTitulos({
+    modoDre: true,
     where: tituloWhere,
     include: [
       {
@@ -3219,7 +3224,7 @@ async function gerarRelatorioEndividamento(req, filters = {}) {
     ...companyScopeWhere
   }, filters.excluir_intercompany);
 
-  const titulos = await TituloFinanceiro.findAll({
+  const titulos = await require('./tituloRenegociacaoLeitura').buscarTitulos({
     where,
     attributes: schema.tituloAttributes,
     include: [

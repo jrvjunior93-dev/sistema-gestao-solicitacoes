@@ -24,13 +24,14 @@ module.exports = {
         attributes: [
           'obra_id',
           'tipo',
-          [fn('SUM', col('valor_original')), 'total_valor_original'],
+          [fn('SUM', literal('CASE WHEN renegociado_por_id IS NULL THEN valor_original ELSE valor_baixado END')), 'total_valor_original'],
           [fn('SUM', col('valor_baixado')), 'total_valor_baixado'],
           [fn('SUM', col('valor_saldo')), 'total_valor_saldo'],
           [fn('COUNT', col('id')), 'quantidade']
         ],
         where: {
           obra_id: { [Op.in]: obraIds },
+          renegociacao_id: null,
           status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] }
         },
         group: ['obra_id', 'tipo'],
@@ -102,6 +103,24 @@ module.exports = {
           total_valor_saldo: atual.total_valor_saldo + (valorRateio * (1 - proporcaoBaixada)),
           quantidade: atual.quantidade + 1
         };
+      }
+
+      const parcelasNegociadas = await require('../services/tituloRenegociacaoLeitura').buscarTitulos({
+        where: { obra_id: { [Op.in]: obraIds }, renegociacao_id: { [Op.ne]: null },
+          status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] } },
+        attributes: ['id', 'obra_id', 'tipo', 'valor_original', 'valor_baixado', 'valor_saldo']
+      });
+      for (const titulo of parcelasNegociadas) {
+        const obraId = titulo.obra_id;
+        if (!mapAgregados[obraId]) mapAgregados[obraId] = {};
+        const atual = mapAgregados[obraId][titulo.tipo] || {
+          total_valor_original: 0, total_valor_baixado: 0, total_valor_saldo: 0, quantidade: 0
+        };
+        for (const campo of ['valor_original', 'valor_baixado', 'valor_saldo']) {
+          atual[`total_${campo}`] = Math.round((atual[`total_${campo}`] + Number(titulo[campo] || 0)) * 100) / 100;
+        }
+        atual.quantidade += 1;
+        mapAgregados[obraId][titulo.tipo] = atual;
       }
 
       const mapHistoricos = {};

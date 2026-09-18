@@ -415,33 +415,56 @@ Continua compartilhado com a `dev-v2`:
 
 Portanto, um segundo projeto Vercel evita conflito de codigo e publicacao, mas nao isola os dados. Para isolamento total seria necessario outro backend e outro banco, o que nao faz parte desta refatoracao.
 
-### 14.3 Opcao recomendada: Preview da branch no projeto Vercel de desenvolvimento
+### 14.3 Configuracao atual: previews separados no mesmo projeto Vercel
 
-A Vercel cria Preview Deployments para branches que nao sao a Production Branch. Assim, se o projeto de desenvolvimento usa `dev-v2` como Production Branch, cada push em `refactor/frontend` pode gerar uma URL separada sem substituir o frontend dev.
+A configuracao ja foi concluida no projeto Vercel `fluxy-csc`. A `main` continua como Production Branch e as branches `dev-v2` e `refactor/frontend` possuem previews e dominios separados:
 
-Configuracao:
+| Branch | Ambiente Vercel | Dominio | Finalidade |
+| --- | --- | --- | --- |
+| `main` | Production | dominios oficiais de producao | sistema em producao |
+| `dev-v2` | Preview | `https://dev.jrfluxy.com.br` | desenvolvimento e homologacao integrada |
+| `refactor/frontend` | Preview | `https://refactor-dev.jrfluxy.com.br` | desenvolvimento e homologacao isolada do frontend |
 
-1. manter `dev-v2` como Production Branch do projeto Vercel de desenvolvimento;
-2. conectar o repositorio, caso ainda nao esteja conectado;
-3. manter `frontend` como Root Directory;
-4. configurar para Preview da branch `refactor/frontend`:
+Comportamento esperado:
+
+- cada push em `refactor/frontend` gera um novo Preview Deployment e atualiza `https://refactor-dev.jrfluxy.com.br`;
+- cada push em `dev-v2` continua atualizando o preview acessado por `https://dev.jrfluxy.com.br`;
+- um push em `refactor/frontend` nao substitui o build publicado da `dev-v2`;
+- um push em `dev-v2` nao substitui o build publicado de `refactor/frontend`;
+- nenhum desses pushes altera a Production Branch `main`.
+
+Embora os builds estejam separados, os dois dominios de desenvolvimento usam a mesma infraestrutura de backend:
+
+```text
+https://refactor-dev.jrfluxy.com.br --\
+                                      -> https://api-dev.jrfluxy.com.br -> banco de desenvolvimento
+https://dev.jrfluxy.com.br ---------/
+```
+
+Por isso, alteracoes apenas visuais e de codigo frontend ficam separadas por branch e dominio. Dados criados, editados, baixados ou excluidos durante os testes continuam compartilhados entre os dois frontends.
+
+Configuracao que deve ser preservada:
+
+1. manter `main` como Production Branch;
+2. manter `frontend` como Root Directory;
+3. manter o dominio `dev.jrfluxy.com.br` associado a `dev-v2`;
+4. manter o dominio `refactor-dev.jrfluxy.com.br` associado a `refactor/frontend`;
+5. configurar para o Preview da branch `refactor/frontend`:
    - `VITE_API_URL=https://api-dev.jrfluxy.com.br`;
-5. fazer novo deploy da branch;
-6. usar a Branch URL estavel ou associar um dominio exclusivo a essa branch;
-7. adicionar a origem exata desse dominio ao CORS da API dev;
-8. proteger o Preview com Vercel Authentication sempre que possivel.
+6. proteger o Preview com Vercel Authentication sempre que possivel;
+7. nunca promover manualmente um deployment da refatoracao para Production.
 
 Vantagens:
 
 - nao cria outro projeto para manter;
 - `dev-v2` continua publicada normalmente;
-- a branch recebe URL de Preview propria;
+- a branch possui URL de Preview propria e estavel;
 - a variavel pode ser configurada especificamente para `refactor/frontend`;
 - o Pull Request pode exibir o deployment para revisao.
 
-### 14.4 Opcao alternativa: novo projeto Vercel
+### 14.4 Opcao alternativa nao utilizada: novo projeto Vercel
 
-Um projeto separado tambem funciona e oferece separacao mais visivel entre os frontends.
+Um projeto separado tambem funcionaria, mas nao e a configuracao atual. Nao criar outro projeto sem alinhamento com o responsavel pelo sistema.
 
 Configuracao sugerida no painel da Vercel:
 
@@ -490,7 +513,13 @@ O dominio real gerado pela Vercel deve ser utilizado; o exemplo acima nao deve s
 
 ### 14.5 CORS obrigatorio na API de desenvolvimento
 
-O backend aceita apenas origens cadastradas. O dominio estavel do frontend de refatoracao precisa ser incluido, sem wildcard, em:
+O backend aceita apenas origens cadastradas. Em 01/09/2026, o dominio abaixo foi incluido e validado na configuracao da API dev:
+
+```text
+https://refactor-dev.jrfluxy.com.br
+```
+
+A origem foi cadastrada, sem wildcard, em:
 
 ```text
 INSTALACAO_CONFIG.allowed_origins
@@ -502,7 +531,7 @@ Exemplo conceitual:
 {
   "allowed_origins": [
     "https://dev.jrfluxy.com.br",
-    "https://DOMINIO-EXATO-DO-REFATOR.vercel.app"
+    "https://refactor-dev.jrfluxy.com.br"
   ]
 }
 ```
@@ -527,6 +556,8 @@ https://*.vercel.app
 
 Utilizar somente a origem exata e estavel da homologacao.
 
+O desenvolvedor nao deve alterar essa configuracao. Se o dominio mudar ou ocorrer erro de CORS, deve comunicar o responsavel do projeto.
+
 ### 14.6 Protecao do ambiente de homologacao
 
 O frontend acessara dados do ambiente dev. Por isso:
@@ -545,13 +576,14 @@ Em planos nos quais a protecao padrao nao cobre o dominio de producao, a opcao d
 
 Antes de liberar o acesso:
 
-- [ ] `refactor/frontend` e a branch publicada;
-- [ ] `frontend` e o Root Directory;
+- [x] `refactor/frontend` e a branch publicada;
+- [x] `frontend` e o Root Directory;
 - [ ] build usa `npm run build`;
 - [ ] saida usa `dist`;
 - [ ] existe apenas `VITE_API_URL=https://api-dev.jrfluxy.com.br` como configuracao operacional necessaria do frontend;
 - [ ] nenhuma chave privada foi cadastrada;
-- [ ] dominio exato foi adicionado ao CORS do backend dev;
+- [x] `https://refactor-dev.jrfluxy.com.br` foi adicionado ao CORS do backend dev;
+- [x] o dominio da refatoracao abre sem substituir `https://dev.jrfluxy.com.br`;
 - [ ] deployment esta protegido;
 - [ ] login funciona;
 - [ ] requisicoes autenticadas nao retornam erro de CORS;
@@ -561,7 +593,7 @@ Antes de liberar o acesso:
 
 ## 16. Teste de aceite do frontend publicado
 
-Executar no dominio da refatoracao:
+Executar em `https://refactor-dev.jrfluxy.com.br`:
 
 1. abrir a tela de login;
 2. autenticar com usuario de teste;
@@ -624,4 +656,3 @@ editar refactor/frontend
 - Vercel, dominio associado a branch: <https://vercel.com/docs/domains/working-with-domains/assign-domain-to-a-git-branch>
 - Vercel, Deployment Protection: <https://vercel.com/docs/deployment-protection>
 - Vercel, compartilhamento de Preview: <https://vercel.com/docs/deployments/sharing-deployments>
-

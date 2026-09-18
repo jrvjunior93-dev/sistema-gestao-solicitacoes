@@ -1,5 +1,47 @@
 # Ownership Ativo
 
+Ownership /root em 18/09/2026: conferência, testes, commit e publicação das
+pendências autorizadas pelo usuário na refactor/frontend (Compras, negociação
+financeira, DP/RH e documentação). Preservar outputs locais fora dos commits.
+Deploy/migrations na EC2 serão executados pelo usuário; não acessar banco externo.
+Conferência e testes locais concluídos; ownership de edição liberado. Registro de
+validações e próximos passos: `docs/handoffs/2026-09-18-publicacao-pendencias-dev.md`.
+
+Ownership /root em 18/09/2026: DP/RH Pessoal, limite de jornada por vínculo,
+transferências bilaterais entre responsáveis das obras, diretório restrito e
+atividade/leitura individual das solicitações RH. Escopo: serviços/controllers/
+modelos/validators/rotas RH, migration estrutural, páginas e services RH, acesso
+ao cadastro compartilhado de responsáveis, testes e handoff. Preservar negociação
+financeira, comparativo, guia e outputs preexistentes. Sem commit/deploy/banco externo.
+Implementação local e testes concluídos; ownership liberado nesta rodada.
+Handoff: `docs/handoffs/2026-09-18-rh-pessoal-transferencias-jornada.md`.
+Migration e homologação MySQL/EC2 pendentes; não confundir com o escopo financeiro anterior.
+
+Ownership /root reaberto em 18/09/2026: negociação consolidada (um título por parcela),
+com rateio multiobra, domínio/modelos/migration/service/controller/routes, permissões,
+relatórios e proteções financeiras, modal/lista de títulos e testes. Usuário confirmou
+agrupamento. Preservar alterações anteriores do comparativo, guia e outputs.
+Inclui FinanceiroBaixas.jsx para exibir rateios sem estornar uma parte como se fosse a baixa inteira.
+Inclui chequeTerceiroService.js para sincronizar o estorno composto somente após atualizar todas as parcelas.
+Implementação local concluída; ownership liberado ao encerrar esta rodada. Build,
+testes isolados e sincronizadores com modelos simulados passaram. Sem commit/deploy.
+Homologação MySQL e migration permanecem pendentes, conforme handoff da negociação.
+
+Ownership temporario /root em 18/09/2026: renegociação de títulos a pagar/receber.
+Escopo inicial: novo domínio de cálculos e testes; análise dos vínculos e relatórios.
+Implementação funcional autorizada; desenho multi-origem aguardando escolha do usuário.
+Preservar ajuste não commitado do comparativo Cards, guia e outputs preexistentes.
+Preparação do domínio e testes concluída; ownership liberado nesta pausa de definição.
+Handoff: `docs/handoffs/2026-09-18-renegociacao-titulos-em-andamento.md`.
+
+Ownership temporario /root em 18/09/2026: largura do comparativo em Cards e
+remoção do comentário geral da cotação. Escopo: GerenciarCotacaoSolicitacao.jsx,
+compras-responsive.css, CompraEtapas.jsx, testes de UI e handoff correspondente.
+Preservar guia de homologação e outputs preexistentes. Sem commit/deploy nesta tarefa.
+Ownership liberado após build, testes e inspeção visual. Não foi necessário alterar
+compras-responsive.css; correção localizada nas classes do comparativo.
+Handoff: `docs/handoffs/2026-09-18-comparativo-cards-responsivo.md`.
+
 Ownership temporario /root em 18/09/2026: apresentação dos cards de compras.
 Escopo: CompraEtapas, PedidoResumo, novo AcaoIconeCompra, GerenciarCotacaoSolicitacao,
 testes de cards, CSS local se necessário e handoff. Comentários em modal, tabelas

@@ -1931,24 +1931,21 @@ async function validarIntercompanyBaixa({ payload = {}, titulo = {}, empresaBaix
   };
 }
 
-async function carregarTituloPorId(req, tituloId, { includeMovimentos = false } = {}) {
+async function carregarTituloPorId(req, tituloId, { includeMovimentos = false, transaction } = {}) {
   await assertFinanceAccess(req);
 
   const titulo = await TituloFinanceiro.findByPk(tituloId, {
-    include: buildTituloInclude({ includeMovimentos })
+    include: buildTituloInclude({ includeMovimentos }), transaction,
+    ...(transaction ? { lock: transaction.LOCK.UPDATE } : {})
   });
 
   if (!titulo) {
     throw createHttpError(404, 'Titulo financeiro nao encontrado');
   }
 
-  await assertObraScope(
-    req,
-    titulo.obra_id,
-    'TITULO_FINANCEIRO',
-    titulo.id,
-    'Usuario tentou acessar titulo financeiro fora do seu escopo de obra'
-  );
+  if (titulo.renegociacao_id) await require('./tituloRenegociacaoService').assertEscopoTitulo(req, titulo, transaction);
+  else await assertObraScope(req, titulo.obra_id, 'TITULO_FINANCEIRO', titulo.id,
+    'Usuario tentou acessar titulo financeiro fora do seu escopo de obra');
 
   return titulo;
 }
@@ -1969,7 +1966,8 @@ async function carregarTituloParaBaixaComLock(req, tituloId, transaction, option
   assertTituloDisponivelParaBaixa(titulo);
 
   if (!options.autorizadoPorFilaPagamento) {
-    await assertObraScope(
+    if (titulo.renegociacao_id) await require('./tituloRenegociacaoService').assertEscopoTitulo(req, titulo, transaction);
+    else await assertObraScope(
       req,
       titulo.obra_id,
       'TITULO_FINANCEIRO',
@@ -1982,6 +1980,7 @@ async function carregarTituloParaBaixaComLock(req, tituloId, transaction, option
 }
 
 function assertTituloEditavel(titulo) {
+  if (titulo.renegociacao_id || titulo.renegociado_por_id) throw createHttpError(409, 'Título vinculado a uma negociação. Consulte o acordo de origem.');
   const status = String(titulo?.status || '').trim().toUpperCase();
   const valorBaixado = Number(titulo?.valor_baixado || 0);
   const movimentosAtivos = Array.isArray(titulo?.movimentos)
@@ -2008,9 +2007,13 @@ function assertTituloEditavel(titulo) {
 }
 
 async function atualizarTitulo(req, tituloId, payload = {}) {
+  return sequelize.transaction(transaction => atualizarTituloEmTransacao(req, tituloId, payload, transaction));
+}
+
+async function atualizarTituloEmTransacao(req, tituloId, payload, transaction) {
   await assertFinanceAccess(req);
 
-  const titulo = await carregarTituloPorId(req, tituloId, { includeMovimentos: true });
+  const titulo = await carregarTituloPorId(req, tituloId, { includeMovimentos: true, transaction });
   assertTituloEditavel(titulo);
 
   const tipo = normalizarTipoTitulo(payload.tipo || titulo.tipo);
@@ -2122,17 +2125,17 @@ async function atualizarTitulo(req, tituloId, payload = {}) {
     observacoes: payload.observacoes || null,
     ...buildCobrancaFields(payload, tipo),
     atualizado_por: req.user?.id || null
-  });
+  }, { transaction });
 
   if (atualizarRateios) {
     await TituloFinanceiroRateio.destroy({
-      where: { titulo_financeiro_id: titulo.id }
+      where: { titulo_financeiro_id: titulo.id }, transaction
     });
   }
 
   if (atualizarImpostos) {
     await TituloFinanceiroImposto.destroy({
-      where: { titulo_financeiro_id: titulo.id }
+      where: { titulo_financeiro_id: titulo.id }, transaction
     });
   }
 
@@ -2144,14 +2147,14 @@ async function atualizarTitulo(req, tituloId, payload = {}) {
       valorBase: valorOriginal,
       valorParcela: valorOriginal,
       valorRateioParcela: valorLiquidoTitulo,
-      usuarioId: req.user?.id || null
+      usuarioId: req.user?.id || null, transaction
     });
   }
 
   await sincronizarContratoComercialPorTituloEditado({
     tituloId: titulo.id,
     dataVencimento: titulo.data_vencimento,
-    usuarioId: req.user?.id || null
+    usuarioId: req.user?.id || null, transaction
   });
 
   await registrarEventoSeguranca({
@@ -2185,7 +2188,7 @@ async function atualizarTitulo(req, tituloId, payload = {}) {
     }
   });
 
-  return carregarTituloPorId(req, titulo.id, { includeMovimentos: true });
+  return carregarTituloPorId(req, titulo.id, { includeMovimentos: true, transaction });
 }
 
 async function listarTitulos(req, filters = {}) {
@@ -2360,8 +2363,15 @@ async function listarTitulos(req, filters = {}) {
     ];
   }
 
+  const whereNegociacao = require('./tituloRenegociacaoLeitura').whereRateado(where);
+  if (obrasPermitidas !== null) {
+    const idsEscopo = obrasPermitidas.map(Number).filter(Number.isSafeInteger);
+    whereNegociacao[Op.and] = [...(whereNegociacao[Op.and] || []), sequelize.literal(
+      `NOT EXISTS (SELECT 1 FROM titulo_renegociacao_alocacoes esc WHERE esc.titulo_destino_id = TituloFinanceiro.id AND esc.obra_id NOT IN (${idsEscopo.join(',') || '0'}))`
+    )];
+  }
   const queryOptions = {
-    where,
+    where: whereNegociacao,
     include: buildTituloInclude(),
     order: [
       ['data_vencimento', 'ASC'],
@@ -2480,7 +2490,7 @@ async function listarBaixasRealizadas(req, filters = {}) {
     ];
   }
 
-  return MovimentoFinanceiro.findAll({
+  return require('./tituloRenegociacaoLeitura').buscarMovimentos({
     where: movimentoWhere,
     include: [
       {
@@ -2581,7 +2591,7 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
     }];
   }
 
-  return TituloFinanceiro.findAll(consulta);
+  return require('./tituloRenegociacaoVinculos').projetarOrigens(await TituloFinanceiro.findAll(consulta));
 }
 
 async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {

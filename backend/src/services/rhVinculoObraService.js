@@ -96,7 +96,7 @@ async function historicoDoColaborador(colaboradorId) {
  * obra antes do mes e continuou nele trabalhou no mes, e o custo dele e da obra. Filtrar pelo
  * inicio deixaria de fora exatamente os colaboradores mais antigos de cada obra.
  */
-async function colaboradoresDaObraEm(obraId, inicio, fim) {
+async function colaboradoresDaObraEm(obraId, inicio, fim, transaction = null) {
   const de = paraDataIso(inicio) || hojeIso();
   const ate = paraDataIso(fim) || de;
 
@@ -107,7 +107,8 @@ async function colaboradoresDaObraEm(obraId, inicio, fim) {
       [Op.or]: [{ vigencia_fim: null }, { vigencia_fim: { [Op.gte]: de } }]
     },
     order: [['vigencia_inicio', 'ASC'], ['id', 'ASC']],
-    include: [{ model: RhColaborador, as: 'colaborador', required: false }]
+    include: [{ model: RhColaborador, as: 'colaborador', required: false }],
+    transaction
   });
 }
 

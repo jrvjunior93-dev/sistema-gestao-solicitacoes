@@ -322,10 +322,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
       {!compraEncaminhada && <p className="mt-3 text-xs text-[var(--c-muted)]">Após encaminhar os itens aprovados para Compras, será possível criar outra solicitação com estes itens.</p>}
     </BlocoConteudo>}
     <BlocoConteudo titulo="Cotação" contagem={`${itensEmCotacao.length} item(ns)`} recolhivel recolhidoPadrao>
-      <div className="flex flex-wrap items-center gap-2">
-        {botaoComentarios('COTACAO', dados.solicitacao_compra_id, null, 'Cotação')}
-      </div>
-      <div className="mt-3 border-t border-[var(--c-border)] pt-3">
+      <div>
         <p className="mb-2 text-xs font-semibold text-[var(--c-muted)]">Itens enviados para fornecedores</p>
         {itensEmCotacao.length ? <div className="divide-y divide-[var(--c-border)] rounded-md border border-[var(--c-border)]">
           {itensEmCotacao.map((item) => <div key={`${item.item_tipo}-${item.id}`} className="px-3 py-2">

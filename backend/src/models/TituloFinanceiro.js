@@ -11,6 +11,10 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       allowNull: true,
       unique: true
     },
+    renegociacao_id: { type: DataTypes.INTEGER, allowNull: true },
+    renegociado_por_id: { type: DataTypes.INTEGER, allowNull: true },
+    juros_renegociacao: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
+    multa_renegociacao: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },
     solicitacao_id: {
       type: DataTypes.INTEGER,
       allowNull: true
@@ -283,7 +287,9 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       }
     },
     hooks: {
-      beforeUpdate(titulo) {
+      async beforeUpdate(titulo, options) {
+        await require('../services/tituloRenegociacaoProtecao').proteger(titulo.constructor,{id:titulo.id},
+          Object.fromEntries((titulo.changed()||[]).map(k=>[k,titulo.get(k)])),options);
         if (!titulo.bloqueado_retorno_obra || !titulo.changed('valor_baixado')) return;
         const valorAnterior = Number(titulo.previous('valor_baixado') || 0);
         const novoValor = Number(titulo.valor_baixado || 0);
@@ -296,6 +302,27 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
         error.statusCode = 409;
         error.code = 'TITULO_BLOQUEADO_RETORNO_OBRA';
         throw error;
+      },
+      async afterUpdate(titulo, options) {
+        await require('../services/tituloRenegociacaoSincronizacao').aposAtualizarTitulo(titulo, options);
+      },
+      async beforeBulkUpdate(options) {
+        const rows = await require('../services/tituloRenegociacaoProtecao').proteger(sequelize.models.TituloFinanceiro,options.where,options.attributes,options);
+        if (['status','valor_baixado','valor_saldo'].some(k => Object.hasOwn(options.attributes,k))) {
+          options.renegociacaoDestinos = (rows || []).filter(t => t.renegociacao_id).map(t => t.id);
+        }
+      },
+      async afterBulkUpdate(options) {
+        if (!options.renegociacaoDestinos?.length) return;
+        await require('../services/tituloRenegociacaoSincronizacao').sincronizarDestinos(options.renegociacaoDestinos, {
+          transaction: options.transaction, usuarioId: options.attributes.atualizado_por
+        });
+      },
+      async beforeDestroy(titulo,options) {
+        await require('../services/tituloRenegociacaoProtecao').proteger(titulo.constructor,{id:titulo.id},{deleted_at:new Date()},options);
+      },
+      async beforeBulkDestroy(options) {
+        await require('../services/tituloRenegociacaoProtecao').proteger(sequelize.models.TituloFinanceiro,options.where,{deleted_at:new Date()},options);
       }
     },
     timestamps: true
