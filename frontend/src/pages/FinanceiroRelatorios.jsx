@@ -104,6 +104,7 @@ function vinculoAnalitico(item) {
   if (item.tipo_conciliacao === 'TRANSFERENCIA') return `Transferencia #${item.transferencia_financeira_id}`;
   if (item.tipo_conciliacao === 'FATURA_CARTAO') return `Fatura #${item.fatura_cartao_id}`;
   if (item.tipo_conciliacao === 'TARIFA') return `Tarifa · mov. #${item.movimento_financeiro_id}`;
+  if (item.tipo_conciliacao === 'RENDIMENTO') return `Rendimento da conta · mov. #${item.movimento_financeiro_id}`;
   if (item.tipo_conciliacao === 'ESTORNO_TARIFA') return `Estorno de tarifa - mov. #${item.movimento_financeiro_id}`;
   if (item.tipo_conciliacao === 'ESTORNO_BANCARIO') return `Estorno bancario - mov. #${item.movimento_financeiro_id}`;
   if (item.tipo_conciliacao === 'CREDITO_ROTATIVO') {
@@ -862,6 +863,7 @@ function ContaReportFilters({ filters, setFilters, contas, loading, onSubmit, ty
                 <option value="TITULO">Títulos</option>
                 <option value="FATURA_CARTAO">Faturas de cartão</option>
                 <option value="TARIFA">Tarifas bancárias</option>
+                <option value="RENDIMENTO">Rendimentos da conta</option>
                 <option value="ESTORNO_TARIFA">Estornos de tarifa</option>
                 <option value="ESTORNO_BANCARIO">Estornos bancários</option>
                 <option value="CREDITO_ROTATIVO">Crédito rotativo</option>
@@ -1225,6 +1227,8 @@ function ContaReportShell({ title, subtitle, type }) {
                   ? 'A transferencia sera cancelada e os lancamentos OFX vinculados voltarao para pendente.'
                   : estornoModal.item?.tipo_conciliacao === 'TARIFA'
                     ? 'A tarifa criada pela conciliacao sera estornada e o lancamento OFX voltara para pendente.'
+                    : estornoModal.item?.tipo_conciliacao === 'RENDIMENTO'
+                      ? 'O rendimento criado pela conciliacao sera estornado e o lancamento OFX voltara para pendente.'
                     : estornoModal.item?.tipo_conciliacao === 'ESTORNO_TARIFA'
                       ? 'O credito de estorno sera desfeito e o lancamento OFX voltara para pendente. A tarifa original permanecera ativa.'
                     : estornoModal.item?.tipo_conciliacao === 'CREDITO_ROTATIVO'

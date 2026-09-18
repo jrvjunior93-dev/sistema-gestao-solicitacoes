@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: atalho de credito de rendimento
+na conciliacao OFX. Escopo: configuracao de atalhos e validadores,
+conciliacao/controller/rotas, DRE e relatorio bancario, telas financeiras,
+servico frontend, testes e handoff. Preservar `outputs/`. Sem acesso a
+EC2, RDS, migration remota ou deploy. Sem commit nesta tarefa.
+Implementacao e testes locais concluidos; ownership de edicao liberado.
+Handoff: `docs/handoffs/2026-09-18-conciliacao-ofx-rendimento.md`.
+
+Ownership temporario /root em 18/09/2026: conferencia, commit e push
+exclusivos do atalho de rendimento OFX na `refactor/frontend`, autorizados
+pelo usuario. Preservar `outputs/`; deploy EC2 continua somente com o usuario.
+Ownership de edicao liberado apos verificacoes e publicacao da branch.
+
 Ownership temporario /root em 18/09/2026: complementar exclusivamente
 `docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md` com o privilegio `TRIGGER`
 necessario no RDS de dev e com a verificacao segura de instancia antes da

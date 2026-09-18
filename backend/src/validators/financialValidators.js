@@ -1013,7 +1013,7 @@ function validateFinanceRelatorioConciliacaoQuery(query = {}) {
     data_final: dataFinal,
     conta_bancaria_id: parseInteger(query.conta_bancaria_id, 'Conta bancaria'),
     status: parseEnum(query.status, 'Status', ['TODOS', 'CONCILIADO', 'PENDENTE', 'IGNORADO', 'REMOVIDO']),
-    tipo_conciliacao: parseEnum(query.tipo_conciliacao, 'Tipo de conciliacao', ['TODOS', 'TRANSFERENCIA', 'TITULO', 'FATURA_CARTAO', 'TARIFA', 'ESTORNO_TARIFA', 'ESTORNO_BANCARIO', 'CREDITO_ROTATIVO', 'MOVIMENTO', 'SEM_VINCULO']),
+    tipo_conciliacao: parseEnum(query.tipo_conciliacao, 'Tipo de conciliacao', ['TODOS', 'TRANSFERENCIA', 'TITULO', 'FATURA_CARTAO', 'TARIFA', 'RENDIMENTO', 'ESTORNO_TARIFA', 'ESTORNO_BANCARIO', 'CREDITO_ROTATIVO', 'MOVIMENTO', 'SEM_VINCULO']),
     natureza: parseEnum(query.natureza, 'Natureza', ['TODAS', 'ENTRADA', 'SAIDA']),
     busca: parseOptionalText(query.busca, 'Busca', 120)
   };
@@ -1028,6 +1028,14 @@ function validateFinanceConciliacaoTarifaBody(body = {}) {
 
   return {
     codigo: parseOptionalText(body.codigo, 'Codigo da tarifa', 80, { required: true }),
+    descricao: parseOptionalText(body.descricao, 'Descricao', 255)
+  };
+}
+
+function validateFinanceConciliacaoRendimentoBody(body = {}) {
+  ensureAllowedKeys(body, ['codigo', 'descricao'], 'Conciliacao bancaria por rendimento');
+  return {
+    codigo: parseOptionalText(body.codigo, 'Codigo do rendimento', 80, { required: true }),
     descricao: parseOptionalText(body.descricao, 'Descricao', 255)
   };
 }
@@ -2056,13 +2064,14 @@ function validateFinanceTarifasBancariasConfigBody(body = {}) {
     itens: body.itens.map((item, index) => {
       ensureAllowedKeys(
         item || {},
-        ['codigo', 'nome', 'descricao', 'categoria_financeira_id', 'ativo'],
+        ['codigo', 'nome', 'tipo_atalho', 'descricao', 'categoria_financeira_id', 'ativo'],
         `Tarifa bancaria ${index + 1}`
       );
 
       return {
         codigo: parseOptionalText(item?.codigo, `Codigo da tarifa ${index + 1}`, 80, { required: true }),
         nome: parseOptionalText(item?.nome, `Nome da tarifa ${index + 1}`, 80, { required: true }),
+        tipo_atalho: parseEnum(item?.tipo_atalho, `Tipo do atalho ${index + 1}`, ['TARIFA', 'RENDIMENTO']) || 'TARIFA',
         descricao: parseOptionalText(item?.descricao, `Descricao da tarifa ${index + 1}`, 255),
         categoria_financeira_id: parseInteger(item?.categoria_financeira_id, `Categoria financeira da tarifa ${index + 1}`, { required: true }),
         ativo: parseBoolean(item?.ativo, `Ativo da tarifa ${index + 1}`)
@@ -2082,6 +2091,7 @@ module.exports = {
   validateFinanceConciliacaoEstornoBancarioBody,
   validateFinanceConciliacaoEstornoTarifaBody,
   validateFinanceConciliacaoTarifaBody,
+  validateFinanceConciliacaoRendimentoBody,
   validateFinanceConciliacaoTransferenciaBody,
   validateFinanceConciliacaoEstornoTransferenciaBody,
   validateFinanceConciliacaoImportBody,

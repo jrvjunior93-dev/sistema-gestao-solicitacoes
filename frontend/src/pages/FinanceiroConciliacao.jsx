@@ -8,6 +8,7 @@ import {
   confirmarConciliacaoEstornoBancario,
   confirmarConciliacaoEstornoTarifa,
   confirmarConciliacaoTarifaBancaria,
+  confirmarConciliacaoRendimentoBancario,
   confirmarConciliacaoTransferencia,
   estornarConciliacaoTransferencia,
   criarTituloConciliacaoBancaria,
@@ -165,18 +166,23 @@ function getContaEmpresaNome(conta) {
 }
 
 function tarifaAtalhoAptaParaConciliacao(tarifa = {}) {
+  const rendimento = tarifa.tipo_atalho === 'RENDIMENTO';
   if (!tarifa.categoria_financeira_id) {
-    return { ok: true, motivo: 'Sem categoria fixa: o sistema tentara usar uma categoria padrao de tarifa bancaria.' };
+    return rendimento
+      ? { ok: false, motivo: 'Configure uma categoria financeira de entrada para o rendimento.' }
+      : { ok: true, motivo: 'Sem categoria fixa: o sistema tentara usar uma categoria padrao de tarifa bancaria.' };
   }
 
   const categoria = tarifa.categoria_financeira;
   if (!categoria) {
-    return { ok: true, motivo: tarifa.descricao || tarifa.nome || '' };
+    return rendimento
+      ? { ok: false, motivo: 'Categoria do rendimento nao encontrada. Atualize o cadastro.' }
+      : { ok: true, motivo: tarifa.descricao || tarifa.nome || '' };
   }
 
   const tipo = String(categoria.tipo || '').trim().toUpperCase();
-  if (!['PAGAR', 'AMBOS'].includes(tipo)) {
-    return { ok: false, motivo: 'A categoria da tarifa deve ser de pagar ou ambos.' };
+  if (!(rendimento ? ['RECEBER', 'AMBOS'] : ['PAGAR', 'AMBOS']).includes(tipo)) {
+    return { ok: false, motivo: `A categoria do atalho deve ser de ${rendimento ? 'receber' : 'pagar'} ou ambos.` };
   }
   if (categoria.ativo === false) {
     return { ok: false, motivo: 'A categoria da tarifa esta inativa.' };
@@ -243,15 +249,17 @@ function ValorBanco({ value, size = 'lg' }) {
 
 // ─── NovoTituloRapidoModal ────────────────────────────────────────────────────
 
-function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onClose, onNovoTitulo, onConfirmarCreditoRotativo, onConfirmarTarifa, onConfirmarEstornoTarifa }) {
-  const tarifasAtivas = Array.isArray(tarifas) ? tarifas.filter((tarifa) => tarifa.ativo !== false) : [];
+function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onClose, onNovoTitulo, onConfirmarCreditoRotativo, onConfirmarTarifa, onConfirmarRendimento, onConfirmarEstornoTarifa }) {
+  const atalhosAtivos = Array.isArray(tarifas) ? tarifas.filter((atalho) => atalho.ativo !== false) : [];
+  const tarifasAtivas = atalhosAtivos.filter((atalho) => atalho.tipo_atalho !== 'RENDIMENTO');
+  const rendimentosAtivos = atalhosAtivos.filter((atalho) => atalho.tipo_atalho === 'RENDIMENTO');
   const isSaida = Number(item?.valor || 0) < 0;
   const creditoRotativoNatureza = isSaida ? 'amortizacao' : 'liberacao';
   const creditoRotativoKey = `credito-rotativo-${item?.id}`;
 
   return (
     <div className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 px-4 py-6">
-      <div className="w-full max-w-xl rounded-2xl bg-[var(--c-surface)] p-6 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label="Ações rápidas da conciliação" className="max-h-[calc(100vh-3rem)] w-full max-w-xl overflow-y-auto rounded-2xl bg-[var(--c-surface)] p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-[var(--c-border)] pb-4">
           <div>
             <h2 className="text-lg font-semibold text-[var(--c-text)]">Ações rápidas</h2>
@@ -288,7 +296,7 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
               <button
                 type="button"
                 className="btn btn-outline btn-sm shrink-0"
-                disabled={processingId === creditoRotativoKey}
+            disabled={Boolean(processingId)}
                 onClick={() => onConfirmarCreditoRotativo(item)}
               >
                 {processingId === creditoRotativoKey
@@ -318,7 +326,7 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
                     key={tarifa.codigo}
                     type="button"
                     className="btn btn-outline btn-sm"
-                    disabled={!isSaida || !elegibilidade.ok || itemEmProcessamento}
+                    disabled={!isSaida || !elegibilidade.ok || itemEmProcessamento || Boolean(processingId)}
                     onClick={() => onConfirmarTarifa(item, tarifa)}
                     title={!isSaida ? 'Tarifas bancarias devem ser lancamentos de saida.' : elegibilidade.motivo}
                   >
@@ -327,11 +335,32 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
                 );
               })}
             </div>
-            {error ? (
-              <div className="mt-3 rounded-xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-3 py-2 text-xs font-medium text-[var(--sem-danger)]">
-                {error}
+          </div>
+
+          <div className="rounded-xl border border-dashed border-[var(--c-border)] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-[var(--c-text)]">Rendimento da conta</p>
+                <p className="text-xs text-[var(--c-muted)]">Registra um crédito de rendimento com categoria financeira de entrada na DRE.</p>
               </div>
-            ) : null}
+              {isSaida && <span className="rounded-full bg-[var(--sem-warning-bg)] px-2 py-1 text-xs font-medium text-[var(--sem-warning)]">Apenas entradas</span>}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {rendimentosAtivos.length === 0 ? (
+                <span className="text-xs text-[var(--c-muted)]">Nenhum rendimento ativo. Configure em Financeiro &gt; Cadastros.</span>
+              ) : rendimentosAtivos.map((rendimento) => {
+                const key = `rendimento-${item?.id}-${rendimento.codigo}`;
+                const elegibilidade = tarifaAtalhoAptaParaConciliacao(rendimento);
+                return (
+                  <button key={rendimento.codigo} type="button" className="btn btn-outline btn-sm"
+                    disabled={isSaida || !elegibilidade.ok || Boolean(processingId)}
+                    title={isSaida ? 'Rendimento deve ser um lancamento de entrada.' : elegibilidade.motivo}
+                    onClick={() => onConfirmarRendimento(item, rendimento)}>
+                    {processingId === key ? 'Registrando...' : rendimento.nome}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="rounded-xl border border-[var(--c-border)] px-4 py-3">
@@ -353,7 +382,7 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
                     key={`estorno-${tarifa.codigo}`}
                     type="button"
                     className="btn btn-outline btn-sm"
-                    disabled={isSaida || !elegibilidade.ok || itemEmProcessamento}
+                    disabled={isSaida || !elegibilidade.ok || itemEmProcessamento || Boolean(processingId)}
                     onClick={() => onConfirmarEstornoTarifa(item, tarifa)}
                     title={isSaida ? 'Estornos de tarifa devem ser lancamentos de entrada.' : elegibilidade.motivo}
                   >
@@ -363,6 +392,11 @@ function AcoesRapidasConciliacaoModal({ item, tarifas, processingId, error, onCl
               })}
             </div>
           </div>
+          {error ? (
+            <div role="alert" className="rounded-xl border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-3 py-2 text-xs font-medium text-[var(--sem-danger)]">
+              {error}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -1122,10 +1156,10 @@ function ItemConciliacao({ item, associacaoPreparada = null, processingId, selec
               <ContextoObraTitulo registro={item.titulo} />
               {item.movimento && <p className="text-xs text-[var(--c-muted)]">Mov. #{item.movimento.id}</p>}
             </div>
-          ) : !isPendente && ['TARIFA_BANCARIA', 'ESTORNO_TARIFA_BANCARIA'].includes(item.movimento?.tipo_movimento) ? (
+          ) : !isPendente && ['TARIFA_BANCARIA', 'ESTORNO_TARIFA_BANCARIA', 'RENDIMENTO_BANCARIO'].includes(item.movimento?.tipo_movimento) ? (
             <div className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg)] px-2 py-2 space-y-1">
               <p className="font-semibold text-xs text-[var(--c-text)] truncate">
-                {item.movimento.tipo_movimento === 'ESTORNO_TARIFA_BANCARIA' ? 'Estorno de tarifa bancaria' : 'Tarifa bancaria'}
+                {item.movimento.tipo_movimento === 'RENDIMENTO_BANCARIO' ? 'Rendimento da conta' : item.movimento.tipo_movimento === 'ESTORNO_TARIFA_BANCARIA' ? 'Estorno de tarifa bancaria' : 'Tarifa bancaria'}
               </p>
               <p className="text-xs text-[var(--c-muted)]">{item.movimento.observacoes || item.descricao_banco}</p>
               <p className="text-xs text-[var(--c-muted)]">Mov. #{item.movimento.id}</p>
@@ -2479,7 +2513,7 @@ export default function FinanceiroConciliacao() {
   async function handleConfirmarTarifa(item, tarifa) {
     if (!item?.id || !tarifa?.codigo) return;
 
-    const lockKey = `tarifa-${item.id}`;
+    const lockKey = `atalho-${item.id}`;
     const processingKey = `${lockKey}-${tarifa.codigo}`;
     if (tarifaRequestsEmAndamentoRef.current.has(lockKey)) return;
     tarifaRequestsEmAndamentoRef.current.add(lockKey);
@@ -2507,7 +2541,7 @@ export default function FinanceiroConciliacao() {
 
   async function handleConfirmarEstornoTarifa(item, tarifa) {
     if (!item?.id || !tarifa?.codigo) return;
-    const lockKey = `estorno-tarifa-${item.id}`;
+    const lockKey = `atalho-${item.id}`;
     const processingKey = `${lockKey}-${tarifa.codigo}`;
     if (tarifaRequestsEmAndamentoRef.current.has(lockKey)) return;
     tarifaRequestsEmAndamentoRef.current.add(lockKey);
@@ -2525,6 +2559,32 @@ export default function FinanceiroConciliacao() {
       await carregarConciliacoes();
     } catch (err) {
       const message = err?.message || 'Erro ao conciliar estorno de tarifa bancaria';
+      setAcoesRapidasError(message);
+      avisar.erro(message);
+    } finally {
+      tarifaRequestsEmAndamentoRef.current.delete(lockKey);
+      setProcessingId(null);
+    }
+  }
+
+  async function handleConfirmarRendimento(item, rendimento) {
+    if (!item?.id || !rendimento?.codigo) return;
+    const lockKey = `atalho-${item.id}`;
+    if (tarifaRequestsEmAndamentoRef.current.has(lockKey)) return;
+    tarifaRequestsEmAndamentoRef.current.add(lockKey);
+    try {
+      setProcessingId(`rendimento-${item.id}-${rendimento.codigo}`);
+      setAcoesRapidasError('');
+      limparAvisos();
+      await confirmarConciliacaoRendimentoBancario(item.id, {
+        codigo: rendimento.codigo,
+        descricao: item.descricao_banco || rendimento.nome
+      });
+      avisar.sucesso(`Crédito conciliado como ${rendimento.nome}.`);
+      setAcoesRapidasItem(null);
+      await carregarConciliacoes();
+    } catch (err) {
+      const message = err?.message || 'Erro ao conciliar rendimento da conta';
       setAcoesRapidasError(message);
       avisar.erro(message);
     } finally {
@@ -3140,6 +3200,7 @@ export default function FinanceiroConciliacao() {
           }}
           onConfirmarCreditoRotativo={handleConfirmarCreditoRotativo}
           onConfirmarTarifa={handleConfirmarTarifa}
+          onConfirmarRendimento={handleConfirmarRendimento}
           onConfirmarEstornoTarifa={handleConfirmarEstornoTarifa}
         />
       )}

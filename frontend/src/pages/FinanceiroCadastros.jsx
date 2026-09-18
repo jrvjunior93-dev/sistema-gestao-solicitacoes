@@ -320,12 +320,12 @@ function categoriaPossuiGrupoDre(categoria = {}) {
   return categoria.considera_dre !== false && Boolean(String(categoria.dre_grupo || '').trim());
 }
 
-function categoriaAptaParaTarifaBancaria(categoria = {}) {
+function categoriaAptaParaAtalhoBancario(categoria = {}, tipoAtalho = 'TARIFA') {
   const tipo = String(categoria.tipo || '').trim().toUpperCase();
   const classificacao = String(categoria.classificacao_gerencial || '').trim().toUpperCase();
   return (
     categoria.ativo !== false &&
-    ['PAGAR', 'AMBOS'].includes(tipo) &&
+    (tipoAtalho === 'RENDIMENTO' ? ['RECEBER', 'AMBOS'] : ['PAGAR', 'AMBOS']).includes(tipo) &&
     categoriaPossuiGrupoDre(categoria) &&
     !CLASSIFICACOES_INCOMPATIVEIS_COM_TARIFA.has(classificacao)
   );
@@ -341,6 +341,7 @@ function criarTarifaBancariaDraftId() {
 function prepararTarifasBancariasParaEdicao(itens) {
   return (Array.isArray(itens) ? itens : []).map((item) => ({
     ...item,
+    tipo_atalho: item.tipo_atalho || 'TARIFA',
     _draftId: criarTarifaBancariaDraftId()
   }));
 }
@@ -349,6 +350,7 @@ function prepararTarifasBancariasParaSalvar(itens) {
   return (Array.isArray(itens) ? itens : []).map((item) => ({
     codigo: String(item.codigo || '').trim(),
     nome: String(item.nome || '').trim(),
+    tipo_atalho: item.tipo_atalho || 'TARIFA',
     descricao: String(item.descricao || '').trim(),
     categoria_financeira_id: item.categoria_financeira_id ? Number(item.categoria_financeira_id) : null,
     ativo: item.ativo !== false
@@ -504,9 +506,8 @@ export default function FinanceiroCadastros() {
     return grupos.filter((grupo) => tiposCategoriaMarcados.has(grupo.key));
   }, [tiposCategoriaMarcados, categoriasFiltradas]);
 
-  const categoriasTarifasBancarias = useMemo(() => (
+  const categoriasAtalhosBancarios = useMemo(() => (
     [...categorias]
-      .filter(categoriaAptaParaTarifaBancaria)
       .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR', { sensitivity: 'base' }))
   ), [categorias]);
 
@@ -642,10 +643,10 @@ export default function FinanceiroCadastros() {
     }
   }
 
-  function handleAdicionarTarifaBancaria() {
+  function handleAdicionarTarifaBancaria(tipoAtalho = 'TARIFA') {
     setTarifasBancariasAtalhos((current) => ([
       ...current,
-      { _draftId: criarTarifaBancariaDraftId(), codigo: '', nome: '', descricao: '', categoria_financeira_id: '', ativo: true }
+      { _draftId: criarTarifaBancariaDraftId(), codigo: tipoAtalho === 'RENDIMENTO' ? 'RENDIMENTO_CONTA' : '', nome: tipoAtalho === 'RENDIMENTO' ? 'Rendimento da conta' : '', tipo_atalho: tipoAtalho, descricao: '', categoria_financeira_id: '', ativo: true }
     ]));
   }
 
@@ -663,10 +664,11 @@ export default function FinanceiroCadastros() {
     try {
       setSavingTarifasBancarias(true);
       limpar();
-      const categoriasAptas = new Set(categoriasTarifasBancarias.map((categoria) => String(categoria.id)));
-      const tarifaInvalida = tarifasBancariasAtalhos.find((tarifa) => !tarifa.categoria_financeira_id || !categoriasAptas.has(String(tarifa.categoria_financeira_id)));
+      const tarifaInvalida = tarifasBancariasAtalhos.find((tarifa) => !tarifa.categoria_financeira_id || !categoriasAtalhosBancarios.some((categoria) =>
+        String(categoria.id) === String(tarifa.categoria_financeira_id) && categoriaAptaParaAtalhoBancario(categoria, tarifa.tipo_atalho)
+      ));
       if (tarifaInvalida) {
-        avisar.erro(`O atalho ${tarifaInvalida.nome || tarifaInvalida.codigo || 'de tarifa'} precisa usar uma categoria ativa, de saida e classificada para DRE.`);
+        avisar.erro(`O atalho ${tarifaInvalida.nome || tarifaInvalida.codigo || 'bancario'} precisa usar uma categoria ativa, de ${tarifaInvalida.tipo_atalho === 'RENDIMENTO' ? 'entrada' : 'saida'} e classificada para DRE.`);
         return;
       }
       const itensSalvos = await atualizarTarifasBancariasAtalhos({
@@ -1524,14 +1526,15 @@ export default function FinanceiroCadastros() {
           </BlocoConteudo>
 
           <BlocoConteudo
-            titulo="Atalhos de tarifas bancárias"
+            titulo="Atalhos bancários da conciliação OFX"
             contagem={`${tarifasBancariasAtalhos.length} atalho(s)`}
-            descricao="Atalhos da conciliação bancária para tarifas como TAR PIX, TAR TED e manutenção de conta. Cada atalho precisa de categoria financeira de saída e classificada para DRE."
+            descricao="Tarifas são saídas; rendimentos da conta são entradas. Cada atalho precisa da categoria financeira correspondente, classificada para DRE."
             variante="secundario"
             acoes={(
-              <button type="button" className="btn btn-outline" onClick={handleAdicionarTarifaBancaria}>
-                Adicionar
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className="btn btn-outline" onClick={() => handleAdicionarTarifaBancaria('TARIFA')}>Adicionar tarifa</button>
+                <button type="button" className="btn btn-outline" onClick={() => handleAdicionarTarifaBancaria('RENDIMENTO')}>Adicionar rendimento</button>
+              </div>
             )}
           >
             <div className="app-list-stack">
@@ -1539,7 +1542,7 @@ export default function FinanceiroCadastros() {
                 <div className="app-note">Nenhum atalho de tarifa configurado.</div>
               ) : tarifasBancariasAtalhos.map((tarifa, index) => (
                 <div key={tarifa._draftId} className="app-list-card">
-                  <FormSecao legenda={`Atalho ${index + 1}`} colunas={2}>
+                  <FormSecao legenda={`Atalho ${index + 1} · ${tarifa.tipo_atalho === 'RENDIMENTO' ? 'Rendimento (entrada)' : 'Tarifa (saída)'}`} colunas={2}>
                     <CampoForm label="Nome exibido">
                       <input
                         className="input w-full"
@@ -1565,10 +1568,10 @@ export default function FinanceiroCadastros() {
                     </CampoForm>
 
                     <CampoForm
-                      label="Categoria financeira da tarifa"
+                      label={`Categoria financeira ${tarifa.tipo_atalho === 'RENDIMENTO' ? 'do rendimento' : 'da tarifa'}`}
                       obrigatorio
                       linha
-                      hint="A lista mostra apenas categorias ativas de pagar/ambos, com grupo DRE e sem classificacao de endividamento, investimento, patrimonial, entre empresas ou transferencia interna."
+                      hint={`A lista mostra apenas categorias ativas de ${tarifa.tipo_atalho === 'RENDIMENTO' ? 'receber' : 'pagar'}/ambos, com grupo DRE e sem classificação incompatível.`}
                     >
                       <select
                         className="input w-full"
@@ -1577,7 +1580,7 @@ export default function FinanceiroCadastros() {
                         required
                       >
                         <option value="">Selecione a categoria</option>
-                        {categoriasTarifasBancarias.map((categoria) => (
+                        {categoriasAtalhosBancarios.filter((categoria) => categoriaAptaParaAtalhoBancario(categoria, tarifa.tipo_atalho)).map((categoria) => (
                           <option key={categoria.id} value={categoria.id}>
                             {categoria.nome} ({categoria.dre_grupo}{categoria.dre_subgrupo ? ` / ${categoria.dre_subgrupo}` : ''})
                           </option>

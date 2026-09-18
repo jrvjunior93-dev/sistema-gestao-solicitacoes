@@ -2345,12 +2345,14 @@ function summarizeDreRows(titulos = [], empresas = [], movimentosAvulsos = []) {
 
   for (const movimento of movimentosAvulsos) {
     const categoria = movimento.categoriaFinanceira;
-    const linha = getLinhaDrePorCategoria(categoria, 'PAGAR');
+    const tipoMovimento = String(movimento.tipo_movimento || '').toUpperCase();
+    const isRendimentoBancario = tipoMovimento === 'RENDIMENTO_BANCARIO';
+    const linha = getLinhaDrePorCategoria(categoria, isRendimentoBancario ? 'RECEBER' : 'PAGAR');
     if (!linha.considera_dre || categoria?.considera_dre === false) continue;
 
     const rawValue = Number(movimento.valor_quitacao || movimento.valor || 0);
-    const isEstornoTarifa = String(movimento.tipo_movimento || '').toUpperCase() === 'ESTORNO_TARIFA_BANCARIA';
-    const baseSignedValue = isEstornoTarifa ? Math.abs(rawValue) : -Math.abs(rawValue);
+    const isEstornoTarifa = tipoMovimento === 'ESTORNO_TARIFA_BANCARIA';
+    const baseSignedValue = isEstornoTarifa || isRendimentoBancario ? Math.abs(rawValue) : -Math.abs(rawValue);
     const signedValue = isCategoriaRedutora(categoria) ? baseSignedValue * -1 : baseSignedValue;
     const empresaId = movimento.empresa_id ? Number(movimento.empresa_id) : null;
     addDreValue({ linha, categoria, signedValue, empresaId, countField: 'movimentos' });
@@ -2501,7 +2503,7 @@ async function gerarDreGerencial(req, filters = {}) {
   const movimentoAvulsoWhere = {
     titulo_financeiro_id: null,
     status: 'ATIVO',
-    tipo_movimento: { [Op.in]: ['TARIFA_BANCARIA', 'ESTORNO_TARIFA_BANCARIA'] },
+    tipo_movimento: { [Op.in]: ['TARIFA_BANCARIA', 'ESTORNO_TARIFA_BANCARIA', 'RENDIMENTO_BANCARIO'] },
     categoria_financeira_id: { [Op.ne]: null },
     data_movimento: {
       [Op.gte]: periodo.data_inicial,
@@ -4878,6 +4880,9 @@ function classifyMovimentoBancario(movimento, titulo) {
   if (tipoMovimento === 'ESTORNO_TARIFA_BANCARIA') {
     return 'ENTRADA';
   }
+  if (tipoMovimento === 'RENDIMENTO_BANCARIO') {
+    return 'ENTRADA';
+  }
   if (tipoMovimento === 'ESTORNO_BANCARIO') {
     return String(titulo?.tipo || '').toUpperCase() === 'RECEBER' ? 'SAIDA' : 'ENTRADA';
   }
@@ -5195,6 +5200,8 @@ async function gerarRelatorioConciliacaoContas(req, filters = {}) {
           ? 'TITULO'
           : movimento && tipoMovimento === 'TARIFA_BANCARIA'
             ? 'TARIFA'
+            : movimento && tipoMovimento === 'RENDIMENTO_BANCARIO'
+              ? 'RENDIMENTO'
             : movimento && tipoMovimento === 'ESTORNO_TARIFA_BANCARIA'
               ? 'ESTORNO_TARIFA'
             : movimento && ['LIBERACAO_CREDITO_ROTATIVO', 'AMORTIZACAO_CREDITO_ROTATIVO'].includes(tipoMovimento)
@@ -5278,6 +5285,7 @@ async function gerarRelatorioConciliacaoContas(req, filters = {}) {
 }
 
 module.exports = {
+  summarizeDreRows,
   acumularSerie,
   isFluxoCaixaPermuta,
   limitarDataFinalRealizados,

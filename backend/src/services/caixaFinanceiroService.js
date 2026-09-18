@@ -229,6 +229,7 @@ function obterNaturezaMovimento(movimento) {
   const tipoMovimento = String(movimento?.tipo_movimento || '').toUpperCase();
   if (tipoMovimento === 'CAIXA_ENTRADA_MANUAL') return 'ENTRADA';
   if (tipoMovimento === 'CAIXA_SAIDA_MANUAL') return 'SAIDA';
+  if (tipoMovimento === 'RENDIMENTO_BANCARIO') return 'ENTRADA';
   if (String(movimento?.titulo?.tipo || '').toUpperCase() === 'RECEBER') return 'ENTRADA';
   return 'SAIDA';
 }
@@ -847,6 +848,7 @@ async function obterResumoSessaoCaixa(req, sessaoId) {
 }
 
 module.exports = {
+  obterNaturezaMovimento,
   abrirSessaoCaixa,
   confirmarConciliacaoDiaCaixa,
   estornarMovimentoCaixa,

@@ -141,6 +141,15 @@ function categoriaFinanceiraAptaParaTarifa(categoria) {
   return !CLASSIFICACOES_INCOMPATIVEIS_COM_TARIFA.has(classificacao);
 }
 
+function categoriaFinanceiraAptaParaRendimento(categoria) {
+  if (!categoria || categoria.ativo === false) return false;
+  const tipo = String(categoria.tipo || '').trim().toUpperCase();
+  if (!['RECEBER', 'AMBOS'].includes(tipo)) return false;
+  if (categoria.considera_dre === false || !String(categoria.dre_grupo || '').trim()) return false;
+  const classificacao = String(categoria.classificacao_gerencial || '').trim().toUpperCase();
+  return !CLASSIFICACOES_INCOMPATIVEIS_COM_TARIFA.has(classificacao);
+}
+
 function categoriaFinanceiraPareceTarifa(categoria) {
   const text = normalizeText([
     categoria?.nome,
@@ -181,6 +190,18 @@ async function resolveCategoriaTarifaBancaria(tarifa, { transaction = null } = {
     throw createHttpError(400, 'Configure uma categoria financeira de tarifa bancaria em Financeiro > Cadastros para conciliar este atalho.');
   }
 
+  return categoria;
+}
+
+async function resolveCategoriaRendimentoBancario(atalho, { transaction = null } = {}) {
+  const categoriaId = Number(atalho?.categoria_financeira_id || 0);
+  if (!Number.isInteger(categoriaId) || categoriaId <= 0) {
+    throw createHttpError(400, 'Configure uma categoria financeira de entrada para o rendimento da conta.');
+  }
+  const categoria = await CategoriaFinanceira.findByPk(categoriaId, { transaction });
+  if (!categoriaFinanceiraAptaParaRendimento(categoria)) {
+    throw createHttpError(400, 'Categoria do rendimento deve estar ativa, ser RECEBER ou AMBOS e estar classificada para DRE.');
+  }
   return categoria;
 }
 
@@ -2490,6 +2511,7 @@ async function estornarConciliacao(req, conciliacaoId, payload = {}) {
     const tiposAvulsosEstornaveis = new Set([
       'TARIFA_BANCARIA',
       'ESTORNO_TARIFA_BANCARIA',
+      'RENDIMENTO_BANCARIO',
       'LIBERACAO_CREDITO_ROTATIVO',
       'AMORTIZACAO_CREDITO_ROTATIVO'
     ]);
@@ -2519,6 +2541,8 @@ async function estornarConciliacao(req, conciliacaoId, payload = {}) {
         ? 'TARIFA_BANCARIA'
         : tipoMovimentoAvulso === 'ESTORNO_TARIFA_BANCARIA'
           ? 'ESTORNO_TARIFA_BANCARIA'
+          : tipoMovimentoAvulso === 'RENDIMENTO_BANCARIO'
+            ? 'RENDIMENTO_BANCARIO'
           : 'CREDITO_ROTATIVO';
       await movimentoAvulso.update({
         status: 'ESTORNADO',
@@ -2553,6 +2577,7 @@ async function estornarConciliacao(req, conciliacaoId, payload = {}) {
     } else if (movimentosVinculados.length && ![
       'TARIFA_BANCARIA',
       'ESTORNO_TARIFA_BANCARIA',
+      'RENDIMENTO_BANCARIO',
       'CREDITO_ROTATIVO',
       'COMPENSACAO_CHEQUE_TERCEIRO'
     ].includes(tipoEstorno)) {
@@ -2598,6 +2623,101 @@ async function estornarConciliacao(req, conciliacaoId, payload = {}) {
   }
 }
 
+async function confirmarConciliacaoRendimento(req, conciliacaoId, payload = {}) {
+  await assertFinanceAccess(req);
+  const codigo = normalizeConfigCode(payload.codigo);
+  if (!codigo) throw createHttpError(400, 'Selecione o rendimento da conta.');
+
+  const atalhos = await listarTarifasBancariasConfig(req);
+  const atalho = atalhos.find((item) => normalizeConfigCode(item.codigo) === codigo
+    && item.ativo !== false && item.tipo_atalho === 'RENDIMENTO');
+  if (!atalho) throw createHttpError(400, 'Atalho de rendimento inativo ou nao configurado.');
+
+  const transaction = await sequelize.transaction();
+  try {
+    const conciliacao = await ConciliacaoBancaria.findOne({
+      where: { id: parseInteger(conciliacaoId, 'Conciliacao bancaria'), deleted_at: null },
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!conciliacao) throw createHttpError(404, 'Lancamento de conciliacao nao encontrado.');
+
+    const status = String(conciliacao.status || '').toUpperCase();
+    if (status !== 'PENDENTE') {
+      const movimentoExistente = status === 'CONCILIADO' && conciliacao.movimento_financeiro_id
+        ? await MovimentoFinanceiro.findByPk(conciliacao.movimento_financeiro_id, { transaction })
+        : null;
+      if (movimentoExistente
+        && String(movimentoExistente.tipo_movimento || '').toUpperCase() === 'RENDIMENTO_BANCARIO'
+        && String(movimentoExistente.observacoes || '').trim().toUpperCase().startsWith(`[${codigo}]`)) {
+        await transaction.commit();
+        return { ...conciliacao.toJSON(), movimento: movimentoExistente.toJSON(), idempotente: true };
+      }
+      throw createHttpError(409, 'Somente conciliacoes pendentes podem ser confirmadas.');
+    }
+
+    const valorBanco = Number(conciliacao.valor || 0);
+    if (!Number.isFinite(valorBanco) || valorBanco <= 0) {
+      throw createHttpError(400, 'Rendimento da conta deve ser um lancamento de entrada no OFX.');
+    }
+    const valor = roundCurrency(valorBanco);
+    if (valor <= 0) throw createHttpError(400, 'Valor do rendimento bancario invalido.');
+    const { conta, empresaId } = await validarEmpresaConciliacaoComConta(conciliacao, { transaction });
+    const categoria = await resolveCategoriaRendimentoBancario(atalho, { transaction });
+    const sessao = await obterSessaoAbertaParaConta(conta, conciliacao.data_movimento, { transaction });
+    const descricao = String(payload.descricao || conciliacao.descricao_banco || atalho.nome).trim().slice(0, 255);
+    const movimento = await MovimentoFinanceiro.create({
+      titulo_financeiro_id: null,
+      categoria_financeira_id: categoria.id,
+      conta_bancaria_id: conta.id,
+      empresa_id: empresaId,
+      caixa_sessao_id: sessao?.id || null,
+      conciliacao_bancaria_id: conciliacao.id,
+      tipo_movimento: 'RENDIMENTO_BANCARIO',
+      status: 'ATIVO',
+      valor,
+      juros: 0,
+      multa: 0,
+      desconto: 0,
+      valor_quitacao: valor,
+      data_movimento: conciliacao.data_movimento,
+      documento_referencia: conciliacao.documento || atalho.codigo,
+      observacoes: `[${atalho.codigo}] ${descricao || atalho.nome}`,
+      criado_por: req.user?.id || null
+    }, { transaction });
+    await conciliacao.update({
+      transferencia_financeira_id: null,
+      movimento_financeiro_id: movimento.id,
+      titulo_financeiro_id: null,
+      fatura_cartao_id: null,
+      empresa_id: empresaId,
+      caixa_sessao_id: sessao?.id || null,
+      status: 'CONCILIADO',
+      confirmado_por: req.user?.id || null,
+      confirmado_em: new Date()
+    }, { transaction });
+    await transaction.commit();
+    try {
+      await registrarEventoSeguranca({
+        req,
+        usuarioId: req.user?.id || null,
+        tipoEvento: 'FINANCIAL_BANK_RECONCILED_YIELD',
+        recursoTipo: 'CONCILIACAO_BANCARIA',
+        recursoId: conciliacao.id,
+        status: 'SUCCESS',
+        descricao: 'Credito OFX conciliado como rendimento da conta',
+        metadata: { movimento_financeiro_id: movimento.id, conta_bancaria_id: conta.id, categoria_financeira_id: categoria.id, codigo_atalho: atalho.codigo, valor }
+      });
+    } catch (auditError) {
+      console.error('Falha ao registrar auditoria do rendimento bancario:', auditError);
+    }
+    return { ...conciliacao.toJSON(), movimento: movimento.toJSON(), idempotente: false };
+  } catch (error) {
+    if (!transaction.finished) await transaction.rollback();
+    throw error;
+  }
+}
+
 async function confirmarConciliacaoTarifa(req, conciliacaoId, payload = {}) {
   await assertFinanceAccess(req);
 
@@ -2607,7 +2727,7 @@ async function confirmarConciliacaoTarifa(req, conciliacaoId, payload = {}) {
   }
 
   const atalhos = await listarTarifasBancariasConfig(req);
-  const tarifa = atalhos.find((item) => normalizeConfigCode(item.codigo) === codigoTarifa && item.ativo !== false);
+  const tarifa = atalhos.find((item) => normalizeConfigCode(item.codigo) === codigoTarifa && item.ativo !== false && item.tipo_atalho === 'TARIFA');
   if (!tarifa) {
     throw createHttpError(400, 'Tarifa bancaria inativa ou nao configurada.');
   }
@@ -2827,7 +2947,7 @@ async function confirmarConciliacaoEstornoTarifa(req, conciliacaoId, payload = {
   let tarifa = null;
   if (codigoTarifa) {
     const atalhos = await listarTarifasBancariasConfig(req);
-    tarifa = atalhos.find((item) => normalizeConfigCode(item.codigo) === codigoTarifa && item.ativo !== false);
+    tarifa = atalhos.find((item) => normalizeConfigCode(item.codigo) === codigoTarifa && item.ativo !== false && item.tipo_atalho === 'TARIFA');
     if (!tarifa) {
       throw createHttpError(400, 'Tarifa bancaria inativa ou nao configurada.');
     }
@@ -3985,6 +4105,7 @@ async function removerConciliacao(req, conciliacaoId, payload = {}) {
 }
 
 module.exports = {
+  categoriaFinanceiraAptaParaRendimento,
   conciliarSugeridos,
   corrigirContaConciliacao,
   confirmarConciliacao,
@@ -3993,6 +4114,7 @@ module.exports = {
   confirmarConciliacaoFatura,
   confirmarConciliacaoEstornoTarifa,
   confirmarConciliacaoTarifa,
+  confirmarConciliacaoRendimento,
   confirmarConciliacaoTransferencia,
   estornarConciliacao,
   estornarConciliacaoTransferencia,

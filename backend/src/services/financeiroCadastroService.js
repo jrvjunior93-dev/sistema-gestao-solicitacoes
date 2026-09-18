@@ -176,6 +176,10 @@ function isSuperadmin(user) {
 }
 
 function normalizeTarifaBancariaConfigItem(item = {}, index = 0, { requireCategoria = false } = {}) {
+  const tipoAtalho = String(item.tipo_atalho || 'TARIFA').trim().toUpperCase();
+  if (!['TARIFA', 'RENDIMENTO'].includes(tipoAtalho)) {
+    throw createHttpError(400, `Tipo do atalho ${index + 1} invalido.`);
+  }
   const nome = sanitizeTextField(item.nome || item.codigo || `Tarifa ${index + 1}`);
   const codigo = normalizeCodigo(item.codigo || nome);
   const categoriaFinanceiraId = item.categoria_financeira_id === undefined || item.categoria_financeira_id === null || item.categoria_financeira_id === ''
@@ -197,6 +201,7 @@ function normalizeTarifaBancariaConfigItem(item = {}, index = 0, { requireCatego
   return {
     codigo,
     nome: nome.slice(0, 80),
+    tipo_atalho: tipoAtalho,
     categoria_financeira_id: categoriaFinanceiraId,
     descricao: sanitizeTextField(item.descricao, { emptyAsNull: true }),
     ativo: sanitizeBoolean(item.ativo, true)
@@ -274,8 +279,9 @@ async function salvarTarifasBancariasConfig(req, payload = {}) {
       throw createHttpError(400, `Categoria financeira nao encontrada para a tarifa ${item.nome}.`);
     }
     const tipoCategoria = String(categoria.tipo || '').trim().toUpperCase();
-    if (!['PAGAR', 'AMBOS'].includes(tipoCategoria)) {
-      throw createHttpError(400, `Categoria financeira da tarifa ${item.nome} deve ser do tipo PAGAR ou AMBOS.`);
+    const tiposPermitidos = item.tipo_atalho === 'RENDIMENTO' ? ['RECEBER', 'AMBOS'] : ['PAGAR', 'AMBOS'];
+    if (!tiposPermitidos.includes(tipoCategoria)) {
+      throw createHttpError(400, `Categoria financeira do atalho ${item.nome} deve ser do tipo ${tiposPermitidos.join(' ou ')}.`);
     }
     if (categoria.ativo === false) {
       throw createHttpError(400, `Categoria financeira da tarifa ${item.nome} esta inativa.`);
@@ -699,6 +705,7 @@ async function atualizarCategoriaFinanceira(req, categoriaId, payload = {}) {
 }
 
 module.exports = {
+  normalizeTarifaBancariaConfigItem,
   atualizarCartaoFinanceiro,
   atualizarCategoriaFinanceira,
   atualizarContaBancaria,

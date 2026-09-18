@@ -7,6 +7,7 @@ const {
   confirmarConciliacaoEstornoBancario,
   confirmarConciliacaoEstornoTarifa,
   confirmarConciliacaoTarifa,
+  confirmarConciliacaoRendimento,
   confirmarConciliacaoTransferencia,
   estornarConciliacao,
   estornarConciliacaoTransferencia,
@@ -164,6 +165,16 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErro(res, error, 'Erro ao conciliar tarifa bancaria');
+    }
+  },
+
+  async confirmarRendimento(req, res) {
+    try {
+      const data = await confirmarConciliacaoRendimento(req, req.params.id, req.body || {});
+      return res.json(data);
+    } catch (error) {
+      console.error(error);
+      return responderErro(res, error, 'Erro ao conciliar rendimento da conta');
     }
   },
 

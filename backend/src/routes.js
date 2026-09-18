@@ -193,6 +193,7 @@ const {
   validateFinanceConciliacaoMovimentosQuery,
   validateFinanceConciliacaoQuery,
   validateFinanceConciliacaoTarifaBody,
+  validateFinanceConciliacaoRendimentoBody,
   validateFinanceConciliacaoTransferenciaBody,
   validateFinanceConciliacaoEstornoTransferenciaBody,
   validateFinanceCaixaAberturaBody,
@@ -2090,6 +2091,7 @@ router.post('/financeiro/conciliacoes/:id/confirmar-transferencia', allowFinance
 router.post('/financeiro/conciliacoes/:id/estornar-transferencia', allowConciliacaoEstornar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoEstornoTransferenciaBody }), ConciliacaoBancariaController.estornarTransferencia);
 router.post('/financeiro/conciliacoes/:id/estornar', allowConciliacaoEstornar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoEstornoTransferenciaBody }), ConciliacaoBancariaController.estornar);
 router.post('/financeiro/conciliacoes/:id/confirmar-tarifa', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoTarifaBody }), ConciliacaoBancariaController.confirmarTarifa);
+router.post('/financeiro/conciliacoes/:id/confirmar-rendimento', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoRendimentoBody }), ConciliacaoBancariaController.confirmarRendimento);
 router.get('/financeiro/conciliacoes/:id/tarifas-estorno', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria') }), ConciliacaoBancariaController.tarifasEstorno);
 router.post('/financeiro/conciliacoes/:id/confirmar-estorno-tarifa', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoEstornoTarifaBody }), ConciliacaoBancariaController.confirmarEstornoTarifa);
 router.post('/financeiro/conciliacoes/:id/confirmar-estorno-bancario', allowConciliacaoEstornar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Conciliacao bancaria'), body: validateFinanceConciliacaoEstornoBancarioBody }), ConciliacaoBancariaController.confirmarEstornoBancario);
