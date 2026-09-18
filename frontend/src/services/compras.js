@@ -265,6 +265,13 @@ export async function obterEtapasCompraSolicitacao(solicitacaoId) {
   return handleJsonResponse(response, 'Erro ao carregar etapas da compra');
 }
 
+export async function registrarEntregaPedido(solicitacaoId, pedidoId, data) {
+  const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/pedidos-compra/${pedidoId}/entregas`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao atualizar acompanhamento da entrega');
+}
+
 export async function decidirItemCompraSolicitacao(solicitacaoId, tipo, itemId, data) {
   const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/compra-itens/${tipo}/${itemId}/decisao`, {
     method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)

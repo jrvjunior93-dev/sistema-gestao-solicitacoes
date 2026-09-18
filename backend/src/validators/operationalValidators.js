@@ -772,6 +772,7 @@ function validateCompraEncerrarBody(body = {}) {
       'fechamento_parcial_confirmado',
       'justificativa',
       'fechamento_excedente_confirmado',
+      'previsao_entrega',
       'justificativa_excedente'
     ],
     'Encerramento da cotacao'
@@ -794,6 +795,7 @@ function validateCompraEncerrarBody(body = {}) {
       body.fechamento_parcial_confirmado,
       'Confirmacao do fechamento parcial'
     ) || false,
+    previsao_entrega: parseOptionalText(body.previsao_entrega, 'Previsao de entrega', 10),
     justificativa: parseOptionalText(body.justificativa, 'Justificativa', 2000),
     fechamento_excedente_confirmado: parseBoolean(
       body.fechamento_excedente_confirmado,

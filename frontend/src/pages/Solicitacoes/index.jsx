@@ -210,6 +210,19 @@ export default function Solicitacoes({ arquivadas = false }) {
     total_pages: 0
   });
   const solicitacoesRef = useRef([]);
+  const atualizarEntregaRef = useRef(null);
+  atualizarEntregaRef.current = () => carregarEmSegundoPlano();
+  useEffect(() => {
+    let dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+    const verificar = () => {
+      if (document.visibilityState !== 'visible') return;
+      const atual = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+      if (atual !== dia) { dia = atual; void atualizarEntregaRef.current?.(); }
+    };
+    const timer = setInterval(verificar, 60000);
+    document.addEventListener('visibilitychange', verificar);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', verificar); };
+  }, []);
   const localMutationsRef = useRef(new Map());
   const { user } = useAuth();
   const moduloContratosHabilitado = hasEnabledModule(user, 'CONTRATOS');
@@ -1537,7 +1550,7 @@ export default function Solicitacoes({ arquivadas = false }) {
         return;
       }
 
-      if (action.startsWith('RETORNO_')) {
+      if (action.startsWith('RETORNO_') || action === 'PURCHASE_DELIVERY_UPDATED') {
         // O pedido pendente altera a prioridade global da fila. Rebuscar a janela garante
         // que uma solicitacao que estava em outra pagina apareca imediatamente no topo e
         // que o destaque suma assim que o pedido for decidido ou cancelado.
@@ -1902,6 +1915,9 @@ export default function Solicitacoes({ arquivadas = false }) {
               {item.atencao_pendente.tipo === 'ENVIO_MANUAL' ? 'Enviada ao setor' : 'Novo comentário'}
             </span>
           )}
+          {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
+            Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}
+          </span>}
         </span>
         <StatusBadge
           status={item.status_global}
@@ -2106,7 +2122,7 @@ export default function Solicitacoes({ arquivadas = false }) {
           ]}
           renderCard={renderCardSolicitacao}
           urgencia={(item) => (
-            item.retorno_solicitado_pendente || item.atencao_pendente
+            item.entrega_pendente ? (item.entrega_pendente.vencida ? 'retorno' : 'entrega') : item.retorno_solicitado_pendente || item.atencao_pendente
               ? 'retorno'
               : urgenciaVencimento(item.data_vencimento)
           )}

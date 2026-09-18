@@ -395,6 +395,16 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
   ]);
 
   const atencaoPorSolicitacao = new Map(atencoesPendentes.map((linha) => [Number(linha.solicitacao_id), linha]));
+  const entregaService = require('../services/pedidoEntregaService');
+  const entregasPendentes = (await Promise.all(['OBRA', 'COMPRAS'].map((setor) =>
+    entregaService.pendenciasEntrega({ solicitacaoIds: idsSolicitacoes, setor })
+      .then((linhas) => linhas.map((linha) => ({ ...linha, setor })))))).flat();
+  const entregasPorSolicitacao = new Map();
+  for (const entrega of entregasPendentes) {
+    const id = Number(entrega.solicitacao_id);
+    if (!entregasPorSolicitacao.has(id)) entregasPorSolicitacao.set(id, []);
+    entregasPorSolicitacao.get(id).push(entrega);
+  }
 
   const responsavelPorSolicitacao = new Map();
   historicosResponsavel.forEach((item) => {
@@ -451,6 +461,11 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
         }
         : null;
       const atencao = atencaoPorSolicitacao.get(Number(item.id));
+      const entregas = entregasPorSolicitacao.get(Number(item.id)) || [];
+      solicitacao.entrega_pendente = entregas.length ? {
+        quantidade: entregas.length, vencida: entregas.some((e) => Number(e.vencida) || e.setor === 'OBRA'),
+        resumo: entregas.slice(0, 3).map((e) => `Pedido #${e.pedido_id}: ${e.setor === 'OBRA' ? 'Obra deve informar entrega' : e.estado === 'DIVERGENCIA' ? 'Compras deve tratar divergência' : `Compras deve reprogramar até ${e.prazo_compras}`}`).join(' · ')
+      } : null;
       solicitacao.atencao_pendente = atencao
         ? { tipo: atencao.tipo, resumo: atencao.resumo, evento_em: atencao.evento_em }
         : null;
@@ -1531,6 +1546,12 @@ async function solicitacaoAtendeEscopoOperacionalUsuario({
     return true;
   }
 
+  if (await userHasSetorCapability(req.user, 'eh_setor_compras')
+    && await userHasAreaPermission(req.user, [PERMISSAO_SOLICITACOES_VISUALIZAR_SETOR])) {
+    const pendencias = await require('../services/pedidoEntregaService').pendenciasEntrega({ solicitacaoIds: [solicitacao.id], setor: 'COMPRAS' });
+    if (pendencias.length) return true;
+  }
+
   if (await solicitacaoPertenceASetoresVisiveis(solicitacao, tokensProprios)) {
     return true;
   }
@@ -1927,6 +1948,9 @@ async function montarEscopoVisibilidadeLista(req, { listarArquivadas = false } =
         }
 
         if (podeAplicarEscopoSetor) {
+          if (await userHasSetorCapability(req.user, 'eh_setor_compras')) {
+            condicoes.push(Sequelize.literal(require('../services/pedidoEntregaService').sqlPendenciaEntrega('COMPRAS')));
+          }
           // Setor atual ve
           // `setorTokens` ja contem id, codigo e nome do setor, alem dos aliases operacionais
           // GEO <-> GERENCIA DE PROCESSOS. Usar aqui somente os valores literais do cadastro
@@ -2350,6 +2374,12 @@ module.exports = {
       // A prioridade entra no banco antes de limit/offset e continua valendo quando ha uma
       // ordenacao de coluna escolhida na interface.
       const ordenacaoRetornoPendente = [
+        [Sequelize.literal(`CASE WHEN ${require('../services/pedidoEntregaService').sqlPendenciaEntrega(
+          await userHasSetorCapability(req.user, 'eh_setor_compras') ? 'COMPRAS' : 'OBRA'
+        )} THEN 0 ELSE 1 END`), 'ASC'],
+        [Sequelize.literal(require('../services/pedidoEntregaService').sqlOrdemEntrega(
+          await userHasSetorCapability(req.user, 'eh_setor_compras') ? 'COMPRAS' : 'OBRA'
+        )), 'DESC'],
         [Sequelize.literal(`CASE WHEN EXISTS (
           SELECT 1 FROM solicitacao_atencoes_usuario sau
           WHERE sau.solicitacao_id = Solicitacao.id
@@ -2517,11 +2547,12 @@ module.exports = {
             .filter(Boolean)
             .map(v => String(v).trim())));
 
-          if (valoresFiltroSetor.length > 0) {
-            where.area_responsavel = { [Op.in]: valoresFiltroSetor };
-          } else {
-            where.area_responsavel = { [Op.in]: areasSelecionadas };
-          }
+          const filtroArea = { area_responsavel: { [Op.in]: valoresFiltroSetor.length ? valoresFiltroSetor : areasSelecionadas } };
+          const setorEntrega = valoresFiltroSetor.some((v) => normalizarTokenComparacao(v) === 'COMPRAS') ? 'COMPRAS'
+            : valoresFiltroSetor.some((v) => normalizarTokenComparacao(v) === 'OBRA') ? 'OBRA' : null;
+          where[Op.and] = where[Op.and] || [];
+          where[Op.and].push(setorEntrega ? { [Op.or]: [filtroArea,
+            Sequelize.literal(require('../services/pedidoEntregaService').sqlPendenciaEntrega(setorEntrega))] } : filtroArea);
         }
       }
       if (status) {
@@ -3075,6 +3106,9 @@ module.exports = {
         });
       }
       await assertTipoDisponivelNoDestino(obraSelecionada, tipoSelecionado);
+      if ([tipoSelecionado.nome, tipoSelecionado.codigo_interno].some((nome) => ['COMPRA_DIRETA', 'SOLICITACAO_DE_COMPRA', 'SOLICITACAO_COMPRA'].includes(normalizarTokenComparacao(nome)))) {
+        await require('../services/pedidoEntregaService').assertObraPodeCriarCompra(obra_id);
+      }
       const comportamentoBase = normalizeTipoSolicitacaoBehavior(tipoSelecionado);
       const usaFluxoDespesaEventual = tipoEhDespesaEventual(tipoSelecionado);
       const usaFluxoRecargaCartao = tipoEhRecargaCartao(tipoSelecionado);

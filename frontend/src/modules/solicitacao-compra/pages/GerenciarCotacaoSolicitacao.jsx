@@ -2873,6 +2873,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const [itensSelecionadosEnvio, setItensSelecionadosEnvio] = useState({});
   const [novoFornecedor, setNovoFornecedor] = useState({ nome: '', cnpj: '', email: '', whatsapp: '', contato: '' });
   const [vencedoresSelecionados, setVencedoresSelecionados] = useState({});
+  const [previsaoEntrega, setPrevisaoEntrega] = useState('');
   const encerramentoIdempotencyRef = useRef(null);
   const encerramentoSemPedidoIdempotencyRef = useRef(null);
   const fornecedorRequestRef = useRef({ sequencia: 0, controller: null });
@@ -3637,6 +3638,8 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   */
   async function handleEncerrar() {
     try {
+      const previsaoConfirmada = previsaoEntrega;
+      if (!previsaoConfirmada) { avisar.alerta('Informe a previsão de entrega antes de gerar os pedidos.'); return; }
       const itens = comparativo?.itens || [];
       const alocacoes = Object.values(vencedoresSelecionados)
         .filter((entry) => Number(entry?.resposta_item_id) > 0 && parseNumeroCompra(entry?.quantidade_alocada) > 0)
@@ -3764,6 +3767,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         {
           alocacoes,
           fechamento_parcial_confirmado: fechamentoParcial,
+          previsao_entrega: previsaoConfirmada,
           justificativa: fechamentoParcial ? justificativa : null,
           fechamento_excedente_confirmado: houveExcedente,
           justificativa_excedente: houveExcedente ? justificativaExcedente : null
@@ -4306,6 +4310,12 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       )}
 
       {/* Comparativo */}
+      {podeOperarFluxo && !fluxoTerminal && <label className="block text-sm">
+        Previsão de entrega dos novos pedidos
+        <input type="date" className="input ml-2 w-auto max-w-full" value={previsaoEntrega}
+          disabled={encerrando} onChange={(e) => setPrevisaoEntrega(e.target.value)} />
+        <span className="mt-1 block text-xs text-[var(--c-muted)]">Confirme com o fornecedor. Depois, Compras poderá reprogramar o saldo de cada item no detalhe da solicitação.</span>
+      </label>}
       <SecaoComparativo
         embedded={embedded}
         comparativo={comparativo}

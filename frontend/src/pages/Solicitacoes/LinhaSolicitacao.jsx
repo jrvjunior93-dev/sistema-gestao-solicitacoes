@@ -547,6 +547,9 @@ export function construirColunas({
               {item.atencao_pendente.tipo === 'ENVIO_MANUAL' ? 'Enviada ao setor' : 'Novo comentário'}
             </span>
           )}
+          {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
+            Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}
+          </span>}
         </span>
       )
     },

@@ -8,6 +8,7 @@ const {
   PedidoCompraFrete,
   PedidoCompraFreteRateio,
   PedidoCompraItem,
+  PedidoCompraItemRecebimento,
   PedidoCompraItemLog,
   PedidoCompraReabertura,
   PedidoCompraTitulo,
@@ -475,7 +476,7 @@ async function registrarLogPedidoItem({
 async function assertPedidoEditavel(pedidoOrId, transaction) {
   const pedido = typeof pedidoOrId === 'object' && pedidoOrId
     ? pedidoOrId
-    : await PedidoCompra.findByPk(Number(pedidoOrId), { transaction });
+    : await PedidoCompra.findByPk(Number(pedidoOrId), { transaction, lock: transaction?.LOCK?.UPDATE });
 
   if (!pedido) {
     throw new Error('Pedido nao encontrado.');
@@ -673,6 +674,7 @@ async function obterOuCriarPedidoPorFornecedor({
   usuarioId,
   transaction
 }) {
+  await require('./pedidoEntregaService').assertComprasPodeGerarPedido(transaction);
   let pedido = await PedidoCompra.findOne({
     where: {
       solicitacao_compra_id: solicitacao.id,
@@ -772,6 +774,7 @@ async function obterOuCriarPedidoPorFornecedor({
 
   pedido = await PedidoCompra.create(
     {
+      entrega_controle_obrigatorio: true,
       solicitacao_compra_id: solicitacao.id,
       obra_id: solicitacao.obra_id,
       fornecedor_compra_id: vinculacaoFornecedor.fornecedor_compra_id,
@@ -1557,8 +1560,10 @@ async function criarPedidoPorFornecedorRodada({
   usuarioId,
   transaction
 }) {
+  await require('./pedidoEntregaService').assertComprasPodeGerarPedido(transaction);
   const pedido = await PedidoCompra.create(
     {
+      entrega_controle_obrigatorio: true,
       solicitacao_compra_id: solicitacao.id,
       fechamento_id: fechamento.id,
       obra_id: solicitacao.obra_id,
@@ -1627,6 +1632,7 @@ async function gerarPedidosDosVencedores({
   fechamentoParcialConfirmado = false,
   fechamentoExcedenteConfirmado = false,
   justificativaExcedente = null,
+  previsaoEntrega = null,
   permitirParcial = false,
   permitirFinal = false,
   transaction
@@ -1822,6 +1828,17 @@ async function gerarPedidosDosVencedores({
         .map((item) => [Number(item.resposta_item_id || 0), item])
         .filter(([id]) => id > 0)
     );
+
+    const { dataValida, hojeBrasil } = require('./pedidoEntregaDomain');
+    if (!dataValida(previsaoEntrega) || previsaoEntrega < hojeBrasil()) {
+      throw Object.assign(new Error('Confirme a data prevista de entrega dos pedidos (hoje ou futura).'), { statusCode: 400 });
+    }
+    await require('../models').PedidoCompraEntrega.bulkCreate((pedidoAtualizado.itens || []).map((item) => ({
+      pedido_compra_item_id: item.id, pedido_compra_id: pedido.id, previsao: previsaoEntrega, estado: 'OBRA', versao: 1
+    })), { transaction });
+    await registrarHistoricoPedidoNaSolicitacaoPrincipal({ solicitacao, pedido, usuarioId,
+      acao: 'PEDIDO_PREVISAO_CONFIRMADA', descricao: `Previsão inicial de entrega do pedido #${pedido.id}: ${previsaoEntrega}`,
+      metadados: { pedido_id: pedido.id, previsao: previsaoEntrega, itens: (pedidoAtualizado.itens || []).map((item) => item.id) }, transaction });
 
     for (const registro of grupo.registrosAlocacao) {
       const itemPedido = itensPorResposta.get(Number(registro.resposta_item_id || 0));
@@ -2158,6 +2175,8 @@ async function fecharPedidosDaSolicitacaoCompraAutomaticamente({
     if (statusAnterior === statusFechado.codigo || isPedidoCancelado(statusAnterior)) {
       continue;
     }
+
+    await require('./pedidoEntregaService').assertPrevisaoConfirmada(pedido, transaction);
 
     await pedido.update(
       {
@@ -2867,6 +2886,7 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
 
 async function atualizarPedidoItem({ pedidoId, itemId, payload, usuarioId, transaction }) {
   await assertPedidoEditavel(pedidoId, transaction);
+  if (payload.quantidade_pedido !== undefined) await assertItensSemRecebimento([Number(itemId)], transaction);
 
   const item = await PedidoCompraItem.findOne({
     where: {
@@ -2922,6 +2942,7 @@ async function atualizarPedidoItem({ pedidoId, itemId, payload, usuarioId, trans
 
 async function removerPedidoItem({ pedidoId, itemId, usuarioId, transaction }) {
   await assertPedidoEditavel(pedidoId, transaction);
+  await assertItensSemRecebimento([Number(itemId)], transaction);
 
   const item = await PedidoCompraItem.findOne({
     where: {
@@ -3009,6 +3030,10 @@ async function atualizarStatusPedido({ pedidoId, status, usuarioId, transaction 
   }
   if (isPedidoCancelado(statusAnterior)) {
     throw new Error('Pedido cancelado nao pode ter o status alterado.');
+  }
+
+  if (statusConfig.codigo === 'FECHADO_FORNECEDOR') {
+    await require('./pedidoEntregaService').assertPrevisaoConfirmada(pedido, transaction);
   }
 
   await pedido.update(
@@ -3223,6 +3248,9 @@ async function cancelarPedidoCompra({ pedidoId, motivo, usuarioId, transaction }
   }
 
   await assertPedidoSemVinculoFinanceiroParaCancelamento(pedido.id, transaction);
+
+  const itensComEntrega = await PedidoCompraItem.findAll({ where: { pedido_compra_id: pedido.id }, attributes: ['id'], transaction });
+  await assertItensSemRecebimento(itensComEntrega.map((i) => i.id), transaction);
 
   const statusAnterior = pedido.status;
 
@@ -3520,6 +3548,7 @@ async function cancelarPedidoItens({ pedidoId, itens = [], motivo, usuarioId, tr
   }
 
   const idsSelecionados = itensPedido.map((item) => Number(item.id));
+  await assertItensSemRecebimento(idsSelecionados, transaction);
   const cancelaPedidoInteiro = itensAtivosAntes.length > 0 && idsSelecionados.length === itensAtivosAntes.length;
   if (cancelaPedidoInteiro) {
     await assertPedidoSemVinculoFinanceiroParaCancelamento(pedidoId, transaction);
@@ -3966,6 +3995,7 @@ async function remanejarPedidoItem({ pedidoId, itemId, respostaItemIdDestino, qu
   }
 
   const quantidadeRemanejada = roundPedidoQty(quantidade || itemOrigem.quantidade_pedido);
+  await assertItensSemRecebimento([itemOrigem.id], transaction);
   if (quantidadeRemanejada <= 0 || quantidadeRemanejada > roundPedidoQty(itemOrigem.quantidade_pedido)) {
     throw new Error('Quantidade remanejada invalida para o item de origem.');
   }
@@ -4197,7 +4227,40 @@ async function remanejarPedidoItem({ pedidoId, itemId, respostaItemIdDestino, qu
   return recalcularPedidoPorId(pedidoOrigem.id, transaction);
 }
 
+async function assertItensSemRecebimento(ids, transaction) {
+  if (!ids.length) return;
+  const recebido = Number(await PedidoCompraItemRecebimento.sum('quantidade', {
+    where: { pedido_compra_item_id: { [Op.in]: ids } }, transaction
+  }) || 0);
+  if (recebido > 0) throw Object.assign(new Error('Há recebimentos registrados. Preserve a entrega e use Cancelar saldo não entregue no acompanhamento da solicitação.'), { statusCode: 409 });
+}
+
+async function cancelarSaldoNaoRecebido({ pedido, item, recebido, motivo, usuarioId, transaction }) {
+  // O recebimento permanece intocado. Cancelamento financeiro requer tratamento previo.
+  await assertPedidoSemVinculoFinanceiroParaCancelamento(pedido.id, transaction);
+  const anterior = item.toJSON();
+  const saldo = roundQty(asNumber(item.quantidade_pedido) - asNumber(item.quantidade_cancelada) - recebido);
+  if (saldo <= 0) throw Object.assign(new Error('Não há saldo pendente para cancelar.'), { statusCode: 409 });
+  const alocacoes = await SolicitacaoCompraAlocacao.count({ where: { pedido_compra_item_id: item.id, status: 'ATIVA' }, transaction });
+  const custos = alocacoes ? await reduzirAlocacoesAtivasDoItem({ pedidoItemId: item.id, quantidade: saldo, usuarioId, motivo, transaction }) : {};
+  const proporcao = recebido / Math.max(1e-3, asNumber(item.quantidade_pedido));
+  await item.update({ quantidade_pedido: recebido, quantidade_cancelada: 0, removido: recebido === 0,
+    cancelado_por: usuarioId, cancelado_em: new Date(), motivo_cancelamento: motivo,
+    ipi_valor: roundMoney(alocacoes ? asNumber(item.ipi_valor) - (custos.ipi_rateado || 0) : asNumber(item.ipi_valor) * proporcao),
+    icms_valor: roundMoney(alocacoes ? asNumber(item.icms_valor) - (custos.icms_rateado || 0) : asNumber(item.icms_valor) * proporcao),
+    st_valor: roundMoney(alocacoes ? asNumber(item.st_valor) - (custos.st_rateado || 0) : asNumber(item.st_valor) * proporcao),
+    difal_rateado: roundMoney(alocacoes ? asNumber(item.difal_rateado) - (custos.difal_rateado || 0) : asNumber(item.difal_rateado) * proporcao)
+  }, { transaction });
+  await registrarLogPedidoItem({ pedidoCompraId: pedido.id, pedidoCompraItemId: item.id, usuarioId,
+    acao: 'SALDO_NAO_ENTREGUE_CANCELADO', descricao: motivo, dadosAnteriores: anterior,
+    dadosNovos: { ...item.toJSON(), quantidade_cancelada_nesta_operacao: saldo }, transaction });
+  if (alocacoes) await sincronizarDescontoPedidoPorAlocacoes(pedido.id, transaction);
+  await recalcularPedidoPorId(pedido.id, transaction);
+  await sincronizarRateiosFretesPendentesPedido({ pedidoId: pedido.id, usuarioId, motivo, transaction });
+}
+
 module.exports = {
+  cancelarSaldoNaoRecebido,
   atualizarPedidoItem,
   atualizarStatusPedido,
   atualizarStatusPedidosEmLote,

@@ -3917,6 +3917,7 @@ module.exports = {
       } = req.body;
       const compraDireta = normalizeTextCompra(origem) === 'COMPRA_DIRETA';
 
+
       if (!obra_id || !Array.isArray(itens) || itens.length === 0) {
         await transaction.rollback();
         return res.status(400).json({ error: 'Informe obra e ao menos um item' });
@@ -3932,6 +3933,8 @@ module.exports = {
         await transaction.rollback();
         return res.status(400).json({ error: 'Obra nao encontrada' });
       }
+
+      await require('../services/pedidoEntregaService').assertObraPodeCriarCompra(obra_id, transaction);
 
       const itensPreparados = [];
       const itensManuaisPreparados = [];
@@ -5017,6 +5020,7 @@ module.exports = {
         fechamentoParcialConfirmado: req.body?.fechamento_parcial_confirmado === true,
         fechamentoExcedenteConfirmado: req.body?.fechamento_excedente_confirmado === true,
         justificativaExcedente: req.body?.justificativa_excedente,
+        previsaoEntrega: req.body?.previsao_entrega,
         permitirParcial: podeFecharParcial,
         permitirFinal: podeEncerrarDefinitivamente,
         transaction

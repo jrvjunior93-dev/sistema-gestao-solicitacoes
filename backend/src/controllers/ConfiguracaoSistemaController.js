@@ -1553,6 +1553,7 @@ module.exports = {
 
       const config = {
         min_cotacoes: Number(porChave['COTACOES_MIN_COTACOES'] ?? COTACOES_DEFAULTS.min_cotacoes),
+        feriados_entrega: await require('../services/pedidoEntregaService').calendarioEntrega(),
         criterio_vencedor: porChave['COTACOES_CRITERIO_VENCEDOR'] ?? COTACOES_DEFAULTS.criterio_vencedor,
         prazo_resposta_padrao_dias: Number(porChave['COTACOES_PRAZO_RESPOSTA_PADRAO_DIAS'] ?? COTACOES_DEFAULTS.prazo_resposta_padrao_dias),
         permitir_aprovar_sem_minimo: (porChave['COTACOES_PERMITIR_APROVAR_SEM_MINIMO'] ?? String(COTACOES_DEFAULTS.permitir_aprovar_sem_minimo)) === 'true',
@@ -1581,6 +1582,10 @@ module.exports = {
       } = req.body || {};
 
       const condicoesPagamentoExigemPrazo = normalizarCondicoesPagamentoExigemPrazo(condicoes_pagamento_exigem_prazo);
+      const feriados = req.body?.feriados_entrega;
+      if (feriados !== undefined && (!Array.isArray(feriados) || feriados.length > 1000 || feriados.some((d) => !require('../services/pedidoEntregaDomain').dataValida(d)))) {
+        return res.status(400).json({ error: 'Informe feriados válidos no formato AAAA-MM-DD.' });
+      }
 
       const entries = [
         { chave: 'COTACOES_MIN_COTACOES', valor: String(Number(min_cotacoes) || COTACOES_DEFAULTS.min_cotacoes) },
@@ -1598,6 +1603,11 @@ module.exports = {
         } else {
           await ConfiguracaoSistema.create({ chave: entry.chave, valor: entry.valor });
         }
+      }
+
+      if (feriados !== undefined) {
+        const [calendario] = await ConfiguracaoSistema.findOrCreate({ where: { chave: 'COMPRAS_ENTREGA_FERIADOS' }, defaults: { valor: '[]' } });
+        await calendario.update({ valor: JSON.stringify([...new Set(feriados)].sort()) });
       }
 
       return res.json({

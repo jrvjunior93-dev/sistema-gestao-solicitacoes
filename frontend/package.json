@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:pedido-entregas": "node scripts/validarPedidoEntregaUI.mjs",
     "dev": "vite",
     "gerar:navegacao": "node scripts/gerarCatalogoNavegacaoBackend.mjs",
     "prebuild": "npm run gerar:navegacao",

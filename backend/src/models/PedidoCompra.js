@@ -79,6 +79,7 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true
       },
+      entrega_controle_obrigatorio: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
       prazo_entrega_tipo: {
         type: DataTypes.STRING(20),
         allowNull: true

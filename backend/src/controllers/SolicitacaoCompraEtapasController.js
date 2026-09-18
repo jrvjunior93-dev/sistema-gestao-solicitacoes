@@ -181,6 +181,7 @@ module.exports = {
           order: [['id', 'ASC']]
         }) : [];
       const recebimentosPorItem = new Map();
+      const entregasPorItem = await require('../services/pedidoEntregaService').resumirPedidos(pedidos, recebimentos);
       recebimentos.forEach((linha) => {
         const id = Number(linha.pedido_compra_item_id);
         recebimentosPorItem.set(id, [...(recebimentosPorItem.get(id) || []), linha.toJSON()]);
@@ -197,7 +198,7 @@ module.exports = {
         ],
         pedidos: pedidos.map((pedido) => ({
           ...pedido.toJSON(),
-          itens: pedido.itens.map((item) => ({ ...item.toJSON(), recebimentos: recebimentosPorItem.get(Number(item.id)) || [] }))
+          itens: pedido.itens.map((item) => ({ ...item.toJSON(), entrega: entregasPorItem.get(Number(item.id)), recebimentos: recebimentosPorItem.get(Number(item.id)) || [] }))
         })),
         comentarios: historicos.map((linha) => ({
           id: linha.id,
@@ -405,69 +406,5 @@ module.exports = {
     } catch (error) { return responderErro(res, error); }
   },
 
-  async receberItem(req, res) {
-    try {
-      const { solicitacao, compra } = await buscarContexto(req, { interagir: true });
-      await exigirSetor(req, 'eh_setor_obra');
-      const pedido = await PedidoCompra.findOne({ where: { id: req.params.pedidoId, solicitacao_compra_id: compra.id } });
-      if (!pedido || String(pedido.status || '').toUpperCase() === 'CANCELADO') rejeitar('Pedido indisponível.', 404);
-      const quantidade = Number(req.body?.quantidade);
-      const chave = String(req.body?.idempotency_key || '').trim();
-      const pedidoItemId = Number(req.params.itemId);
-      if (!Number.isInteger(pedidoItemId) || pedidoItemId <= 0) rejeitar('Item do pedido inválido.');
-      if (!Number.isFinite(quantidade) || quantidade <= 0) rejeitar('Quantidade inválida.');
-      if (!/^[A-Za-z0-9_-]{8,120}$/.test(chave)) rejeitar('Chave de envio inválida.');
-      const transaction = await PedidoCompraItem.sequelize.transaction();
-      let recebimento;
-      const responderRepetido = (linha) => {
-        if (Number(linha.pedido_compra_item_id) !== pedidoItemId || Math.abs(Number(linha.quantidade) - quantidade) > 0.0001) {
-          rejeitar('Esta chave de envio já foi usada para outra entrega.', 409);
-        }
-        return res.json({ ...linha.toJSON(), repetido: true });
-      };
-      try {
-        const item = await PedidoCompraItem.findOne({
-          where: { id: pedidoItemId, pedido_compra_id: pedido.id, removido: false },
-          transaction, lock: transaction.LOCK.UPDATE
-        });
-        if (!item) rejeitar('Item não encontrado no pedido.', 404);
-        const repetido = await PedidoCompraItemRecebimento.findOne({ where: { idempotency_key: chave }, transaction });
-        if (repetido) {
-          await transaction.commit();
-          return responderRepetido(repetido);
-        }
-        const totalRecebido = Number(await PedidoCompraItemRecebimento.sum('quantidade', {
-          where: { pedido_compra_item_id: item.id }, transaction
-        }) || 0);
-        const quantidadePedido = Number(item.quantidade_pedido || 0) - Number(item.quantidade_cancelada || 0);
-        if (totalRecebido + quantidade > quantidadePedido + 0.0001) rejeitar('A entrega excede o saldo do item.', 409);
-        recebimento = await PedidoCompraItemRecebimento.create({
-          pedido_compra_item_id: item.id,
-          quantidade,
-          recebido_em: new Date(),
-          usuario_id: req.user.id,
-          observacao: String(req.body?.observacao || '').trim() || null,
-          idempotency_key: chave
-        }, { transaction });
-        await Historico.create({
-          solicitacao_id: solicitacao.id,
-          usuario_responsavel_id: req.user.id,
-          setor: req.user.setor_id,
-          acao: 'ITEM_PEDIDO_RECEBIDO',
-          descricao: `Recebidas ${quantidade} unidade(s) do item #${item.id} do pedido #${pedido.id}.`,
-          metadata: JSON.stringify({ pedido_id: pedido.id, pedido_item_id: item.id, quantidade, recebimento_id: recebimento.id })
-        }, { transaction });
-        await transaction.commit();
-      } catch (error) {
-        if (!transaction.finished) await transaction.rollback();
-        if (error.name === 'SequelizeUniqueConstraintError') {
-          const repetido = await PedidoCompraItemRecebimento.findOne({ where: { idempotency_key: chave } });
-          if (repetido) return responderRepetido(repetido);
-        }
-        throw error;
-      }
-      await publishSolicitacaoRealtimeEvent({ action: 'PURCHASE_ITEM_RECEIVED', solicitacao, actor: { id: req.user.id } });
-      return res.status(201).json(recebimento);
-    } catch (error) { return responderErro(res, error); }
-  }
+  receberItem: require('./PedidoEntregaController').receberItem
 };

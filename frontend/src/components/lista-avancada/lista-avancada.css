@@ -641,6 +641,8 @@
 .la-linha.la-urgencia-danger td:first-child::before { background: var(--sem-danger); }
 .la-linha.la-urgencia-warning td:first-child::before { background: var(--sem-warning); }
 .la-linha.la-urgencia-retorno td { background: var(--sem-danger-bg); }
+.la-linha.la-urgencia-entrega td, .la-card.la-urgencia-entrega { background: var(--sem-warning-bg); }
+.la-linha.la-urgencia-entrega td:first-child::before, .la-card.la-urgencia-entrega::before { background: var(--sem-warning); }
 .la-linha.la-urgencia-retorno:hover td {
   background: color-mix(in srgb, var(--sem-danger) 15%, var(--ui-surface));
 }

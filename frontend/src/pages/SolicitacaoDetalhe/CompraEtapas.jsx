@@ -9,10 +9,11 @@ import {
   decidirItemCompraSolicitacao,
   encaminharSolicitacaoCompraParaCompras,
   obterEtapasCompraSolicitacao,
-  receberItemCompraSolicitacao,
   uploadAnexoTemporarioCompra
 } from '../../services/compras';
 import GerenciarCotacaoSolicitacao from '../../modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao';
+import PedidoEntrega from './PedidoEntrega';
+import { useLiveUpdateSubscription } from '../../contexts/LiveUpdatesContext';
 import { itemPodeSerReaproveitado } from '../../modules/solicitacao-compra/utils/reaproveitamentoItensCompra';
 import { comentariosDaEtapa, comentariosDoItem, comentariosDoItemPedido } from './comentariosCompra';
 
@@ -29,7 +30,7 @@ function Comentarios({ lista }) {
   </div>;
 }
 
-export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, podeAnexar, mostrarCotacao, podeGerenciarCotacao, podeCriarNovaSolicitacao, onGerenciarItens, onUpdated }) {
+export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, podeProgramarEntrega, podeAnexar, mostrarCotacao, podeGerenciarCotacao, podeCriarNovaSolicitacao, onGerenciarItens, onUpdated }) {
   const navigate = useNavigate();
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
@@ -43,25 +44,34 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
   const [mencoes, setMencoes] = useState([]);
   const [buscaMencao, setBuscaMencao] = useState('');
   const [motivos, setMotivos] = useState({});
-  const [quantidadesEntrega, setQuantidadesEntrega] = useState({});
-  const [chavesEntrega, setChavesEntrega] = useState({});
   const [cotacaoAberta, setCotacaoAberta] = useState(false);
   const [selecionados, setSelecionados] = useState([]);
+  const consultaEntregaRef = useRef(0);
 
   async function carregar() {
+    const consulta = ++consultaEntregaRef.current;
     const retorno = await obterEtapasCompraSolicitacao(solicitacaoId);
-    setDados(retorno);
+    if (consulta === consultaEntregaRef.current) setDados(retorno);
   }
+
+  useLiveUpdateSubscription({ enabled: !!solicitacaoId,
+    filter: (event) => event?.entity === 'SOLICITACAO' && Number(event.record_id) === Number(solicitacaoId),
+    onEvent: () => carregar().catch(() => {}) });
+  useEffect(() => {
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') void carregar().catch(() => {}); }, 60000);
+    return () => clearInterval(timer);
+  }, [solicitacaoId]);
 
   useEffect(() => {
     let ativo = true;
+    const consulta = ++consultaEntregaRef.current;
     setSelecionados([]);
     setCarregando(true);
     obterEtapasCompraSolicitacao(solicitacaoId)
-      .then((retorno) => { if (ativo) setDados(retorno); })
+      .then((retorno) => { if (ativo && consulta === consultaEntregaRef.current) setDados(retorno); })
       .catch((error) => { if (ativo) avisar.erro(error.message || 'Erro ao carregar itens da compra.'); })
       .finally(() => { if (ativo) setCarregando(false); });
-    return () => { ativo = false; };
+    return () => { ativo = false; consultaEntregaRef.current += 1; };
   }, [solicitacaoId]);
 
   useEffect(() => {
@@ -341,35 +351,12 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
         </p>}
         <Comentarios lista={comentariosDaEtapa(dados.comentarios, 'PEDIDO', pedido.id)} />
         {formularioComentario('PEDIDO', pedido.id)}
-        <div className="mt-3 space-y-2">{pedido.itens.map((item) => {
-          const recebido = item.recebimentos.reduce((acc, linha) => acc + Number(linha.quantidade || 0), 0);
-          const total = Number(item.quantidade_pedido || 0) - Number(item.quantidade_cancelada || 0);
-          return <div key={item.id} className="rounded border border-[var(--c-border)] p-2 text-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="flex-1 font-medium">{item.descricao}</span>
-              <span>{quantidade(recebido)} / {quantidade(total)} entregue(s)</span>
-              <button type="button" className="btn btn-outline btn-sm"
-                onClick={() => abrirComentario(recebido > 0 ? 'ENTREGA' : 'PEDIDO_ITEM', item.id)}>Comentar</button>
-            </div>
-            {podeReceber && recebido < total && <div className="mt-2 flex flex-wrap gap-2">
-              <input className="input w-28" inputMode="decimal" aria-label={`Quantidade recebida de ${item.descricao}`}
-                value={quantidadesEntrega[item.id] || ''} onChange={(event) => setQuantidadesEntrega((atual) => ({ ...atual, [item.id]: event.target.value }))} />
-              <button type="button" className="btn btn-primary btn-sm" disabled={!!processando}
-                onClick={() => executar(`receber-${item.id}`, async () => {
-                  const idempotencyKey = chavesEntrega[item.id] || crypto.randomUUID();
-                  setChavesEntrega((atual) => ({ ...atual, [item.id]: idempotencyKey }));
-                  await receberItemCompraSolicitacao(solicitacaoId, pedido.id, item.id, {
-                    quantidade: Number((quantidadesEntrega[item.id] || '').replace(',', '.')),
-                    idempotency_key: idempotencyKey
-                  });
-                  setQuantidadesEntrega((atual) => ({ ...atual, [item.id]: '' }));
-                  setChavesEntrega((atual) => ({ ...atual, [item.id]: null }));
-                }, 'Entrega registrada para este item.')}>Marcar como entregue</button>
-            </div>}
+        <PedidoEntrega pedido={pedido} solicitacaoId={solicitacaoId} podeReceber={podeReceber} podeProgramar={podeProgramarEntrega}
+          onUpdated={async () => { await carregar(); await onUpdated?.(); }} renderComentarios={(item) => <>
+            <button type="button" className="btn btn-outline btn-sm mt-2" onClick={() => abrirComentario('PEDIDO_ITEM', item.id)}>Comentar no item</button>
             <Comentarios lista={comentariosDoItemPedido(dados.comentarios, item, dados.pedidos)} />
             {formularioComentario('PEDIDO_ITEM', item.id)}{formularioComentario('ENTREGA', item.id)}
-          </div>;
-        })}</div>
+          </>} />
       </details>)}</div> : <p className="text-sm text-[var(--c-muted)]">Ainda não há pedidos vinculados.</p>}
     </BlocoConteudo>
   </div>;

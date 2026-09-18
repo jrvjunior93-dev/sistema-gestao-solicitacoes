@@ -74,7 +74,7 @@ export default function ConfiguracoesCotacao() {
     event.preventDefault();
     try {
       setSalvando(true);
-      await salvarConfigCotacoes(config);
+      await salvarConfigCotacoes({ ...config, feriados_entrega: (config.feriados_entrega || []).map((d) => d.trim()).filter(Boolean) });
       avisar.sucesso('Configurações de cotações salvas com sucesso.');
     } catch (error) {
       console.error(error);
@@ -123,6 +123,10 @@ export default function ConfiguracoesCotacao() {
         cor="var(--c-primary)"
       >
         <form className="space-y-4" onSubmit={handleSalvar}>
+          <CampoForm label="Feriados do acompanhamento de entregas" hint="Uma data AAAA-MM-DD por linha. O prazo de Compras conta 2 dias úteis, excluindo sábados, domingos e estas datas. Alterações valem para novos prazos; os já registrados são preservados.">
+            <textarea className="input w-full" rows={3} value={(config.feriados_entrega || []).join('\n')}
+              onChange={(e) => atualizar('feriados_entrega', e.target.value.split('\n'))} />
+          </CampoForm>
           <FormSecao legenda="Encerramento da cotação" colunas={2}>
             <CampoForm
               label="Mínimo de cotações exigidas"

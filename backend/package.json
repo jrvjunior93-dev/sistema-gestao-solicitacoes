@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
+    "test:pedido-entregas": "node scripts/validarPedidoEntregas.js && node scripts/validarPedidoEntregasAcesso.js",
     "dev": "node server.js",
     "migrate": "node src/database/runMigrations.js",
     "preflight:schema": "node scripts/verificarSchemaSomenteLeitura.js",

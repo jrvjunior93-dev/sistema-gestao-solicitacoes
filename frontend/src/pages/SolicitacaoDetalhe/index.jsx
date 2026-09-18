@@ -1336,7 +1336,8 @@ export default function SolicitacaoDetalhe() {
       <CompraEtapas
         solicitacaoId={solicitacao.id}
         podeDecidir={podeInteragirSolicitacao && (isSetorGeo || isSuperadmin)}
-        podeReceber={podeInteragirSolicitacao && (isSetorObra || isSuperadmin)}
+        podeReceber={isSetorObra || isSuperadmin}
+        podeProgramarEntrega={isSetorCompras || isSuperadmin}
         podeAnexar={podeInteragirSolicitacao && (isSetorCompras || isSuperadmin) && canAnexarEspelhoComprasPedidos(user)}
         mostrarCotacao={(isSetorCompras || isSuperadmin) && moduloComprasHabilitado}
         podeGerenciarCotacao={podeInteragirSolicitacao}

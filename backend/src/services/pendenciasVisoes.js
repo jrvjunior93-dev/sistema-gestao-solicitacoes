@@ -57,7 +57,11 @@ const VISOES = {
   // pendentes (elas têm cartão próprio — os dois não se sobrepõem).
   'paradas-no-setor': ({ tokensSetor }) => (tokensSetor.length === 0 ? null : [
     { cancelada: false },
-    { area_responsavel: { [Op.in]: tokensSetor } },
+    { [Op.or]: [
+      { area_responsavel: { [Op.in]: tokensSetor } },
+      ...(tokensSetor.includes('COMPRAS') || tokensSetor.includes('OBRA')
+        ? [Sequelize.literal(require('./pedidoEntregaService').sqlPendenciaEntrega(tokensSetor.includes('COMPRAS') ? 'COMPRAS' : 'OBRA'))] : [])
+    ] },
     {
       [Op.or]: [
         { fluxo_aprovacao_diretoria: { [Op.ne]: true } },

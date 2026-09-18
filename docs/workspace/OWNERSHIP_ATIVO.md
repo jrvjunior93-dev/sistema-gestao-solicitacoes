@@ -1,5 +1,17 @@
 # Ownership Ativo
 
+Ownership temporario `/root`, 2026-09-18: acompanhamento de entregas por pedido.
+Escopo: novos modelos/migration/services/controller de entrega, pedidoCompraService,
+SolicitacaoController, SolicitacaoCompraController, SolicitacaoCompraEtapasController,
+rotas, validadores, permissoes de leitura de solicitacao, telas CompraEtapas,
+PedidoCompraDetalhe, listas de solicitacoes, configuracao do calendario de compras,
+services frontend, testes e handoff correspondentes. Preservar o guia de homologacao
+preexistente modificado e outputs/. Sem deploy ou escrita em bancos externos.
+Implementação e testes locais registrados em
+`docs/handoffs/2026-09-18-acompanhamento-entregas-pedidos.md`.
+Ownership liberado ao fim da implementação local. Commit e publicação deste
+conjunto autorizados em 18/09/2026; migration e deploy permanecem com o usuário.
+
 Ownership temporario da sessao `/root` em 2026-09-17 para corrigir a responsividade
 da gestao de cotacoes embutida nos detalhes da solicitacao:
 `frontend/src/modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao.jsx`,

@@ -1729,6 +1729,10 @@ export default function PedidoCompraDetalhe() {
           entrada não é ação) e virou campo de verdade, com rótulo e alinhamento
           do CampoForm.
         */}
+        {pedido.solicitacao?.solicitacao_principal_id && <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/solicitacoes/${pedido.solicitacao.solicitacao_principal_id}`)}>Acompanhar entregas na solicitação</button>
+          <span className="text-[var(--c-muted)]">Confirme a previsão, registre recebimentos e trate o saldo por item.</span>
+        </div>}
         <FormSecao colunas={2}>
           <CampoForm label="Status do pedido" hint="A troca de status grava auditoria e pode bloquear a edicao dos itens.">
             <select
