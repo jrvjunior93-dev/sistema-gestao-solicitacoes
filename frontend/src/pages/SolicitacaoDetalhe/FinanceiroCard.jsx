@@ -212,54 +212,62 @@ function createPaymentDraft() {
   };
 }
 
-function buildPaymentDraftForTitle({ parceiro, beneficiaries = [], solicitacao, usarChaveSolicitacao = false, compraDireta = false }) {
+function buildPaymentDraftForTitle({
+  parceiro,
+  beneficiaries = [],
+  solicitacao,
+  usarFavorecidoSolicitacao = false,
+  usarChaveSolicitacao = false,
+  compraDireta = false
+}) {
   const lista = Array.isArray(beneficiaries) ? beneficiaries : [];
   const chavePixSolicitacao = usarChaveSolicitacao
     ? String(solicitacao?.favorecido_chave_pix || '').trim()
     : '';
-  const favorecidoSolicitacao = solicitacao?.favorecido || null;
-  const favorecidoEhCredor = favorecidoSolicitacao?.id
-    && String(favorecidoSolicitacao.id) === String(parceiro?.id);
-  if (compraDireta) {
+  const favorecidoId = solicitacao?.favorecido?.id || solicitacao?.favorecido_id || null;
+  const temFavorecidoSolicitacao = usarFavorecidoSolicitacao && Boolean(favorecidoId);
+  const favorecidoSolicitacao = temFavorecidoSolicitacao ? solicitacao?.favorecido || null : null;
+  const favorecidoEhCredor = temFavorecidoSolicitacao && String(favorecidoId) === String(parceiro?.id);
+
+  // O favorecido escolhido nesta solicitacao prevalece sobre os favorecidos bancarios
+  // cadastrados no credor. So reutilizamos um cadastro se chave E documento coincidirem.
+  if (temFavorecidoSolicitacao) {
+    const documentoSolicitacao = onlyDigits(favorecidoSolicitacao?.cpf_cnpj);
+    const beneficiaryDaSolicitacao = !compraDireta && chavePixSolicitacao && documentoSolicitacao
+      ? lista.find((item) => item.ativo !== false
+        && normalizePixKey(item.pix_chave) === normalizePixKey(chavePixSolicitacao)
+        && onlyDigits(item.cpf_cnpj) === documentoSolicitacao) || null
+      : null;
+    const pixDaSolicitacao = findPartnerPixOption(favorecidoSolicitacao, chavePixSolicitacao);
     return {
       ...createPaymentDraft(),
       preparar_pagamento_pix: Boolean(chavePixSolicitacao),
-      usar_credor_como_favorecido: Boolean(chavePixSolicitacao && favorecidoEhCredor),
-      nome: chavePixSolicitacao ? (favorecidoSolicitacao?.nome || parceiro?.nome || '') : '',
-      cpf_cnpj: chavePixSolicitacao ? (favorecidoSolicitacao?.cpf_cnpj || parceiro?.cpf_cnpj || '') : '',
-      pix_tipo_chave: inferPixKeyType(chavePixSolicitacao, favorecidoSolicitacao?.telefone) || 'CNPJ',
+      usar_credor_como_favorecido: Boolean(chavePixSolicitacao && favorecidoEhCredor && pixDaSolicitacao),
+      payment_beneficiary_id: beneficiaryDaSolicitacao?.id ? String(beneficiaryDaSolicitacao.id) : '',
+      nome: favorecidoSolicitacao?.nome || '',
+      cpf_cnpj: favorecidoSolicitacao?.cpf_cnpj || '',
+      pix_tipo_chave: pixDaSolicitacao?.tipo
+        || (chavePixSolicitacao ? inferPixKeyType(chavePixSolicitacao, favorecidoSolicitacao?.telefone) : 'CNPJ'),
       pix_chave: chavePixSolicitacao
     };
   }
-  const beneficiaryDaSolicitacao = chavePixSolicitacao
-    ? lista.find((item) => (
-        item.ativo !== false
-        && normalizePixKey(item.pix_chave) === normalizePixKey(chavePixSolicitacao)
-      )) || null
-    : null;
-  const beneficiary = beneficiaryDaSolicitacao
-    || lista.find((item) => item.ativo !== false && item.pix_chave)
+  if (compraDireta) return createPaymentDraft();
+
+  const beneficiary = lista.find((item) => item.ativo !== false && item.pix_chave)
     || lista.find((item) => item.ativo !== false)
     || null;
-  const favorecido = chavePixSolicitacao
-    ? (favorecidoSolicitacao || parceiro)
-    : null;
-  const pixDaSolicitacao = findPartnerPixOption(favorecido, chavePixSolicitacao);
   const pixDoCredor = getParceiroPixPrincipal(parceiro);
-  const pixChave = chavePixSolicitacao || beneficiary?.pix_chave || pixDoCredor?.chave || '';
+  const pixChave = beneficiary?.pix_chave || pixDoCredor?.chave || '';
 
   return {
     preparar_pagamento_pix: Boolean(pixChave),
-    usar_credor_como_favorecido: Boolean(
-      chavePixSolicitacao ? (favorecidoEhCredor && pixDaSolicitacao) : (!beneficiary && pixDoCredor?.chave)
-    ),
+    usar_credor_como_favorecido: Boolean(!beneficiary && pixDoCredor?.chave),
     payment_beneficiary_id: beneficiary?.id ? String(beneficiary.id) : '',
-    nome: favorecido?.nome || beneficiary?.nome || parceiro?.nome || '',
-    cpf_cnpj: favorecido?.cpf_cnpj || beneficiary?.cpf_cnpj || parceiro?.cpf_cnpj || '',
-    pix_tipo_chave: pixDaSolicitacao?.tipo
-      || beneficiary?.pix_tipo_chave
+    nome: beneficiary?.nome || parceiro?.nome || '',
+    cpf_cnpj: beneficiary?.cpf_cnpj || parceiro?.cpf_cnpj || '',
+    pix_tipo_chave: beneficiary?.pix_tipo_chave
       || pixDoCredor?.tipo
-      || inferPixKeyType(pixChave, favorecido?.telefone || parceiro?.telefone)
+      || inferPixKeyType(pixChave, parceiro?.telefone)
       || 'CNPJ',
     pix_chave: pixChave
   };
@@ -461,6 +469,10 @@ function exigeTitulosSeparadosCompraDireta(solicitacao) {
 
 function createPagamento(solicitacao, valor = '', categoriaFinanceiraId = '', options = {}) {
   const parceiro = options.parceiro || solicitacao?.parceiro || null;
+  const credorOriginalId = solicitacao?.parceiro?.id || solicitacao?.parceiro_id || null;
+  const favorecidoPadraoId = credorOriginalId && String(parceiro?.id) === String(credorOriginalId)
+    ? (solicitacao?.favorecido_id || solicitacao?.favorecido?.id || null)
+    : null;
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     origem_frete: Boolean(options.origem_frete),
@@ -468,7 +480,7 @@ function createPagamento(solicitacao, valor = '', categoriaFinanceiraId = '', op
     parceiro_nome: parceiro?.nome || '',
     favorecido_pagamento_id: Object.prototype.hasOwnProperty.call(options, 'favorecido_pagamento_id')
       ? (options.favorecido_pagamento_id ? String(options.favorecido_pagamento_id) : '')
-      : (solicitacao?.compra_direta && solicitacao?.favorecido_id ? String(solicitacao.favorecido_id) : ''),
+      : (favorecidoPadraoId ? String(favorecidoPadraoId) : ''),
     categoria_financeira_id: categoriaFinanceiraId ? String(categoriaFinanceiraId) : '',
     valor,
     data_vencimento: options.data_vencimento || solicitacao?.data_vencimento || today(),
@@ -784,13 +796,14 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
             checked={Boolean(draft.preparar_pagamento_pix)}
             onChange={(event) => {
               const checked = event.target.checked;
-              const pix = compraDireta ? null : getParceiroPixPrincipal(parceiro);
+              const pix = compraDireta || pagamento?.favorecido_pagamento_id
+                ? null : getParceiroPixPrincipal(parceiro);
               onChange(pagamentoIndex, {
                 preparar_pagamento_pix: checked,
                 ...(checked && !draft.pix_chave
                   ? {
-                      nome: parceiro?.nome || draft.nome,
-                      cpf_cnpj: parceiro?.cpf_cnpj || draft.cpf_cnpj,
+                      nome: draft.nome || parceiro?.nome || '',
+                      cpf_cnpj: draft.cpf_cnpj || parceiro?.cpf_cnpj || '',
                       pix_tipo_chave: pix?.tipo || draft.pix_tipo_chave,
                       pix_chave: pix?.chave || draft.pix_chave
                     }
@@ -1412,7 +1425,10 @@ export default function FinanceiroCard({
       const usarChaveSolicitacao = (ehFrete || Boolean(
         credorOriginalId && String(credorOriginalId) === String(parceiroId)
       )) && (!compraDiretaSolicitacao || isFormaPix(formaDaLinha));
-      const precisaCarregarFavorecido = usarChaveSolicitacao
+      const usarFavorecidoSolicitacao = Boolean(favorecidoDaLinhaId) && (ehFrete || Boolean(
+        credorOriginalId && String(credorOriginalId) === String(parceiroId)
+      ));
+      const precisaCarregarFavorecido = usarFavorecidoSolicitacao
         && favorecidoDaLinhaId
         && String(favorecidoDaLinhaId) !== String(parceiroId)
         && !favorecidoDaLinha?.cpf_cnpj;
@@ -1433,7 +1449,8 @@ export default function FinanceiroCard({
         beneficiaries: Array.isArray(beneficiaries) ? beneficiaries : [],
         favorecidoCompleto,
         ehFrete,
-        usarChaveSolicitacao
+        usarChaveSolicitacao,
+        usarFavorecidoSolicitacao
       };
     }))
       .then((resultados) => {
@@ -1467,6 +1484,7 @@ export default function FinanceiroCard({
                 beneficiaries: resultado.beneficiaries,
                 solicitacao: solicitacaoComFavorecido,
                 usarChaveSolicitacao: resultado.usarChaveSolicitacao,
+                usarFavorecidoSolicitacao: resultado.usarFavorecidoSolicitacao,
                 compraDireta: compraDiretaSolicitacao
               }),
               dados_pagamento_parceiro_id: resultado.parceiroId
@@ -1750,27 +1768,37 @@ export default function FinanceiroCard({
   }
 
   function selecionarParceiroPagamento(index, partner) {
+    const credorOriginalId = solicitacao?.parceiro?.id || solicitacao?.parceiro_id || null;
+    const favorecidoSolicitacaoId = credorOriginalId && String(partner?.id) === String(credorOriginalId)
+      ? (solicitacao?.favorecido_id || solicitacao?.favorecido?.id || null)
+      : null;
     updatePagamento(index, {
       parceiro_id: partner?.id ? String(partner.id) : '',
       parceiro_nome: partner?.nome || '',
-      favorecido_pagamento_id: '',
+      favorecido_pagamento_id: favorecidoSolicitacaoId ? String(favorecidoSolicitacaoId) : '',
       dados_pagamento: createPaymentDraft(),
       dados_pagamento_parceiro_id: ''
     });
   }
 
   function aplicarCredorPadraoNosPagamentos(partner) {
+    const credorOriginalId = solicitacao?.parceiro?.id || solicitacao?.parceiro_id || null;
+    const favorecidoSolicitacaoId = credorOriginalId && String(partner?.id) === String(credorOriginalId)
+      ? (solicitacao?.favorecido_id || solicitacao?.favorecido?.id || null)
+      : null;
     setForm((current) => ({
       ...current,
       parceiro_id: partner?.id ? String(partner.id) : '',
-      pagamentos: (current.pagamentos || []).map((pagamento) => ({
-        ...pagamento,
-        parceiro_id: partner?.id ? String(partner.id) : pagamento.parceiro_id,
-        parceiro_nome: partner?.nome || pagamento.parceiro_nome,
-        favorecido_pagamento_id: '',
-        dados_pagamento: createPaymentDraft(),
-        dados_pagamento_parceiro_id: ''
-      }))
+      pagamentos: (current.pagamentos || []).map((pagamento) => (
+        pagamento.origem_frete ? pagamento : {
+          ...pagamento,
+          parceiro_id: partner?.id ? String(partner.id) : pagamento.parceiro_id,
+          parceiro_nome: partner?.nome || pagamento.parceiro_nome,
+          favorecido_pagamento_id: String(favorecidoSolicitacaoId || ''),
+          dados_pagamento: createPaymentDraft(),
+          dados_pagamento_parceiro_id: ''
+        }
+      ))
     }));
   }
 

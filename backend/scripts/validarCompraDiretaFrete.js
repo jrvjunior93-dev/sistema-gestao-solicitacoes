@@ -136,6 +136,16 @@ function run() {
   ], 'isolamento PIX e seleção da fila');
   assert(/compraDiretaSolicitacao\s*\?\s*Promise\.resolve\(\[\]\)/.test(financeiro),
     'A compra direta nao deve consultar o historico de favorecidos do credor.');
+  includesAll(financeiro, [
+    'temFavorecidoSolicitacao',
+    'usarFavorecidoSolicitacao: resultado.usarFavorecidoSolicitacao',
+    'nome: favorecidoSolicitacao?.nome ||',
+    'cpf_cnpj: favorecidoSolicitacao?.cpf_cnpj ||',
+    'favorecido_pagamento_id: favorecidoSolicitacaoId ? String(favorecidoSolicitacaoId) :'
+  ], 'prioridade do favorecido da solicitacao no titulo');
+  assert(financeiro.includes('normalizePixKey(item.pix_chave) === normalizePixKey(chavePixSolicitacao)')
+    && financeiro.includes('onlyDigits(item.cpf_cnpj) === documentoSolicitacao'),
+    'O cadastro bancario vinculado ao credor so pode ser reaproveitado quando chave e documento correspondem a solicitacao.');
   includesAll(detalhe, [
     'Gerenciar todos os itens',
     'abrirGerenciamentoItensCompra(item)',

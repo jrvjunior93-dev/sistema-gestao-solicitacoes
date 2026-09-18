@@ -1,5 +1,8 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: corrigir a prioridade do favorecido informado na solicitacao ao criar titulo no detalhe, sem reaproveitar automaticamente o favorecido bancario do credor. Escopo: `frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx`, `backend/scripts/validarCompraDiretaFrete.js`, validacao e handoff. Preservar `outputs/`; sem EC2, RDS, migration, commit, push ou deploy nesta tarefa.
+Implementacao local concluida; ownership de edicao liberado. Handoff: `docs/handoffs/2026-09-18-favorecido-solicitacao-criar-titulo.md`.
+
 Ownership temporario /root em 18/09/2026: exibir no card Dados da solicitacao a qualificacao do representante legal e do conjuge preenchida em contratos acima da variavel configuravel. Escopo: `backend/src/services/contratoFluxoNovoService.js`, `frontend/src/pages/SolicitacaoDetalhe/Header.jsx`, validacoes e handoff. Preservar `outputs/`; sem EC2, RDS, migration ou deploy pelo agente. Commit e push autorizados pelo usuario na etapa seguinte.
 Implementacao local concluida; ownership de edicao liberado. Handoff: `docs/handoffs/2026-09-18-qualificacao-representante-detalhe-contrato.md`.
 
