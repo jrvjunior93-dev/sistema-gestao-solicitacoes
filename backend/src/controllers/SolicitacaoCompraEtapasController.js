@@ -2,6 +2,8 @@ const { Op } = require('sequelize');
 const {
   Historico,
   Insumo,
+  FornecedorCompra,
+  Obra,
   PedidoCompra,
   PedidoCompraItem,
   PedidoCompraItemRecebimento,
@@ -12,6 +14,8 @@ const {
   SolicitacaoCompraItemApropriacao,
   SolicitacaoCompraItemManual,
   SolicitacaoCompraItemManualApropriacao,
+  SolicitacaoCompraRespostaItem,
+  Unidade,
   User
 } = require('../models');
 const {
@@ -23,6 +27,7 @@ const { registrarAtencaoSolicitacao } = require('../services/solicitacaoAtencaoS
 const { publishSolicitacaoRealtimeEvent } = require('../services/solicitacaoRealtimeService');
 const { criarNotificacao } = require('../services/notificacoes');
 const { obterChavesItensEmCotacao } = require('../services/compraItensCotacaoService');
+const { resolverCondicaoPagamentoPedido } = require('../services/pedidoCompraDocumentoUtils');
 
 function responderErro(res, error) {
   if (!error.statusCode) console.error(error);
@@ -114,6 +119,7 @@ module.exports = {
           where: { solicitacao_compra_id: compra.id },
           include: [
             { model: Insumo, as: 'insumo', attributes: ['id', 'nome', 'codigo'] },
+            { model: Unidade, as: 'unidade', attributes: ['id', 'sigla'] },
             { model: SolicitacaoCompraItemApropriacao, as: 'apropriacoes' }
           ],
           order: [['id', 'ASC']]
@@ -125,7 +131,14 @@ module.exports = {
         }),
         PedidoCompra.findAll({
           where: { solicitacao_compra_id: compra.id },
-          include: [{ model: PedidoCompraItem, as: 'itens', required: false }],
+          include: [
+            { model: PedidoCompraItem, as: 'itens', required: false, include: [{
+              model: SolicitacaoCompraRespostaItem, as: 'respostaItem', attributes: ['id', 'observacao'],
+              include: [{ model: SolicitacaoCompraFornecedor, as: 'cotacaoFornecedor', attributes: ['id', 'condicao_pagamento'] }]
+            }] },
+            { model: FornecedorCompra, as: 'fornecedor', attributes: ['id', 'nome', 'contato', 'email', 'whatsapp', 'parceiro_id'] },
+            { model: Obra, as: 'obra', attributes: ['id', 'codigo', 'nome', 'cno', 'endereco_logradouro', 'endereco_numero', 'endereco_complemento', 'endereco_bairro', 'endereco_cep', 'endereco_uf'] }
+          ],
           order: [['id', 'DESC']]
         }),
         Historico.findAll({
@@ -198,7 +211,12 @@ module.exports = {
         ],
         pedidos: pedidos.map((pedido) => ({
           ...pedido.toJSON(),
-          itens: pedido.itens.map((item) => ({ ...item.toJSON(), entrega: entregasPorItem.get(Number(item.id)), recebimentos: recebimentosPorItem.get(Number(item.id)) || [] }))
+          condicao_pagamento: resolverCondicaoPagamentoPedido(pedido),
+          itens: pedido.itens.map((item) => {
+            const { respostaItem, ...dadosItem } = item.toJSON();
+            return { ...dadosItem, observacoes: item.observacoes || respostaItem?.observacao || null,
+              entrega: entregasPorItem.get(Number(item.id)), recebimentos: recebimentosPorItem.get(Number(item.id)) || [] };
+          })
         })),
         comentarios: historicos.map((linha) => ({
           id: linha.id,

@@ -1,5 +1,15 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: itens e pedidos dentro do detalhe.
+Escopo: CompraEtapas, index do detalhe, novo PedidoResumo, PedidoCompraFinanceiro,
+SolicitacaoCompraEtapasController, testes correspondentes e handoff. Preservar guia
+preexistente e outputs. Sem deploy, commit ou escrita em banco externo nesta tarefa.
+Ownership liberado após implementação e testes locais. Handoff:
+`docs/handoffs/2026-09-18-itens-pedidos-cotacao-no-detalhe.md`.
+Commit e publicação deste escopo autorizados pelo usuário em 18/09/2026.
+Ownership liberado após conferência dos arquivos e repetição dos testes do escopo;
+commit/push restritos a este conjunto, deploy dev com o usuário.
+
 Ownership temporario `/root`, 2026-09-18: acompanhamento de entregas por pedido.
 Escopo: novos modelos/migration/services/controller de entrega, pedidoCompraService,
 SolicitacaoController, SolicitacaoCompraController, SolicitacaoCompraEtapasController,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import DateInputBR from '../../../components/DateInputBR';
 import { BlocoConteudo, CampoForm, FormSecao } from '../../../components/padrao';
@@ -60,7 +60,7 @@ function amanhaOuHoje() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualizar }) {
+export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualizar, onProcessando }) {
   const financeiro = pedido?.financeiro || null;
   const podeVer = canViewPedidoCompraFinanceiro(user);
   const podePrever = canGerarPrevisaoPedidoCompraFinanceiro(user);
@@ -70,6 +70,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const podeAbrirTituloFinanceiro = canAccessFinanceiro(user);
   const totalPedido = Number(pedido?.valor_total_fornecedor ?? pedido?.valor_total ?? 0);
   const [processando, setProcessando] = useState('');
+  const processandoRef = useRef(false);
   const [categoriaId, setCategoriaId] = useState('');
   const [descricao, setDescricao] = useState('');
   const [parcelas, setParcelas] = useState([{ valor: valorInput(totalPedido), data_vencimento: amanhaOuHoje() }]);
@@ -109,6 +110,9 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   if (!podeVer || !financeiro) return null;
 
   async function executar(chave, acao, sucesso) {
+    if (processandoRef.current) return;
+    processandoRef.current = true;
+    onProcessando?.(true);
     try {
       setProcessando(chave);
       await acao();
@@ -118,6 +122,8 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
       console.error(error);
       avisar.erro(error.message || 'Não foi possível concluir a operação financeira do pedido.');
     } finally {
+      processandoRef.current = false;
+      onProcessando?.(false);
       setProcessando('');
     }
   }
@@ -256,6 +262,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
       variante="primario"
       cor="var(--module-financeiro)"
     >
+      <fieldset disabled={Boolean(processando)} className="min-w-0">
       {financeiro.legado ? (
         <div className="app-alert">
           <p className="font-semibold">Pedido anterior ao novo fluxo</p>
@@ -278,6 +285,12 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
       {exibirFormularioParcelas ? (
         <div className="mt-4 border-t border-[var(--c-border)] pt-4">
           <h3 className="font-semibold text-[var(--c-text)]">{editandoParcelas ? 'Editar parcelas das previsões' : 'Criar títulos de previsão'}</h3>
+          <dl className="my-3 grid gap-3 sm:grid-cols-3 text-sm">
+            <div><dt className="text-[var(--c-muted)]">Credor (fornecedor do pedido)</dt><dd className="break-words font-semibold">{pedido.fornecedor?.nome || 'Não vinculado'}</dd></div>
+            <div><dt className="text-[var(--c-muted)]">Obra</dt><dd className="break-words font-semibold">{pedido.obra?.nome || 'Não vinculada'}</dd></div>
+            <div><dt className="text-[var(--c-muted)]">Valor do pedido ao fornecedor</dt><dd className="font-semibold">{moeda(totalPedido)}</dd></div>
+          </dl>
+          <p className="text-sm text-[var(--c-muted)]">O vínculo e o valor são deste pedido, não do total da solicitação. Os demais pedidos têm títulos próprios.</p>
           <p className="mt-1 text-sm text-[var(--c-muted)]">
             Distribua {moeda(totalPedido)} entre as parcelas. O Financeiro ainda não poderá baixá-las.
             {editandoParcelas ? ' As previsões atuais serão canceladas e substituídas somente ao salvar.' : ''}
@@ -417,6 +430,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
           <div className="mt-3 flex flex-wrap justify-end gap-2"><button type="button" className="btn btn-outline btn-perigo-suave" disabled={Boolean(processando)} onClick={() => decidir('REJEITAR')}>Rejeitar</button><button type="button" className="btn btn-primary" disabled={Boolean(processando)} onClick={() => decidir('APROVAR')}>Aprovar reabertura</button></div>
         </div>
       ) : null}
+      </fieldset>
     </BlocoConteudo>
   );
 }

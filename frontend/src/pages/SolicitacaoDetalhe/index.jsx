@@ -388,6 +388,7 @@ export default function SolicitacaoDetalhe() {
   const [modalCompraDiretaAberto, setModalCompraDiretaAberto] = useState(false);
   const [compraDiretaDetalhe, setCompraDiretaDetalhe] = useState(null);
   const [carregandoCompraDireta, setCarregandoCompraDireta] = useState(false);
+  const abrindoItensCompraRef = useRef(false);
   const [itemCompraDiretaSelecionado, setItemCompraDiretaSelecionado] = useState(null);
   const [rateiosCompraDireta, setRateiosCompraDireta] = useState([]);
   const [motivoCompraDireta, setMotivoCompraDireta] = useState('');
@@ -835,8 +836,9 @@ export default function SolicitacaoDetalhe() {
     ];
   }
 
-  async function abrirGerenciamentoItensCompra() {
-    if (!solicitacao?.id) return;
+  async function abrirGerenciamentoItensCompra(itemAlvo = null) {
+    if (!solicitacao?.id || abrindoItensCompraRef.current) return;
+    abrindoItensCompraRef.current = true;
 
     try {
       setCarregandoCompraDireta(true);
@@ -848,6 +850,12 @@ export default function SolicitacaoDetalhe() {
       setAcaoItemCompraDireta(podeCatalogarItensManuaisCompra ? 'CATALOGAR' : 'APROPRIAR');
       const data = await obterSolicitacaoCompraPorSolicitacao(solicitacao.id);
       setCompraDiretaDetalhe(data || null);
+      if (itemAlvo?.item_tipo) {
+        const item = montarItensCompraDireta(data).find((atual) =>
+          atual.item_tipo === itemAlvo.item_tipo && Number(atual.id) === Number(itemAlvo.id));
+        if (!item) throw new Error('Item não encontrado. Atualize a solicitação e tente novamente.');
+        selecionarItemCompraDireta(item);
+      }
       setModalCompraDiretaAberto(true);
     } catch (error) {
       console.error(error);
@@ -857,6 +865,7 @@ export default function SolicitacaoDetalhe() {
           : error?.message || 'Erro ao carregar itens da solicitação de compra'
       );
     } finally {
+      abrindoItensCompraRef.current = false;
       setCarregandoCompraDireta(false);
     }
   }
@@ -1334,6 +1343,8 @@ export default function SolicitacaoDetalhe() {
 
     itens_compra_direta: isSolicitacaoCompra && !isCompraDiretaSolicitacao && solicitacao.solicitacao_compra_id ? (
       <CompraEtapas
+        user={user}
+        itensRevisao={compraDiretaDetalhe}
         solicitacaoId={solicitacao.id}
         podeDecidir={podeInteragirSolicitacao && (isSetorGeo || isSuperadmin)}
         podeReceber={isSetorObra || isSuperadmin}

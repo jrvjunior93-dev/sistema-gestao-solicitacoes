@@ -13,6 +13,7 @@ import {
 } from '../../services/compras';
 import GerenciarCotacaoSolicitacao from '../../modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao';
 import PedidoEntrega from './PedidoEntrega';
+import PedidoResumo from './PedidoResumo';
 import { useLiveUpdateSubscription } from '../../contexts/LiveUpdatesContext';
 import { itemPodeSerReaproveitado } from '../../modules/solicitacao-compra/utils/reaproveitamentoItensCompra';
 import { comentariosDaEtapa, comentariosDoItem, comentariosDoItemPedido } from './comentariosCompra';
@@ -30,7 +31,7 @@ function Comentarios({ lista }) {
   </div>;
 }
 
-export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, podeProgramarEntrega, podeAnexar, mostrarCotacao, podeGerenciarCotacao, podeCriarNovaSolicitacao, onGerenciarItens, onUpdated }) {
+export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDecidir, podeReceber, podeProgramarEntrega, podeAnexar, mostrarCotacao, podeGerenciarCotacao, podeCriarNovaSolicitacao, onGerenciarItens, onUpdated }) {
   const navigate = useNavigate();
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
@@ -44,7 +45,6 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
   const [mencoes, setMencoes] = useState([]);
   const [buscaMencao, setBuscaMencao] = useState('');
   const [motivos, setMotivos] = useState({});
-  const [cotacaoAberta, setCotacaoAberta] = useState(false);
   const [selecionados, setSelecionados] = useState([]);
   const consultaEntregaRef = useRef(0);
 
@@ -73,6 +73,11 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; consultaEntregaRef.current += 1; };
   }, [solicitacaoId]);
+
+  useEffect(() => {
+    // Atualiza os itens editados sem desmontar cards ou descartar rascunhos da cotação.
+    if (itensRevisao) void carregar().catch((error) => avisar.erro(error.message || 'Erro ao atualizar itens.'));
+  }, [itensRevisao]);
 
   useEffect(() => {
     if (!dados) return;
@@ -227,6 +232,9 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       <span className="min-w-0 flex-1 font-semibold">{item.nome}</span>
       {escopo === 'ITEM' && item.rejeicao_implicita && <span className="text-xs text-[var(--c-muted)]">Não aprovado na análise externa</span>}
       <span className="text-[var(--c-muted)]">{quantidade(item.quantidade)} {item.unidade_sigla_manual || item.unidade?.sigla || ''}</span>
+      {escopo === 'ITEM' && <span className="text-xs text-[var(--c-muted)]">{item.rejeicao_implicita ? 'Rejeitado' : item.status_aprovacao || 'Sem decisão'}</span>}
+      {onGerenciarItens && <button type="button" className="btn btn-outline btn-sm" disabled={!!processando}
+        onClick={() => onGerenciarItens(item)} aria-label={`Editar ${item.nome}`}>Editar</button>}
       {escopo === 'ITEM' && chavesPendentes.has(`${item.item_tipo}:${item.id}`) && podeDecidir && <>
         <button type="button" className="btn btn-primary btn-sm" disabled={!!processando}
           onClick={() => decidir(item, 'APROVADO')}>Aprovar</button>
@@ -249,8 +257,9 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
   return <div className="space-y-3">
     <Avisos avisos={avisos} aoFechar={fechar} />
     {elementoConfirmacao}
-    <BlocoConteudo titulo="Itens da solicitação" contagem={`${pendentes.length} pendente(s)`} recolhivel
-      acoes={onGerenciarItens ? <button type="button" className="btn btn-outline btn-sm" onClick={onGerenciarItens}>Gerenciar itens</button> : null}>
+    <BlocoConteudo titulo="Itens da solicitação" contagem={`${dados.itens.length} item(ns) · ${pendentes.length} pendente(s)`} recolhivel
+      controles={<span />}
+      acoes={onGerenciarItens ? <button type="button" className="btn btn-outline btn-sm" onClick={() => onGerenciarItens()}>Gerenciar todos os itens</button> : null}>
       <div className="space-y-2">
         {podeDecidir && pendentes.length > 0 && <div className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-border)] px-3 py-2 text-sm">
           <label className="flex cursor-pointer items-center gap-2">
@@ -264,7 +273,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
           <button type="button" className="btn btn-primary btn-sm ml-auto" disabled={!selecionados.length || !!processando}
             onClick={aprovarSelecionados}>Aprovar selecionados</button>
         </div>}
-        {pendentes.length ? pendentes.map((item) => linhaItem(item, 'ITEM')) : <p className="text-sm text-[var(--c-muted)]">Nenhum item aguardando decisão do GEO.</p>}
+        {dados.itens.length ? dados.itens.map((item) => linhaItem(item, 'ITEM')) : <p className="text-sm text-[var(--c-muted)]">Nenhum item cadastrado nesta solicitação.</p>}
       </div>
     </BlocoConteudo>
     <BlocoConteudo titulo="Itens aprovados" contagem={`${aprovados.length} item(ns)`} recolhivel>
@@ -294,8 +303,6 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn btn-outline btn-sm"
           onClick={() => abrirComentario('COTACAO', dados.solicitacao_compra_id)}>Comentar na cotação</button>
-        {mostrarCotacao && <button type="button" className="btn btn-outline btn-sm"
-          onClick={() => setCotacaoAberta((aberta) => !aberta)}>{cotacaoAberta ? 'Recolher gestão da cotação' : 'Abrir gestão da cotação'}</button>}
       </div>
       <Comentarios lista={comentariosDaEtapa(dados.comentarios, 'COTACAO', dados.solicitacao_compra_id)} />
       {formularioComentario('COTACAO', dados.solicitacao_compra_id)}
@@ -314,7 +321,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
           </div>)}
         </div> : <p className="text-sm text-[var(--c-muted)]">Nenhum item enviado para fornecedores nesta solicitação.</p>}
       </div>
-      {mostrarCotacao && cotacaoAberta && <div className="mt-3">
+      {mostrarCotacao && <div className="mt-3">
         {!podeGerenciarCotacao && <p className="mb-2 text-xs text-[var(--c-muted)]">
           Para executar ações na cotação, solicite o retorno da solicitação ao setor de Compras.
         </p>}
@@ -327,6 +334,8 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       {dados.pedidos.length ? <div className="space-y-2">{dados.pedidos.map((pedido) => <details key={pedido.id}
         className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
         <summary className="cursor-pointer text-sm font-semibold">Pedido #{pedido.id} · {pedido.status}</summary>
+        <PedidoResumo pedido={pedido} user={user}
+          onUpdated={async () => { await carregar(); await onUpdated?.(); }} />
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/pedidos-compra/${pedido.id}`)}>Abrir pedido completo</button>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirComentario('PEDIDO', pedido.id)}>Comentar no pedido</button>
