@@ -195,7 +195,7 @@ export default function TiposSolicitacaoPorDestino() {
               {tiposVisiveis.map((tipo) => {
                 const ativo = tipo.ativo !== false;
                 return (
-                  <label key={tipo.id} className={`flex items-start gap-3 px-3 py-2.5 ${ativo ? 'cursor-pointer' : 'opacity-60'}`}>
+                  <label key={tipo.id} className={`flex items-start gap-3 px-3 py-3 ${ativo ? 'cursor-pointer' : 'opacity-60'}`}>
                     <input
                       type="checkbox"
                       className="mt-1"

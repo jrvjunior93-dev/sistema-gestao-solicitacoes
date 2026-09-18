@@ -739,7 +739,7 @@ export default function ComercialUnidades() {
               </button>
               <button
                 type="button"
-                className="btn btn-outline btn-sm text-rose-700"
+                className="btn btn-outline btn-sm text-[var(--sem-danger)]"
                 onClick={() => {
                   setUnidadeExclusao(item);
                   setMotivoExclusao('');
@@ -762,7 +762,7 @@ export default function ComercialUnidades() {
           closeOnEscape={!deleting}
         >
           <div className="app-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="excluir-unidade-titulo">
-            <div className="app-modal-surface app-modal-surface--compact p-5">
+            <div className="app-modal-surface app-modal-surface--compact p-4">
               <h2 id="excluir-unidade-titulo" className="text-lg font-semibold text-[var(--c-text)]">
                 Excluir unidade {unidadeExclusao.codigo}
               </h2>
@@ -772,7 +772,7 @@ export default function ComercialUnidades() {
               <label className="mt-4 block">
                 <span className="sol-filter-label">Motivo da exclusao *</span>
                 <textarea
-                  className="input mt-1 min-h-[96px] w-full"
+                  className="input mt-1 min-h-24 w-full"
                   value={motivoExclusao}
                   maxLength={500}
                   onChange={(event) => setMotivoExclusao(event.target.value)}
@@ -780,7 +780,7 @@ export default function ComercialUnidades() {
                   autoFocus
                 />
               </label>
-              <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
                 <button
                   type="button"
                   className="btn btn-outline"

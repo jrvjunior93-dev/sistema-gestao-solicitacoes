@@ -1842,6 +1842,30 @@ export const TELAS = [
     */
     tipo: 'detalhe'
   },
+  {
+    id: 'config-usuarios-teste-rapido',
+    arquivo: 'src/pages/ConfiguracaoUsuariosTesteRapido.jsx',
+    rota: '/configuracoes-usuarios-teste',
+    tipo: 'mista'
+  },
+  {
+    id: 'financeiro-fila-pagamentos',
+    arquivo: 'src/pages/FinanceiroFilaPagamentos.jsx',
+    rota: '/financeiro/fila-pagamentos',
+    tipo: 'mista'
+  },
+  {
+    id: 'responsaveis-obra',
+    arquivo: 'src/pages/ResponsaveisObra.jsx',
+    rota: '/configuracoes-responsaveis-obras',
+    tipo: 'form'
+  },
+  {
+    id: 'tipos-solicitacao-por-destino',
+    arquivo: 'src/pages/TiposSolicitacaoPorDestino.jsx',
+    rota: '/tipos-solicitacao-por-destino',
+    tipo: 'form'
+  },
 ];
 
 /** Itens da DoD, na ordem da matriz. */

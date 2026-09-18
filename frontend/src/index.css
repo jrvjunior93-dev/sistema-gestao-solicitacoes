@@ -1549,7 +1549,7 @@ a:hover {
   max-height: min(32rem, calc(100vh - 6rem));
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: clip;
   border: 1px solid var(--ui-border-strong);
   border-radius: var(--radius-lg, 12px);
   background: var(--ui-surface);

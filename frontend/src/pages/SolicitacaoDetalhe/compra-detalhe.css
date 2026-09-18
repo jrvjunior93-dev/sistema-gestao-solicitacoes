@@ -1,6 +1,6 @@
 .compra-acao-icone { position: relative; min-width: 36px; min-height: 36px; }
-.compra-acao-contagem { position: absolute; top: -5px; right: -5px; min-width: 16px; padding: 0 3px; border-radius: 8px; background: var(--c-primary); color: var(--c-on-primary, #fff); font-size: 10px; line-height: 16px; }
-.compra-dados-tabela { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.8125rem; }
+.compra-acao-contagem { position: absolute; top: -5px; right: -5px; min-width: 16px; padding: 0 3px; border-radius: 8px; background: var(--c-primary); color: var(--c-on-primary, #fff); font-size: var(--fonte-detalhe); line-height: 16px; }
+.compra-dados-tabela { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fonte-corpo); }
 .compra-dados-tabela th, .compra-dados-tabela td { padding: 8px 10px; border: 1px solid var(--c-border); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .compra-dados-tabela th { background: var(--c-surface-2); font-weight: 600; color: var(--c-muted); }
 .compra-dados-tabela td { background: var(--c-surface); }

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import OverlayModal from '../ui/OverlayModal';
+import DateInputBR from '../DateInputBR';
 import { confirmarNegociacaoTitulos, previewNegociacaoTitulos } from '../../services/financeiro';
 
 const moeda = value => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -94,7 +95,7 @@ export default function TituloNegociacaoModal({ titulos, onClose, onConfirmed })
             <input autoFocus className="input mt-1 w-full" maxLength={1000} value={form.motivo} onChange={e => alterar('motivo', e.target.value)} />
           </label>
           <label>Quantidade de parcelas<input className="input mt-1 w-full" type="number" min="1" max="120" value={form.quantidade} onChange={e => alterar('quantidade', e.target.value)} /></label>
-          <label>Primeiro vencimento<input className="input mt-1 w-full" type="date" min={hoje()} value={form.primeiro} onChange={e => alterar('primeiro', e.target.value)} /></label>
+          <label>Primeiro vencimento<DateInputBR className="input mt-1 w-full" min={hoje()} value={form.primeiro} onChange={e => alterar('primeiro', e.target.value)} /></label>
           {['juros', 'multa'].map(campo => <div key={campo} className="grid min-w-0 grid-cols-2 gap-2">
             <label>{campo === 'juros' ? 'Juros' : 'Multa'}<select className="input mt-1 w-full" value={form[`${campo}Tipo`]} onChange={e => alterar(`${campo}Tipo`, e.target.value)}>
               <option value="VALOR">Valor em R$</option><option value="PERCENTUAL">Percentual (%)</option>
@@ -109,7 +110,7 @@ export default function TituloNegociacaoModal({ titulos, onClose, onConfirmed })
           <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr><th className="p-2">Parcela</th><th className="p-2">Vencimento</th><th className="p-2">Valor (R$)</th><th className="p-2">Origem / rateio</th></tr></thead>
             <tbody>{parcelas.map((p, i) => <tr key={i} className="border-t border-[var(--c-border)]">
               <td className="p-2">{i + 1}/{parcelas.length}</td>
-              <td className="p-2"><input aria-label={`Vencimento da parcela ${i + 1}`} className="input min-w-[140px]" type="date" min={hoje()} disabled={busy} value={p.vencimento} onChange={e => editarParcela(i, 'vencimento', e.target.value)} /></td>
+              <td className="p-2"><DateInputBR aria-label={`Vencimento da parcela ${i + 1}`} className="input min-w-[140px]" min={hoje()} disabled={busy} value={p.vencimento} onChange={e => editarParcela(i, 'vencimento', e.target.value)} /></td>
               <td className="p-2"><input aria-label={`Valor da parcela ${i + 1}`} className="input w-32" inputMode="decimal" disabled={busy} value={p.valor} onChange={e => editarParcela(i, 'valor', e.target.value)} /></td>
               <td className="p-2"><details><summary className="cursor-pointer whitespace-nowrap">Ver distribuição</summary>
                 {ultimaPrevia.parcelas[i]?.rateios?.map((r, j) => <p className="mt-1 text-xs" key={j}>Título #{r.titulo_origem_id} · obra #{r.obra_id}: {previa ? moeda(r.valor) : 'recalcular'}</p>)}

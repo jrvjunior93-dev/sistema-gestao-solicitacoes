@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { TIPO_LARGURAS, usePreferenciaDeLista, usePreferencias } from '../contexts/PreferenciasContext';
+import { COLUMN_SIZE_PRESETS } from './columnSizePresets';
 
 const ResizableTableContext = createContext(null);
 
@@ -227,7 +228,9 @@ export function ResizableTable({
   ...props
 }) {
   const colunasRecebidas = useMemo(
-    () => (columns || []).filter((column) => getColumnKey(column)),
+    () => (columns || [])
+      .filter((column) => getColumnKey(column))
+      .map((column) => ({ ...COLUMN_SIZE_PRESETS[column.size], ...column })),
     [columns]
   );
   /*

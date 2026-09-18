@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import OverlayModal from '../../../components/ui/OverlayModal';
+import DateInputBR from '../../../components/DateInputBR';
 
 const dataBR = (data) => data ? data.split('-').reverse().join('/') : 'Não calculada';
 
@@ -35,7 +36,7 @@ export function useConfirmarEntregasPedidos() {
           ? `${linha.prazo_entrega_dias} ${linha.prazo_entrega_tipo === 'DIAS_UTEIS' ? 'dias úteis' : 'dias corridos'}` : 'não informado em dias'} · Data calculada: {dataBR(linha.previsao_calculada)}</p>
         {!linha.previsao_calculada && <p className="mb-2 text-xs text-[var(--sem-warning)]">Não há prazo válido para calcular. Informe a data acordada com o fornecedor.</p>}
         <div className="flex flex-wrap items-center gap-3">
-          <label className="text-sm">Entrega de {linha.fornecedor_nome}<input type="date" className="input block" min={linha.data_base} value={linha.previsao}
+          <label className="text-sm">Entrega de {linha.fornecedor_nome}<DateInputBR className="input block" min={linha.data_base} value={linha.previsao}
             onChange={(event) => { const valor = event.target.value; setLinhas((atuais) => atuais.map((p, i) => i === index ? { ...p, previsao: valor, confirmada: false } : p)); }} /></label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={linha.confirmada}
             disabled={!linha.previsao || linha.previsao < linha.data_base}

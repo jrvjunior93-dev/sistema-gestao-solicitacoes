@@ -231,31 +231,25 @@ export default function CrPlanningImportModal({
             */
             colunasConfiguraveis={false}
             colunas={[
-              ...(!isCosts ? [{
-                id: 'etapa',
-                titulo: 'Etapa / item',
-                // R17: a etapa/item NOMEIA a linha da prévia.
+              {
+                id: isCosts ? 'descricao' : 'etapa',
+                titulo: isCosts ? 'Descrição' : 'Etapa / item',
+                // A descrição ou a etapa/item nomeia a linha, conforme o tipo de importação.
                 tipo: 'identidade',
                 noCard: 'titulo',
-                render: ({ row }) => (
+                render: ({ row, index }) => isCosts ? (
+                  <input
+                    value={row.descricao || ''}
+                    onChange={(event) => updateRow(index, 'descricao', event.target.value)}
+                  />
+                ) : (
                   <>
                     <strong>{row.etapa_macro_codigo}</strong>
                     <span>{row.item_codigo} · {row.descricao}</span>
                   </>
                 )
-              }] : []),
+              },
               ...(isCosts ? [
-                {
-                  id: 'descricao',
-                  titulo: 'Descrição',
-                  tipo: 'texto',
-                  render: ({ row, index }) => (
-                    <input
-                      value={row.descricao || ''}
-                      onChange={(event) => updateRow(index, 'descricao', event.target.value)}
-                    />
-                  )
-                },
                 {
                   id: 'unidade',
                   titulo: 'Unid.',

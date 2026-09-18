@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: corrigir as 27 falhas da checagem
+geral de layout. Escopo: `frontend/src/pages/ComercialUnidades.jsx`,
+`CartoesRecarga.jsx`, `RhDpTransferencias.jsx`, `SolicitacaoDetalhe/PedidoEntrega.jsx`,
+`SolicitacaoDetalhe/compra-detalhe.css`; componentes de importacao de planejamento,
+negociacao de titulos e confirmacao de entregas; `frontend/src/index.css`,
+`frontend/src/components/lista-avancada/lista-avancada.css`, manifesto de telas,
+harness de preview, `ConfiguracaoUsuariosTesteRapido.jsx`,
+`FinanceiroFilaPagamentos.jsx`, `ResizableTable.jsx` e escala compartilhada de
+colunas. Preservar `outputs/`. Sem acesso a EC2/RDS ou deploy nesta
+tarefa. Correcao local concluida; commit e push da `refactor/frontend`
+autorizados pelo usuario na continuacao. Ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-18-layout-27-telas.md`.
+
 Ownership temporario /root em 18/09/2026: edicao inline de item manual e
 apropriacoes com autocomplete, e fechamento da lista de formas de pagamento
 apos selecao, nos formularios compartilhados de Compra Direta e Solicitacao de

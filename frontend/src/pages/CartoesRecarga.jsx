@@ -508,6 +508,7 @@ export default function CartoesRecarga() {
             {
               id: 'classificacao',
               titulo: 'Classificação financeira',
+              tipo: 'texto',
               render: (cartao) => (
                 <CelulaDupla
                   principal={cartao.empresa?.nome || 'Empresa não configurada'}

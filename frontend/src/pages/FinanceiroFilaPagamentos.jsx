@@ -28,6 +28,7 @@ import {
 import DateInputBR from '../components/DateInputBR';
 import StatusBadge from '../components/StatusBadge';
 import OverlayModal from '../components/ui/OverlayModal';
+import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 import {
   Avisos,
   BlocoConteudo,
@@ -58,6 +59,30 @@ const SUMMARY_FILTERS = [
 const RECEIPT_BATCH_SIZE = 10;
 const MAX_RECEIPT_SELECTION = 500;
 const MAX_RECEIPT_FILE_BYTES = 12 * 1024 * 1024;
+
+const RECEIPT_PREVIEW_COLUMNS = [
+  { key: 'arquivo', size: 'wider' },
+  { key: 'leitura', size: 'wider' },
+  { key: 'pagamento', size: 'standard' },
+  { key: 'favorecido', size: 'wide' },
+  { key: 'titulo', size: 'wider' },
+  { key: 'conferencia', size: 'wider' }
+];
+
+const PAYMENT_QUEUE_COLUMNS = [
+  { key: 'selecao', size: 'selection' },
+  { key: 'titulo', size: 'wider' },
+  { key: 'credor', size: 'wide' },
+  { key: 'dados', size: 'wide' },
+  { key: 'vencimento', size: 'compact' },
+  { key: 'saldo', size: 'standard' },
+  { key: 'data', size: 'standard' },
+  { key: 'conta', size: 'wide' },
+  { key: 'empresa', size: 'standard' },
+  { key: 'valor', size: 'standard' },
+  { key: 'justificativa', size: 'wider' },
+  { key: 'acoes', size: 'wider' }
+];
 
 function splitIntoBatches(items, size = RECEIPT_BATCH_SIZE) {
   const batches = [];
@@ -212,7 +237,7 @@ function ErroRegistroBaixaModal({ erro, onFechar }) {
       <div className="p-6">
         <div className="flex items-start gap-3">
           <HiOutlineExclamationTriangle
-            className="mt-0.5 h-6 w-6 shrink-0 text-[var(--sem-danger)]"
+            className="mt-1 h-6 w-6 shrink-0 text-[var(--sem-danger)]"
             aria-hidden="true"
           />
           <div className="min-w-0">
@@ -221,7 +246,7 @@ function ErroRegistroBaixaModal({ erro, onFechar }) {
           </div>
         </div>
 
-        <div className="mt-5 space-y-4">
+        <div className="mt-4 space-y-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)]">O que aconteceu</p>
             <p className="mt-1 text-sm leading-6 text-[var(--c-text)]">{erro.mensagem}</p>
@@ -373,15 +398,15 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
 
   return (
     <OverlayModal rotulo="Importar comprovantes PDF" largura="var(--modal-max-w-xl, 1420px)" onFechar={busy ? undefined : onFechar}>
-      <div className="flex max-h-[calc(100dvh-8rem)] min-h-[420px] flex-col">
-        <div className="border-b border-[var(--c-border)] p-5">
+      <div className="flex max-h-[calc(100dvh-8rem)] min-h-96 flex-col">
+        <div className="border-b border-[var(--c-border)] p-4">
           <h2 className="text-lg font-semibold text-[var(--c-text)]">Importar comprovantes para a fila</h2>
           <p className="mt-1 text-sm text-[var(--c-muted)]">
             Envie PDFs do Banco do Brasil, CAIXA ou Sicredi. O sistema lê os dados e sugere o título; confira antes de vincular. A baixa não é executada nesta etapa.
           </p>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto p-5">
+        <div className="min-h-0 flex-1 overflow-auto p-4">
           <div className="rounded-xl border border-dashed border-[var(--c-border)] bg-[var(--ui-surface-2)] p-4">
             <label className="block text-sm font-semibold text-[var(--c-text)]" htmlFor="fila-comprovantes-pdf">Comprovantes PDF</label>
             <input
@@ -413,16 +438,16 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
           ) : null}
 
           {preview?.arquivos?.length ? (
-            <div className="mt-5 overflow-x-auto rounded-xl border border-[var(--c-border)]">
-              <table className="w-full min-w-[1120px] border-collapse text-sm">
+            <div className="mt-4 min-w-0 rounded-xl border border-[var(--c-border)]">
+              <ResizableTable columns={RECEIPT_PREVIEW_COLUMNS} storageKey="fila-pagamentos-comprovantes-preview" className="w-full border-collapse text-sm" scrollLabel="Prévia dos comprovantes da fila">
                 <thead className="bg-[var(--ui-surface-2)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
                   <tr>
-                    <th className="px-3 py-3">Arquivo</th>
-                    <th className="px-3 py-3">Leitura</th>
-                    <th className="px-3 py-3">Pagamento</th>
-                    <th className="px-3 py-3">Favorecido</th>
-                    <th className="px-3 py-3">Título da fila</th>
-                    <th className="px-3 py-3">Conferência</th>
+                    <ResizableTh columnKey="arquivo" className="px-3 py-3">Arquivo</ResizableTh>
+                    <ResizableTh columnKey="leitura" className="px-3 py-3">Leitura</ResizableTh>
+                    <ResizableTh columnKey="pagamento" className="px-3 py-3">Pagamento</ResizableTh>
+                    <ResizableTh columnKey="favorecido" className="px-3 py-3">Favorecido</ResizableTh>
+                    <ResizableTh columnKey="titulo" className="px-3 py-3">Título da fila</ResizableTh>
+                    <ResizableTh columnKey="conferencia" className="px-3 py-3">Conferência</ResizableTh>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
@@ -430,7 +455,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
                     const suggested = item.candidatos?.find((candidate) => Number(candidate.fila_id) === Number(item.fila_sugerida_id));
                     return (
                       <tr key={item.arquivo_hash} className={item.duplicado ? 'bg-[var(--sem-warning-bg)]' : ''}>
-                        <td className="max-w-[220px] px-3 py-3 align-top">
+                        <td className="max-w-56 px-3 py-3 align-top">
                           <div className="break-words font-medium">{item.arquivo_nome}</div>
                           <div className="mt-1 text-xs text-[var(--c-muted)]">{item.arquivo_hash.slice(0, 12)}…</div>
                         </td>
@@ -443,7 +468,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
                           <div className="font-semibold">{currency(item.dados?.valor)}</div>
                           <div className="text-xs text-[var(--c-muted)]">{dateBR(item.dados?.data_pagamento)}</div>
                         </td>
-                        <td className="max-w-[230px] px-3 py-3 align-top">
+                        <td className="max-w-60 px-3 py-3 align-top">
                           <div>{item.dados?.favorecido_nome || 'Não identificado'}</div>
                           <div className="text-xs text-[var(--c-muted)]">{item.dados?.favorecido_documento || 'Sem documento'}</div>
                         </td>
@@ -452,7 +477,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
                             <div className="text-sm font-semibold text-[var(--sem-warning)]">Já vinculado a {item.duplicado.titulo_codigo || `item #${item.duplicado.fila_id}`}</div>
                           ) : (
                             <select
-                              className="input input-sm w-[330px]"
+                              className="input input-sm min-w-0 w-full"
                               value={links[item.arquivo_hash] || ''}
                               onChange={(event) => setLinks((current) => ({ ...current, [item.arquivo_hash]: event.target.value }))}
                               disabled={busy}
@@ -467,7 +492,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
                             </select>
                           )}
                         </td>
-                        <td className="max-w-[260px] px-3 py-3 align-top text-xs">
+                        <td className="max-w-64 px-3 py-3 align-top text-xs">
                           {item.duplicado ? 'Este mesmo arquivo não será importado novamente.' : suggested ? (
                             <>
                               <div className="font-semibold text-[var(--sem-success)]">Sugestão segura</div>
@@ -486,7 +511,7 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
                     );
                   })}
                 </tbody>
-              </table>
+              </ResizableTable>
             </div>
           ) : null}
         </div>
@@ -800,7 +825,7 @@ export default function FinanceiroFilaPagamentos() {
               </select>
             </label>
             <form
-              className="flex min-w-[260px] items-center gap-2"
+              className="app-busca flex min-w-0 items-center gap-2"
               onSubmit={(event) => { event.preventDefault(); applyFilters(status, search.trim()); }}
             >
               <input
@@ -816,11 +841,16 @@ export default function FinanceiroFilaPagamentos() {
           </div>
         )}
       >
-        <div className="overflow-x-auto rounded-xl border border-[var(--c-border)]" aria-label="Tabela da fila de pagamentos">
-          <table className="w-full min-w-[1760px] border-collapse text-sm">
+        <div className="min-w-0 rounded-xl border border-[var(--c-border)]">
+          <ResizableTable
+            columns={PAYMENT_QUEUE_COLUMNS.filter((column) => showReasonColumn || column.key !== 'justificativa')}
+            storageKey="financeiro-fila-pagamentos"
+            className="w-full border-collapse text-sm"
+            scrollLabel="Tabela da fila de pagamentos"
+          >
             <thead className="bg-[var(--ui-surface-2)] text-left text-xs uppercase tracking-wide text-[var(--c-muted)]">
               <tr>
-                <th className="w-10 px-3 py-3">
+                <ResizableTh columnKey="selecao" className="px-3 py-3">
                   <input
                     type="checkbox"
                     aria-label={approvingDivergences ? 'Selecionar todas as divergências' : 'Selecionar todos os títulos pendentes'}
@@ -828,25 +858,25 @@ export default function FinanceiroFilaPagamentos() {
                     onChange={(event) => setSelected(event.target.checked ? selectableRows.map((row) => Number(row.id)) : [])}
                     disabled={selectableRows.length === 0 || busy}
                   />
-                </th>
-                <th className="px-3 py-3">Título / documento</th>
-                <th className="px-3 py-3">Credor / favorecido</th>
-                <th className="px-3 py-3">Dados para pagamento</th>
-                <th className="px-3 py-3">Vencimento</th>
-                <th className="px-3 py-3 text-right">Previsto / saldo</th>
-                <th className="px-3 py-3">Data da baixa</th>
-                <th className="px-3 py-3">Conta pagadora</th>
-                <th className="px-3 py-3">Empresa</th>
-                <th className="px-3 py-3">Valor pago</th>
-                {showReasonColumn ? <th className="px-3 py-3">Justificativa</th> : null}
-                <th className="px-3 py-3">Status / ações</th>
+                </ResizableTh>
+                <ResizableTh columnKey="titulo" className="px-3 py-3">Título / documento</ResizableTh>
+                <ResizableTh columnKey="credor" className="px-3 py-3">Credor / favorecido</ResizableTh>
+                <ResizableTh columnKey="dados" className="px-3 py-3">Dados para pagamento</ResizableTh>
+                <ResizableTh columnKey="vencimento" className="px-3 py-3">Vencimento</ResizableTh>
+                <ResizableTh columnKey="saldo" className="px-3 py-3 text-right">Previsto / saldo</ResizableTh>
+                <ResizableTh columnKey="data" className="px-3 py-3">Data da baixa</ResizableTh>
+                <ResizableTh columnKey="conta" className="px-3 py-3">Conta pagadora</ResizableTh>
+                <ResizableTh columnKey="empresa" className="px-3 py-3">Empresa</ResizableTh>
+                <ResizableTh columnKey="valor" className="px-3 py-3">Valor pago</ResizableTh>
+                {showReasonColumn ? <ResizableTh columnKey="justificativa" className="px-3 py-3">Justificativa</ResizableTh> : null}
+                <ResizableTh columnKey="acoes" className="px-3 py-3">Status / ações</ResizableTh>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--c-border)] bg-[var(--c-surface)]">
               {loading ? (
-                <tr><td colSpan={showReasonColumn ? 12 : 11} className="px-4 py-10 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
+                <tr><td colSpan={showReasonColumn ? 12 : 11} className="px-4 py-8 text-center text-[var(--c-muted)]">Carregando pagamentos...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={showReasonColumn ? 12 : 11} className="px-4 py-10 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
+                <tr><td colSpan={showReasonColumn ? 12 : 11} className="px-4 py-8 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
               ) : rows.map((row) => {
                 const title = row.titulo || {};
                 const beneficiary = beneficiaryData(title);
@@ -875,20 +905,20 @@ export default function FinanceiroFilaPagamentos() {
                       ) : (
                         <span className="font-semibold text-[var(--c-text)]">{title.codigo || `#${title.id}`}</span>
                       )}
-                      <div className="mt-1 max-w-[210px] truncate" title={title.descricao}>{title.descricao || 'Sem descrição'}</div>
+                      <div className="mt-1 max-w-56 truncate" title={title.descricao}>{title.descricao || 'Sem descrição'}</div>
                       <div className="text-xs text-[var(--c-muted)]">{title.numero_documento || 'Sem documento'} · {title.formaPagamento?.nome || 'Forma não informada'}</div>
                       {row.comprovante_hash ? (
-                        <div className="mt-2 inline-flex rounded-full bg-[var(--sem-success-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--sem-success)]">
+                        <div className="mt-2 inline-flex rounded-full bg-[var(--sem-success-bg)] px-2 py-1 text-xs font-semibold text-[var(--sem-success)]">
                           Comprovante {row.comprovante_banco ? bancoLabel(row.comprovante_banco) : 'PDF'} vinculado
                         </div>
                       ) : null}
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <div className="max-w-[230px] font-medium" title={beneficiary.nome}>{beneficiary.nome}</div>
+                      <div className="max-w-60 font-medium" title={beneficiary.nome}>{beneficiary.nome}</div>
                       <div className="text-xs text-[var(--c-muted)]">{beneficiary.documento || 'Documento não informado'}</div>
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <div className="max-w-[250px] break-all text-xs" title={beneficiary.pagamento}>{beneficiary.pagamento}</div>
+                      <div className="max-w-64 break-all text-xs" title={beneficiary.pagamento}>{beneficiary.pagamento}</div>
                     </td>
                     <td className="px-3 py-3 align-top whitespace-nowrap">{dateBR(title.data_vencimento || row.data_vencimento_prevista)}</td>
                     <td className="px-3 py-3 align-top text-right whitespace-nowrap">
@@ -897,7 +927,7 @@ export default function FinanceiroFilaPagamentos() {
                     </td>
                     <td className="px-3 py-3 align-top">
                       <DateInputBR
-                        className="input input-sm w-[128px]"
+                        className="input input-sm min-w-0 w-full"
                         data-fila-id={row.id}
                         data-fila-campo="data_baixa"
                         value={drafts[row.id]?.data_baixa || row.data_baixa || ''}
@@ -908,7 +938,7 @@ export default function FinanceiroFilaPagamentos() {
                     </td>
                     <td className="px-3 py-3 align-top">
                       <select
-                        className="input input-sm w-[230px]"
+                        className="input input-sm min-w-0 w-full"
                         data-fila-id={row.id}
                         data-fila-campo="conta_bancaria_id"
                         value={drafts[row.id]?.conta_bancaria_id || row.conta_bancaria_id || ''}
@@ -924,11 +954,11 @@ export default function FinanceiroFilaPagamentos() {
                       {editable && accountOptions.length === 0 ? <div className="mt-1 text-xs text-[var(--sem-danger)]">Nenhuma conta bancária ativa com empresa vinculada.</div> : null}
                     </td>
                     <td className="px-3 py-3 align-top">
-                      <div className="max-w-[180px] text-xs font-medium">{account?.empresa?.nome || account?.empresa?.razao_social || title.empresa?.nome || 'Definida pela conta'}</div>
+                      <div className="max-w-48 text-xs font-medium">{account?.empresa?.nome || account?.empresa?.razao_social || title.empresa?.nome || 'Definida pela conta'}</div>
                     </td>
                     <td className="px-3 py-3 align-top">
                       <input
-                        className="input input-sm w-[130px] text-right"
+                        className="input input-sm input-moeda min-w-0 w-full text-right"
                         data-fila-id={row.id}
                         data-fila-campo="valor_pago"
                         type="number"
@@ -943,9 +973,9 @@ export default function FinanceiroFilaPagamentos() {
                     {showReasonColumn ? (
                       <td className="px-3 py-3 align-top">
                         {editable ? (
-                          <div className="w-[280px]">
+                          <div className="min-w-0 w-full">
                             <textarea
-                              className={`input min-h-[72px] w-full ${tipoDivergencia && !String(drafts[row.id]?.motivo || '').trim() ? 'border-[var(--sem-danger)]' : ''}`}
+                              className={`input min-h-20 w-full ${tipoDivergencia && !String(drafts[row.id]?.motivo || '').trim() ? 'border-[var(--sem-danger)]' : ''}`}
                               data-fila-id={row.id}
                               data-fila-campo="motivo"
                               value={drafts[row.id]?.motivo || ''}
@@ -960,7 +990,7 @@ export default function FinanceiroFilaPagamentos() {
                             </div>
                           </div>
                         ) : (
-                          <div className="max-w-[300px] whitespace-pre-wrap text-xs text-[var(--c-text)]" title={row.motivo || ''}>
+                          <div className="max-w-80 whitespace-pre-wrap text-xs text-[var(--c-text)]" title={row.motivo || ''}>
                             {row.motivo || 'Sem justificativa informada.'}
                           </div>
                         )}
@@ -968,7 +998,7 @@ export default function FinanceiroFilaPagamentos() {
                     ) : null}
                     <td className="px-3 py-3 align-top">
                       <StatusBadge status={String(row.status || '').replace('_', ' ')} kind={statusKind(row.status)} />
-                      {!showReasonColumn && row.motivo ? <div className="mt-2 max-w-[260px] text-xs text-[var(--c-muted)]" title={row.motivo}>{row.motivo}</div> : null}
+                      {!showReasonColumn && row.motivo ? <div className="mt-2 max-w-64 text-xs text-[var(--c-muted)]" title={row.motivo}>{row.motivo}</div> : null}
                       <div className="mt-2 flex flex-wrap gap-1">
                         {editable && canSettle ? (
                           <button className="btn btn-primary btn-sm" type="button" onClick={() => settle([row])} disabled={busy}>Registrar baixa</button>
@@ -987,9 +1017,9 @@ export default function FinanceiroFilaPagamentos() {
                         ) : null}
                       </div>
                       {reasonVisible ? (
-                        <div className="mt-2 w-[280px]">
+                        <div className="mt-2 min-w-0 w-full">
                           <textarea
-                            className="input min-h-[72px] w-full"
+                            className="input min-h-20 w-full"
                             value={drafts[row.id]?.motivo || ''}
                             onChange={(event) => updateDraft(row.id, { motivo: event.target.value })}
                             placeholder="Motivo do não pagamento"
@@ -1003,7 +1033,7 @@ export default function FinanceiroFilaPagamentos() {
                 );
               })}
             </tbody>
-          </table>
+          </ResizableTable>
         </div>
         <p className="mt-3 text-xs text-[var(--c-muted)]">
           O processamento em massa é atômico: se uma linha falhar na validação, nenhuma baixa do lote é gravada.

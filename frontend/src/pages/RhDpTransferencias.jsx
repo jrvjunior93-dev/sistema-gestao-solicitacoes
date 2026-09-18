@@ -88,12 +88,12 @@ export default function RhDpTransferencias() {
       <TabelaPadrao storageKey="tabela:rh-transferencias" itens={lista} urgencia={s => s.nao_lida ? 'warning' : null} classeLinha={s => s.nao_lida ? 'rh-solicitacao-nao-lida' : ''}
         vazio="Nenhuma transferência para os responsáveis deste usuário."
         colunas={[
-          { id: 'colaborador', titulo: 'Colaborador', render: s => s.colaborador?.nome || '—' },
-          { id: 'origem', titulo: 'Origem', render: s => s.obra?.nome || nomeObra(s.obra_id) },
-          { id: 'destino', titulo: 'Destino', render: s => s.obra_destino_nome || nomeObra(s.obra_destino_id) },
-          { id: 'situacao', titulo: 'Situação', render: s => <>{s.situacao}{s.nao_lida && <span className="rh-chip rh-chip--aberta ml-2">Nova interação</span>}</> },
-          { id: 'responsavel', titulo: 'Aprovação por', render: s => nomeObra(s.obra_aprovadora_id) },
-          { id: 'atividade', titulo: 'Última interação', render: s => data(s.atividade_em) }
+          { id: 'colaborador', titulo: 'Colaborador', tipo: 'identidade', noCard: 'titulo', render: s => s.colaborador?.nome || '—' },
+          { id: 'origem', titulo: 'Origem', tipo: 'texto', render: s => s.obra?.nome || nomeObra(s.obra_id) },
+          { id: 'destino', titulo: 'Destino', tipo: 'texto', render: s => s.obra_destino_nome || nomeObra(s.obra_destino_id) },
+          { id: 'situacao', titulo: 'Situação', tipo: 'status', render: s => <>{s.situacao}{s.nao_lida && <span className="rh-chip rh-chip--aberta ml-2">Nova interação</span>}</> },
+          { id: 'responsavel', titulo: 'Aprovação por', tipo: 'texto', render: s => nomeObra(s.obra_aprovadora_id) },
+          { id: 'atividade', titulo: 'Última interação', tipo: 'data', render: s => data(s.atividade_em) }
         ]} acoesLinha={s => <button type="button" className="btn btn-outline btn-sm" onClick={() => abrir(s)}>Abrir</button>} />
     </section>
     <section aria-label="Diretório global de colaboradores">
@@ -107,10 +107,10 @@ export default function RhDpTransferencias() {
       <TabelaPadrao storageKey="tabela:rh-diretorio-global" itens={diretorio.itens} carregando={carregando}
         vazio="Pesquise para localizar colaboradores ativos de todas as obras."
         colunas={[
-          { id: 'nome', titulo: 'Nome', render: c => c.nome },
-          { id: 'matricula', titulo: 'Matrícula', render: c => c.matricula || '—' },
-          { id: 'cargo', titulo: 'Função', render: c => c.cargo || '—' },
-          { id: 'obra', titulo: 'Obra atual', render: c => c.obra?.nome || 'Sem obra' }
+          { id: 'nome', titulo: 'Nome', tipo: 'identidade', noCard: 'titulo', render: c => c.nome },
+          { id: 'matricula', titulo: 'Matrícula', tipo: 'codigo', render: c => c.matricula || '—' },
+          { id: 'cargo', titulo: 'Função', tipo: 'texto', render: c => c.cargo || '—' },
+          { id: 'obra', titulo: 'Obra atual', tipo: 'texto', render: c => c.obra?.nome || 'Sem obra' }
         ]} acoesLinha={c => c.obra_id && minhas.length ? <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionar(c)}>Solicitar transferência</button> : null} />
       <div className="app-page-actions">
         <span>{diretorio.total} colaborador(es) · Página {diretorio.pagina}</span>

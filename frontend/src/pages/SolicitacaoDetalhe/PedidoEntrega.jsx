@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { registrarEntregaPedido } from '../../services/compras';
 import { useConfirmacao } from '../../components/padrao';
+import DateInputBR from '../../components/DateInputBR';
 
 const rotulos = { NAO_ENTREGUE: 'Não entregue', PARCIAL: 'Parcialmente entregue', ENTREGUE: 'Entregue', DIVERGENCIA: 'Entregue com divergência', CANCELADO: 'Cancelado' };
 const numero = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
@@ -92,7 +93,7 @@ export default function PedidoEntrega({ pedido, solicitacaoId, podeReceber, pode
           <option value="PREVISAO">Confirmar / reprogramar previsão</option><option value="CANCELAR_SALDO">Cancelar saldo não entregue</option>
           <option value="DEVOLVER_EXCESSO">Registrar devolução do excesso</option><option value="CORRIGIR_RECEBIDO">Corrigir quantidade recebida</option>
         </select></label>
-        {acaoCompras === 'PREVISAO' && <label>Data para selecionados<input className="input block" type="date" value={dataLote} onChange={(e) => setDataLote(e.target.value)} /></label>}
+        {acaoCompras === 'PREVISAO' && <label>Data para selecionados<DateInputBR className="input block" value={dataLote} onChange={(e) => setDataLote(e.target.value)} /></label>}
         <button type="button" className="btn btn-outline btn-sm" disabled={!selecionados.length} onClick={() => enviar(acaoCompras, selecionados)}>Aplicar aos selecionados</button>
       </div>}
       <label className="block">Motivo / observação<input className="input mt-1 w-full" value={motivo} maxLength={2000} onChange={(e) => setMotivo(e.target.value)} /></label>
@@ -119,7 +120,7 @@ export default function PedidoEntrega({ pedido, solicitacaoId, podeReceber, pode
             <input className="input block w-28" inputMode="decimal" aria-label={`Quantidade de ${item.descricao}`} value={qtd(item)}
               onChange={(e) => setQuantidades((q) => ({ ...q, [item.id]: e.target.value }))} /></label>}
           {receberVisivel && <button type="button" className="btn btn-outline btn-sm" onClick={() => enviar('RECEBER', [item.id])}>Marcar como entregue</button>}
-          {podeProgramar && acaoCompras === 'PREVISAO' && <label>Previsão deste item<input className="input block" type="date"
+          {podeProgramar && acaoCompras === 'PREVISAO' && <label>Previsão deste item<DateInputBR className="input block"
             value={datas[item.id] || ''} onChange={(e) => setDatas((d) => ({ ...d, [item.id]: e.target.value }))} /></label>}
           {podeProgramar && <button type="button" className="btn btn-outline btn-sm" onClick={() => enviar(acaoCompras, [item.id])}>Aplicar neste item</button>}
         </fieldset>}

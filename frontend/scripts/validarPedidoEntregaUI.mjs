@@ -71,7 +71,7 @@ try {
   await page.getByRole('button', {name:'Trocar papel'}).click();
   assert.equal(await page.getByRole('button', {name:'Registrar recebimento',exact:true}).count(),0);
   await page.getByRole('checkbox', {name:'Selecionar Areia fina'}).check();
-  await page.getByLabel('Data para selecionados').fill('2026-09-25');
+  await page.getByLabel('Data para selecionados').fill('25/09/2026');
   await page.getByRole('textbox',{name:'Motivo / observação'}).fill('Fornecedor confirmou nova data');
   await page.getByRole('button',{name:'Aplicar aos selecionados'}).click();
   await page.getByText(/Previsão: 25\/09\/2026/).waitFor();
@@ -82,7 +82,7 @@ try {
   }
   await page.setViewportSize({width:1200,height:900});
   const pasta=path.join(root,'../outputs/pedido-entrega-qa');fs.mkdirSync(pasta,{recursive:true});
-  await page.screenshot({path:path.join(pasta,'entrega-compras.png'),fullPage:true});
+  await page.screenshot({path:path.join(pasta,'entrega-compras-data-br.png'),fullPage:true});
   assert.deepEqual(erros,[]);
   console.log('OK: componente real em navegador local; seleção, saldo preenchido, parcial, excesso, retry idempotente, comentários, papéis, previsão e responsividade 375/700/1200px.');
 } finally { await browser.close(); await server.close(); }

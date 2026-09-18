@@ -4,6 +4,14 @@ import { Avisos, BlocoConteudo, PageHeader, Pagina, useAvisos } from '../compone
 import { useAuth } from '../contexts/AuthContext';
 import { getDevUserSwitchConfig, updateDevUserSwitchConfig } from '../services/auth';
 import { nomeProprio } from '../utils/texto';
+import { ResizableTable, ResizableTh } from '../components/ResizableTable';
+
+const USER_TABLE_COLUMNS = [
+  { key: 'usar', size: 'selection' },
+  { key: 'usuario', size: 'identity' },
+  { key: 'setor', size: 'wide' },
+  { key: 'perfil', size: 'standard' }
+];
 
 export default function ConfiguracaoUsuariosTesteRapido() {
   const { loadDevUserSwitch } = useAuth();
@@ -93,15 +101,14 @@ export default function ConfiguracaoUsuariosTesteRapido() {
           />
         </label>
 
-        <div className="app-table-shell">
-          <div className="table-wrapper">
-            <table className="table">
+        <div className="app-table-shell min-w-0">
+            <ResizableTable columns={USER_TABLE_COLUMNS} storageKey="config-usuarios-teste-rapido" className="table" scrollLabel="Usuários disponíveis para teste rápido">
               <thead>
                 <tr>
-                  <th className="col-checkbox">Usar</th>
-                  <th>Usuário</th>
-                  <th>Setor</th>
-                  <th>Perfil</th>
+                  <ResizableTh columnKey="usar" className="col-checkbox">Usar</ResizableTh>
+                  <ResizableTh columnKey="usuario">Usuário</ResizableTh>
+                  <ResizableTh columnKey="setor">Setor</ResizableTh>
+                  <ResizableTh columnKey="perfil">Perfil</ResizableTh>
                 </tr>
               </thead>
               <tbody>
@@ -131,8 +138,7 @@ export default function ConfiguracaoUsuariosTesteRapido() {
                   <tr><td colSpan="4" className="text-center text-muted">Nenhum usuário encontrado.</td></tr>
                 )}
               </tbody>
-            </table>
-          </div>
+            </ResizableTable>
         </div>
         {loading && <p className="text-muted">Carregando usuários...</p>}
       </BlocoConteudo>
