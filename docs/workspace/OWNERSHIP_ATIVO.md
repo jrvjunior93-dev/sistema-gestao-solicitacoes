@@ -1,5 +1,12 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: complementar exclusivamente
+`docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md` com o privilegio `TRIGGER`
+necessario no RDS de dev e com a verificacao segura de instancia antes da
+futura janela da main; atualizar este registro e preservar `outputs/`.
+Sem acesso a EC2, RDS ou alteracao de dados externos. Ownership liberado
+apos a atualizacao documental e validacao local.
+
 Ownership temporario /root em 18/09/2026: documentar o requisito de triggers
 da negociacao financeira e o procedimento RDS/dev/main em
 `docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`. Apenas documentacao local;

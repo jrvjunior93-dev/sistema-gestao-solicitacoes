@@ -771,14 +771,43 @@ continuou no grupo `default.mysql8.4` (`in-sync`).
 
 Confirmar que o endpoint ainda é o alvo, o grupo é o novo e o status do grupo é
 `in-sync`. Em seguida, **na EC2 do ambiente alvo, executado pelo operador**,
-consultar `@@GLOBAL.log_bin_trust_function_creators` e o banco conectado; exigir
-valor `1`/`ON` e endpoint esperado. Nenhum segredo deve aparecer na saída.
+consultar `@@GLOBAL.log_bin_trust_function_creators`, `CURRENT_USER()`,
+`@@GLOBAL.server_uuid` e o banco conectado; exigir valor `1`/`ON` e endpoint
+esperado. Nenhum segredo deve aparecer na saída. Não usar `@@hostname` como
+identificador fixo: seu valor observado mudou após o reboot do RDS de dev.
+Quando houver dúvida, comparar os UUIDs dos dois ambientes por consultas
+somente de leitura e confirmar que os endpoints apontam para instâncias RDS
+distintas antes de qualquer `GRANT`.
 
 ```bash
 # Dev: cd /home/ubuntu/sistema-gestao-solicitacoes-dev/backend
 # Main: cd /home/ubuntu/sistema-gestao-solicitacoes-main/backend
-node -e 'const db=require("./src/database");(async()=>{const [r]=await db.query("SELECT DATABASE() AS banco, @@GLOBAL.log_bin_trust_function_creators AS permite_triggers");console.log({endpoint:db.config.host,...r[0]})})().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.close())'
+node -e 'const db=require("./src/database");(async()=>{const [r]=await db.query("SELECT DATABASE() AS banco, CURRENT_USER() AS conta, @@GLOBAL.server_uuid AS uuid, @@GLOBAL.log_bin_trust_function_creators AS permite_triggers");console.log({endpoint:db.config.host,...r[0]})})().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.close())'
 ```
+
+O parâmetro `log_bin_trust_function_creators=1` não concede o privilégio de
+tabela `TRIGGER`. Em dev, a primeira retomada da migration falhou com
+`ER_TABLEACCESS_DENIED_ERROR` porque `fluxy_staging_user`@`%` não o possuía.
+Consultar `SHOW GRANTS FOR CURRENT_USER()` pela conexão da aplicação. Caso
+falte `TRIGGER`, conectar com uma conta administradora **ao endpoint RDS alvo**,
+conferir novamente `@@GLOBAL.server_uuid` e `DATABASE()`, e conceder apenas
+o privilégio necessário à conta exata retornada por `CURRENT_USER()`:
+
+```sql
+-- Exemplo apenas para dev; nunca reutilizar esta conta no RDS da main.
+GRANT TRIGGER ON `gestao_solicitacoes`.`titulos_financeiros` TO 'fluxy_staging_user'@'%';
+SHOW GRANTS FOR 'fluxy_staging_user'@'%';
+```
+
+Na main, descobrir primeiro o usuário MySQL efetivo e repetir a verificação
+de endpoint/UUID em uma janela própria; não presumir que o usuário, host ou
+grupo de parâmetros de dev seja o mesmo. O `TRIGGER` deve permanecer para
+o `DEFINER` das triggers ter permissão também quando elas forem acionadas.
+Não usar `GRANT ALL`, não marcar a migration manualmente como concluída e não
+revogar esse privilégio após criá-las. No dev, após o `GRANT`, as migrations
+`202609180002` e `202609180003` foram aplicadas pelo runner e o preflight
+retornou zero pendências; as duas triggers tinham
+`DEFINER=fluxy_staging_user@%`.
 
 Só então, com backup confirmado, código certo na branch alvo e migrations
 pendentes revisadas, aplicar o runner existente e repetir o preflight. O runner
