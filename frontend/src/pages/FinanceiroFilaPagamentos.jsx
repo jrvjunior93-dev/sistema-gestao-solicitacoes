@@ -9,6 +9,7 @@ import {
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
 import {
+  anexarComprovanteFilaPagamento,
   aprovarDivergenciasFilaPagamentos,
   getContasFilaPagamentos,
   getFilaPagamentos,
@@ -28,6 +29,7 @@ import {
 import DateInputBR from '../components/DateInputBR';
 import StatusBadge from '../components/StatusBadge';
 import OverlayModal from '../components/ui/OverlayModal';
+import ArquivosSolicitacaoFilaModal from '../components/financeiro/ArquivosSolicitacaoFilaModal';
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
 import {
   Avisos,
@@ -552,6 +554,7 @@ export default function FinanceiroFilaPagamentos() {
   const [reasonOpenId, setReasonOpenId] = useState(null);
   const [erroBaixa, setErroBaixa] = useState(null);
   const [comprovantesOpen, setComprovantesOpen] = useState(false);
+  const [solicitacaoArquivos, setSolicitacaoArquivos] = useState(null);
 
   const canSettle = canBaixarFilaPagamentos(user);
   const canOpenTitle = canAccessFinanceiro(user);
@@ -623,12 +626,27 @@ export default function FinanceiroFilaPagamentos() {
       if (!draft.data_baixa) return { mensagem: `A data da baixa do título ${row.titulo?.codigo || row.id} não foi informada.`, correcao: 'Preencha uma data válida na coluna Data da baixa.', filaId: row.id, campo: 'data_baixa' };
       if (!Number(draft.conta_bancaria_id)) return { mensagem: `A conta pagadora do título ${row.titulo?.codigo || row.id} não foi selecionada.`, correcao: 'Selecione uma conta na coluna Conta pagadora.', filaId: row.id, campo: 'conta_bancaria_id' };
       if (!(Number(draft.valor_pago) > 0)) return { mensagem: `O valor pago do título ${row.titulo?.codigo || row.id} é inválido.`, correcao: 'Informe um valor maior que zero na coluna Valor pago.', filaId: row.id, campo: 'valor_pago' };
+      if (!row.comprovante_hash) return { mensagem: `O título ${row.titulo?.codigo || row.id} está sem comprovante de pagamento.`, correcao: 'Anexe um PDF na linha do título antes de registrar a baixa.', filaId: row.id, campo: 'comprovante' };
       const tipoDivergencia = tipoDivergenciaPagamento(row, draft);
       if (tipoDivergencia && !String(draft.motivo || '').trim()) {
         return { mensagem: `O valor do título ${row.titulo?.codigo || row.id} é divergente e está sem justificativa.`, correcao: mensagemJustificativaDivergencia(tipoDivergencia), filaId: row.id, campo: 'motivo' };
       }
     }
     return null;
+  }
+
+  async function anexarComprovante(row, arquivo) {
+    if (!arquivo || actionKey) return;
+    setActionKey(`comprovante-${row.id}`);
+    try {
+      await anexarComprovanteFilaPagamento(row.id, arquivo);
+      avisar.sucesso(`Comprovante vinculado ao título ${row.titulo?.codigo || row.id}.`);
+      await load();
+    } catch (error) {
+      avisar.erro(error?.message || 'Não foi possível anexar o comprovante.');
+    } finally {
+      setActionKey('');
+    }
   }
 
   function fecharErroRegistroBaixa() {
@@ -879,6 +897,10 @@ export default function FinanceiroFilaPagamentos() {
                 <tr><td colSpan={showReasonColumn ? 12 : 11} className="px-4 py-8 text-center text-[var(--c-muted)]">Nenhum título encontrado neste recorte.</td></tr>
               ) : rows.map((row) => {
                 const title = row.titulo || {};
+                const solicitacaoId = Number(title.solicitacao_id || title.solicitacao?.id);
+                const solicitacaoVinculada = solicitacaoId > 0
+                  ? { id: solicitacaoId, codigo: title.solicitacao?.codigo || `#${solicitacaoId}` }
+                  : null;
                 const beneficiary = beneficiaryData(title);
                 const account = selectedAccount(row);
                 const editable = row.status === 'PENDENTE' && canSettle;
@@ -907,10 +929,37 @@ export default function FinanceiroFilaPagamentos() {
                       )}
                       <div className="mt-1 max-w-56 truncate" title={title.descricao}>{title.descricao || 'Sem descrição'}</div>
                       <div className="text-xs text-[var(--c-muted)]">{title.numero_documento || 'Sem documento'} · {title.formaPagamento?.nome || 'Forma não informada'}</div>
+                      {solicitacaoVinculada ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <Link className="btn btn-outline btn-sm" to={`/solicitacoes/${solicitacaoVinculada.id}`}>
+                            Solicitação {solicitacaoVinculada.codigo}
+                          </Link>
+                          <button type="button" className="btn btn-outline btn-sm" onClick={() => setSolicitacaoArquivos(solicitacaoVinculada)}>
+                            Arquivos
+                          </button>
+                        </div>
+                      ) : null}
                       {row.comprovante_hash ? (
                         <div className="mt-2 inline-flex rounded-full bg-[var(--sem-success-bg)] px-2 py-1 text-xs font-semibold text-[var(--sem-success)]">
                           Comprovante {row.comprovante_banco ? bancoLabel(row.comprovante_banco) : 'PDF'} vinculado
                         </div>
+                      ) : null}
+                      {editable && canSettle && !row.comprovante_hash ? (
+                        <label className="btn btn-outline btn-sm mt-2 inline-flex cursor-pointer" data-fila-id={row.id} data-fila-campo="comprovante">
+                          Anexar comprovante PDF
+                          <input
+                            className="sr-only"
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            disabled={busy}
+                            aria-label={`Comprovante de pagamento de ${title.codigo || row.id}`}
+                            onChange={(event) => {
+                              const arquivo = event.target.files?.[0];
+                              event.target.value = '';
+                              anexarComprovante(row, arquivo);
+                            }}
+                          />
+                        </label>
                       ) : null}
                     </td>
                     <td className="px-3 py-3 align-top">
@@ -1054,6 +1103,13 @@ export default function FinanceiroFilaPagamentos() {
             avisar.alerta(`${quantidade} comprovante(s) foram vinculados. A fila foi atualizada; revise a mensagem da importação para continuar.`);
             await load();
           }}
+        />
+      ) : null}
+      {solicitacaoArquivos ? (
+        <ArquivosSolicitacaoFilaModal
+          key={solicitacaoArquivos.id}
+          solicitacao={solicitacaoArquivos}
+          onFechar={() => setSolicitacaoArquivos(null)}
         />
       ) : null}
       {elementoConfirmacao}

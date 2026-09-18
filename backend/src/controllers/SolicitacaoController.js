@@ -178,6 +178,7 @@ const {
   assertPodeVisualizarSolicitacao,
   montarContextoInteracao
 } = require('../services/solicitacaoRetornoService');
+const { podeVisualizarSolicitacaoPelaFila } = require('../services/solicitacaoFilaPagamentoAcessoService');
 const { gerarTokenUploadCriacaoSolicitacao } = require('../services/solicitacaoCriacaoUploadTokenService');
 
 const CREATE_SOLICITACAO_IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
@@ -548,6 +549,15 @@ async function verificarAcessoDetalheSolicitacao(req, solicitacao, { permitirLei
     return {
       allowed: true,
       leituraGlobal: true,
+      areaUsuario,
+      tokensSetorUsuario
+    };
+  }
+
+  if (permitirLeituraGlobal && await podeVisualizarSolicitacaoPelaFila(req.user, solicitacao.id)) {
+    return {
+      allowed: true,
+      leituraPelaFilaPagamento: true,
       areaUsuario,
       tokensSetorUsuario
     };

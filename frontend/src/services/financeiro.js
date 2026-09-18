@@ -28,6 +28,26 @@ export async function getTitulosFinanceiros(params = {}) {
   return parseJson(response, 'Erro ao buscar titulos financeiros');
 }
 
+export async function getStatusInternosContasPagar() {
+  const response = await fetch(`${API_URL}/financeiro/status-internos-pagar`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao consultar status internos do Contas a Pagar');
+}
+
+export async function criarStatusInternoContasPagar(nome) {
+  const response = await fetch(`${API_URL}/financeiro/status-internos-pagar`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ nome })
+  });
+  return parseJson(response, 'Erro ao criar status interno do Contas a Pagar');
+}
+
+export async function atribuirStatusInternoContasPagar(tituloIds, status) {
+  const response = await fetch(`${API_URL}/financeiro/titulos/status-interno-pagar`, {
+    method: 'PATCH', headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ titulo_ids: tituloIds, status_interno_pagar: status || null })
+  });
+  return parseJson(response, 'Erro ao alterar status interno dos títulos');
+}
+
 export async function previewNegociacaoTitulos(payload) {
   const response = await fetch(`${API_URL}/financeiro/titulos/negociacoes/preview`, {
     method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(payload)
@@ -69,6 +89,30 @@ export async function getContasFilaPagamentos() {
     cache: 'no-store'
   });
   return parseJson(response, 'Erro ao carregar as contas pagadoras');
+}
+
+export async function anexarComprovanteFilaPagamento(filaId, arquivo) {
+  const form = new FormData();
+  form.append('file', arquivo);
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${filaId}/comprovante`, {
+    method: 'POST', headers: authHeaders(), body: form
+  });
+  return parseJson(response, 'Erro ao anexar comprovante de pagamento');
+}
+
+export async function getComprovanteFilaPagamento(filaId) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${filaId}/comprovante`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao abrir comprovante de pagamento');
+}
+
+export async function getArquivosSolicitacaoFila(id) {
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/solicitacoes/${id}/arquivos`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  });
+  return parseJson(response, 'Erro ao carregar os arquivos da solicitação');
 }
 
 function buildComprovantesFormData(files, vinculos) {

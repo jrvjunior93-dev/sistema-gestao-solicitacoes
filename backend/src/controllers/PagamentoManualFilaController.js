@@ -1,9 +1,11 @@
 const {
+  anexarComprovanteFila,
   aprovarDivergenciasFila,
   enfileirarTitulos,
   informarNaoPagamento,
   listarContasPagadorasFila,
   listarFilaPagamentos,
+  obterComprovanteFila,
   registrarBaixasFila,
   resolverItemFila
 } = require('../services/pagamentoManualFilaService');
@@ -12,6 +14,7 @@ const {
   previewReceipts
 } = require('../services/pagamentoComprovantePdfService');
 const { responderErroController } = require('../utils/controllerError');
+const { listarArquivosSolicitacaoPelaFila } = require('../services/solicitacaoFilaPagamentoAcessoService');
 
 function responderErro(res, error, fallback) {
   return responderErroController(res, error, fallback);
@@ -31,6 +34,31 @@ module.exports = {
       return res.json(await listarContasPagadorasFila(req));
     } catch (error) {
       return responderErro(res, error, 'Erro ao carregar contas pagadoras');
+    }
+  },
+
+  async anexarComprovante(req, res) {
+    try {
+      const item = await anexarComprovanteFila(req, req.params.id, req.file);
+      return res.json({ id: item.id, comprovante_nome: item.comprovante_nome });
+    } catch (error) {
+      return responderErro(res, error, 'Erro ao anexar comprovante');
+    }
+  },
+
+  async comprovante(req, res) {
+    try {
+      return res.json(await obterComprovanteFila(req, req.params.id));
+    } catch (error) {
+      return responderErro(res, error, 'Erro ao abrir comprovante');
+    }
+  },
+
+  async arquivosSolicitacao(req, res) {
+    try {
+      return res.json(await listarArquivosSolicitacaoPelaFila(req.user, req.params.id));
+    } catch (error) {
+      return responderErro(res, error, 'Erro ao carregar arquivos da solicitacao');
     }
   },
 

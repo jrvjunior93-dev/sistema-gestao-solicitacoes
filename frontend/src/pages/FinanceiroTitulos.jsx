@@ -18,12 +18,14 @@ import { useFecharAoSair } from '../hooks/useFecharAoSair';
 import StatusBadge from '../components/StatusBadge';
 import {
   baixarTituloFinanceiro,
+  atribuirStatusInternoContasPagar,
   baixarTitulosFinanceirosEmMassaParcelado,
   getCategoriasFinanceiras,
   getCartoesFinanceiros,
   getChequesTerceiros,
   getContasBancarias,
   getFretesPedidosPendentesFinanceiro,
+  getStatusInternosContasPagar,
   getFormasPagamentoFinanceiras,
   getTitulosFinanceiros,
   enviarTitulosFilaPagamentos,
@@ -73,6 +75,7 @@ const FILTER_VISIBILITY_STORAGE_PREFIX = 'fluxy.financeiro.titulos.visibleFilter
 const IDS_COLUNAS_TITULOS = [
   'titulo',
   'status',
+  'status_interno_pagar',
   'tipo',
   'documento',
   'parceiro',
@@ -1107,6 +1110,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [error, setError] = useState('');
   const [selectedTituloIds, setSelectedTituloIds] = useState([]);
+  const [statusInternosPagar, setStatusInternosPagar] = useState([]);
+  const [statusEmMassa, setStatusEmMassa] = useState('');
+  const [alterandoStatusInterno, setAlterandoStatusInterno] = useState(false);
   const [modalBaixaMassaOpen, setModalBaixaMassaOpen] = useState(false);
   const [modalBaixaCompostaOpen, setModalBaixaCompostaOpen] = useState(false);
   const [baixaMassaForm, setBaixaMassaForm] = useState(() => buildBaixaMassaForm());
@@ -1505,6 +1511,12 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   );
   const tipoAtual = fixedTipo || draftFilters.tipo;
   const tipoReferencia = fixedTipo || appliedFilters?.tipo || draftFilters.tipo;
+  useEffect(() => {
+    if (fixedTipo !== 'PAGAR') return;
+    getStatusInternosContasPagar()
+      .then((dados) => setStatusInternosPagar(Array.isArray(dados) ? dados : []))
+      .catch((error) => avisar.erro(error?.message || 'Não foi possível carregar os status internos.'));
+  }, [fixedTipo]);
   const mostrarFretesPendentes = String(tipoReferencia || '').toUpperCase() === 'PAGAR';
   const tipoLabel = tipoReferencia === 'PAGAR' ? 'a pagar' : 'a receber';
   const parceiroLabel = tipoAtual === 'PAGAR' ? 'Credor' : 'Cliente';
@@ -1517,10 +1529,11 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [colunasVisiveisIds, setColunasVisiveisIds] = useState(null);
   const aoMudarColunas = useCallback((ids) => setColunasVisiveisIds(ids), []);
   const idsColunasExport = useMemo(() => {
-    const disponiveis = IDS_COLUNAS_TITULOS.filter((id) => (id === 'tipo' ? showTipoColumn : true));
+    const disponiveis = IDS_COLUNAS_TITULOS.filter((id) => id === 'tipo'
+      ? showTipoColumn : id === 'status_interno_pagar' ? fixedTipo === 'PAGAR' : true);
     if (!colunasVisiveisIds) return disponiveis;
     return colunasVisiveisIds.filter((id) => disponiveis.includes(id));
-  }, [colunasVisiveisIds, showTipoColumn]);
+  }, [colunasVisiveisIds, showTipoColumn, fixedTipo]);
   // Uma chave por escopo da tela (geral / pagar / receber): a escolha de
   // colunas e as larguras de "contas a pagar" não valem para "a receber".
   const tabelaStorageKey = `tabela:financeiro-titulos:${fixedTipo ? String(fixedTipo).toLowerCase() : 'geral'}`;
@@ -1788,7 +1801,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }
 
   function toggleTituloSelecionado(titulo, checked) {
-    if (!isTituloBaixavel(titulo)) return;
+    if (fixedTipo === 'PAGAR' ? titulo.tipo !== 'PAGAR' : !isTituloBaixavel(titulo)) return;
     const tituloId = Number(titulo.id);
     setSelectedTituloIds((current) => {
       const set = new Set(current.map((id) => Number(id)));
@@ -1802,7 +1815,24 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }
 
   function toggleTodosBaixaveis(checked) {
-    setSelectedTituloIds(checked ? titulosBaixaveis.map((titulo) => Number(titulo.id)) : []);
+    setSelectedTituloIds(checked ? (fixedTipo === 'PAGAR' ? titulos.filter((titulo) => titulo.tipo === 'PAGAR') : titulosBaixaveis)
+      .map((titulo) => Number(titulo.id)) : []);
+  }
+
+  async function alterarStatusInterno(ids, status) {
+    if (fixedTipo !== 'PAGAR' || !ids.length || alterandoStatusInterno) return;
+    setAlterandoStatusInterno(true);
+    try {
+      await atribuirStatusInternoContasPagar(ids, status === '__CLEAR__' ? null : status);
+      setTitulos((atuais) => atuais.map((titulo) => ids.includes(Number(titulo.id))
+        ? { ...titulo, status_interno_pagar: status === '__CLEAR__' ? null : status } : titulo));
+      avisar.sucesso(ids.length === 1 ? 'Status interno atualizado.' : `${ids.length} status internos atualizados.`);
+      setStatusEmMassa('');
+    } catch (error) {
+      avisar.erro(error?.message || 'Não foi possível alterar o status interno.');
+    } finally {
+      setAlterandoStatusInterno(false);
+    }
   }
 
   function abrirModalBaixaMassa() {
@@ -2161,6 +2191,9 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
           break;
         case 'status':
           columns.push({ key: 'status', value: (titulo) => titulo.status || '' });
+          break;
+        case 'status_interno_pagar':
+          columns.push({ key: 'status_interno_pagar', value: (titulo) => titulo.status_interno_pagar || '' });
           break;
         case 'tipo':
           columns.push({ key: 'tipo', value: (titulo) => titulo.tipo || '' });
@@ -3122,18 +3155,37 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
           </div>
         )}
       >
-        {selectedTitulosBaixaveis.length > 0 ? (
+        {selectedTitulos.length > 0 ? (
           <div className="mb-4 flex flex-col gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--c-bg)] px-3 py-2 text-sm md:flex-row md:items-center md:justify-between">
             <div className="font-medium text-[var(--c-text)]">
-              {selectedTitulosBaixaveis.length} titulo(s) selecionado(s) para baixa
+              {selectedTitulos.length} título(s) selecionado(s)
+              {selectedTitulosBaixaveis.length > 0 ? ` · ${selectedTitulosBaixaveis.length} elegível(is) para baixa` : ''}
               {canDeleteTitulos && selectedTitulosExcluiveis.length > 0 ? ` / ${selectedTitulosExcluiveis.length} para exclusao` : ''}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-[var(--c-muted)]">
+              {fixedTipo === 'PAGAR' ? (
+                <>
+                  <select className="input input-sm" aria-label="Status interno para títulos selecionados" value={statusEmMassa} onChange={(event) => setStatusEmMassa(event.target.value)}>
+                    <option value="">Escolha um status interno</option>
+                    {statusInternosPagar.map((item) => <option key={item} value={item}>{item}</option>)}
+                    <option value="__CLEAR__">Sem status interno</option>
+                  </select>
+                  <button type="button" className="btn btn-outline btn-sm" disabled={!statusEmMassa || alterandoStatusInterno} onClick={() => alterarStatusInterno(selectedTitulos.filter((titulo) => titulo.tipo === 'PAGAR').map((titulo) => Number(titulo.id)), statusEmMassa)}>
+                    {alterandoStatusInterno ? 'Aplicando...' : 'Aplicar em selecionados'}
+                  </button>
+                </>
+              ) : null}
               <span>Saldo selecionado: <strong className="text-[var(--c-text)]">{formatCurrency(selectedSaldo)}</strong></span>
               <button type="button" className="btn btn-outline btn-sm" onClick={() => setSelectedTituloIds([])}>
                 Limpar seleção
               </button>
             </div>
+          </div>
+        ) : null}
+
+        {fixedTipo === 'PAGAR' ? (
+          <div className="mb-2 flex justify-end">
+            <Link className="text-xs text-[var(--c-primary)] underline" to="/configuracoes-status-internos-pagar">Configurar status internos</Link>
           </div>
         ) : null}
 
@@ -3198,6 +3250,23 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                   </div>
                 )
               },
+              ...(fixedTipo === 'PAGAR' ? [{
+                id: 'status_interno_pagar',
+                titulo: 'Status interno',
+                tipo: 'texto',
+                render: (titulo) => (
+                  <select
+                    className="input input-sm min-w-40"
+                    aria-label={`Status interno de ${getTituloCodigo(titulo)}`}
+                    value={titulo.status_interno_pagar || ''}
+                    disabled={alterandoStatusInterno}
+                    onChange={(event) => alterarStatusInterno([Number(titulo.id)], event.target.value || '__CLEAR__')}
+                  >
+                    <option value="">Sem status interno</option>
+                    {statusInternosPagar.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                )
+              }] : []),
               ...(showTipoColumn ? [{
                 id: 'tipo',
                 titulo: 'Tipo',
@@ -3317,7 +3386,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
             rotuloRolagem={`Titulos ${tipoLabel}`}
             selecao={{
               selecionados: selectedTituloIds.map((id) => Number(id)),
-              elegivel: isTituloBaixavel,
+              elegivel: (titulo) => fixedTipo === 'PAGAR' ? titulo.tipo === 'PAGAR' : isTituloBaixavel(titulo),
               aoAlternar: (id, titulo) => toggleTituloSelecionado(titulo, !selectedTituloSet.has(Number(id))),
               aoAlternarTodos: (marcar) => toggleTodosBaixaveis(marcar)
             }}

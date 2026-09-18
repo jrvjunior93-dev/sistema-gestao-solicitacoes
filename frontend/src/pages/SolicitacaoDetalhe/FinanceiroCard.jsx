@@ -10,7 +10,8 @@ import {
   StatGrid,
   StatTile,
   TabelaPadrao,
-  useAvisos
+  useAvisos,
+  useConfirmacao
 } from '../../components/padrao';
 import PrevisoesContrato from './PrevisoesContrato';
 import ModalMedicao from './ModalMedicao';
@@ -35,7 +36,7 @@ import {
 import CategoriaFinanceiraAutocomplete from '../../components/ui/CategoriaFinanceiraAutocomplete';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
-import { canManagePaymentBeneficiaries } from '../../utils/acessoProduto';
+import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos } from '../../utils/acessoProduto';
 import {
   atualizarPaymentBeneficiary,
   criarPaymentBeneficiary,
@@ -44,7 +45,9 @@ import {
   getCategoriasFinanceiras,
   getFormasPagamentoFinanceiras,
   getPaymentBeneficiaries,
-  getTitulosFinanceirosPorSolicitacao
+  getTitulosFinanceirosPorSolicitacao,
+  enviarTitulosFilaPagamentos,
+  getComprovanteFilaPagamento
 } from '../../services/financeiro';
 
 const PIX_TIPOS_CHAVE = ['CPF', 'CNPJ', 'EMAIL', 'TELEFONE', 'ALEATORIA'];
@@ -980,6 +983,8 @@ export default function FinanceiroCard({
 }) {
   const { user } = useAuth();
   const podeExecutarAcoesFinanceiras = podeAcessarModuloFinanceiro && !somenteLeitura;
+  const podeEnviarParaFila = podeExecutarAcoesFinanceiras && canPrepareFilaPagamentos(user);
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const podeGerenciarDadosPagamento = canManagePaymentBeneficiaries(user);
   const freteTerceiroObrigatorio = Boolean(getFreteTerceiroCompraDireta(solicitacao));
   // Medicao escolhida pelo botao da linha do titulo — abre os anexos, os comentarios e a edicao
@@ -991,6 +996,8 @@ export default function FinanceiroCard({
   // Recarrega a tabela depois que a medicao e alterada — o valor mudou nela E nas ultimas parcelas.
   const [recarregarParcelas, setRecarregarParcelas] = useState(0);
   const [titulos, setTitulos] = useState([]);
+  const [titulosSelecionados, setTitulosSelecionados] = useState([]);
+  const [enviandoFila, setEnviandoFila] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   /*
@@ -1149,6 +1156,7 @@ export default function FinanceiroCard({
       limparAvisos();
       const data = await getTitulosFinanceirosPorSolicitacao(solicitacao.id);
       setTitulos(Array.isArray(data) ? data : []);
+      setTitulosSelecionados([]);
     } catch (error) {
       avisar.erro(error?.message || 'Erro ao carregar titulos da solicitacao');
     } finally {
@@ -1159,6 +1167,57 @@ export default function FinanceiroCard({
   useEffect(() => {
     carregarTitulos();
   }, [solicitacao.id, podeVisualizarTitulos]);
+
+  function ultimoItemFila(titulo) {
+    return [...(titulo.filaPagamentosManuais || [])]
+      .sort((a, b) => Number(b.id) - Number(a.id))[0] || null;
+  }
+
+  function elegivelParaFila(titulo) {
+    if (String(titulo.tipo).toUpperCase() !== 'PAGAR') return false;
+    if (!['ABERTO', 'PARCIAL'].includes(String(titulo.status).toUpperCase())) return false;
+    if (!(Number(titulo.valor_saldo) > 0)) return false;
+    return !(titulo.filaPagamentosManuais || []).some((item) => ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'].includes(item.status));
+  }
+
+  async function enviarSelecionadosParaFila() {
+    if (!podeEnviarParaFila || enviandoFila || titulosSelecionados.length === 0) return;
+    const { ok } = await confirmar({
+      titulo: 'Enviar títulos para pagamento?',
+      mensagem: `${titulosSelecionados.length} título(s) ficarão disponíveis na Fila de Pagamentos.`,
+      rotuloConfirmar: 'Enviar para pagamento'
+    });
+    if (!ok) return;
+    setEnviandoFila(true);
+    try {
+      const chave = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      await enviarTitulosFilaPagamentos(titulosSelecionados, `solicitacao-${chave}`);
+      await carregarTitulos();
+      await onSolicitacaoAtualizada?.();
+      avisar.sucesso('Títulos enviados para a Fila de Pagamentos.');
+    } catch (error) {
+      avisar.erro(error?.message || 'Não foi possível enviar os títulos para pagamento.');
+    } finally {
+      setEnviandoFila(false);
+    }
+  }
+
+  async function abrirComprovante(titulo) {
+    const item = [...(titulo.filaPagamentosManuais || [])].find((fila) => fila.comprovante_hash);
+    if (!item) return;
+    try {
+      const resposta = await getComprovanteFilaPagamento(item.id);
+      const link = document.createElement('a');
+      link.href = resposta.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      avisar.erro(error?.message || 'Não foi possível abrir o comprovante.');
+    }
+  }
 
   useEffect(() => {
     if (!modalOpen) return undefined;
@@ -2173,6 +2232,22 @@ export default function FinanceiroCard({
     tabular, dimensionada para R$ 9.999.999.999,99 sem truncar (T7).
   */
   const colunasTitulos = [
+    ...(podeEnviarParaFila ? [{
+      id: 'selecionar',
+      titulo: 'Selecionar',
+      tipo: 'acao',
+      render: (titulo) => (
+        <input
+          type="checkbox"
+          aria-label={`Selecionar título ${titulo.codigo || titulo.id} para pagamento`}
+          checked={titulosSelecionados.includes(Number(titulo.id))}
+          disabled={!elegivelParaFila(titulo) || enviandoFila}
+          onChange={(event) => setTitulosSelecionados((atual) => event.target.checked
+            ? [...atual, Number(titulo.id)]
+            : atual.filter((id) => id !== Number(titulo.id)))}
+        />
+      )
+    }] : []),
     {
       id: 'titulo',
       titulo: 'Título',
@@ -2208,12 +2283,31 @@ export default function FinanceiroCard({
       titulo: 'Situação',
       tipo: 'status',
       render: (titulo) => {
-        const situacao = situacaoPorTitulo.get(String(titulo.id)) || titulo.status;
+        const fila = ultimoItemFila(titulo);
+        const situacao = String(titulo.status).toUpperCase() === 'QUITADO'
+          ? 'QUITADO'
+          : fila?.status === 'PENDENTE' ? 'ENVIADO PARA PAGAMENTO'
+            : fila?.status === 'NAO_PAGO' ? 'NÃO PAGO'
+              : fila?.status === 'DIVERGENTE' ? 'PAGAMENTO DIVERGENTE'
+                : situacaoPorTitulo.get(String(titulo.id)) || titulo.status;
         return (
           <span data-testid={`situacao-titulo-${titulo.id}`}>
             <StatusBadge status={rotuloSituacao(situacao)} kind={familiaSituacao(situacao)} />
           </span>
         );
+      }
+    },
+    {
+      id: 'comprovante',
+      titulo: 'Comprovante',
+      tipo: 'acao',
+      render: (titulo) => {
+        const item = (titulo.filaPagamentosManuais || []).find((fila) => fila.comprovante_hash);
+        return item ? (
+          <button type="button" className="btn btn-outline btn-sm max-w-44 truncate" title={item.comprovante_nome || 'Visualizar comprovante'} onClick={() => abrirComprovante(titulo)}>
+            {item.comprovante_nome || 'Visualizar'}
+          </button>
+        ) : <span className="text-[var(--c-muted)]">Pendente</span>;
       }
     },
     {
@@ -2358,6 +2452,26 @@ export default function FinanceiroCard({
         )}
 
         {exibirTitulosDetalhados && (
+          podeEnviarParaFila && titulos.some(elegivelParaFila) ? (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={titulos.filter(elegivelParaFila).every((titulo) => titulosSelecionados.includes(Number(titulo.id)))}
+                  onChange={(event) => setTitulosSelecionados(event.target.checked
+                    ? titulos.filter(elegivelParaFila).map((titulo) => Number(titulo.id)) : [])}
+                  disabled={enviandoFila}
+                />
+                Selecionar elegíveis
+              </label>
+              <button type="button" className="btn btn-primary btn-sm" onClick={enviarSelecionadosParaFila} disabled={!titulosSelecionados.length || enviandoFila}>
+                {enviandoFila ? 'Enviando...' : `Enviar para fila de pagamento${titulosSelecionados.length ? ` (${titulosSelecionados.length})` : ''}`}
+              </button>
+            </div>
+          ) : null
+        )}
+
+        {exibirTitulosDetalhados && (
           <TabelaPadrao
             colunas={colunasTitulos}
             itens={titulos}
@@ -2369,6 +2483,7 @@ export default function FinanceiroCard({
           />
         )}
       </BlocoConteudo>
+      {elementoConfirmacao}
 
       {/*
         R9 — cadastrar um credor INTERROMPE o trabalho principal (o detalhe da

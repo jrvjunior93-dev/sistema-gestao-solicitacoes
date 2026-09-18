@@ -11,6 +11,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       allowNull: true,
       unique: true
     },
+    status_interno_pagar: { type: DataTypes.STRING(80), allowNull: true },
     renegociacao_id: { type: DataTypes.INTEGER, allowNull: true },
     renegociado_por_id: { type: DataTypes.INTEGER, allowNull: true },
     juros_renegociacao: { type: DataTypes.DECIMAL(14, 2), defaultValue: 0 },

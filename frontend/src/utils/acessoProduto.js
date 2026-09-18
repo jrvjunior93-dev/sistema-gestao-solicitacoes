@@ -1681,6 +1681,8 @@ const CONFIGURACOES_VIEW_KEYS = [
 
 export function canAccessConfiguracoes(user) {
   if (isBusinessAdmin(user)) return true;
+  // O acompanhamento interno de Contas a Pagar tem cadastro proprio em Configuracoes.
+  if (canAccessFinanceiro(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
     return hasAnyPermissao(user, CONFIGURACOES_VIEW_KEYS);
   }

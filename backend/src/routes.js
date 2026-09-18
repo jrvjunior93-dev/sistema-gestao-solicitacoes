@@ -2035,6 +2035,9 @@ router.post('/financeiro/favorecidos/:id/validar', allowFavorecidosManage, criti
 router.get('/financeiro/favorecidos/:id/auditoria', allowFavorecidosAudit, validateRequest({ params: validateNumericIdParam('id', 'Favorecido bancario') }), PaymentBeneficiaryController.auditoria);
 router.get('/financeiro/fila-pagamentos', allowFilaPagamentosRead, validateRequest({ query: validateManualPaymentQueueQuery }), PagamentoManualFilaController.index);
 router.get('/financeiro/fila-pagamentos/contas', allowFilaPagamentosRead, PagamentoManualFilaController.contas);
+router.get('/financeiro/fila-pagamentos/solicitacoes/:id/arquivos', allowFilaPagamentosRead, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), PagamentoManualFilaController.arquivosSolicitacao);
+router.get('/financeiro/fila-pagamentos/:id/comprovante', validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.comprovante);
+router.post('/financeiro/fila-pagamentos/:id/comprovante', allowFilaPagamentosBaixa, uploadRateLimit, uploadComprovantesPagamento.single('file'), validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.anexarComprovante);
 router.post('/financeiro/fila-pagamentos/comprovantes/preview', allowFilaPagamentosImportarComprovantes, uploadRateLimit, uploadComprovantesPagamento.array('files', 10), PagamentoManualFilaController.previewComprovantes);
 router.post('/financeiro/fila-pagamentos/comprovantes/vincular', allowFilaPagamentosImportarComprovantes, criticalRateLimit, uploadComprovantesPagamento.array('files', 10), PagamentoManualFilaController.vincularComprovantes);
 router.post('/financeiro/fila-pagamentos', allowFilaPagamentosPrepare, criticalRateLimit, validateRequest({ body: validateManualPaymentQueueCreateBody }), PagamentoManualFilaController.create);
@@ -2137,6 +2140,9 @@ router.get('/financeiro/financiamentos-bancarios/:id/auditoria', allowFinanceiro
 router.post('/financeiro/financiamentos-bancarios/:id/gerar-titulos', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Financiamento bancario') }), FinanciamentoBancarioController.gerarTitulos);
 router.patch('/financeiro/financiamentos-bancarios/parcelas/:id', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Parcela do financiamento bancario') }), FinanciamentoBancarioController.atualizarParcela);
 router.get('/financeiro/titulos', allowFinanceiro, validateRequest({ query: validateFinanceTituloQuery }), TituloFinanceiroController.index);
+router.get('/financeiro/status-internos-pagar', allowFinanceiro, require('./controllers/StatusInternoContasPagarController').index);
+router.post('/financeiro/status-internos-pagar', allowFinanceiro, criticalRateLimit, require('./controllers/StatusInternoContasPagarController').create);
+router.patch('/financeiro/titulos/status-interno-pagar', allowFinanceiro, criticalRateLimit, require('./controllers/StatusInternoContasPagarController').atribuir);
 router.post('/financeiro/titulos/negociacoes/preview', allowFinanceiro, criticalRateLimit, require('./controllers/TituloRenegociacaoController').preview);
 router.post('/financeiro/titulos/negociacoes/confirmar', allowFinanceiro, criticalRateLimit, require('./controllers/TituloRenegociacaoController').confirmar);
 router.get('/financeiro/titulos/:id/negociacao', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Titulo financeiro') }), require('./controllers/TituloRenegociacaoController').consultar);

@@ -1,5 +1,36 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: selecao e envio de titulos da solicitacao
+para fila de pagamentos, situacao de pagamento e comprovante obrigatorio na baixa;
+status interno individual/em massa do Contas a Pagar e cadastro em Configuracoes.
+Escopo: `backend/src/services/pagamentoManualFilaService.js`,
+`backend/src/services/tituloFinanceiroService.js`,
+`backend/src/controllers/PagamentoManualFilaController.js`, `backend/src/routes.js`,
+`backend/src/services/statusInternoContasPagarService.js`,
+`backend/src/controllers/StatusInternoContasPagarController.js`,
+`backend/src/models/TituloFinanceiro.js`,
+`backend/migrations/202609180004_titulo_status_interno_pagar.js`,
+`frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx`,
+`frontend/src/pages/FinanceiroFilaPagamentos.jsx`, `frontend/src/pages/FinanceiroTitulos.jsx`,
+`frontend/src/pages/ConfiguracoesStatusInternosPagar.jsx`, `frontend/src/App.jsx`,
+`frontend/src/navigation/navigationConfig.jsx`, `frontend/src/utils/acessoProduto.js`,
+`frontend/src/services/financeiro.js`, catalogo gerado, testes e handoff.
+Preservar alteracoes anteriores e `outputs/`; sem EC2/RDS/deploy.
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-18-fila-pagamentos-status-interno.md`.
+
+Ownership temporario /root em 18/09/2026: acesso de leitura a solicitacao
+vinculada a titulo da fila de pagamentos e lista de anexos e comprovantes em modal com
+links seguros. Escopo: `backend/src/services/solicitacaoFilaPagamentoAcessoService.js`,
+`backend/src/controllers/SolicitacaoController.js`, `backend/src/controllers/PagamentoManualFilaController.js`,
+`backend/src/services/fileAccessService.js`, `backend/src/routes.js`,
+`frontend/src/pages/FinanceiroFilaPagamentos.jsx`,
+`frontend/src/components/financeiro/ArquivosSolicitacaoFilaModal.jsx`,
+`frontend/src/services/solicitacoes.js`, `frontend/src/services/financeiro.js`, testes e handoff. Preservar `outputs/`.
+Sem EC2, RDS, commit, push ou deploy nesta tarefa.
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-18-arquivos-solicitacao-fila-pagamentos.md`.
+
 Ownership temporario /root em 18/09/2026: alinhar valores exibidos, validados
 e enviados para todas as formas de pagamento no modal de titulo da solicitacao.
 Escopo: `frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx`, teste local

@@ -2612,6 +2612,14 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
     }];
   }
 
+  consulta.include.push({
+    model: require('../models').PagamentoManualFilaItem,
+    as: 'filaPagamentosManuais',
+    attributes: ['id', 'status', 'comprovante_nome', 'comprovante_hash', 'selecionado_em', 'processado_em'],
+    separate: true,
+    order: [['id', 'DESC']]
+  });
+
   return require('./tituloRenegociacaoVinculos').projetarOrigens(await TituloFinanceiro.findAll(consulta));
 }
 

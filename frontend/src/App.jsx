@@ -105,6 +105,7 @@ const FinanceiroBoletos = lazy(() => import('./pages/FinanceiroBoletos'));
 const FinanceiroFaturasCartao = lazy(() => import('./pages/FinanceiroFaturasCartao'));
 const FinanceiroFaturaCartaoDetalhe = lazy(() => import('./pages/FinanceiroFaturaCartaoDetalhe'));
 const FinanceiroCadastros = lazy(() => import('./pages/FinanceiroCadastros'));
+const ConfiguracoesStatusInternosPagar = lazy(() => import('./pages/ConfiguracoesStatusInternosPagar'));
 const FinanceiroRelatorios = lazy(() => import('./pages/FinanceiroRelatorios'));
 const FinanceiroExecutivoGrupo = lazy(() => import('./pages/FinanceiroExecutivoGrupo'));
 const FinanceiroFluxoConsolidado = lazy(() => import('./pages/FinanceiroFluxoConsolidado'));
@@ -924,6 +925,7 @@ export default function App() {
         <Route path="tipos-solicitacao" element={<ConfiguracoesAreaRoute area="cadastros"><TiposSolicitacao /></ConfiguracoesAreaRoute>} />
         <Route path="gestao-contratos" element={<ContratosRoute><GestaoContratos /></ContratosRoute>} />
         <Route path="configuracoes" element={<ConfiguracoesRoute><Configuracoes /></ConfiguracoesRoute>} />
+        <Route path="configuracoes-status-internos-pagar" element={<FinanceiroRoute><ConfiguracoesStatusInternosPagar /></FinanceiroRoute>} />
         <Route path="configuracoes-usuarios-teste" element={<DevOnlySuperadminRoute><ConfiguracaoUsuariosTesteRapido /></DevOnlySuperadminRoute>} />
         <Route path="configuracoes-suporte" element={<ConfiguracoesAreaRoute area="aparencia"><ConfiguracoesSuporte /></ConfiguracoesAreaRoute>} />
         <Route path="configuracoes-visibilidade-ui" element={<ConfiguracoesAreaRoute area="aparencia"><ConfiguracoesVisibilidadeUi /></ConfiguracoesAreaRoute>} />

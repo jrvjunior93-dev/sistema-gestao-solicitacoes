@@ -26,6 +26,7 @@ const {
 const { canViewArquivoModeloPage } = require('./arquivoModeloAccessService');
 const { userHasSetorCapability } = require('./setorCapabilityService');
 const { registrarEventoSeguranca } = require('./securityLogService');
+const { podeVisualizarSolicitacaoPelaFila } = require('./solicitacaoFilaPagamentoAcessoService');
 
 async function hasLegacyContractGlobalAccess(tokens, user) {
   return (
@@ -357,6 +358,10 @@ async function canAccessSolicitacaoFile(req, solicitacaoId) {
 
   const userScopeTokens = await buildUserScopeTokens(req.user);
   if (tokensContainAreaValue(userScopeTokens, solicitacao.area_responsavel)) {
+    return { allowed: true };
+  }
+
+  if (await podeVisualizarSolicitacaoPelaFila(req.user, solicitacao.id)) {
     return { allowed: true };
   }
 

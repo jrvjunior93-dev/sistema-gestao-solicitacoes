@@ -1,4 +1,4 @@
-import { API_URL, authHeaders } from './api';
+import { API_URL, authHeaders, fileUrl } from './api';
 import { mensagemDeErro } from './erroDeResposta';
 
 function buildResponseError(status, fallbackMessage, data = null) {
@@ -166,6 +166,23 @@ export async function getSolicitacaoById(id) {
   }
 
   return res.json();
+}
+
+export async function getLinkSeguroAnexoSolicitacao(caminhoArquivo) {
+  const caminho = String(caminhoArquivo || '').trim();
+  if (!caminho) throw new Error('Arquivo sem endereço para visualização.');
+  if (!/^https?:\/\//i.test(caminho)) return fileUrl(caminho);
+
+  const params = new URLSearchParams({ url: caminho.replace(/%(?![0-9A-Fa-f]{2})/g, '%25') });
+  const res = await fetch(`${API_URL}/anexos/presign?${params.toString()}`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) {
+    throw buildResponseError(res.status, 'Erro ao gerar link seguro para o arquivo', await parseJsonSafe(res));
+  }
+  const data = await res.json();
+  if (!data?.url) throw new Error('Não foi possível abrir este arquivo.');
+  return data.url;
 }
 
 export async function solicitarRetornoSolicitacao(id, motivo) {

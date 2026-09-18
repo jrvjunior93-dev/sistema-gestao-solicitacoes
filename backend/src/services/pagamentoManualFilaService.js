@@ -4,6 +4,7 @@ const {
   ContaBancaria,
   EmpresaGrupo,
   FormaPagamentoFinanceira,
+  Historico,
   Obra,
   PagamentoManualFilaItem,
   Parceiro,
@@ -17,6 +18,9 @@ const {
 const { baixarTitulo } = require('./tituloFinanceiroService');
 const { assertTituloDisponivelParaBaixa } = require('./tituloBloqueioRetornoObraService');
 const { registrarEventoSeguranca } = require('./securityLogService');
+const { uploadToS3, getPresignedUrl } = require('./s3');
+const { canAccessSolicitacaoFile } = require('./fileAccessService');
+const { canAccessFilaPagamentos, getFinanceiroObraScopeIds } = require('./authorizationService');
 
 const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
@@ -122,6 +126,7 @@ async function listarContasPagadorasFila() {
 
 async function enfileirarTitulos(req, payload = {}) {
   const tituloIds = payload.titulo_ids || [];
+  const obrasPermitidas = await getFinanceiroObraScopeIds(req.user);
   const requestKey = payload.idempotency_key || crypto.randomUUID();
   const itemKeys = tituloIds.map((tituloId) => `${requestKey}:${tituloId}`.slice(0, 120));
 
@@ -172,6 +177,9 @@ async function enfileirarTitulos(req, payload = {}) {
     }
 
     for (const titulo of titulos) {
+      if (obrasPermitidas !== null && !obrasPermitidas.includes(Number(titulo.obra_id))) {
+        throw createHttpError(403, `O titulo ${titulo.codigo || titulo.id} nao pertence a uma obra do seu acesso.`);
+      }
       if (String(titulo.tipo || '').toUpperCase() !== 'PAGAR') {
         throw createHttpError(400, `O titulo ${titulo.codigo || titulo.id} nao pertence ao Contas a Pagar.`);
       }
@@ -184,7 +192,7 @@ async function enfileirarTitulos(req, payload = {}) {
       assertTituloDisponivelParaBaixa(titulo);
     }
 
-    return Promise.all(titulos.map((titulo) => PagamentoManualFilaItem.create({
+    const criados = await Promise.all(titulos.map((titulo) => PagamentoManualFilaItem.create({
       titulo_financeiro_id: titulo.id,
       status: 'PENDENTE',
       valor_previsto: roundCurrency(titulo.valor_saldo),
@@ -193,6 +201,23 @@ async function enfileirarTitulos(req, payload = {}) {
       selecionado_em: new Date(),
       idempotency_key: `${requestKey}:${titulo.id}`.slice(0, 120)
     }, { transaction })));
+
+    for (const solicitacaoId of new Set(titulos.map((titulo) => Number(titulo.solicitacao_id)).filter(Boolean))) {
+      const solicitacao = await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!solicitacao || solicitacao.status_global === 'ENVIADO PARA PAGAMENTO') continue;
+      const statusAnterior = solicitacao.status_global;
+      await solicitacao.update({ status_global: 'ENVIADO PARA PAGAMENTO' }, { transaction });
+      await Historico.create({
+        solicitacao_id: solicitacaoId,
+        usuario_responsavel_id: req.user?.id || null,
+        setor: solicitacao.area_responsavel || 'FINANCEIRO',
+        acao: 'STATUS_ALTERADO',
+        status_anterior: statusAnterior,
+        status_novo: 'ENVIADO PARA PAGAMENTO',
+        observacao: 'Titulo financeiro encaminhado para a fila de pagamentos.'
+      }, { transaction });
+    }
+    return criados;
   });
 
   await registrarEventoSeguranca({
@@ -207,6 +232,53 @@ async function enfileirarTitulos(req, payload = {}) {
   });
 
   return { quantidade: items.length, ids: items.map((item) => item.id) };
+}
+
+async function anexarComprovanteFila(req, filaId, file) {
+  const id = Number(filaId);
+  if (!Number.isInteger(id) || id <= 0 || !file?.buffer?.length) {
+    throw createHttpError(400, 'Selecione um comprovante PDF valido.');
+  }
+  if (file.buffer.subarray(0, 5).toString() !== '%PDF-') {
+    throw createHttpError(400, 'O comprovante selecionado nao e um PDF valido.');
+  }
+  const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+  const itemAtual = await PagamentoManualFilaItem.findByPk(id);
+  if (!itemAtual || itemAtual.status !== 'PENDENTE') throw createHttpError(409, 'O item nao esta mais pendente na fila.');
+  if (itemAtual.comprovante_hash === hash) return itemAtual;
+  if (itemAtual.comprovante_hash) throw createHttpError(409, 'O item ja possui comprovante vinculado.');
+  const comprovanteExistente = await PagamentoManualFilaItem.findOne({ where: { comprovante_hash: hash } });
+  if (comprovanteExistente) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
+  const url = await uploadToS3(file, `financeiro/fila-pagamentos/${id}/comprovantes`);
+  return sequelize.transaction(async (transaction) => {
+    const item = await PagamentoManualFilaItem.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!item || item.status !== 'PENDENTE') throw createHttpError(409, 'O item nao esta mais pendente na fila.');
+    if (item.comprovante_hash === hash) return item;
+    if (item.comprovante_hash) throw createHttpError(409, 'O item ja possui comprovante vinculado.');
+    const existente = await PagamentoManualFilaItem.findOne({ where: { comprovante_hash: hash }, transaction });
+    if (existente) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
+    return item.update({
+      comprovante_nome: file.originalname,
+      comprovante_url: url,
+      comprovante_hash: hash,
+      comprovante_tipo: 'PDF',
+      comprovante_vinculado_por: req.user?.id || null,
+      comprovante_vinculado_em: new Date()
+    }, { transaction });
+  });
+}
+
+async function obterComprovanteFila(req, filaId) {
+  const item = await PagamentoManualFilaItem.findByPk(filaId, {
+    attributes: ['id', 'titulo_financeiro_id', 'comprovante_nome', 'comprovante_url'],
+    include: [{ model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'solicitacao_id'] }]
+  });
+  if (!item?.comprovante_url) throw createHttpError(404, 'Comprovante nao encontrado.');
+  const acesso = item.titulo?.solicitacao_id
+    ? await canAccessSolicitacaoFile(req, item.titulo.solicitacao_id)
+    : { allowed: await canAccessFilaPagamentos(req.user) };
+  if (!acesso.allowed) throw createHttpError(403, 'Acesso negado ao comprovante.');
+  return { nome: item.comprovante_nome, url: await getPresignedUrl(item.comprovante_url, 300, { strict: true }) };
 }
 
 async function carregarEmpresaTitulo(titulo, transaction) {
@@ -240,6 +312,9 @@ async function processarItemFila(req, itemPayload, requestKey, transaction) {
   }
   if (String(filaItem.status || '').toUpperCase() !== 'PENDENTE') {
     throw createHttpError(409, `O item ${filaItem.id} nao esta mais pendente de pagamento.`);
+  }
+  if (!filaItem.comprovante_hash || !filaItem.comprovante_url) {
+    throw createHttpError(400, `Anexe o comprovante do item ${filaItem.id} antes de registrar a baixa.`);
   }
 
   const titulo = await TituloFinanceiro.findByPk(filaItem.titulo_financeiro_id, {
@@ -388,6 +463,9 @@ async function aprovarDivergenciasFila(req, payload = {}) {
       }
       if (String(current.status || '').toUpperCase() !== 'DIVERGENTE') {
         throw createHttpError(409, `O item ${current.id} nao possui divergencia pendente de aprovacao.`);
+      }
+      if (!current.comprovante_hash || !current.comprovante_url) {
+        throw createHttpError(400, `Anexe o comprovante do item ${current.id} antes de autorizar a baixa.`);
       }
 
       const titulo = await TituloFinanceiro.findByPk(current.titulo_financeiro_id, {
@@ -573,12 +651,14 @@ async function resolverItemFila(req, id, payload = {}) {
 }
 
 module.exports = {
+  anexarComprovanteFila,
   aprovarDivergenciasFila,
   classificarDivergenciaPagamento,
   enfileirarTitulos,
   informarNaoPagamento,
   listarContasPagadorasFila,
   listarFilaPagamentos,
+  obterComprovanteFila,
   registrarBaixasFila,
   resolverItemFila
 };
