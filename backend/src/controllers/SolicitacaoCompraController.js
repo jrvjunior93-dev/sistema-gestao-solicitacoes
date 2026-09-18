@@ -4930,8 +4930,20 @@ module.exports = {
         return;
       }
 
+      const { hojeBrasil, previsaoDaCotacao } = require('../services/pedidoEntregaDomain');
+      const dataBase = hojeBrasil();
+      const feriados = await require('../services/pedidoEntregaService').calendarioEntrega();
       return res.json({
         solicitacao,
+        previsoes_entrega: (solicitacao.fornecedores || []).map((cotacao) => ({
+          fornecedor_id: Number(cotacao.fornecedor_compra_id),
+          cotacao_fornecedor_id: cotacao.id,
+          fornecedor_nome: cotacao.fornecedor?.nome || `Fornecedor #${cotacao.fornecedor_compra_id}`,
+          prazo_entrega_dias: cotacao.prazo_entrega_dias,
+          prazo_entrega_tipo: cotacao.prazo_entrega_tipo,
+          data_base: dataBase,
+          previsao_calculada: previsaoDaCotacao(cotacao, dataBase, feriados)
+        })),
         comparativo: (solicitacao.fornecedores || []).length > 0
           ? montarComparativoSolicitacao(solicitacao)
           : null
@@ -5021,6 +5033,7 @@ module.exports = {
         fechamentoExcedenteConfirmado: req.body?.fechamento_excedente_confirmado === true,
         justificativaExcedente: req.body?.justificativa_excedente,
         previsaoEntrega: req.body?.previsao_entrega,
+        previsoesEntrega: req.body?.previsoes_entrega,
         permitirParcial: podeFecharParcial,
         permitirFinal: podeEncerrarDefinitivamente,
         transaction

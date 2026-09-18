@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: apresentação dos cards de compras.
+Escopo: CompraEtapas, PedidoResumo, novo AcaoIconeCompra, GerenciarCotacaoSolicitacao,
+testes de cards, CSS local se necessário e handoff. Comentários em modal, tabelas
+do pedido e posição da previsão. Preservar guia preexistente e outputs; sem deploy.
+Escopo ampliado a pedido do usuário: cálculo e confirmação editável de entrega por
+fornecedor na geração do pedido; pedidoEntregaDomain, pedidoCompraService,
+SolicitacaoCompraController, operationalValidators, modal e testes correspondentes.
+Ownership liberado após implementação e testes locais. Handoff:
+`docs/handoffs/2026-09-18-comentarios-modal-confirmacao-entregas.md`.
+Commit e publicação deste escopo autorizados pelo usuário em 18/09/2026.
+Ownership reservado durante conferência/commit e liberado ao concluir; deploy dev
+permanece com o usuário. Preservar guia e outputs preexistentes.
+
 Ownership temporario /root em 18/09/2026: itens e pedidos dentro do detalhe.
 Escopo: CompraEtapas, index do detalhe, novo PedidoResumo, PedidoCompraFinanceiro,
 SolicitacaoCompraEtapasController, testes correspondentes e handoff. Preservar guia

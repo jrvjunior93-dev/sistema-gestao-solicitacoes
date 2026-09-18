@@ -44,6 +44,7 @@ import {
   canReabrirComprasCotacoes
 } from '../../../utils/acessoProduto';
 import CompraPreviewModal from '../components/CompraPreviewModal';
+import { useConfirmarEntregasPedidos } from '../components/ConfirmarEntregasPedidos';
 import { criarPreviewCompra } from '../utils/preview';
 import { montarLinhasResumoApropriacao } from '../utils/apropriacoes';
 import {
@@ -2873,7 +2874,8 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
   const [itensSelecionadosEnvio, setItensSelecionadosEnvio] = useState({});
   const [novoFornecedor, setNovoFornecedor] = useState({ nome: '', cnpj: '', email: '', whatsapp: '', contato: '' });
   const [vencedoresSelecionados, setVencedoresSelecionados] = useState({});
-  const [previsaoEntrega, setPrevisaoEntrega] = useState('');
+  const { confirmarEntregas, elementoEntregas } = useConfirmarEntregasPedidos();
+  const encerramentoEmCursoRef = useRef(false);
   const encerramentoIdempotencyRef = useRef(null);
   const encerramentoSemPedidoIdempotencyRef = useRef(null);
   const fornecedorRequestRef = useRef({ sequencia: 0, controller: null });
@@ -3637,9 +3639,10 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
        comprar outro — consentimento válido para uma ação que ninguém deu.
   */
   async function handleEncerrar() {
+    if (encerramentoEmCursoRef.current) return;
+    encerramentoEmCursoRef.current = true;
+    setEncerrando(true);
     try {
-      const previsaoConfirmada = previsaoEntrega;
-      if (!previsaoConfirmada) { avisar.alerta('Informe a previsão de entrega antes de gerar os pedidos.'); return; }
       const itens = comparativo?.itens || [];
       const alocacoes = Object.values(vencedoresSelecionados)
         .filter((entry) => Number(entry?.resposta_item_id) > 0 && parseNumeroCompra(entry?.quantidade_alocada) > 0)
@@ -3648,6 +3651,10 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
           quantidade_alocada: parseNumeroCompra(entry.quantidade_alocada)
         }));
       if (!alocacoes.length) { avisar.alerta('Selecione ao menos um vencedor para encerrar.'); return; }
+      const respostasSelecionadas = alocacoes.map((alocacao) => itens.flatMap((item) => item.respostas || [])
+        .find((resposta) => Number(resposta.resposta_item_id) === alocacao.resposta_item_id));
+      if (respostasSelecionadas.some((resposta) => !resposta?.fornecedor_id)) throw new Error('Atualize a cotação antes de gerar os pedidos.');
+      const fornecedoresSelecionadosIds = new Set(respostasSelecionadas.map((resposta) => Number(resposta.fornecedor_id)));
 
       const itensExcedentes = [];
       const errosDisponibilidadeFornecedor = [];
@@ -3758,7 +3765,11 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         if (!ok) return;
       }
 
-      setEncerrando(true);
+      const workspaceAtual = await obterWorkspaceCotacaoSolicitacaoCompra(id);
+      const previsoes = (workspaceAtual.previsoes_entrega || []).filter((p) => fornecedoresSelecionadosIds.has(Number(p.fornecedor_id)));
+      if (previsoes.length !== fornecedoresSelecionadosIds.size) throw new Error('Não foi possível calcular as entregas. Atualize a cotação e confira os fornecedores selecionados.');
+      const previsoesConfirmadas = await confirmarEntregas(previsoes);
+      if (!previsoesConfirmadas) return;
       if (!encerramentoIdempotencyRef.current) {
         encerramentoIdempotencyRef.current = criarChaveIdempotenciaFechamento(id);
       }
@@ -3767,7 +3778,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
         {
           alocacoes,
           fechamento_parcial_confirmado: fechamentoParcial,
-          previsao_entrega: previsaoConfirmada,
+          previsoes_entrega: previsoesConfirmadas,
           justificativa: fechamentoParcial ? justificativa : null,
           fechamento_excedente_confirmado: houveExcedente,
           justificativa_excedente: houveExcedente ? justificativaExcedente : null
@@ -3787,6 +3798,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       console.error(error);
       avisar.erro(error.message || 'Erro ao encerrar cotacao');
     } finally {
+      encerramentoEmCursoRef.current = false;
       setEncerrando(false);
     }
   }
@@ -4310,12 +4322,6 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       )}
 
       {/* Comparativo */}
-      {podeOperarFluxo && !fluxoTerminal && <label className="block text-sm">
-        Previsão de entrega dos novos pedidos
-        <input type="date" className="input ml-2 w-auto max-w-full" value={previsaoEntrega}
-          disabled={encerrando} onChange={(e) => setPrevisaoEntrega(e.target.value)} />
-        <span className="mt-1 block text-xs text-[var(--c-muted)]">Confirme com o fornecedor. Depois, Compras poderá reprogramar o saldo de cada item no detalhe da solicitação.</span>
-      </label>}
       <SecaoComparativo
         embedded={embedded}
         comparativo={comparativo}
@@ -4335,6 +4341,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       />
 
       {/* CompraPreviewModal e de outro agente: a chamada fica intacta. */}
+      {elementoEntregas}
       <CompraPreviewModal preview={previewArquivo} onClose={() => setPreviewArquivo(null)} />
       <ModalEncerrarSemPedido
         aberto={modalEncerrarSemPedido}

@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const assetsDir = path.join(frontendRoot, 'dist', 'assets');
-const cssName = fs.readdirSync(assetsDir).find((name) => /^index-.*\.css$/.test(name));
+const cssName = fs.readFileSync(path.join(frontendRoot, 'dist/index.html'), 'utf8').match(/href="\/assets\/([^\"]+\.css)"/)?.[1];
 assert.ok(cssName, 'Compile o frontend antes de testar a cotacao responsiva.');
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true });

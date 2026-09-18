@@ -773,6 +773,7 @@ function validateCompraEncerrarBody(body = {}) {
       'justificativa',
       'fechamento_excedente_confirmado',
       'previsao_entrega',
+      'previsoes_entrega',
       'justificativa_excedente'
     ],
     'Encerramento da cotacao'
@@ -790,7 +791,31 @@ function validateCompraEncerrarBody(body = {}) {
     throw new ValidationError('Quantidade de vencedores excede o limite permitido.');
   }
 
+  let previsoesEntrega;
+  if (body.previsoes_entrega !== undefined) {
+    if (!Array.isArray(body.previsoes_entrega) || !body.previsoes_entrega.length || body.previsoes_entrega.length > 500) {
+      throw new ValidationError('Informe as previsões confirmadas por fornecedor.');
+    }
+    const ids = new Set();
+    previsoesEntrega = body.previsoes_entrega.map((entrada) => {
+      if (!entrada || typeof entrada !== 'object' || Array.isArray(entrada)) throw new ValidationError('Previsão de fornecedor inválida.');
+      ensureAllowedKeys(entrada, ['fornecedor_id', 'data_base', 'previsao', 'previsao_calculada', 'confirmada'], 'Previsão de entrega');
+      const id = parseInteger(entrada.fornecedor_id, 'Fornecedor', { required: true });
+      if (ids.has(id)) throw new ValidationError('Fornecedor repetido nas previsões.');
+      ids.add(id);
+      if (entrada.confirmada !== true) throw new ValidationError('Confirme a data de cada fornecedor.');
+      const { dataValida } = require('../services/pedidoEntregaDomain');
+      if (!dataValida(entrada.data_base) || !dataValida(entrada.previsao)
+        || (!isBlank(entrada.previsao_calculada) && !dataValida(entrada.previsao_calculada))) {
+        throw new ValidationError('Data de previsão inválida.');
+      }
+      return { fornecedor_id: id, data_base: parseDateOnly(entrada.data_base, 'Data base', { required: true }),
+        previsao: parseDateOnly(entrada.previsao, 'Previsão confirmada', { required: true }),
+        previsao_calculada: parseDateOnly(entrada.previsao_calculada, 'Previsão calculada'), confirmada: true };
+    });
+  }
   return {
+    previsoes_entrega: previsoesEntrega,
     fechamento_parcial_confirmado: parseBoolean(
       body.fechamento_parcial_confirmado,
       'Confirmacao do fechamento parcial'

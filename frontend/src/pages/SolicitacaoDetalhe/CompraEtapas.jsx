@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { HiChatBubbleLeftRight, HiPencilSquare, HiCheck, HiXMark, HiArrowTopRightOnSquare, HiPaperClip, HiAdjustmentsHorizontal } from 'react-icons/hi2';
+import OverlayModal from '../../components/ui/OverlayModal';
+import AcaoIconeCompra from './AcaoIconeCompra';
 import { Avisos, BlocoConteudo, useAvisos, useConfirmacao } from '../../components/padrao';
 import { API_URL, authHeaders } from '../../services/api';
 import {
@@ -23,11 +26,13 @@ function quantidade(value) {
 }
 
 function Comentarios({ lista }) {
-  if (!lista.length) return null;
-  return <div className="mt-2 space-y-1 border-l-2 border-[var(--c-border)] pl-3 text-sm">
-    {lista.map((comentario) => <p key={comentario.id}>
-      <strong>{comentario.usuario?.nome || 'Usuário'}:</strong> {comentario.descricao}
-    </p>)}
+  if (!lista.length) return <p className="py-3 text-sm text-[var(--c-muted)]">Nenhum comentário registrado.</p>;
+  return <div className="divide-y divide-[var(--c-border)] text-sm">
+    {lista.map((comentario) => <article key={comentario.id} className="py-3">
+      <div className="flex flex-wrap justify-between gap-2"><strong>{comentario.usuario?.nome || 'Usuário'}</strong>
+        {comentario.createdAt && <time className="text-xs text-[var(--c-muted)]">{new Date(comentario.createdAt).toLocaleString('pt-BR')}</time>}</div>
+      <p className="mt-1 whitespace-pre-wrap break-words">{comentario.descricao}</p>
+    </article>)}
   </div>;
 }
 
@@ -115,20 +120,32 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
     }
   }
 
-  function abrirComentario(escopo, referenciaId, itemTipo = null, local = '') {
-    setComentando({ escopo, referencia_id: referenciaId, item_tipo: itemTipo, local });
+  function abrirComentario(escopo, referenciaId, itemTipo, titulo, item, podeComentar) {
+    setComentando({ escopo, referencia_id: referenciaId, item_tipo: itemTipo, titulo, item, podeComentar });
     setTexto('');
     setMencoes([]);
     setBuscaMencao('');
   }
 
-  function formularioComentario(escopo, referenciaId, itemTipo = null, local = '') {
-    if (comentando?.escopo !== escopo || Number(comentando?.referencia_id) !== Number(referenciaId)
-      || (comentando?.item_tipo || null) !== itemTipo || comentando?.local !== local) return null;
+  function listaComentarios(alvo) {
+    if (!alvo) return [];
+    if (['ITEM', 'ITEM_APROVADO'].includes(alvo.escopo)) return comentariosDoItem(dados.comentarios, alvo.item, dados.pedidos);
+    if (['PEDIDO_ITEM', 'ENTREGA'].includes(alvo.escopo)) return comentariosDoItemPedido(dados.comentarios, alvo.item, dados.pedidos);
+    return comentariosDaEtapa(dados.comentarios, alvo.escopo, alvo.referencia_id);
+  }
+
+  function botaoComentarios(escopo, referenciaId, itemTipo = null, titulo = '', item = null, podeComentar = true) {
+    const quantidadeComentarios = listaComentarios({ escopo, referencia_id: referenciaId, item });
+    return <AcaoIconeCompra rotulo={`Comentários: ${titulo}`} icone={HiChatBubbleLeftRight} quantidade={quantidadeComentarios.length}
+      onClick={() => abrirComentario(escopo, referenciaId, itemTipo, titulo, item, podeComentar)} />;
+  }
+
+  function formularioComentario() {
+    if (!comentando?.podeComentar) return <p className="text-sm text-[var(--c-muted)]">Para adicionar um comentário, abra o item na etapa atual de cotação ou pedido.</p>;
     const usuariosFiltrados = usuarios.filter((usuario) => !mencoes.some((selecionado) => selecionado.id === usuario.id)
       && String(usuario.nome || '').toLocaleLowerCase('pt-BR').includes(buscaMencao.toLocaleLowerCase('pt-BR'))).slice(0, 8);
-    return <div className="mt-2 flex flex-wrap items-end gap-2">
-      <label className="min-w-[220px] flex-1 text-sm">
+    return <fieldset disabled={processando === 'comentar'} className="mt-2 flex min-w-0 flex-wrap items-end gap-2">
+      <label className="min-w-0 w-full text-sm">
         Comentário
         <textarea className="input mt-1 w-full" rows={2} value={texto} maxLength={5000}
           onChange={(event) => setTexto(event.target.value)} />
@@ -153,12 +170,10 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
             descricao: texto,
             mencoes: mencoes.map((usuario) => usuario.id)
           });
-          setComentando(null);
           setTexto('');
           setMencoes([]);
         }, 'Comentário registrado e destacado para os envolvidos.')}>Enviar</button>
-      <button type="button" className="btn btn-outline btn-sm" onClick={() => setComentando(null)}>Cancelar</button>
-    </div>;
+    </fieldset>;
   }
 
   async function decidir(item, decisao) {
@@ -233,16 +248,15 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
       {escopo === 'ITEM' && item.rejeicao_implicita && <span className="text-xs text-[var(--c-muted)]">Não aprovado na análise externa</span>}
       <span className="text-[var(--c-muted)]">{quantidade(item.quantidade)} {item.unidade_sigla_manual || item.unidade?.sigla || ''}</span>
       {escopo === 'ITEM' && <span className="text-xs text-[var(--c-muted)]">{item.rejeicao_implicita ? 'Rejeitado' : item.status_aprovacao || 'Sem decisão'}</span>}
-      {onGerenciarItens && <button type="button" className="btn btn-outline btn-sm" disabled={!!processando}
-        onClick={() => onGerenciarItens(item)} aria-label={`Editar ${item.nome}`}>Editar</button>}
+      {onGerenciarItens && <AcaoIconeCompra rotulo={`Editar ${item.nome}`} icone={HiPencilSquare} disabled={!!processando}
+        onClick={() => onGerenciarItens(item)} />}
       {escopo === 'ITEM' && chavesPendentes.has(`${item.item_tipo}:${item.id}`) && podeDecidir && <>
-        <button type="button" className="btn btn-primary btn-sm" disabled={!!processando}
-          onClick={() => decidir(item, 'APROVADO')}>Aprovar</button>
-        <button type="button" className="btn btn-outline btn-sm" disabled={!!processando}
-          onClick={() => decidir(item, 'REJEITADO')}>Rejeitar</button>
+        <AcaoIconeCompra rotulo={`Aprovar ${item.nome}`} icone={HiCheck} disabled={!!processando}
+          onClick={() => decidir(item, 'APROVADO')} />
+        <AcaoIconeCompra rotulo={`Rejeitar ${item.nome}`} icone={HiXMark} disabled={!!processando}
+          onClick={() => decidir(item, 'REJEITADO')} />
       </>}
-      {(!cotacaoIniciada || escopo === 'ITEM') && <button type="button" className="btn btn-outline btn-sm"
-        onClick={() => abrirComentario(escopo, item.id, item.item_tipo)}>Comentar</button>}
+      {botaoComentarios(escopo, item.id, item.item_tipo, item.nome, item, !cotacaoIniciada || escopo === 'ITEM')}
     </div>
     {escopo === 'ITEM' && chavesPendentes.has(`${item.item_tipo}:${item.id}`) && podeDecidir && <input className="input mt-2 w-full"
       value={motivos[`${item.item_tipo}-${item.id}`] || ''}
@@ -250,16 +264,24 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
       placeholder="Motivo para rejeição (obrigatório ao rejeitar)" />}
     {cotacaoIniciada && escopo === 'ITEM_APROVADO' && <p className="mt-1 text-xs text-[var(--c-muted)]">Em cotação ou pedido: comente no card da etapa correspondente.</p>}
     {item.especificacao && <p className="mt-1 text-sm text-[var(--c-muted)]">{item.especificacao}</p>}
-    <Comentarios lista={comentariosDoItem(dados.comentarios, item, dados.pedidos)} />
-    {formularioComentario(escopo, item.id, item.item_tipo)}
   </div>;
 
   return <div className="space-y-3">
     <Avisos avisos={avisos} aoFechar={fechar} />
     {elementoConfirmacao}
+    {comentando && <OverlayModal rotulo={`Comentários: ${comentando.titulo}`} largura="720px"
+      onFechar={processando === 'comentar' ? undefined : () => setComentando(null)}>
+      <div data-modal="cabecalho" className="flex items-center justify-between gap-3 border-b border-[var(--c-border)] p-4">
+        <div className="min-w-0"><h2 className="break-words font-semibold">{comentando.titulo}</h2>
+          <p className="text-xs text-[var(--c-muted)]">{listaComentarios(comentando).length} comentário(s) · {['COTACAO', 'PEDIDO'].includes(comentando.escopo) ? 'Histórico desta etapa' : 'Histórico compartilhado entre as etapas do item'}</p></div>
+        <AcaoIconeCompra rotulo="Fechar comentários" icone={HiXMark} disabled={processando === 'comentar'} onClick={() => setComentando(null)} />
+      </div>
+      <div className="px-4"><Avisos avisos={avisos} aoFechar={fechar} /><Comentarios lista={listaComentarios(comentando)} /></div>
+      <div data-modal="rodape" className="border-t border-[var(--c-border)] p-4">{formularioComentario()}</div>
+    </OverlayModal>}
     <BlocoConteudo titulo="Itens da solicitação" contagem={`${dados.itens.length} item(ns) · ${pendentes.length} pendente(s)`} recolhivel
       controles={<span />}
-      acoes={onGerenciarItens ? <button type="button" className="btn btn-outline btn-sm" onClick={() => onGerenciarItens()}>Gerenciar todos os itens</button> : null}>
+      acoes={onGerenciarItens ? <AcaoIconeCompra rotulo="Gerenciar todos os itens" icone={HiAdjustmentsHorizontal} onClick={() => onGerenciarItens()} /> : null}>
       <div className="space-y-2">
         {podeDecidir && pendentes.length > 0 && <div className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-border)] px-3 py-2 text-sm">
           <label className="flex cursor-pointer items-center gap-2">
@@ -301,11 +323,8 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
     </BlocoConteudo>}
     <BlocoConteudo titulo="Cotação" contagem={`${itensEmCotacao.length} item(ns)`} recolhivel recolhidoPadrao>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn btn-outline btn-sm"
-          onClick={() => abrirComentario('COTACAO', dados.solicitacao_compra_id)}>Comentar na cotação</button>
+        {botaoComentarios('COTACAO', dados.solicitacao_compra_id, null, 'Cotação')}
       </div>
-      <Comentarios lista={comentariosDaEtapa(dados.comentarios, 'COTACAO', dados.solicitacao_compra_id)} />
-      {formularioComentario('COTACAO', dados.solicitacao_compra_id)}
       <div className="mt-3 border-t border-[var(--c-border)] pt-3">
         <p className="mb-2 text-xs font-semibold text-[var(--c-muted)]">Itens enviados para fornecedores</p>
         {itensEmCotacao.length ? <div className="divide-y divide-[var(--c-border)] rounded-md border border-[var(--c-border)]">
@@ -313,11 +332,8 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="min-w-0 flex-1 font-semibold">{item.nome}</span>
               <span className="text-[var(--c-muted)]">{quantidade(item.quantidade)} {item.unidade_sigla_manual || item.unidade?.sigla || ''}</span>
-              <button type="button" className="btn btn-outline btn-sm"
-                onClick={() => abrirComentario('ITEM', item.id, item.item_tipo, 'COTACAO_ITEM')}>Comentar no item</button>
+              {botaoComentarios('ITEM', item.id, item.item_tipo, item.nome, item)}
             </div>
-            <Comentarios lista={comentariosDoItem(dados.comentarios, item, dados.pedidos)} />
-            {formularioComentario('ITEM', item.id, item.item_tipo, 'COTACAO_ITEM')}
           </div>)}
         </div> : <p className="text-sm text-[var(--c-muted)]">Nenhum item enviado para fornecedores nesta solicitação.</p>}
       </div>
@@ -337,10 +353,12 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
         <PedidoResumo pedido={pedido} user={user}
           onUpdated={async () => { await carregar(); await onUpdated?.(); }} />
         <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" className="btn btn-outline btn-sm" onClick={() => navigate(`/pedidos-compra/${pedido.id}`)}>Abrir pedido completo</button>
-          <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirComentario('PEDIDO', pedido.id)}>Comentar no pedido</button>
-          {podeAnexar && <label className="btn btn-outline btn-sm cursor-pointer">Anexar documento da compra
-            <input type="file" accept=".pdf,.png,.jpg,.jpeg" className="sr-only" disabled={!!processando}
+          <AcaoIconeCompra rotulo="Abrir pedido completo" icone={HiArrowTopRightOnSquare} onClick={() => navigate(`/pedidos-compra/${pedido.id}`)} />
+          {botaoComentarios('PEDIDO', pedido.id, null, `Pedido #${pedido.id}`)}
+          {podeAnexar && <>
+            <AcaoIconeCompra rotulo="Anexar documento da compra" icone={HiPaperClip} disabled={!!processando}
+              onClick={(event) => event.currentTarget.nextElementSibling?.click()} />
+            <input type="file" accept=".pdf,.png,.jpg,.jpeg" hidden aria-label="Arquivo do pedido" disabled={!!processando}
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = '';
@@ -353,19 +371,14 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
                   });
                 }, 'Documento anexado ao pedido.');
               }} />
-          </label>}
+          </>}
         </div>
         {pedido.espelho_fornecedor_url && <p className="mt-2 text-xs text-[var(--c-muted)]">
           Documento anexado: {pedido.espelho_fornecedor_nome || 'arquivo do pedido'} · abra o pedido completo para visualizar.
         </p>}
-        <Comentarios lista={comentariosDaEtapa(dados.comentarios, 'PEDIDO', pedido.id)} />
-        {formularioComentario('PEDIDO', pedido.id)}
         <PedidoEntrega pedido={pedido} solicitacaoId={solicitacaoId} podeReceber={podeReceber} podeProgramar={podeProgramarEntrega}
-          onUpdated={async () => { await carregar(); await onUpdated?.(); }} renderComentarios={(item) => <>
-            <button type="button" className="btn btn-outline btn-sm mt-2" onClick={() => abrirComentario('PEDIDO_ITEM', item.id)}>Comentar no item</button>
-            <Comentarios lista={comentariosDoItemPedido(dados.comentarios, item, dados.pedidos)} />
-            {formularioComentario('PEDIDO_ITEM', item.id)}{formularioComentario('ENTREGA', item.id)}
-          </>} />
+          onUpdated={async () => { await carregar(); await onUpdated?.(); }} renderComentarios={(item) =>
+            <div className="mt-2">{botaoComentarios('PEDIDO_ITEM', item.id, null, item.descricao, item)}</div>} />
       </details>)}</div> : <p className="text-sm text-[var(--c-muted)]">Ainda não há pedidos vinculados.</p>}
     </BlocoConteudo>
   </div>;

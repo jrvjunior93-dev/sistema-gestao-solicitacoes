@@ -1633,6 +1633,7 @@ async function gerarPedidosDosVencedores({
   fechamentoExcedenteConfirmado = false,
   justificativaExcedente = null,
   previsaoEntrega = null,
+  previsoesEntrega = null,
   permitirParcial = false,
   permitirFinal = false,
   transaction
@@ -1798,6 +1799,14 @@ async function gerarPedidosDosVencedores({
     grupo.registrosAlocacao.push(alocacao.registro);
   }
 
+  const { dataValida, hojeBrasil, confirmarPrevisaoFornecedor } = require('./pedidoEntregaDomain');
+  const dataGeracao = hojeBrasil();
+  const feriadosEntrega = previsoesEntrega ? await require('./pedidoEntregaService').calendarioEntrega(transaction) : [];
+  if (previsoesEntrega && (previsoesEntrega.length !== porFornecedor.size
+    || new Set(previsoesEntrega.map((p) => Number(p.fornecedor_id))).size !== porFornecedor.size
+    || previsoesEntrega.some((p) => !porFornecedor.has(Number(p.fornecedor_id))))) {
+    throw Object.assign(new Error('As previsões devem corresponder aos fornecedores dos pedidos selecionados.'), { statusCode: 400 });
+  }
   const pedidosCriados = [];
   for (const grupo of porFornecedor.values()) {
     if (!grupo.respostaItemIds.length) continue;
@@ -1829,16 +1838,23 @@ async function gerarPedidosDosVencedores({
         .filter(([id]) => id > 0)
     );
 
-    const { dataValida, hojeBrasil } = require('./pedidoEntregaDomain');
-    if (!dataValida(previsaoEntrega) || previsaoEntrega < hojeBrasil()) {
+    const confirmacaoEntrega = previsoesEntrega ? confirmarPrevisaoFornecedor(grupo.vinculacaoFornecedor,
+      previsoesEntrega.find((p) => Number(p.fornecedor_id) === Number(grupo.vinculacaoFornecedor.fornecedor_compra_id)),
+      dataGeracao, feriadosEntrega) : null;
+    // Compatibilidade com frontend anterior: a data explícita legada continua validada.
+    const previsaoConfirmada = confirmacaoEntrega?.previsao || previsaoEntrega;
+    if (!dataValida(previsaoConfirmada) || previsaoConfirmada < dataGeracao) {
       throw Object.assign(new Error('Confirme a data prevista de entrega dos pedidos (hoje ou futura).'), { statusCode: 400 });
     }
     await require('../models').PedidoCompraEntrega.bulkCreate((pedidoAtualizado.itens || []).map((item) => ({
-      pedido_compra_item_id: item.id, pedido_compra_id: pedido.id, previsao: previsaoEntrega, estado: 'OBRA', versao: 1
+      pedido_compra_item_id: item.id, pedido_compra_id: pedido.id, previsao: previsaoConfirmada, estado: 'OBRA', versao: 1
     })), { transaction });
     await registrarHistoricoPedidoNaSolicitacaoPrincipal({ solicitacao, pedido, usuarioId,
-      acao: 'PEDIDO_PREVISAO_CONFIRMADA', descricao: `Previsão inicial de entrega do pedido #${pedido.id}: ${previsaoEntrega}`,
-      metadados: { pedido_id: pedido.id, previsao: previsaoEntrega, itens: (pedidoAtualizado.itens || []).map((item) => item.id) }, transaction });
+      acao: 'PEDIDO_PREVISAO_CONFIRMADA', descricao: `Previsão inicial de entrega do pedido #${pedido.id}: ${previsaoConfirmada}`,
+      metadados: { pedido_id: pedido.id, previsao: previsaoConfirmada, ...confirmacaoEntrega,
+        prazo_entrega_dias: grupo.vinculacaoFornecedor.prazo_entrega_dias,
+        prazo_entrega_tipo: grupo.vinculacaoFornecedor.prazo_entrega_tipo,
+        itens: (pedidoAtualizado.itens || []).map((item) => item.id) }, transaction });
 
     for (const registro of grupo.registrosAlocacao) {
       const itemPedido = itensPorResposta.get(Number(registro.resposta_item_id || 0));

@@ -48,7 +48,7 @@ try {
   const erros = [];
   page.on('pageerror', (e) => { erros.push(e.message); console.error(e.message); });
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/fixture`);
-  const cssName = fs.readdirSync(path.join(root,'dist/assets')).find((n)=>/^index-.*\.css$/.test(n));
+  const cssName = fs.readFileSync(path.join(root,'dist/index.html'),'utf8').match(/href="\/assets\/([^\"]+\.css)"/)[1];
   await page.addStyleTag({ path: path.join(root,'dist/assets',cssName) });
   await page.getByRole('checkbox', {name:'Selecionar Arame recozido'}).check();
   assert.equal(await page.getByRole('textbox', {name:'Quantidade de Arame recozido'}).inputValue(), '10');

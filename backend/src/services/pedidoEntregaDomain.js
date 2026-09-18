@@ -19,6 +19,27 @@ function adicionarDiasUteis(data, dias, feriados = []) {
   }
   return atual.toISOString().slice(0, 10);
 }
+function previsaoDaCotacao(cotacao, dataBase = hojeBrasil(), feriados = []) {
+  const valor = cotacao?.prazo_entrega_dias;
+  const dias = Number(valor);
+  if (valor === null || valor === undefined || valor === '' || !Number.isInteger(dias) || dias < 0 || dias > 36500) return null;
+  if (!dataValida(dataBase)) throw new Error('Data base inválida.');
+  if (cotacao.prazo_entrega_tipo === 'DIAS_UTEIS') return adicionarDiasUteis(dataBase, dias, feriados);
+  if (cotacao.prazo_entrega_tipo !== 'DIAS_CORRIDOS') return null;
+  const data = new Date(`${dataBase}T12:00:00Z`);
+  data.setUTCDate(data.getUTCDate() + dias);
+  return data.toISOString().slice(0, 10);
+}
+
+function confirmarPrevisaoFornecedor(cotacao, entrada, hoje = hojeBrasil(), feriados = []) {
+  const calculada = previsaoDaCotacao(cotacao, hoje, feriados);
+  const falhar = (texto) => { throw Object.assign(new Error(texto), { statusCode: 400 }); };
+  if (!entrada || entrada.confirmada !== true) falhar('Confirme a previsão de entrega de cada fornecedor antes de gerar os pedidos.');
+  if (entrada.data_base !== hoje) falhar('A data de geração mudou. Abra novamente a confirmação de entrega.');
+  if (!dataValida(entrada.previsao) || entrada.previsao < hoje) falhar('A entrega confirmada deve ser hoje ou futura.');
+  if ((entrada.previsao_calculada || null) !== calculada) falhar('O prazo da cotação ou calendário mudou. Revise novamente a previsão de entrega.');
+  return { previsao: entrada.previsao, calculada, alterada: entrada.previsao !== calculada, data_base: hoje };
+}
 function situacaoEntrega(item, recebido, controle = {}, hoje = hojeBrasil()) {
   const previsto = arredondar(Number(item.quantidade_pedido || 0) - Number(item.quantidade_cancelada || 0));
   recebido = arredondar(recebido);
@@ -38,4 +59,4 @@ function situacaoEntrega(item, recebido, controle = {}, hoje = hojeBrasil()) {
     versao: Number(controle.versao || 0)
   };
 }
-module.exports = { arredondar, hojeBrasil, dataValida, adicionarDiasUteis, situacaoEntrega };
+module.exports = { arredondar, hojeBrasil, dataValida, adicionarDiasUteis, situacaoEntrega, previsaoDaCotacao, confirmarPrevisaoFornecedor };
