@@ -168,6 +168,7 @@ db.PaymentEvent = require('./PaymentEvent')(sequelize, Sequelize);
 db.PaymentReconciliation = require('./PaymentReconciliation')(sequelize, Sequelize);
 db.PaymentJob = require('./PaymentJob')(sequelize, Sequelize);
 db.PagamentoManualFilaItem = require('./PagamentoManualFilaItem')(sequelize, Sequelize);
+db.PagamentoManualFilaComprovante = require('./PagamentoManualFilaComprovante')(sequelize, Sequelize);
 db.FinanceiroDdaSincronizacao = require('./FinanceiroDdaSincronizacao')(sequelize, Sequelize);
 db.FinanceiroDdaBoleto = require('./FinanceiroDdaBoleto')(sequelize, Sequelize);
 db.FinanceiroDdaEvento = require('./FinanceiroDdaEvento')(sequelize, Sequelize);
@@ -2533,6 +2534,16 @@ db.SolicitacaoCompra.belongsTo(db.Parceiro, {
   as: 'freteCredor'
 });
 
+db.SolicitacaoCompra.belongsTo(db.Parceiro, {
+  foreignKey: 'frete_favorecido_id',
+  as: 'freteFavorecido'
+});
+
+db.SolicitacaoCompra.belongsTo(db.FormaPagamentoFinanceira, {
+  foreignKey: 'frete_forma_pagamento_id',
+  as: 'freteFormaPagamento'
+});
+
 db.SolicitacaoCompra.hasMany(db.SolicitacaoCompraItem, {
   foreignKey: 'solicitacao_compra_id',
   as: 'itens',
@@ -3259,6 +3270,11 @@ db.Parceiro.hasMany(db.TituloFinanceiro, {
 db.TituloFinanceiro.belongsTo(db.Parceiro, {
   foreignKey: 'parceiro_id',
   as: 'parceiro'
+});
+
+db.TituloFinanceiro.belongsTo(db.Parceiro, {
+  foreignKey: 'favorecido_pagamento_id',
+  as: 'favorecidoPagamento'
 });
 
 db.PaymentBeneficiary.hasMany(db.TituloFinanceiro, {
@@ -4650,6 +4666,16 @@ db.User.hasMany(db.PagamentoManualFilaItem, {
 db.PagamentoManualFilaItem.belongsTo(db.User, {
   foreignKey: 'comprovante_vinculado_por',
   as: 'comprovanteVinculadoPor'
+});
+
+db.PagamentoManualFilaItem.hasMany(db.PagamentoManualFilaComprovante, {
+  foreignKey: 'fila_id',
+  as: 'comprovantes'
+});
+
+db.PagamentoManualFilaComprovante.belongsTo(db.PagamentoManualFilaItem, {
+  foreignKey: 'fila_id',
+  as: 'fila'
 });
 
 db.MovimentoFinanceiro.hasMany(db.PaymentReconciliation, {

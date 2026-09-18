@@ -1106,6 +1106,12 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   const [chequesTerceiros, setChequesTerceiros] = useState([]);
   const [titulos, setTitulos] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: '25', total: 0, total_pages: 0 });
+  const [ordenacao, setOrdenacao] = useState(null);
+  const ordenarTitulos = useCallback((coluna, direcao) => {
+    const proxima = coluna && direcao ? { coluna, direcao } : null;
+    setOrdenacao((atual) => atual?.coluna === proxima?.coluna && atual?.direcao === proxima?.direcao ? atual : proxima);
+    setPagination((atual) => atual.page === 1 ? atual : { ...atual, page: 1 });
+  }, []);
   const [loading, setLoading] = useState(false);
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [error, setError] = useState('');
@@ -1365,6 +1371,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
     getTitulosFinanceiros({
       ...compactFilters(appliedFilters),
+      ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),
       paginated: 1,
       page: pagination.page,
       limit: pagination.limit
@@ -1408,7 +1415,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     // é a prova da correção — a consulta não depende mais de qual campo está
     // à vista. Enquanto dependia, mudar a aparência refazia a busca com outro
     // conjunto de parâmetros e devolvia outro total.
-  }, [appliedFilters, pagination.page, pagination.limit]);
+  }, [appliedFilters, pagination.page, pagination.limit, ordenacao]);
 
   const categoriasFiltradas = useMemo(() => {
     const tipo = String(draftFilters.tipo || '').toUpperCase();
@@ -1870,6 +1877,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       avisar.sucesso(`${result?.quantidade || selectedTitulosBaixaveis.length} título(s) enviado(s) para a Fila de Pagamentos.`);
       const data = await getTitulosFinanceiros({
         ...compactFilters(appliedFilters),
+        ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),
         paginated: 1,
         page: pagination.page,
         limit: pagination.limit
@@ -1922,6 +1930,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
       const data = await getTitulosFinanceiros({
         ...compactFilters(appliedFilters),
+        ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),
         paginated: 1,
         page: pagination.page,
         limit: pagination.limit
@@ -2146,6 +2155,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
 
       const data = await getTitulosFinanceiros({
         ...compactFilters(appliedFilters),
+        ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),
         paginated: 1,
         page: pagination.page,
         limit: pagination.limit
@@ -2348,6 +2358,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       if (appliedFilters) {
         const data = await getTitulosFinanceiros({
           ...compactFilters(appliedFilters),
+          ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),
           paginated: 1,
           page: pagination.page,
           limit: pagination.limit
@@ -3200,6 +3211,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               {
                 id: 'titulo',
                 titulo: 'Título',
+                ordenavel: true,
                 // R17: o codigo do titulo nomeia o registro desta lista.
                 tipo: 'identidade',
                 noCard: 'titulo',
@@ -3221,6 +3233,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               {
                 id: 'status',
                 titulo: 'Status',
+                ordenavel: true,
                 tipo: 'status',
                 render: (titulo) => (
                   <div className="flex flex-col items-start gap-1">
@@ -3253,6 +3266,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               ...(fixedTipo === 'PAGAR' ? [{
                 id: 'status_interno_pagar',
                 titulo: 'Status interno',
+                ordenavel: true,
                 tipo: 'texto',
                 render: (titulo) => (
                   <select
@@ -3270,18 +3284,21 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               ...(showTipoColumn ? [{
                 id: 'tipo',
                 titulo: 'Tipo',
+                ordenavel: true,
                 tipo: 'texto',
                 render: (titulo) => <span className="font-medium text-[var(--c-muted)]">{titulo.tipo}</span>
               }] : []),
               {
                 id: 'documento',
                 titulo: 'Documento',
+                ordenavel: true,
                 tipo: 'codigo',
                 render: (titulo) => titulo.numero_documento || '-'
               },
               {
                 id: 'parceiro',
                 titulo: parceiroResultadoLabel,
+                ordenavel: true,
                 tipo: 'texto',
                 render: (titulo) => (
                   <CelulaDupla
@@ -3293,18 +3310,21 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               {
                 id: 'obra',
                 titulo: 'Obra',
+                ordenavel: true,
                 tipo: 'texto',
                   render: (titulo) => <span className="text-[var(--c-muted)]">{titulo.obra?.nome || (titulo.renegociacao_id && titulo.possui_rateio ? 'Várias obras · rateado' : '-')}</span>
               },
               {
                 id: 'categoria',
                 titulo: 'Categoria',
+                ordenavel: true,
                 tipo: 'texto',
                 render: (titulo) => <span className="text-[var(--c-muted)]">{titulo.categoriaFinanceira?.nome || '-'}</span>
               },
               {
                 id: 'forma_pagamento',
                 titulo: 'Forma pagamento',
+                ordenavel: true,
                 tipo: 'texto',
                 render: (titulo) => (
                   <CelulaDupla
@@ -3316,6 +3336,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               {
                 id: 'origem',
                 titulo: 'Origem',
+                ordenavel: true,
                 tipo: 'codigo',
                 render: (titulo) => (titulo.solicitacao?.id ? (
                   <Link
@@ -3329,12 +3350,15 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               {
                 id: 'emissao',
                 titulo: 'Emissão',
+                ordenavel: true,
+                ordemInicial: 'desc',
                 tipo: 'data',
                 render: (titulo) => <span className="text-[var(--c-muted)]">{formatDate(titulo.data_emissao)}</span>
               },
               {
                 id: 'vencimento',
                 titulo: 'Vencimento',
+                ordenavel: true,
                 tipo: 'data',
                 render: (titulo) => (
                   <span className={isOverdue(titulo) ? 'font-semibold text-[var(--sem-danger)]' : 'text-[var(--c-text)]'}>
@@ -3345,17 +3369,22 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               {
                 id: 'valor_total',
                 titulo: 'Valor total',
+                ordenavel: true,
+                ordemInicial: 'desc',
                 tipo: 'valor',
                 render: (titulo) => formatCurrency(titulo.valor_original)
               },
               {
                 id: 'saldo',
                 titulo: 'Saldo',
+                ordenavel: true,
+                ordemInicial: 'desc',
                 tipo: 'valor',
                 render: (titulo) => <strong className="text-[var(--c-text)]">{formatCurrency(titulo.valor_saldo)}</strong>
               }
             ]}
             itens={titulos}
+            aoOrdenar={ordenarTitulos}
             getId={(titulo) => Number(titulo.id)}
             carregando={loading}
             // TRÊS estados distintos: carregando (acima), "sem filtro

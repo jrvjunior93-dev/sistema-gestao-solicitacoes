@@ -244,8 +244,13 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
           ${modoCompraDireta ? `<div class="meta"><strong>Frete:</strong> ${escapeHtml(freteTipoLabel)}${freteTipoCompraDireta !== 'SEM_FRETE' ? ` - ${escapeHtml(formatarMoeda(freteValorCompraDireta))}` : ''}</div>` : ''}
           ${modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO' ? `<div class="meta"><strong>Credor do frete:</strong> ${escapeHtml(draft.resumo?.frete_credor_nome || '-')}</div>` : ''}
           ${modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO' ? `<div class="meta"><strong>Pagamento do frete:</strong> ${escapeHtml(formatarData(draft.payload?.frete_data_vencimento))} - ${escapeHtml(draft.payload?.frete_dados_pagamento || '-')}</div>` : ''}
+          ${modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO' ? `<div class="meta"><strong>Forma do frete:</strong> ${escapeHtml(draft.resumo?.frete_forma_pagamento || '-')}</div>` : ''}
+          ${modoCompraDireta && draft.payload?.frete_favorecido_id ? `<div class="meta"><strong>Favorecido do frete:</strong> ${escapeHtml(draft.resumo?.frete_favorecido_nome || '-')}</div>` : ''}
+          ${modoCompraDireta && draft.payload?.frete_favorecido_chave_pix ? `<div class="meta"><strong>PIX do frete:</strong> ${escapeHtml(draft.payload.frete_favorecido_chave_pix)}</div>` : ''}
           ${modoCompraDireta ? `<div class="meta"><strong>Valor total da solicitação:</strong> ${escapeHtml(formatarMoeda(valorTotalCompraDireta))}</div>` : ''}
           ${modoCompraDireta ? `<div class="meta"><strong>Credor:</strong> ${escapeHtml(draft.resumo?.credor_nome || '-')}</div>` : ''}
+          ${modoCompraDireta && draft.payload?.favorecido_id ? `<div class="meta"><strong>Favorecido do pagamento:</strong> ${escapeHtml(draft.resumo?.favorecido_nome || '-')}</div>` : ''}
+          ${modoCompraDireta && draft.payload?.favorecido_chave_pix ? `<div class="meta"><strong>Chave PIX:</strong> ${escapeHtml(draft.payload.favorecido_chave_pix)}</div>` : ''}
           ${modoCompraDireta ? `<div class="meta"><strong>Formas de pagamento:</strong> ${escapeHtml(formatarFormasPagamento(draft.resumo?.formas_pagamento))}</div>` : ''}
           ${modoCompraDireta ? `<div class="meta"><strong>Dados para pagamento:</strong> ${escapeHtml(draft.payload?.dados_pagamento || '-')}</div>` : ''}
           <div class="meta"><strong>${modoCompraDireta ? 'Data de vencimento' : 'Necessario para'}:</strong> ${escapeHtml(
@@ -392,6 +397,8 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     { label: 'Obra', valor: draft.resumo?.obra_nome },
     { label: 'Solicitante', valor: draft.resumo?.solicitante_nome },
     { label: 'Credor', valor: draft.resumo?.credor_nome, contexto: modoCompraDireta },
+    { label: 'Favorecido do pagamento', valor: draft.resumo?.favorecido_nome, contexto: modoCompraDireta && Boolean(draft.payload?.favorecido_id) },
+    { label: 'Chave PIX', valor: draft.payload?.favorecido_chave_pix, contexto: modoCompraDireta && Boolean(draft.payload?.favorecido_chave_pix) },
     {
       label: 'Formas de pagamento',
       valor: formatarFormasPagamento(draft.resumo?.formas_pagamento),
@@ -433,6 +440,21 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
       label: 'Credor do frete',
       valor: draft.resumo?.frete_credor_nome,
       contexto: modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO'
+    },
+    {
+      label: 'Forma de pagamento do frete',
+      valor: draft.resumo?.frete_forma_pagamento,
+      contexto: modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO'
+    },
+    {
+      label: 'Favorecido do frete',
+      valor: draft.resumo?.frete_favorecido_nome,
+      contexto: modoCompraDireta && Boolean(draft.payload?.frete_favorecido_id)
+    },
+    {
+      label: 'Chave PIX do frete',
+      valor: draft.payload?.frete_favorecido_chave_pix,
+      contexto: modoCompraDireta && Boolean(draft.payload?.frete_favorecido_chave_pix)
     },
     {
       label: 'Vencimento do frete',

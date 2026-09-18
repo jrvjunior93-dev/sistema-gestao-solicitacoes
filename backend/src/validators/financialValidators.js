@@ -232,6 +232,7 @@ function parsePagamentosTitulo(value) {
         'parceiro_id',
         'categoria_financeira_id',
         'payment_beneficiary_id',
+        'favorecido_pagamento_id',
         'forma_pagamento_id',
         'cartao_id',
         'quantidade_parcelas',
@@ -252,6 +253,7 @@ function parsePagamentosTitulo(value) {
       parceiro_id: parseInteger(item?.parceiro_id, `Parceiro do pagamento ${index + 1}`),
       categoria_financeira_id: parseInteger(item?.categoria_financeira_id, `Categoria financeira do pagamento ${index + 1}`),
       payment_beneficiary_id: parseInteger(item?.payment_beneficiary_id, `Favorecido PIX do pagamento ${index + 1}`),
+      favorecido_pagamento_id: parseInteger(item?.favorecido_pagamento_id, `Favorecido do pagamento ${index + 1}`),
       forma_pagamento_id: parseInteger(item?.forma_pagamento_id, `Forma de pagamento ${index + 1}`, { required: true }),
       cartao_id: parseInteger(item?.cartao_id, `Cartao ${index + 1}`),
       quantidade_parcelas: parseInteger(item?.quantidade_parcelas, `Quantidade de parcelas ${index + 1}`),
@@ -428,6 +430,8 @@ function validateFinanceTituloQuery(query = {}) {
       'data_emissao_final',
       'vencimento_inicial',
       'vencimento_final',
+      'ordenar_por',
+      'direcao',
       'paginated',
       'page',
       'limit'
@@ -479,6 +483,12 @@ function validateFinanceTituloQuery(query = {}) {
     data_emissao_final: dataEmissaoFinal,
     vencimento_inicial: vencimentoInicial,
     vencimento_final: vencimentoFinal,
+    ordenar_por: parseEnum(query.ordenar_por, 'Coluna de ordenacao', [
+      'TITULO', 'STATUS', 'STATUS_INTERNO_PAGAR', 'TIPO', 'DOCUMENTO',
+      'PARCEIRO', 'OBRA', 'CATEGORIA', 'FORMA_PAGAMENTO', 'ORIGEM',
+      'EMISSAO', 'VENCIMENTO', 'VALOR_TOTAL', 'SALDO'
+    ]),
+    direcao: parseEnum(query.direcao, 'Direcao da ordenacao', ['ASC', 'DESC']),
     paginated: parseBoolean(query.paginated, 'Paginado'),
     page: parseInteger(query.page, 'Pagina'),
     limit: parseOptionalText(query.limit, 'Limite', 20)

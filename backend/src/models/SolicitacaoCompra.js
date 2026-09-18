@@ -129,6 +129,26 @@ module.exports = (sequelize, DataTypes) => {
       frete_dados_pagamento: {
         type: DataTypes.TEXT,
         allowNull: true
+      },
+      formas_pagamento_json: {
+        type: DataTypes.JSON,
+        allowNull: true
+      },
+      dados_pagamento: {
+        type: DataTypes.TEXT,
+        allowNull: true
+      },
+      frete_forma_pagamento_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      },
+      frete_favorecido_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      },
+      frete_favorecido_chave_pix: {
+        type: DataTypes.STRING(255),
+        allowNull: true
       }
     },
     {

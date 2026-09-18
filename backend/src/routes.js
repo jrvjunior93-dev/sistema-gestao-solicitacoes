@@ -2037,6 +2037,7 @@ router.get('/financeiro/fila-pagamentos', allowFilaPagamentosRead, validateReque
 router.get('/financeiro/fila-pagamentos/contas', allowFilaPagamentosRead, PagamentoManualFilaController.contas);
 router.get('/financeiro/fila-pagamentos/solicitacoes/:id/arquivos', allowFilaPagamentosRead, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), PagamentoManualFilaController.arquivosSolicitacao);
 router.get('/financeiro/fila-pagamentos/:id/comprovante', validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.comprovante);
+router.get('/financeiro/fila-pagamentos/:id/comprovantes/:comprovanteId', PagamentoManualFilaController.comprovanteAdicional);
 router.post('/financeiro/fila-pagamentos/:id/comprovante', allowFilaPagamentosBaixa, uploadRateLimit, uploadComprovantesPagamento.single('file'), validateRequest({ params: validateNumericIdParam('id', 'Item da fila') }), PagamentoManualFilaController.anexarComprovante);
 router.post('/financeiro/fila-pagamentos/comprovantes/preview', allowFilaPagamentosImportarComprovantes, uploadRateLimit, uploadComprovantesPagamento.array('files', 10), PagamentoManualFilaController.previewComprovantes);
 router.post('/financeiro/fila-pagamentos/comprovantes/vincular', allowFilaPagamentosImportarComprovantes, criticalRateLimit, uploadComprovantesPagamento.array('files', 10), PagamentoManualFilaController.vincularComprovantes);

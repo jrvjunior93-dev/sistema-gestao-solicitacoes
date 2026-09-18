@@ -6,6 +6,7 @@ const {
   listarContasPagadorasFila,
   listarFilaPagamentos,
   obterComprovanteFila,
+  obterComprovanteAdicionalFila,
   registrarBaixasFila,
   resolverItemFila
 } = require('../services/pagamentoManualFilaService');
@@ -49,6 +50,14 @@ module.exports = {
   async comprovante(req, res) {
     try {
       return res.json(await obterComprovanteFila(req, req.params.id));
+    } catch (error) {
+      return responderErro(res, error, 'Erro ao abrir comprovante');
+    }
+  },
+
+  async comprovanteAdicional(req, res) {
+    try {
+      return res.json(await obterComprovanteAdicionalFila(req, req.params.id, req.params.comprovanteId));
     } catch (error) {
       return responderErro(res, error, 'Erro ao abrir comprovante');
     }

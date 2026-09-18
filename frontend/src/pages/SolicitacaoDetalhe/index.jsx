@@ -14,6 +14,7 @@ import RetornoSolicitacaoBar from './RetornoSolicitacaoBar';
 import RecargaCartaoDetalhe from './RecargaCartaoDetalhe';
 import CompraEtapas from './CompraEtapas';
 import { getContratoParcelas } from '../../services/contratos';
+import { API_URL, authHeaders, fileUrl } from '../../services/api';
 import ModalAlterarStatus from './ModalAlterarStatus';
 import { getAcoesPrincipais, resolverAcaoPrincipal } from '../../services/acoesPrincipais';
 import { BLOCOS_DETALHE, resolverLayoutDetalhe } from './blocosDetalhe';
@@ -36,6 +37,7 @@ import {
   PageHeader,
   StatGrid,
   StatTile,
+  TabelaPadrao,
   useAvisos,
   useConfirmacao
 } from '../../components/padrao';
@@ -134,6 +136,16 @@ function parseNumeroLocal(valor) {
 function formatarMoedaLocal(valor) {
   const numero = Number(valor || 0);
   return numero.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function lerMetadataHistorico(historico) {
+  try {
+    return typeof historico?.metadata === 'string'
+      ? JSON.parse(historico.metadata)
+      : historico?.metadata || {};
+  } catch {
+    return {};
+  }
 }
 
 function formatarNumeroEntrada(valor) {
@@ -388,6 +400,7 @@ export default function SolicitacaoDetalhe() {
   const [modalCompraDiretaAberto, setModalCompraDiretaAberto] = useState(false);
   const [compraDiretaDetalhe, setCompraDiretaDetalhe] = useState(null);
   const [carregandoCompraDireta, setCarregandoCompraDireta] = useState(false);
+  const [erroItensCompraDireta, setErroItensCompraDireta] = useState('');
   const abrindoItensCompraRef = useRef(false);
   const [itemCompraDiretaSelecionado, setItemCompraDiretaSelecionado] = useState(null);
   const [rateiosCompraDireta, setRateiosCompraDireta] = useState([]);
@@ -454,6 +467,33 @@ export default function SolicitacaoDetalhe() {
   useEffect(() => {
     carregar();
   }, [id]);
+
+  useEffect(() => {
+    if (!isCompraDiretaSolicitacao || !solicitacao?.id) {
+      setCompraDiretaDetalhe(null);
+      setErroItensCompraDireta('');
+      return undefined;
+    }
+
+    let ativo = true;
+    setCarregandoCompraDireta(true);
+    setErroItensCompraDireta('');
+    obterSolicitacaoCompraPorSolicitacao(solicitacao.id)
+      .then((dados) => {
+        if (ativo) setCompraDiretaDetalhe(dados || null);
+      })
+      .catch((error) => {
+        if (!ativo) return;
+        setCompraDiretaDetalhe(null);
+        setErroItensCompraDireta(error?.code === 'COMPRA_LEGADA_SEM_ITENS_ESTRUTURADOS'
+          ? 'Esta compra direta foi criada antes do cadastro individual de itens.'
+          : error?.message || 'Não foi possível carregar os itens da compra direta.');
+      })
+      .finally(() => {
+        if (ativo) setCarregandoCompraDireta(false);
+      });
+    return () => { ativo = false; };
+  }, [isCompraDiretaSolicitacao, solicitacao?.id]);
 
   useEffect(() => {
     const obraId = solicitacao?.obra_id || solicitacao?.obra?.id;
@@ -1159,6 +1199,60 @@ export default function SolicitacaoDetalhe() {
 
   // Setor do último STATUS_ALTERADO — o badge diz de qual setor é o estado.
   const historicosDoRegistro = Array.isArray(solicitacao.historicos) ? solicitacao.historicos : [];
+  const criacaoCompraDireta = historicosDoRegistro.find((historico) =>
+    historico?.acao === 'CRIADA' && lerMetadataHistorico(historico).origem === 'COMPRA_DIRETA');
+  const metadataCriacaoCompraDireta = lerMetadataHistorico(criacaoCompraDireta);
+  const formasCompraDireta = Array.isArray(solicitacao.compra_direta?.formas_pagamento_json)
+    ? solicitacao.compra_direta.formas_pagamento_json
+    : Array.isArray(metadataCriacaoCompraDireta.formas_pagamento)
+      ? metadataCriacaoCompraDireta.formas_pagamento : [];
+  const boletosCompraDireta = historicosDoRegistro.flatMap((historico) => {
+    if (historico?.acao !== 'ANEXO_ADICIONADO') return [];
+    const metadata = lerMetadataHistorico(historico);
+    if (!['BOLETO', 'FRETE_BOLETO'].includes(metadata.tipo_documento) || !metadata.caminho) return [];
+    return [{ id: historico.id, nome: historico.descricao || 'Boleto', caminho: metadata.caminho, tipo: metadata.tipo_documento }];
+  });
+  const linhasPagamentoCompraDireta = isCompraDiretaSolicitacao ? [
+    {
+      id: 'compra', tipo: 'Compra', credor: solicitacao.parceiro?.nome || '-',
+      formas: formasCompraDireta.map((forma) => `${forma.nome || forma.codigo || `#${forma.id}`}${forma.valor != null ? ` · ${formatarMoedaLocal(forma.valor)}` : ''}`).join(' | ') || '-',
+      favorecido: solicitacao.favorecido?.nome || '-',
+      chave: solicitacao.favorecido_chave_pix || '-',
+      dados: solicitacao.compra_direta?.dados_pagamento || metadataCriacaoCompraDireta.dados_pagamento || '-',
+      boletos: boletosCompraDireta.filter((item) => item.tipo === 'BOLETO')
+    },
+    ...(String(solicitacao.compra_direta?.frete_tipo || '').toUpperCase() === 'TERCEIRO' ? [{
+      id: 'frete', tipo: 'Frete a terceiro',
+      credor: solicitacao.compra_direta?.freteCredor?.nome || '-',
+      formas: solicitacao.compra_direta?.freteFormaPagamento?.nome || '-',
+      favorecido: solicitacao.compra_direta?.freteFavorecido?.nome || '-',
+      chave: solicitacao.compra_direta?.frete_favorecido_chave_pix || '-',
+      dados: solicitacao.compra_direta?.frete_dados_pagamento || '-',
+      boletos: boletosCompraDireta.filter((item) => item.tipo === 'FRETE_BOLETO')
+    }] : [])
+  ] : [];
+
+  async function abrirBoletoCompraDireta(boleto) {
+    try {
+      let url = fileUrl(boleto.caminho);
+      if (String(boleto.caminho).startsWith('http')) {
+        const params = new URLSearchParams({ url: String(boleto.caminho).replace(/%(?![0-9A-Fa-f]{2})/g, '%25'), historico_id: String(boleto.id) });
+        const response = await fetch(`${API_URL}/anexos/presign?${params}`, { headers: authHeaders() });
+        if (!response.ok) throw new Error('Não foi possível abrir o boleto.');
+        url = (await response.json()).url;
+      }
+      if (!url) throw new Error('Boleto indisponível.');
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      avisar.erro(error?.message || 'Não foi possível abrir o boleto.');
+    }
+  }
   const ultimoHistoricoStatus = [...historicosDoRegistro]
     .filter((item) => item?.acao === 'STATUS_ALTERADO')
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
@@ -1356,26 +1450,81 @@ export default function SolicitacaoDetalhe() {
         onGerenciarItens={podeGerenciarItensCompra ? abrirGerenciamentoItensCompra : null}
         onUpdated={aoRecarregarSilencioso}
       />
-    ) : podeGerenciarItensCompra ? (
+    ) : isCompraDiretaSolicitacao ? (
       <BlocoConteudo
-        titulo={isCompraDiretaSolicitacao ? 'Itens da compra direta' : 'Itens da solicitação de compra'}
+        titulo="Itens da compra direta"
         variante="secundario"
-        descricao={!isCompraDiretaSolicitacao
-          ? 'Abra o gerenciamento completo para revisar quantidades, apropriações e itens manuais.'
-          : podeCatalogarItensManuaisCompra
-          ? 'Trate os itens manuais para reutiliza-los em novas compras, mantendo o registro original.'
-          : 'Ajuste as apropriacoes item por item, com motivo e auditoria.'}
-        acoes={(
+        descricao={`${montarItensCompraDireta().length} item(ns) cadastrado(s) nesta compra direta.`}
+        acoes={podeGerenciarItensCompra ? (
           <button
             type="button"
             className="btn btn-outline btn-sm"
             onClick={abrirGerenciamentoItensCompra}
             disabled={carregandoCompraDireta}
           >
-            {carregandoCompraDireta ? 'Carregando itens...' : 'Gerenciar itens'}
+            {carregandoCompraDireta ? 'Carregando itens...' : 'Gerenciar todos os itens'}
           </button>
+        ) : null}
+      >
+        {erroItensCompraDireta ? (
+          <p className="text-sm text-[var(--c-muted)]">{erroItensCompraDireta}</p>
+        ) : (
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'item', titulo: 'Item', tipo: 'identidade', noCard: 'titulo',
+                render: (item) => <span className="font-medium">{item.descricao}</span>
+              },
+              {
+                id: 'quantidade', titulo: 'Quantidade', tipo: 'numero',
+                render: (item) => `${item.quantidade ?? '-'} ${item.unidade_label || ''}`
+              },
+              {
+                id: 'origem', titulo: 'Origem', tipo: 'texto',
+                render: (item) => item.item_tipo === 'MANUAL' ? 'Manual' : 'Cadastro de insumos'
+              },
+              {
+                id: 'apropriacao', titulo: 'Apropriação', tipo: 'texto',
+                render: (item) => montarLinhasResumoApropriacao(item, apropriacoesCatalogo).join(' | ') || '-'
+              }
+            ]}
+            itens={montarItensCompraDireta()}
+            getId={(item) => `${item.item_tipo}-${item.id}`}
+            acoesLinha={podeGerenciarItensCompra ? (item) => (
+              <button type="button" className="btn btn-outline btn-sm"
+                onClick={() => abrirGerenciamentoItensCompra(item)} disabled={carregandoCompraDireta}>
+                Editar
+              </button>
+            ) : undefined}
+            carregando={carregandoCompraDireta}
+            storageKey="tabela:solicitacao-detalhe:itens-compra-direta"
+            vazio="Nenhum item estruturado nesta compra direta."
+            rotuloRolagem="Itens da compra direta"
+          />
         )}
-      />
+        <div className="mt-4 border-t border-[var(--c-border)] pt-4">
+          <h3 className="mb-2 text-sm font-semibold">Dados de pagamento da compra</h3>
+          <TabelaPadrao
+            colunas={[
+              { id: 'tipo', titulo: 'Origem', tipo: 'identidade', noCard: 'titulo', render: (item) => item.tipo },
+              { id: 'credor', titulo: 'Credor', tipo: 'texto', render: (item) => item.credor },
+              { id: 'formas', titulo: 'Forma / valor', tipo: 'texto', render: (item) => <span className="break-words">{item.formas}</span> },
+              { id: 'favorecido', titulo: 'Favorecido', tipo: 'texto', render: (item) => item.favorecido },
+              { id: 'chave', titulo: 'Chave PIX', tipo: 'texto', render: (item) => <span className="break-all">{item.chave}</span> },
+              { id: 'dados', titulo: 'Dados para pagamento', tipo: 'texto', render: (item) => <span className="whitespace-pre-wrap break-words">{item.dados}</span> },
+              { id: 'boleto', titulo: 'Boleto', tipo: 'acao', render: (item) => item.boletos.length
+                ? <div className="flex flex-col items-start gap-1">{item.boletos.map((boleto) => (
+                    <button key={boleto.id} type="button" className="btn btn-outline btn-sm max-w-48 truncate"
+                      title={boleto.nome} onClick={() => abrirBoletoCompraDireta(boleto)}>{boleto.nome}</button>
+                  ))}</div> : '-' }
+            ]}
+            itens={linhasPagamentoCompraDireta}
+            getId={(item) => item.id}
+            storageKey="tabela:solicitacao-detalhe:pagamento-compra-direta"
+            rotuloRolagem="Dados de pagamento da compra direta"
+          />
+        </div>
+      </BlocoConteudo>
     ) : null,
 
     rateio_contrato: solicitacaoEhContrato ? (

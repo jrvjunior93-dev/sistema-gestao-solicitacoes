@@ -3,6 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const { validateCompraDiretaCreateBody } = require('../src/validators/operationalValidators');
 
 const backendRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(backendRoot, '..');
@@ -27,6 +28,9 @@ function run() {
   const novaCompra = read('frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx');
   const revisao = read('frontend/src/modules/solicitacao-compra/pages/RevisarSolicitacaoCompra.jsx');
   const financeiro = read('frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx');
+  const detalhe = read('frontend/src/pages/SolicitacaoDetalhe/index.jsx');
+  const migrationPagamento = read('backend/migrations/202609180005_compra_direta_frete_pagamento.js');
+  const migrationFavorecidoTitulo = read('backend/migrations/202609180007_titulos_favorecido_compra_direta.js');
 
   const campos = [
     'frete_tipo',
@@ -71,8 +75,8 @@ function run() {
     'Condições comerciais e comprovantes',
     'Embutido',
     'Pago a terceiro',
-    'Credor do frete *',
-    'Dados para pagamento do frete *',
+    'label="Credor do frete" obrigatorio',
+    'label="Dados para pagamento do frete"',
     'Comprovantes da Despesa',
     'resumoFormasPagamento',
     'formaPagamentoEhFopag',
@@ -87,10 +91,58 @@ function run() {
   includesAll(financeiro, [
     'getFreteTerceiroCompraDireta',
     'freteTerceiro.freteCredor',
-    'Frete pago a terceiro. Dados para pagamento',
+    'Frete pago a terceiro.',
     'freteTerceiroObrigatorio',
-    'Obrigatorio para separar a compra do frete pago ao terceiro.'
+    'Obrigatório para manter formas de pagamento e frete em títulos separados.',
+    'exigeTitulosSeparadosCompraDireta',
+    'favorecido_pagamento_id'
   ], 'financeiro');
+  includesAll(migrationPagamento, ['formas_pagamento_json', 'dados_pagamento', 'frete_forma_pagamento_id', 'frete_favorecido_id'], 'migration pagamento');
+  includesAll(migrationFavorecidoTitulo, ['favorecido_pagamento_id', 'titulos_financeiros'], 'migration favorecido titulo');
+
+  const validado = validateCompraDiretaCreateBody({
+    obra_id: 20,
+    parceiro_id: 31,
+    favorecido_id: 32,
+    favorecido_chave_pix: 'pix-desta-solicitacao',
+    necessario_para: '2026-09-19',
+    forma_pagamento_ids: [2],
+    itens: [{ nome: 'Item teste' }]
+  });
+  assert.strictEqual(validado.favorecido_id, 32);
+  assert.strictEqual(validado.favorecido_chave_pix, 'pix-desta-solicitacao');
+  const pagamentosComValor = validateCompraDiretaCreateBody({
+    obra_id: 20,
+    necessario_para: '2026-09-19',
+    forma_pagamento_ids: [2, 3],
+    formas_pagamento: [{ id: 2, valor: 75 }, { id: 3, valor: 25 }],
+    itens: [{ nome: 'Item teste' }]
+  });
+  assert.deepStrictEqual(pagamentosComValor.formas_pagamento, [{ id: 2, valor: 75 }, { id: 3, valor: 25 }]);
+  includesAll(controller, [
+    'formasPagamentoCompraDireta.some((forma) => !isFormaPagamentoBoleto(forma))',
+    'favorecido_id: compraDireta ? favorecidoCompraDireta?.id || null : null',
+    'favorecido_chave_pix: compraDireta ? chavePixCompraDireta : null'
+  ], 'favorecido por compra direta');
+  includesAll(novaCompra, [
+    'Usar o credor como favorecido do pagamento',
+    'Chave PIX deste pagamento',
+    'setFavorecidoChavePix(\'\')'
+  ], 'favorecido e chave no formulário');
+  includesAll(financeiro, [
+    'compraDiretaSolicitacao',
+    'compraDireta: compraDiretaSolicitacao',
+    'selecao={podeEnviarParaFila ? {'
+  ], 'isolamento PIX e seleção da fila');
+  assert(/compraDiretaSolicitacao\s*\?\s*Promise\.resolve\(\[\]\)/.test(financeiro),
+    'A compra direta nao deve consultar o historico de favorecidos do credor.');
+  includesAll(detalhe, [
+    'Gerenciar todos os itens',
+    'abrirGerenciamentoItensCompra(item)',
+    'Itens da compra direta',
+    'Dados de pagamento da compra',
+    'Boleto'
+  ], 'itens diretos no detalhe');
 
   console.log('Validacao da Compra Direta com frete concluida com sucesso.');
 }

@@ -110,10 +110,10 @@ function validarIntegracaoFrontendBackend() {
   assert(!detalhe.includes('const podeEditarApropriacoes = moduloComprasHabilitado && canEditarApropriacoesSolicitacao(user)'));
   assert(detalhe.includes('montarResumoApropriacoesSolicitacao'));
 
-  assert(novaCompra.includes('const [rateiosItemManual, setRateiosItemManual]'));
-  assert(novaCompra.includes('apropriacoes: rateiosItemManual'));
-  assert(novaCompra.includes('const validacaoRateios = validarRateiosItem(itemNovo)'));
-  assert(novaCompra.includes('titulo="Apropriação do item"'));
+  assert(novaCompra.includes('const [modalApropriacaoIndex, setModalApropriacaoIndex]'));
+  assert(novaCompra.includes('apropriacoes: rateiosModal'));
+  assert(novaCompra.includes('const validacao = validarRateiosItem(itemComRateios)'));
+  assert(novaCompra.includes('Apropriar item'));
 
   // Todo tipo com Forma de pagamento, inclusive habilitada pela configuracao, ja exibe o anexo
   // geral como obrigatorio. Selecionar Boleto o torna opcional.

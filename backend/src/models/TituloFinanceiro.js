@@ -74,6 +74,10 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true
     },
+    favorecido_pagamento_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
     categoria_financeira_id: {
       type: DataTypes.INTEGER,
       allowNull: true

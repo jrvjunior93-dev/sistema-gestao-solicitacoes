@@ -1146,6 +1146,10 @@ function isFormaPagamentoBoleto(forma) {
   return Boolean(forma?.gera_boleto) || texto.includes('BOLETO');
 }
 
+function isFormaPagamentoPix(forma) {
+  return normalizeTextCompra(`${forma?.codigo || ''} ${forma?.nome || ''} ${forma?.tipo || ''}`).includes('PIX');
+}
+
 function isFormaPagamentoFopag(forma) {
   return [forma?.codigo, forma?.nome]
     .map((valor) => normalizeTextCompra(valor).trim())
@@ -1158,6 +1162,10 @@ function formatarFormaPagamentoResumo(forma) {
 
 function isAnexoBoletoCompraDireta(anexo) {
   return normalizeTextCompra(anexo?.tipo_documento || '') === 'BOLETO';
+}
+
+function isAnexoBoletoFreteCompraDireta(anexo) {
+  return normalizeTextCompra(anexo?.tipo_documento || '') === 'FRETE_BOLETO';
 }
 
 function buildRespostaItemKey(itemTipo, itemReferenciaId) {
@@ -1997,7 +2005,9 @@ async function anexarArquivosCabecalhoSolicitacao({ anexos = [], solicitacaoPrin
         .map((anexo) => ({
           arquivo_url: String(anexo?.arquivo_url || '').trim(),
           arquivo_nome_original: normalizeOriginalName(anexo?.arquivo_nome_original || anexo?.nome_original || 'anexo-compra-direta'),
-          tipo_documento: isAnexoBoletoCompraDireta(anexo) ? 'BOLETO' : 'NOTA_FISCAL_GUIA'
+          tipo_documento: isAnexoBoletoFreteCompraDireta(anexo)
+            ? 'FRETE_BOLETO'
+            : isAnexoBoletoCompraDireta(anexo) ? 'BOLETO' : 'NOTA_FISCAL_GUIA'
         }))
         .filter((anexo) => anexo.arquivo_url)
         .slice(0, 20)
@@ -2028,7 +2038,9 @@ async function anexarArquivosCabecalhoSolicitacao({ anexos = [], solicitacaoPrin
         metadata: JSON.stringify({
           anexo_id: anexo.id,
           caminho: anexoPayload.arquivo_url,
-          origem: anexoPayload.tipo_documento === 'BOLETO' ? 'COMPRA_DIRETA_BOLETO' : 'COMPRA_DIRETA_NOTA_FISCAL',
+          origem: anexoPayload.tipo_documento === 'FRETE_BOLETO'
+            ? 'COMPRA_DIRETA_FRETE_BOLETO'
+            : anexoPayload.tipo_documento === 'BOLETO' ? 'COMPRA_DIRETA_BOLETO' : 'COMPRA_DIRETA_NOTA_FISCAL',
           tipo_documento: anexoPayload.tipo_documento
         })
       });
@@ -3906,14 +3918,20 @@ module.exports = {
         origem,
         tipo_solicitacao_id,
         parceiro_id,
+        favorecido_id,
+        favorecido_chave_pix,
         forma_pagamento_ids,
+        formas_pagamento,
         desconto_total,
         anexos_cabecalho,
         frete_tipo,
         frete_valor,
         frete_data_vencimento,
         frete_parceiro_id,
-        frete_dados_pagamento
+        frete_dados_pagamento,
+        frete_forma_pagamento_id,
+        frete_favorecido_id,
+        frete_favorecido_chave_pix
       } = req.body;
       const compraDireta = normalizeTextCompra(origem) === 'COMPRA_DIRETA';
 
@@ -4025,12 +4043,15 @@ module.exports = {
         await transaction.rollback();
         return res.status(400).json({ error: 'Informe a data para pagamento do frete.' });
       }
-      if (freteTipoCompraDireta === 'TERCEIRO' && !String(frete_dados_pagamento || '').trim()) {
+      if (freteTipoCompraDireta === 'TERCEIRO' && !frete_forma_pagamento_id && !String(frete_dados_pagamento || '').trim()) {
         await transaction.rollback();
         return res.status(400).json({ error: 'Informe os dados para pagamento do frete.' });
       }
 
       let freteCredorCompraDireta = null;
+      let freteFormaPagamentoCompraDireta = null;
+      let freteFavorecidoCompraDireta = null;
+      let freteChavePixCompraDireta = null;
       if (freteTipoCompraDireta === 'TERCEIRO') {
         freteCredorCompraDireta = await Parceiro.findByPk(frete_parceiro_id, {
           attributes: ['id', 'nome', 'cpf_cnpj', 'ativo', 'fornecedor'],
@@ -4039,6 +4060,39 @@ module.exports = {
         if (!freteCredorCompraDireta || freteCredorCompraDireta.ativo === false || freteCredorCompraDireta.fornecedor !== true) {
           await transaction.rollback();
           return res.status(400).json({ error: 'Selecione um credor ativo para o frete pago a terceiro.' });
+        }
+        if (frete_forma_pagamento_id) {
+          freteFormaPagamentoCompraDireta = await FormaPagamentoFinanceira.findByPk(frete_forma_pagamento_id, {
+            attributes: ['id', 'nome', 'codigo', 'tipo', 'gera_boleto', 'ativo'], transaction
+          });
+          if (!freteFormaPagamentoCompraDireta || freteFormaPagamentoCompraDireta.ativo === false
+            || isFormaPagamentoFopag(freteFormaPagamentoCompraDireta)) {
+            await transaction.rollback();
+            return res.status(400).json({ error: 'Selecione uma forma de pagamento ativa para o frete.' });
+          }
+          if (isFormaPagamentoBoleto(freteFormaPagamentoCompraDireta)) {
+            const boletosFrete = Array.isArray(anexos_cabecalho)
+              ? anexos_cabecalho.filter(isAnexoBoletoFreteCompraDireta) : [];
+            if (!boletosFrete.some((anexo) => String(anexo?.arquivo_url || '').trim())) {
+              await transaction.rollback();
+              return res.status(400).json({ error: 'Anexe o boleto do frete.' });
+            }
+          } else {
+            freteFavorecidoCompraDireta = await Parceiro.findByPk(frete_favorecido_id, {
+              attributes: ['id', 'nome', 'cpf_cnpj', 'ativo'], transaction
+            });
+            if (!freteFavorecidoCompraDireta || freteFavorecidoCompraDireta.ativo === false) {
+              await transaction.rollback();
+              return res.status(400).json({ error: 'Selecione um favorecido ativo para o frete.' });
+            }
+            if (isFormaPagamentoPix(freteFormaPagamentoCompraDireta)) {
+              freteChavePixCompraDireta = String(frete_favorecido_chave_pix || '').trim();
+              if (!freteChavePixCompraDireta) {
+                await transaction.rollback();
+                return res.status(400).json({ error: 'Digite a chave PIX do frete.' });
+              }
+            }
+          }
         }
       }
 
@@ -4050,6 +4104,8 @@ module.exports = {
         : 0;
 
       let formasPagamentoCompraDireta = [];
+      let favorecidoCompraDireta = null;
+      let chavePixCompraDireta = null;
       if (compraDireta) {
         const formaPagamentoIds = Array.isArray(forma_pagamento_ids)
           ? forma_pagamento_ids.map((id) => Number(id)).filter((id) => id > 0)
@@ -4083,6 +4139,38 @@ module.exports = {
           if (!anexosBoleto.length) {
             await transaction.rollback();
             return res.status(400).json({ error: 'Anexe o boleto para criar a compra direta com forma de pagamento boleto.' });
+          }
+        }
+
+        if (formasPagamentoCompraDireta.some((forma) => !isFormaPagamentoBoleto(forma))) {
+          if (!favorecido_id) {
+            await transaction.rollback();
+            return res.status(400).json({ error: 'Selecione o favorecido desta compra direta.' });
+          }
+          if (formasPagamentoCompraDireta.some(isFormaPagamentoPix)) {
+            chavePixCompraDireta = String(favorecido_chave_pix || '').trim();
+          }
+          if (formasPagamentoCompraDireta.some(isFormaPagamentoPix) && !chavePixCompraDireta) {
+            await transaction.rollback();
+            return res.status(400).json({ error: 'Digite a chave PIX desta compra direta.' });
+          }
+          favorecidoCompraDireta = await Parceiro.findByPk(favorecido_id, {
+            attributes: ['id', 'nome', 'cpf_cnpj', 'ativo'], transaction
+          });
+          if (!favorecidoCompraDireta || favorecidoCompraDireta.ativo === false) {
+            await transaction.rollback();
+            return res.status(400).json({ error: 'Selecione um favorecido ativo para a compra direta.' });
+          }
+        }
+        if (formas_pagamento) {
+          const idsInformados = formas_pagamento.map((forma) => Number(forma.id));
+          const totalInformado = arredondarMoeda(formas_pagamento.reduce((soma, forma) => soma + Number(forma.valor || 0), 0));
+          if (idsInformados.length !== formaPagamentoIds.length
+            || new Set(idsInformados).size !== idsInformados.length
+            || idsInformados.some((id) => !formaPagamentoIds.includes(id))
+            || totalInformado !== valorTotalFornecedorCompraDireta) {
+            await transaction.rollback();
+            return res.status(400).json({ error: 'Distribua o valor total da compra entre as formas de pagamento selecionadas.' });
           }
         }
       }
@@ -4133,7 +4221,18 @@ module.exports = {
           frete_parceiro_id: freteTipoCompraDireta === 'TERCEIRO' ? freteCredorCompraDireta.id : null,
           frete_dados_pagamento: freteTipoCompraDireta === 'TERCEIRO'
             ? String(frete_dados_pagamento || '').trim()
-            : null
+            : null,
+          formas_pagamento_json: compraDireta ? formasPagamentoCompraDireta.map((forma) => ({
+            id: forma.id,
+            nome: forma.nome,
+            codigo: forma.codigo,
+            valor: formas_pagamento?.find((item) => Number(item.id) === Number(forma.id))?.valor
+              ?? (formasPagamentoCompraDireta.length === 1 ? valorTotalFornecedorCompraDireta : null)
+          })) : null,
+          dados_pagamento: compraDireta ? String(dados_pagamento || '').trim() || null : null,
+          frete_forma_pagamento_id: freteTipoCompraDireta === 'TERCEIRO' ? freteFormaPagamentoCompraDireta?.id || null : null,
+          frete_favorecido_id: freteTipoCompraDireta === 'TERCEIRO' ? freteFavorecidoCompraDireta?.id || null : null,
+          frete_favorecido_chave_pix: freteTipoCompraDireta === 'TERCEIRO' ? freteChavePixCompraDireta : null
         },
         { transaction }
       );
@@ -4204,7 +4303,9 @@ module.exports = {
         id: forma.id,
         nome: formatarFormaPagamentoResumo(forma),
         codigo: forma.codigo || null,
-        gera_boleto: Boolean(forma.gera_boleto) || isFormaPagamentoBoleto(forma)
+        gera_boleto: Boolean(forma.gera_boleto) || isFormaPagamentoBoleto(forma),
+        valor: formas_pagamento?.find((item) => Number(item.id) === Number(forma.id))?.valor
+          ?? (formasPagamentoCompraDireta.length === 1 ? valorTotalFornecedorCompraDireta : null)
       }));
 
       const descricao = [
@@ -4233,6 +4334,8 @@ module.exports = {
           codigo,
           obra_id,
           parceiro_id: compraDireta ? parceiroCompraDireta?.id || null : null,
+          favorecido_id: compraDireta ? favorecidoCompraDireta?.id || null : null,
+          favorecido_chave_pix: compraDireta ? chavePixCompraDireta : null,
           tipo_solicitacao_id: tipoSolicitacao.id,
           descricao,
           valor: compraDireta ? valorTotalSolicitacaoCompraDireta : null,
@@ -4269,6 +4372,7 @@ module.exports = {
             origem: compraDireta ? 'COMPRA_DIRETA' : 'MODULO_COMPRAS',
             solicitacao_compra_origem: compraDireta ? 'COMPRA_DIRETA' : 'NORMAL',
             parceiro_id: compraDireta ? parceiroCompraDireta?.id || null : null,
+            favorecido_id: compraDireta ? favorecidoCompraDireta?.id || null : null,
             formas_pagamento: compraDireta ? formasPagamentoMetadata : undefined,
             dados_pagamento: compraDireta ? dados_pagamento || null : undefined,
             valor_bruto: compraDireta ? valorBrutoCompraDireta : null,

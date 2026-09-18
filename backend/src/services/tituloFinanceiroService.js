@@ -967,19 +967,8 @@ function sugestaoTipoTitulo(solicitacao) {
 function descricaoPadraoTitulo(solicitacao) {
   const codigo = String(solicitacao?.codigo || '').trim();
   const tipoNome = String(solicitacao?.tipo?.nome || '').trim();
-  const descricao = String(solicitacao?.descricao || '').trim();
   const partes = [codigo, tipoNome].filter(Boolean);
-  const prefixo = partes.join(' - ');
-
-  if (!prefixo && !descricao) {
-    return 'Titulo financeiro gerado por solicitacao';
-  }
-
-  if (!descricao) {
-    return prefixo;
-  }
-
-  return `${prefixo}: ${descricao}`.slice(0, 255);
+  return partes.join(' - ') || 'Titulo financeiro gerado por solicitacao';
 }
 
 function descricaoPadraoTituloManual(tipo) {
@@ -1048,6 +1037,11 @@ function buildTituloInclude({ includeMovimentos = false } = {}) {
       model: Parceiro,
       as: 'parceiro',
       attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email']
+    },
+    {
+      model: Parceiro,
+      as: 'favorecidoPagamento',
+      attributes: ['id', 'nome', 'cpf_cnpj']
     },
     {
       model: Solicitacao,
@@ -2391,13 +2385,34 @@ async function listarTitulos(req, filters = {}) {
       `NOT EXISTS (SELECT 1 FROM titulo_renegociacao_alocacoes esc WHERE esc.titulo_destino_id = TituloFinanceiro.id AND esc.obra_id NOT IN (${idsEscopo.join(',') || '0'}))`
     )];
   }
+  const colunasOrdenaveis = {
+    titulo: 'codigo',
+    status: 'status',
+    status_interno_pagar: 'status_interno_pagar',
+    tipo: 'tipo',
+    documento: 'numero_documento',
+    parceiro: sequelize.col('parceiro.nome'),
+    obra: sequelize.col('obra.nome'),
+    categoria: sequelize.col('categoriaFinanceira.nome'),
+    forma_pagamento: sequelize.col('formaPagamento.nome'),
+    origem: sequelize.literal("CASE WHEN TituloFinanceiro.solicitacao_id IS NOT NULL THEN 'Solicitacao' WHEN TituloFinanceiro.forma_cobranca IS NOT NULL THEN 'Comercial' ELSE 'Manual' END"),
+    emissao: 'data_emissao',
+    vencimento: 'data_vencimento',
+    valor_total: 'valor_original',
+    saldo: 'valor_saldo'
+  };
+  const colunaOrdenacao = String(filters.ordenar_por || '').trim().toLowerCase();
+  const direcaoOrdenacao = String(filters.direcao || '').trim().toUpperCase();
+  if (colunaOrdenacao && (!Object.hasOwn(colunasOrdenaveis, colunaOrdenacao) || !['ASC', 'DESC'].includes(direcaoOrdenacao))) {
+    throw createHttpError(400, 'Ordenacao de titulos invalida.');
+  }
+  const order = colunaOrdenacao
+    ? [[colunasOrdenaveis[colunaOrdenacao], direcaoOrdenacao], ['id', 'DESC']]
+    : [['data_vencimento', 'ASC'], ['createdAt', 'DESC'], ['id', 'DESC']];
   const queryOptions = {
     where: whereNegociacao,
     include: buildTituloInclude(),
-    order: [
-      ['data_vencimento', 'ASC'],
-      ['createdAt', 'DESC']
-    ],
+    order,
     distinct: true,
     subQuery: false
   };
@@ -2616,6 +2631,13 @@ async function listarTitulosPorSolicitacao(req, solicitacaoId) {
     model: require('../models').PagamentoManualFilaItem,
     as: 'filaPagamentosManuais',
     attributes: ['id', 'status', 'comprovante_nome', 'comprovante_hash', 'selecionado_em', 'processado_em'],
+    include: [{
+      model: require('../models').PagamentoManualFilaComprovante,
+      as: 'comprovantes',
+      attributes: ['id', 'nome', 'hash', 'banco', 'tipo', 'vinculado_em'],
+      separate: true,
+      order: [['id', 'ASC']]
+    }],
     separate: true,
     order: [['id', 'DESC']]
   });
@@ -2674,6 +2696,13 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     }
     const parceiroPagamento = await validarParceiro(parceiroIdPagamento);
     validarCompatibilidadeParceiroTitulo(parceiroPagamento, tipo);
+    const favorecidoPagamentoId = Number(pagamentoPayload.favorecido_pagamento_id || 0);
+    const favorecidoPagamento = favorecidoPagamentoId > 0
+      ? await Parceiro.findOne({ where: { id: favorecidoPagamentoId, ativo: true }, attributes: ['id', 'nome', 'cpf_cnpj'] })
+      : null;
+    if (favorecidoPagamentoId > 0 && !favorecidoPagamento) {
+      throw createHttpError(400, `Favorecido invalido para o titulo ${pagamentoIndex + 1}.`);
+    }
     const beneficiaryId = Number(pagamentoPayload.payment_beneficiary_id || 0);
     let paymentBeneficiary = null;
     if (beneficiaryId > 0) {
@@ -2731,6 +2760,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
 
     pagamentos.push({
       parceiro: parceiroPagamento,
+      favorecidoPagamento,
       paymentBeneficiary,
       categoria: categoriaPagamento,
       consideraDre: consideraDrePagamento,
@@ -2767,7 +2797,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
   const titulosCriados = [];
   const baixasCartaoNoAto = [];
   try {
-    for (const [pagamentoIndex, pagamento] of pagamentos.entries()) {
+    for (const pagamento of pagamentos) {
       for (let index = 0; index < pagamento.quantidadeParcelas; index += 1) {
         const numeroParcela = index + 1;
         const valorParcela = pagamento.valoresParcelas[index];
@@ -2780,10 +2810,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           index
         });
         const totalParcelasDoGrupo = pagamento.quantidadeParcelas;
-        const prefixoForma = pagamentos.length > 1 ? `Forma ${pagamentoIndex + 1} - ` : '';
-        const descricaoParcela = totalParcelasDoGrupo > 1
-          ? `${prefixoForma}${descricaoBase}`.slice(0, 205) + ` - Parcela ${numeroParcela}/${totalParcelasDoGrupo}`
-          : `${prefixoForma}${descricaoBase}`.slice(0, 255);
+        const descricaoParcela = descricaoBase.slice(0, 255);
         const valoresParcela = calcularValoresParcelaComImpostos(impostosResumo, valorParcela, valorOriginal);
         const chequeFields = buildChequeFields(pagamento.formaPagamento, parcelaPayload, index);
         const cobrancaPayload = {
@@ -2801,6 +2828,7 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           empresa_id: empresaTituloId,
           ...pagamento.intercompanyFields,
           parceiro_id: pagamento.parceiro.id,
+          favorecido_pagamento_id: pagamento.favorecidoPagamento?.id || null,
           payment_beneficiary_id: pagamento.paymentBeneficiary?.id || null,
           categoria_financeira_id: pagamento.categoria?.id || categoriaPadrao?.id || null,
           forma_pagamento_id: pagamento.formaPagamento?.id || null,

@@ -31,6 +31,7 @@ import {
 } from '../../../components/padrao';
 import OverlayModal from '../../../components/ui/OverlayModal';
 import ApropriacaoAutocomplete from '../../../components/ui/ApropriacaoAutocomplete';
+import ParceiroBuscaRemota from '../../../components/solicitacoes/ParceiroBuscaRemota';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useFecharAoSair } from '../../../hooks/useFecharAoSair';
 import { getCpfCnpjError, maskCpfCnpj, onlyDigits } from '../../../utils/formatters';
@@ -109,6 +110,11 @@ function normalizarTexto(value) {
 function formaPagamentoEhBoleto(forma) {
   const texto = normalizarTexto(`${forma?.codigo || ''} ${forma?.nome || ''} ${forma?.tipo || ''}`);
   return Boolean(forma?.gera_boleto) || texto.includes('BOLETO');
+}
+
+function formaPagamentoEhPix(forma) {
+  const texto = normalizarTexto(`${forma?.codigo || ''} ${forma?.nome || ''} ${forma?.tipo || ''}`);
+  return texto.includes('PIX');
 }
 
 function formaPagamentoEhFopag(forma) {
@@ -242,6 +248,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [freteParceiroId, setFreteParceiroId] = useState('');
   const [freteParceiroBusca, setFreteParceiroBusca] = useState('');
   const [freteDadosPagamento, setFreteDadosPagamento] = useState('');
+  const [freteFormaPagamentoId, setFreteFormaPagamentoId] = useState('');
+  const [freteFavorecidoSelecionado, setFreteFavorecidoSelecionado] = useState(null);
+  const [freteUsarCredorComoFavorecido, setFreteUsarCredorComoFavorecido] = useState(false);
+  const [freteChavePix, setFreteChavePix] = useState('');
   const [freteParceiros, setFreteParceiros] = useState([]);
   const [buscandoCredoresFrete, setBuscandoCredoresFrete] = useState(false);
   const [autocompleteFreteAberto, setAutocompleteFreteAberto] = useState(false);
@@ -250,8 +260,12 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [anexosCabecalho, setAnexosCabecalho] = useState([]);
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [formaPagamentoIds, setFormaPagamentoIds] = useState([]);
+  const [valoresFormaPagamento, setValoresFormaPagamento] = useState({});
   const [parceiroId, setParceiroId] = useState('');
   const [parceiroBusca, setParceiroBusca] = useState('');
+  const [favorecidoSelecionado, setFavorecidoSelecionado] = useState(null);
+  const [usarCredorComoFavorecido, setUsarCredorComoFavorecido] = useState(false);
+  const [favorecidoChavePix, setFavorecidoChavePix] = useState('');
   const [parceiros, setParceiros] = useState([]);
   const [buscandoParceiros, setBuscandoParceiros] = useState(false);
   const [autocompleteCredorAberto, setAutocompleteCredorAberto] = useState(false);
@@ -460,11 +474,18 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     setFreteParceiroId('');
     setFreteParceiroBusca('');
     setFreteDadosPagamento('');
+    setFreteFormaPagamentoId('');
+    setFreteFavorecidoSelecionado(null);
+    setFreteUsarCredorComoFavorecido(false);
+    setFreteChavePix('');
     setFreteParceiros([]);
     setAnexosCabecalho([]);
     setFormaPagamentoIds([]);
     setParceiroId('');
     setParceiroBusca('');
+    setFavorecidoSelecionado(null);
+    setUsarCredorComoFavorecido(false);
+    setFavorecidoChavePix('');
     setItens([]);
     setErrosCampo({});
     setErrosItem({});
@@ -489,6 +510,14 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     () => formasPagamentoSelecionadas.some((forma) => formaPagamentoEhBoleto(forma)),
     [formasPagamentoSelecionadas]
   );
+  const compraDiretaExigeFavorecido = modoCompraDireta
+    && formasPagamentoSelecionadas.some((forma) => !formaPagamentoEhBoleto(forma));
+  const compraDiretaExigeChavePix = modoCompraDireta
+    && formasPagamentoSelecionadas.some(formaPagamentoEhPix);
+  const freteFormaPagamento = formasPagamento.find((forma) => String(forma.id) === freteFormaPagamentoId) || null;
+  const freteExigeFavorecido = freteTipo === 'TERCEIRO' && freteFormaPagamento && !formaPagamentoEhBoleto(freteFormaPagamento);
+  const freteExigeChavePix = freteExigeFavorecido && formaPagamentoEhPix(freteFormaPagamento);
+  const freteExigeBoleto = freteTipo === 'TERCEIRO' && freteFormaPagamento && formaPagamentoEhBoleto(freteFormaPagamento);
   const resumoFormasPagamento = useMemo(() => {
     if (!formasPagamentoSelecionadas.length) {
       return 'Selecione uma ou mais formas';
@@ -499,6 +528,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }, [formasPagamentoSelecionadas]);
   const anexosBoletoCabecalho = useMemo(
     () => anexosCabecalho.filter((anexo) => anexo?.tipo_documento === 'BOLETO'),
+    [anexosCabecalho]
+  );
+  const anexosBoletoFrete = useMemo(
+    () => anexosCabecalho.filter((anexo) => anexo?.tipo_documento === 'FRETE_BOLETO'),
     [anexosCabecalho]
   );
 
@@ -568,16 +601,31 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       setFreteParceiroId(payload.frete_parceiro_id ? String(payload.frete_parceiro_id) : '');
       setFreteParceiroBusca(dados?.resumo?.frete_credor_nome || '');
       setFreteDadosPagamento(payload.frete_dados_pagamento || '');
+      setFreteFormaPagamentoId(payload.frete_forma_pagamento_id ? String(payload.frete_forma_pagamento_id) : '');
+      setFreteFavorecidoSelecionado(payload.frete_favorecido_id
+        ? (dados?.resumo?.frete_favorecido || { id: payload.frete_favorecido_id, nome: dados?.resumo?.frete_favorecido_nome || 'Favorecido selecionado' })
+        : null);
+      setFreteUsarCredorComoFavorecido(Boolean(payload.frete_favorecido_id && String(payload.frete_favorecido_id) === String(payload.frete_parceiro_id)));
+      setFreteChavePix(String(payload.frete_favorecido_chave_pix || ''));
       setAnexosCabecalho(Array.isArray(payload.anexos_cabecalho) ? payload.anexos_cabecalho : []);
       setFormaPagamentoIds(
         Array.isArray(payload.forma_pagamento_ids)
           ? payload.forma_pagamento_ids.map((item) => String(item)).filter(Boolean)
           : []
       );
+      setValoresFormaPagamento(payload.valores_forma_pagamento && typeof payload.valores_forma_pagamento === 'object'
+        ? payload.valores_forma_pagamento : {});
       setParceiroId(payload.parceiro_id ? String(payload.parceiro_id) : '');
       if (dados?.resumo?.credor_nome) {
         setParceiroBusca(dados.resumo.credor_nome);
       }
+      setUsarCredorComoFavorecido(Boolean(payload.favorecido_id && String(payload.favorecido_id) === String(payload.parceiro_id)));
+      setFavorecidoSelecionado(payload.favorecido_id
+        ? (dados?.resumo?.favorecido && String(dados.resumo.favorecido.id) === String(payload.favorecido_id)
+          ? dados.resumo.favorecido
+          : { id: payload.favorecido_id, nome: dados?.resumo?.favorecido_nome || 'Favorecido selecionado' })
+        : null);
+      setFavorecidoChavePix(String(payload.favorecido_chave_pix || ''));
       setItens(
         Array.isArray(payload.itens)
           ? payload.itens.map((item, index) => {
@@ -625,6 +673,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     ) return undefined;
     const possuiConteudo = Boolean(
       obraId || necessarioPara || observacoes || dadosPagamento || parceiroId || freteTipo !== 'SEM_FRETE' || itens.length
+      || favorecidoSelecionado || favorecidoChavePix
     );
     if (!possuiConteudo) return undefined;
 
@@ -642,15 +691,29 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           frete_data_vencimento: freteTipo === 'TERCEIRO' ? freteDataVencimento || null : null,
           frete_parceiro_id: freteTipo === 'TERCEIRO' ? freteParceiroId || null : null,
           frete_dados_pagamento: freteTipo === 'TERCEIRO' ? freteDadosPagamento || '' : '',
+          frete_forma_pagamento_id: freteTipo === 'TERCEIRO' ? freteFormaPagamentoId || null : null,
+          frete_favorecido_id: freteTipo === 'TERCEIRO' ? freteFavorecidoSelecionado?.id || null : null,
+          frete_favorecido_chave_pix: freteTipo === 'TERCEIRO' ? freteChavePix.trim() || null : null,
           anexos_cabecalho: anexosCabecalho,
           forma_pagamento_ids: formaPagamentoIds,
+          valores_forma_pagamento: valoresFormaPagamento,
           parceiro_id: parceiroId || null,
+          favorecido_id: favorecidoSelecionado?.id || null,
+          favorecido_chave_pix: favorecidoChavePix.trim() || null,
           itens
         },
         resumo: {
           solicitante_nome: user?.nome || '',
           credor_nome: parceiroBusca || '',
+          favorecido: favorecidoSelecionado
+            ? { id: favorecidoSelecionado.id, nome: favorecidoSelecionado.nome, cpf_cnpj: favorecidoSelecionado.cpf_cnpj || '' }
+            : null,
+          favorecido_nome: favorecidoSelecionado?.nome || '',
           frete_credor_nome: freteParceiroBusca || '',
+          frete_favorecido: freteFavorecidoSelecionado
+            ? { id: freteFavorecidoSelecionado.id, nome: freteFavorecidoSelecionado.nome, cpf_cnpj: freteFavorecidoSelecionado.cpf_cnpj || '' }
+            : null,
+          frete_favorecido_nome: freteFavorecidoSelecionado?.nome || '',
           itens
         },
         contexto: {
@@ -668,8 +731,12 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     descontoTotal,
     draftKey,
     formaPagamentoIds,
+    valoresFormaPagamento,
     freteDataVencimento,
     freteDadosPagamento,
+    freteFormaPagamentoId,
+    freteFavorecidoSelecionado,
+    freteChavePix,
     freteParceiroBusca,
     freteParceiroId,
     freteTipo,
@@ -680,6 +747,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     observacoes,
     parceiroBusca,
     parceiroId,
+    favorecidoSelecionado,
+    favorecidoChavePix,
+    compraDiretaExigeFavorecido,
     tipoSolicitacaoIdContexto,
     user?.id,
     user?.nome
@@ -767,6 +837,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       valorTotalCompraDireta + (freteTipo !== 'SEM_FRETE' ? freteValorNumero : 0)
     ),
     [freteTipo, freteValorNumero, valorTotalCompraDireta]
+  );
+  const valorTotalCredorCompraDireta = arredondarMoeda(
+    valorTotalCompraDireta + (freteTipo === 'EMBUTIDO' ? freteValorNumero : 0)
   );
 
   const parceiroSelecionado = useMemo(
@@ -865,6 +938,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     limparErroCampo('credor');
     setParceiroId(String(parceiro.id));
     setParceiroBusca(formatarCredor(parceiro));
+    if (usarCredorComoFavorecido) {
+      setFavorecidoSelecionado(parceiro);
+      setFavorecidoChavePix('');
+    }
     setParceiros((atual) => [
       parceiro,
       ...atual.filter((item) => Number(item.id) !== Number(parceiro.id))
@@ -906,6 +983,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     limparErroCampo('frete_parceiro');
     setFreteParceiroId(String(parceiro.id));
     setFreteParceiroBusca(formatarCredor(parceiro));
+    if (freteUsarCredorComoFavorecido) {
+      setFreteFavorecidoSelecionado(parceiro);
+      setFreteChavePix('');
+    }
     setFreteParceiros((atual) => [
       parceiro,
       ...atual.filter((item) => Number(item.id) !== Number(parceiro.id))
@@ -952,6 +1033,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       setFreteParceiroId('');
       setFreteParceiroBusca('');
       setFreteDadosPagamento('');
+      setFreteFormaPagamentoId('');
+      setFreteFavorecidoSelecionado(null);
+      setFreteUsarCredorComoFavorecido(false);
+      setFreteChavePix('');
+      setAnexosCabecalho((atuais) => atuais.filter((anexo) => anexo?.tipo_documento !== 'FRETE_BOLETO'));
       setFreteParceiros([]);
       setAutocompleteFreteAberto(false);
     }
@@ -1350,6 +1436,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     try {
       const data = await uploadAnexoTemporarioCompra(file);
       if (tipoDocumento === 'BOLETO') limparErroCampo('boleto');
+      if (tipoDocumento === 'FRETE_BOLETO') limparErroCampo('frete_boleto');
       setAnexosCabecalho((atual) => [
         ...atual,
         {
@@ -1409,6 +1496,30 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
     if (modoCompraDireta && formaPagamentoIds.length === 0) {
       reprovarCampo('forma_pagamento', 'Selecione ao menos uma forma de pagamento.');
+      return;
+    }
+    if (modoCompraDireta && formasPagamentoSelecionadas.length !== formaPagamentoIds.length) {
+      reprovarCampo('forma_pagamento', 'Aguarde o carregamento das formas de pagamento e confira a seleção.');
+      return;
+    }
+    if (compraDiretaExigeFavorecido && !favorecidoSelecionado?.id) {
+      reprovarCampo('favorecido', 'Selecione o favorecido deste pagamento.');
+      return;
+    }
+    if (compraDiretaExigeChavePix && !favorecidoChavePix.trim()) {
+      reprovarCampo('favorecido_chave_pix', 'Digite a chave PIX desta compra direta.');
+      return;
+    }
+
+    const formasPagamentoComValor = formasPagamentoSelecionadas.map((forma) => ({
+      id: Number(forma.id),
+      valor: formasPagamentoSelecionadas.length === 1
+        ? valorTotalCredorCompraDireta
+        : arredondarMoeda(parseValorMonetario(valoresFormaPagamento[String(forma.id)]))
+    }));
+    if (modoCompraDireta && (formasPagamentoComValor.some((forma) => forma.valor <= 0)
+      || arredondarMoeda(formasPagamentoComValor.reduce((soma, forma) => soma + forma.valor, 0)) !== valorTotalCredorCompraDireta)) {
+      reprovarCampo('valores_forma_pagamento', 'Distribua o valor total do credor entre as formas selecionadas.');
       return;
     }
 
@@ -1484,8 +1595,20 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         reprovarCampo('frete_data_vencimento', 'Informe a data para pagamento do frete.');
         return;
       }
-      if (!String(freteDadosPagamento || '').trim()) {
-        reprovarCampo('frete_dados_pagamento', 'Informe os dados para pagamento do frete.');
+      if (!freteFormaPagamentoId || !freteFormaPagamento) {
+        reprovarCampo('frete_forma_pagamento_id', 'Selecione a forma de pagamento do frete.');
+        return;
+      }
+      if (freteExigeBoleto && anexosBoletoFrete.length === 0) {
+        reprovarCampo('frete_boleto', 'Anexe o boleto do frete.');
+        return;
+      }
+      if (freteExigeFavorecido && !freteFavorecidoSelecionado?.id) {
+        reprovarCampo('frete_favorecido_id', 'Selecione o favorecido do frete.');
+        return;
+      }
+      if (freteExigeChavePix && !freteChavePix.trim()) {
+        reprovarCampo('frete_favorecido_chave_pix', 'Digite a chave PIX do frete.');
         return;
       }
     }
@@ -1515,6 +1638,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         tipo_solicitacao_id: modoCompraDireta ? tipoSolicitacaoIdContexto || null : undefined,
         origem: modoCompraDireta ? 'COMPRA_DIRETA' : undefined,
         parceiro_id: modoCompraDireta ? parceiroId || null : undefined,
+        favorecido_id: compraDiretaExigeFavorecido ? Number(favorecidoSelecionado.id) : undefined,
+        favorecido_chave_pix: compraDiretaExigeChavePix ? favorecidoChavePix.trim() : undefined,
         necessario_para: necessarioPara || null,
         observacoes: observacoes || null,
         dados_pagamento: modoCompraDireta ? dadosPagamento || null : undefined,
@@ -1526,7 +1651,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         frete_dados_pagamento: modoCompraDireta && freteTipo === 'TERCEIRO'
           ? String(freteDadosPagamento || '').trim()
           : undefined,
+        frete_forma_pagamento_id: modoCompraDireta && freteTipo === 'TERCEIRO' ? Number(freteFormaPagamentoId) : undefined,
+        frete_favorecido_id: modoCompraDireta && freteExigeFavorecido ? Number(freteFavorecidoSelecionado.id) : undefined,
+        frete_favorecido_chave_pix: modoCompraDireta && freteExigeChavePix ? freteChavePix.trim() : undefined,
         forma_pagamento_ids: modoCompraDireta ? formaPagamentoIds.map((id) => Number(id)).filter((id) => id > 0) : undefined,
+        formas_pagamento: modoCompraDireta ? formasPagamentoComValor : undefined,
         anexos_cabecalho: modoCompraDireta ? anexosCabecalho : undefined,
         itens: itensNormalizados.map((item) => ({
           manual: Boolean(item.manual),
@@ -1553,12 +1682,19 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         obra_codigo: obraSelecionada?.codigo || '',
         solicitante_nome: user?.nome || '',
         credor_nome: parceiroSelecionado ? formatarCredor(parceiroSelecionado) : parceiroBusca || '',
+        favorecido: compraDiretaExigeFavorecido ? {
+          id: favorecidoSelecionado.id,
+          nome: favorecidoSelecionado.nome,
+          cpf_cnpj: favorecidoSelecionado.cpf_cnpj || ''
+        } : null,
+        favorecido_nome: compraDiretaExigeFavorecido ? favorecidoSelecionado.nome : '',
         formas_pagamento: modoCompraDireta
           ? formasPagamentoSelecionadas.map((forma) => ({
               id: forma.id,
               nome: formatarFormaPagamento(forma),
               codigo: forma.codigo || '',
-              gera_boleto: Boolean(forma.gera_boleto)
+              gera_boleto: Boolean(forma.gera_boleto),
+              valor: formasPagamentoComValor.find((item) => item.id === Number(forma.id))?.valor || 0
             }))
           : [],
         valor_bruto: modoCompraDireta ? valorBrutoCompraDireta : null,
@@ -1571,6 +1707,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           : '',
         frete_data_vencimento: modoCompraDireta && freteTipo === 'TERCEIRO' ? freteDataVencimento : null,
         frete_dados_pagamento: modoCompraDireta && freteTipo === 'TERCEIRO' ? freteDadosPagamento : '',
+        frete_forma_pagamento: modoCompraDireta && freteTipo === 'TERCEIRO' ? formatarFormaPagamento(freteFormaPagamento) : '',
+        frete_favorecido: modoCompraDireta && freteExigeFavorecido
+          ? { id: freteFavorecidoSelecionado.id, nome: freteFavorecidoSelecionado.nome, cpf_cnpj: freteFavorecidoSelecionado.cpf_cnpj || '' }
+          : null,
+        frete_favorecido_nome: modoCompraDireta && freteExigeFavorecido ? freteFavorecidoSelecionado.nome : '',
         valor_total: modoCompraDireta ? valorTotalSolicitacaoCompraDireta : null,
         dados_pagamento: modoCompraDireta ? dadosPagamento || '' : '',
         anexos_cabecalho: modoCompraDireta ? anexosCabecalho : [],
@@ -1749,6 +1890,29 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
             </div>
           )}
 
+          {modoCompraDireta && formasPagamentoSelecionadas.length > 0 && (
+            <div className="form-campo--linha grid gap-3 rounded-lg border border-[var(--c-border)] p-3 md:grid-cols-2">
+              <div className="md:col-span-2 text-sm font-semibold">Valor por forma de pagamento</div>
+              {formasPagamentoSelecionadas.map((forma) => (
+                <CampoForm key={forma.id} label={formatarFormaPagamento(forma)} obrigatorio>
+                  <input className="input input-moeda" inputMode="decimal"
+                    value={formasPagamentoSelecionadas.length === 1
+                      ? valorTotalCredorCompraDireta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                      : valoresFormaPagamento[String(forma.id)] || ''}
+                    readOnly={formasPagamentoSelecionadas.length === 1}
+                    onChange={(event) => {
+                      setValoresFormaPagamento((atual) => ({ ...atual, [String(forma.id)]: event.target.value }));
+                      limparErroCampo('valores_forma_pagamento');
+                    }} />
+                </CampoForm>
+              ))}
+              <div className="md:col-span-2 text-xs text-[var(--c-muted)]">
+                Total do credor: {valorTotalCredorCompraDireta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </div>
+              <ErroCampo mensagem={errosCampo.valores_forma_pagamento} />
+            </div>
+          )}
+
           {modoCompraDireta && (
             <CampoForm label="Credor" linha erro={errosCampo.credor}>
               <div className="flex flex-wrap gap-2">
@@ -1761,6 +1925,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                       limparErroCampo('credor');
                       setParceiroBusca(event.target.value);
                       setParceiroId('');
+                      if (usarCredorComoFavorecido) {
+                        setFavorecidoSelecionado(null);
+                        setFavorecidoChavePix('');
+                      }
                       setAutocompleteCredorAberto(true);
                     }}
                     onFocus={() => setAutocompleteCredorAberto(true)}
@@ -1841,6 +2009,68 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
             </CampoForm>
           )}
 
+          {compraDiretaExigeFavorecido && (
+            <>
+              <label className="flex items-center gap-2 text-sm text-[var(--c-text)]">
+                <input
+                  type="checkbox"
+                  checked={usarCredorComoFavorecido}
+                  disabled={!parceiroId}
+                  onChange={(event) => {
+                    const marcado = event.target.checked;
+                    setUsarCredorComoFavorecido(marcado);
+                    setFavorecidoSelecionado(marcado
+                      ? (parceiroSelecionado || { id: parceiroId, nome: parceiroBusca })
+                      : null);
+                    setFavorecidoChavePix('');
+                    limparErroCampo('favorecido');
+                    limparErroCampo('favorecido_chave_pix');
+                  }}
+                />
+                Usar o credor como favorecido do pagamento
+              </label>
+              {!usarCredorComoFavorecido && (
+                <div className="form-group min-w-0">
+                  <ParceiroBuscaRemota
+                    label="Favorecido do pagamento"
+                    selecionado={favorecidoSelecionado}
+                    obrigatorio
+                    onSelecionar={(parceiro) => {
+                      setFavorecidoSelecionado(parceiro);
+                      setFavorecidoChavePix('');
+                      limparErroCampo('favorecido');
+                      limparErroCampo('favorecido_chave_pix');
+                    }}
+                  />
+                  <ErroCampo mensagem={errosCampo.favorecido} />
+                </div>
+              )}
+              {usarCredorComoFavorecido && favorecidoSelecionado && (
+                <p className="text-xs text-[var(--c-muted)]">
+                  Favorecido: {favorecidoSelecionado.nome || parceiroBusca}
+                </p>
+              )}
+              {compraDiretaExigeChavePix && <CampoForm
+                label="Chave PIX deste pagamento"
+                obrigatorio
+                erro={errosCampo.favorecido_chave_pix}
+                hint="Digite a chave confirmada para esta compra direta; ela não será copiada de outra solicitação."
+              >
+                <input
+                  className="input"
+                  value={favorecidoChavePix}
+                  maxLength={255}
+                  autoComplete="off"
+                  required
+                  onChange={(event) => {
+                    setFavorecidoChavePix(event.target.value);
+                    limparErroCampo('favorecido_chave_pix');
+                  }}
+                />
+              </CampoForm>}
+            </>
+          )}
+
           <CampoForm label="Observações da compra" tipo="observacao">
             <textarea
               className="input"
@@ -1852,7 +2082,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           </CampoForm>
 
           {modoCompraDireta && (
-            <CampoForm label="Dados para pagamento" tipo="observacao">
+            <CampoForm label="Dados para pagamento">
               <textarea
                 className="input"
                 rows={3}
@@ -1945,6 +2175,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                         limparErroCampo('frete_parceiro');
                         setFreteParceiroBusca(event.target.value);
                         setFreteParceiroId('');
+                        if (freteUsarCredorComoFavorecido) {
+                          setFreteFavorecidoSelecionado(null);
+                          setFreteChavePix('');
+                        }
                         setAutocompleteFreteAberto(true);
                       }}
                       onFocus={() => setAutocompleteFreteAberto(true)}
@@ -2002,10 +2236,72 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                   />
                 </CampoForm>
 
+                <CampoForm label="Forma de pagamento do frete" obrigatorio erro={errosCampo.frete_forma_pagamento_id}>
+                  <select className="input" value={freteFormaPagamentoId} onChange={(event) => {
+                    setFreteFormaPagamentoId(event.target.value);
+                    setFreteFavorecidoSelecionado(null);
+                    setFreteUsarCredorComoFavorecido(false);
+                    setFreteChavePix('');
+                    limparErroCampo('frete_forma_pagamento_id');
+                  }}>
+                    <option value="">Selecione</option>
+                    {formasPagamento.filter((forma) => !formaPagamentoEhFopag(forma)).map((forma) => (
+                      <option key={forma.id} value={forma.id}>{formatarFormaPagamento(forma)}</option>
+                    ))}
+                  </select>
+                </CampoForm>
+
+                {freteExigeFavorecido && (
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={freteUsarCredorComoFavorecido} disabled={!freteParceiroId}
+                        onChange={(event) => {
+                          const marcado = event.target.checked;
+                          setFreteUsarCredorComoFavorecido(marcado);
+                          setFreteFavorecidoSelecionado(marcado
+                            ? (freteCredorSelecionado || { id: freteParceiroId, nome: freteParceiroBusca }) : null);
+                          setFreteChavePix('');
+                          limparErroCampo('frete_favorecido_id');
+                        }} />
+                      Usar o credor do frete como favorecido
+                    </label>
+                    {!freteUsarCredorComoFavorecido ? (
+                      <ParceiroBuscaRemota label="Favorecido do frete" selecionado={freteFavorecidoSelecionado}
+                        obrigatorio onSelecionar={(parceiro) => {
+                          setFreteFavorecidoSelecionado(parceiro);
+                          setFreteChavePix('');
+                          limparErroCampo('frete_favorecido_id');
+                        }} />
+                    ) : <p className="text-xs text-[var(--c-muted)]">{freteFavorecidoSelecionado?.nome || freteParceiroBusca}</p>}
+                    <ErroCampo mensagem={errosCampo.frete_favorecido_id} />
+                  </div>
+                )}
+
+                {freteExigeChavePix && (
+                  <CampoForm label="Chave PIX do frete" obrigatorio erro={errosCampo.frete_favorecido_chave_pix}>
+                    <input className="input" value={freteChavePix} maxLength={255} autoComplete="off" required
+                      onChange={(event) => { setFreteChavePix(event.target.value); limparErroCampo('frete_favorecido_chave_pix'); }} />
+                  </CampoForm>
+                )}
+
+                {freteExigeBoleto && (
+                  <div className="space-y-2">
+                    <label className={`btn btn-outline inline-flex w-fit cursor-pointer ${uploadingAnexoCabecalho ? 'pointer-events-none opacity-60' : ''}`}>
+                      <input type="file" className="hidden" accept={HEADER_ATTACHMENT_ACCEPT} disabled={uploadingAnexoCabecalho}
+                        onChange={(event) => {
+                          const [file] = Array.from(event.target.files || []);
+                          void handleSelecionarAnexoCabecalho(file, 'FRETE_BOLETO');
+                          event.target.value = '';
+                        }} />
+                      {uploadingAnexoCabecalho ? 'Enviando...' : 'Anexar boleto do frete *'}
+                    </label>
+                    <span className="text-xs text-[var(--c-muted)]">{anexosBoletoFrete.length} boleto(s) do frete anexado(s).</span>
+                    <ErroCampo mensagem={errosCampo.frete_boleto} />
+                  </div>
+                )}
+
                 <CampoForm
                   label="Dados para pagamento do frete"
-                  obrigatorio
-                  tipo="observacao"
                   erro={errosCampo.frete_dados_pagamento}
                 >
                   <textarea
@@ -2013,7 +2309,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                     rows={3}
                     value={freteDadosPagamento}
                     onChange={(event) => { limparErroCampo('frete_dados_pagamento'); setFreteDadosPagamento(event.target.value); }}
-                    placeholder="Informe PIX, banco/agência/conta, linha digitável ou instruções para o financeiro."
+                    placeholder="Instruções adicionais para o financeiro (opcional)."
                   />
                 </CampoForm>
               </>
@@ -2024,8 +2320,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
               então o campo usa a casca .form-group em vez do CampoForm. */}
           <FormSecao legenda="Comprovantes da Despesa" colunas={2}>
             <div className="form-group form-campo--linha">
-              <span className="form-label">Nota fiscal, guia, boleto ou comprovante relacionado à compra</span>
-              <div className="flex flex-wrap gap-2">
+              <span className="form-label">Documentos da compra</span>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <span className="block text-xs text-[var(--c-muted)]">Nota fiscal, guia ou comprovante</span>
                 <label className={`btn btn-outline w-fit cursor-pointer ${uploadingAnexoCabecalho ? 'pointer-events-none opacity-60' : ''}`}>
                   <input
                     type="file"
@@ -2039,7 +2337,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                   />
                   {uploadingAnexoCabecalho ? 'Enviando...' : 'Anexar arquivos'}
                 </label>
+                </div>
                 {compraDiretaTemBoleto && (
+                  <div className="space-y-2">
+                    <span className="block text-xs text-[var(--c-muted)]">Boleto da compra</span>
                   <label className={`btn btn-outline w-fit cursor-pointer ${uploadingAnexoCabecalho ? 'pointer-events-none opacity-60' : ''}`}>
                     <input
                       type="file"
@@ -2053,6 +2354,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                     />
                     {uploadingAnexoCabecalho ? 'Enviando...' : 'Anexar boleto *'}
                   </label>
+                  </div>
                 )}
               </div>
               <ErroCampo mensagem={errosCampo.boleto} />
@@ -2065,7 +2367,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                       className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2 text-sm"
                     >
                       <span className="truncate">
-                        {anexo.tipo_documento === 'BOLETO' ? 'Boleto: ' : ''}
+                        {anexo.tipo_documento === 'BOLETO' ? 'Boleto: ' : anexo.tipo_documento === 'FRETE_BOLETO' ? 'Boleto do frete: ' : ''}
                         {anexo.arquivo_nome_original || 'Anexo da compra direta'}
                       </span>
                       <button

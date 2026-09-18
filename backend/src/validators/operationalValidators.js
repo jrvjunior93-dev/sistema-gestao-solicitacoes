@@ -403,6 +403,8 @@ function validateCompraQuery(query = {}) {
         'obra_id',
         'tipo_solicitacao_id',
         'parceiro_id',
+        'favorecido_id',
+        'favorecido_chave_pix',
         'necessario_para',
         'observacoes',
         'dados_pagamento',
@@ -410,13 +412,17 @@ function validateCompraQuery(query = {}) {
         'itens',
         'origem',
         'forma_pagamento_ids',
+        'formas_pagamento',
         'desconto_total',
         'anexos_cabecalho',
         'frete_tipo',
         'frete_valor',
         'frete_data_vencimento',
         'frete_parceiro_id',
-        'frete_dados_pagamento'
+        'frete_dados_pagamento',
+        'frete_forma_pagamento_id',
+        'frete_favorecido_id',
+        'frete_favorecido_chave_pix'
       ],
       'Compra direta'
     );
@@ -443,23 +449,44 @@ function validateCompraQuery(query = {}) {
       required: true,
       maxItems: 20
     });
+    if (body.formas_pagamento !== undefined && !Array.isArray(body.formas_pagamento)) {
+      throw new ValidationError('Valores por forma de pagamento invalidos.');
+    }
+    const formasPagamento = Array.isArray(body.formas_pagamento)
+      ? body.formas_pagamento.map((item, index) => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) {
+            throw new ValidationError(`Forma de pagamento ${index + 1} invalida.`);
+          }
+          ensureAllowedKeys(item, ['id', 'valor'], `Forma de pagamento ${index + 1}`);
+          return {
+            id: parseInteger(item.id, `Forma de pagamento ${index + 1}`, { required: true }),
+            valor: parseDecimal(item.valor, `Valor da forma de pagamento ${index + 1}`, { min: 0.01, scale: 2, required: true })
+          };
+        })
+      : null;
 
     return {
       obra_id: parseInteger(body.obra_id, 'Obra', { required: true }),
       tipo_solicitacao_id: parseInteger(body.tipo_solicitacao_id, 'Tipo de solicitacao', { positiveOnly: true }),
       parceiro_id: parseInteger(body.parceiro_id, 'Credor', { positiveOnly: true }),
+      favorecido_id: parseInteger(body.favorecido_id, 'Favorecido', { positiveOnly: true }),
+      favorecido_chave_pix: parseOptionalText(body.favorecido_chave_pix, 'Chave PIX do favorecido', 255),
       necessario_para: parseDateOnly(body.necessario_para, 'Data de vencimento', { required: true }),
       observacoes: parseOptionalText(body.observacoes, 'Observacoes', 5000),
       dados_pagamento: parseOptionalText(body.dados_pagamento, 'Dados para pagamento', 1500),
       link_geral: parseOptionalUrl(body.link_geral, 'Link geral'),
       origem: 'COMPRA_DIRETA',
       forma_pagamento_ids: formaPagamentoIds,
+      formas_pagamento: formasPagamento,
       desconto_total: parseDecimal(body.desconto_total, 'Desconto concedido', { min: 0, scale: 2 }) || 0,
       frete_tipo: parseOptionalText(body.frete_tipo, 'Tipo de frete', 20),
       frete_valor: parseDecimal(body.frete_valor, 'Valor do frete', { min: 0, scale: 2 }) || 0,
       frete_data_vencimento: parseDateOnly(body.frete_data_vencimento, 'Vencimento do frete'),
       frete_parceiro_id: parseInteger(body.frete_parceiro_id, 'Credor do frete', { positiveOnly: true }),
       frete_dados_pagamento: parseOptionalText(body.frete_dados_pagamento, 'Dados para pagamento do frete', 1500),
+      frete_forma_pagamento_id: parseInteger(body.frete_forma_pagamento_id, 'Forma de pagamento do frete', { positiveOnly: true }),
+      frete_favorecido_id: parseInteger(body.frete_favorecido_id, 'Favorecido do frete', { positiveOnly: true }),
+      frete_favorecido_chave_pix: parseOptionalText(body.frete_favorecido_chave_pix, 'Chave PIX do frete', 255),
       anexos_cabecalho: body.anexos_cabecalho || [],
       itens: body.itens
     };

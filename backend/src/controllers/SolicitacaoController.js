@@ -4227,13 +4227,30 @@ module.exports = {
           'frete_valor',
           'frete_data_vencimento',
           'frete_parceiro_id',
-          'frete_dados_pagamento'
+          'frete_dados_pagamento',
+          'frete_forma_pagamento_id',
+          'frete_favorecido_id',
+          'frete_favorecido_chave_pix',
+          'formas_pagamento_json',
+          'dados_pagamento'
         ],
         include: [
           {
             model: Parceiro,
             as: 'freteCredor',
             attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'],
+            required: false
+          },
+          {
+            model: Parceiro,
+            as: 'freteFavorecido',
+            attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'],
+            required: false
+          },
+          {
+            model: FormaPagamentoFinanceira,
+            as: 'freteFormaPagamento',
+            attributes: ['id', 'nome', 'codigo', 'tipo', 'gera_boleto'],
             required: false
           }
         ]

@@ -12,6 +12,7 @@ import {
   anexarComprovanteFilaPagamento,
   aprovarDivergenciasFilaPagamentos,
   getContasFilaPagamentos,
+  getComprovanteFilaPagamento,
   getFilaPagamentos,
   informarNaoPagamentoFila,
   previewComprovantesFilaPagamentos,
@@ -31,6 +32,7 @@ import StatusBadge from '../components/StatusBadge';
 import OverlayModal from '../components/ui/OverlayModal';
 import ArquivosSolicitacaoFilaModal from '../components/financeiro/ArquivosSolicitacaoFilaModal';
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
+import { listarComprovantesFila } from '../utils/comprovantesFila';
 import {
   Avisos,
   BlocoConteudo,
@@ -161,9 +163,9 @@ function beneficiaryData(titulo) {
     };
   }
   return {
-    nome: titulo?.parceiro?.nome || 'Não informado',
-    documento: titulo?.parceiro?.cpf_cnpj || '',
-    pagamento: boletoData ? `Boleto: ${boletoData}` : 'Sem instrução bancária cadastrada'
+    nome: titulo?.favorecidoPagamento?.nome || titulo?.parceiro?.nome || 'Não informado',
+    documento: titulo?.favorecidoPagamento?.cpf_cnpj || titulo?.parceiro?.cpf_cnpj || '',
+    pagamento: boletoData ? `Boleto: ${boletoData}` : titulo?.observacoes || 'Sem instrução bancária cadastrada'
   };
 }
 
@@ -330,13 +332,11 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
       });
       if (repeated) throw new Error(`O arquivo ${repeated.arquivo_nome} está repetido na seleção.`);
 
-      const usedSuggestedTitles = new Set();
       const initialLinks = {};
       allFiles.forEach((item) => {
         const suggestedId = Number(item.fila_sugerida_id);
-        const canUseSuggestion = !item.duplicado && suggestedId > 0 && !usedSuggestedTitles.has(suggestedId);
+        const canUseSuggestion = !item.duplicado && suggestedId > 0;
         initialLinks[item.arquivo_hash] = canUseSuggestion ? suggestedId : '';
-        if (canUseSuggestion) usedSuggestedTitles.add(suggestedId);
       });
       setPreview({ arquivos: allFiles, titulos_pendentes: [...titleOptions.values()] });
       setLinks(initialLinks);
@@ -361,10 +361,6 @@ function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {
     }
     if (selectedItems.some((item) => !item.file)) {
       setError('A seleção de arquivos mudou. Leia os comprovantes novamente.');
-      return;
-    }
-    if (new Set(selectedItems.map((item) => item.mapping.fila_id)).size !== selectedItems.length) {
-      setError('Escolha um título diferente para cada comprovante.');
       return;
     }
     setBusy(true);
@@ -635,17 +631,36 @@ export default function FinanceiroFilaPagamentos() {
     return null;
   }
 
-  async function anexarComprovante(row, arquivo) {
-    if (!arquivo || actionKey) return;
+  async function anexarComprovante(row, arquivos) {
+    if (!arquivos?.length || actionKey) return;
     setActionKey(`comprovante-${row.id}`);
+    let enviados = 0;
     try {
-      await anexarComprovanteFilaPagamento(row.id, arquivo);
-      avisar.sucesso(`Comprovante vinculado ao título ${row.titulo?.codigo || row.id}.`);
-      await load();
+      for (const arquivo of arquivos) {
+        await anexarComprovanteFilaPagamento(row.id, arquivo);
+        enviados += 1;
+      }
+      avisar.sucesso(`${enviados} comprovante(s) vinculado(s) ao título ${row.titulo?.codigo || row.id}.`);
     } catch (error) {
-      avisar.erro(error?.message || 'Não foi possível anexar o comprovante.');
+      avisar.erro(`${enviados ? `${enviados} arquivo(s) vinculado(s). ` : ''}${error?.message || 'Não foi possível anexar o comprovante.'}`);
     } finally {
+      if (enviados) await load();
       setActionKey('');
+    }
+  }
+
+  async function abrirComprovante(filaId, comprovanteId) {
+    try {
+      const resposta = await getComprovanteFilaPagamento(filaId, comprovanteId);
+      const link = document.createElement('a');
+      link.href = resposta.url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      avisar.erro(error?.message || 'Não foi possível abrir o comprovante.');
     }
   }
 
@@ -908,6 +923,8 @@ export default function FinanceiroFilaPagamentos() {
                 const accountOptions = compatibleAccounts(row);
                 const reasonVisible = reasonOpenId === row.id;
                 const tipoDivergencia = editable ? tipoDivergenciaPagamento(row, drafts[row.id]) : '';
+                const comprovantes = listarComprovantesFila(row);
+                const podeAnexarMais = canSettle && (row.status === 'PENDENTE' || Boolean(row.comprovante_hash));
                 return (
                   <tr key={row.id} className={row.status === 'DIVERGENTE' ? 'bg-[var(--sem-danger-bg)]' : row.status === 'NAO_PAGO' ? 'bg-[var(--sem-warning-bg)]' : ''}>
                     <td className="px-3 py-3 align-top">
@@ -939,24 +956,32 @@ export default function FinanceiroFilaPagamentos() {
                           </button>
                         </div>
                       ) : null}
-                      {row.comprovante_hash ? (
-                        <div className="mt-2 inline-flex rounded-full bg-[var(--sem-success-bg)] px-2 py-1 text-xs font-semibold text-[var(--sem-success)]">
-                          Comprovante {row.comprovante_banco ? bancoLabel(row.comprovante_banco) : 'PDF'} vinculado
+                      {comprovantes.length ? (
+                        <div className="mt-2 flex flex-wrap gap-1" aria-label={`Comprovantes de ${title.codigo || row.id}`}>
+                          {comprovantes.map((comprovante) => (
+                            <button key={`${comprovante.filaId}-${comprovante.id || 'legado'}`}
+                              type="button" className="btn btn-outline btn-sm max-w-48 truncate"
+                              title={comprovante.nome}
+                              onClick={() => abrirComprovante(comprovante.filaId, comprovante.id)}>
+                              {comprovante.nome}
+                            </button>
+                          ))}
                         </div>
                       ) : null}
-                      {editable && canSettle && !row.comprovante_hash ? (
+                      {podeAnexarMais ? (
                         <label className="btn btn-outline btn-sm mt-2 inline-flex cursor-pointer" data-fila-id={row.id} data-fila-campo="comprovante">
-                          Anexar comprovante PDF
+                          {comprovantes.length ? 'Adicionar comprovantes PDF' : 'Anexar comprovantes PDF'}
                           <input
                             className="sr-only"
                             type="file"
                             accept="application/pdf,.pdf"
+                            multiple
                             disabled={busy}
-                            aria-label={`Comprovante de pagamento de ${title.codigo || row.id}`}
+                            aria-label={`Comprovantes de pagamento de ${title.codigo || row.id}`}
                             onChange={(event) => {
-                              const arquivo = event.target.files?.[0];
+                              const arquivos = Array.from(event.target.files || []);
                               event.target.value = '';
-                              anexarComprovante(row, arquivo);
+                              anexarComprovante(row, arquivos);
                             }}
                           />
                         </label>

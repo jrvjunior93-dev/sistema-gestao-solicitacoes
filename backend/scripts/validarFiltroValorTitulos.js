@@ -39,6 +39,24 @@ expectValidationError(
 
 assert.strictEqual(validateFinanceTituloQuery({ status: 'ABERTO_VENCIDO' }).status, 'ABERTO_VENCIDO');
 assert.strictEqual(validateFinanceTituloQuery({ status: 'VENCIDO' }).status, 'VENCIDO');
+const colunasOrdenaveis = [
+  'titulo', 'status', 'status_interno_pagar', 'tipo', 'documento',
+  'parceiro', 'obra', 'categoria', 'forma_pagamento', 'origem',
+  'emissao', 'vencimento', 'valor_total', 'saldo'
+];
+for (const coluna of colunasOrdenaveis) {
+  const query = validateFinanceTituloQuery({ ordenar_por: coluna, direcao: 'desc' });
+  assert.strictEqual(query.ordenar_por, coluna.toUpperCase());
+  assert.strictEqual(query.direcao, 'DESC');
+}
+expectValidationError(
+  () => validateFinanceTituloQuery({ ordenar_por: 'campo_interno', direcao: 'asc' }),
+  'Coluna de ordenacao invalido.'
+);
+expectValidationError(
+  () => validateFinanceTituloQuery({ ordenar_por: 'emissao', direcao: 'lateral' }),
+  'Direcao da ordenacao invalido.'
+);
 assert.deepStrictEqual(resolveTituloStatusFilter('EM_ABERTO'), {
   statuses: ['PREVISAO', 'ABERTO', 'PARCIAL'],
   vencido: false
@@ -66,6 +84,18 @@ assert(
   serviceSource.includes('where.valor_original[Op.gte] = valorMinimo')
     && serviceSource.includes('where.valor_original[Op.lte] = valorMaximo'),
   'O filtro de valor dos titulos deve manter os limites minimo e maximo inclusivos.'
+);
+
+for (const coluna of colunasOrdenaveis) {
+  assert(
+    serviceSource.includes(`${coluna}: `) && frontendSource.includes(`id: '${coluna}'`),
+    `A ordenacao da coluna ${coluna} deve existir no servidor e na tabela.`
+  );
+}
+assert(
+  frontendSource.includes('aoOrdenar={ordenarTitulos}')
+    && frontendSource.includes('ordenar_por: ordenacao.coluna'),
+  'A ordenacao deve consultar o servidor para manter a ordem entre paginas.'
 );
 
 assert(

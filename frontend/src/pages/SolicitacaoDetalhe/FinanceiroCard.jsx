@@ -37,6 +37,7 @@ import CategoriaFinanceiraAutocomplete from '../../components/ui/CategoriaFinanc
 import { useAuth } from '../../contexts/AuthContext';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos } from '../../utils/acessoProduto';
+import { listarComprovantesFila } from '../../utils/comprovantesFila';
 import {
   atualizarPaymentBeneficiary,
   criarPaymentBeneficiary,
@@ -83,9 +84,15 @@ function normalizeCodigoBancoInput(value) {
   return String(value || '').replace(/\D/g, '').slice(0, 8);
 }
 
-function limparDescricaoTituloCompra(value) {
+function limparDescricaoTituloCompra(value, solicitacao) {
   const texto = String(value || '').trim();
   if (!texto) return texto;
+  const codigo = String(solicitacao?.codigo || '').trim();
+  const tipo = String(solicitacao?.tipo?.nome || solicitacao?.tipo_nome || '').trim();
+  const identificacao = [codigo, tipo].filter(Boolean).join(' - ');
+  if (codigo && tipo && normalizeSearchText(texto).includes(normalizeSearchText(identificacao))) {
+    return identificacao;
+  }
   if (normalizeSearchText(texto).includes('solicitacao de compra')) {
     return texto
       .replace(/\s+(Itens|Items):[\s\S]*$/i, '')
@@ -205,7 +212,7 @@ function createPaymentDraft() {
   };
 }
 
-function buildPaymentDraftForTitle({ parceiro, beneficiaries = [], solicitacao, usarChaveSolicitacao = false }) {
+function buildPaymentDraftForTitle({ parceiro, beneficiaries = [], solicitacao, usarChaveSolicitacao = false, compraDireta = false }) {
   const lista = Array.isArray(beneficiaries) ? beneficiaries : [];
   const chavePixSolicitacao = usarChaveSolicitacao
     ? String(solicitacao?.favorecido_chave_pix || '').trim()
@@ -213,6 +220,17 @@ function buildPaymentDraftForTitle({ parceiro, beneficiaries = [], solicitacao, 
   const favorecidoSolicitacao = solicitacao?.favorecido || null;
   const favorecidoEhCredor = favorecidoSolicitacao?.id
     && String(favorecidoSolicitacao.id) === String(parceiro?.id);
+  if (compraDireta) {
+    return {
+      ...createPaymentDraft(),
+      preparar_pagamento_pix: Boolean(chavePixSolicitacao),
+      usar_credor_como_favorecido: Boolean(chavePixSolicitacao && favorecidoEhCredor),
+      nome: chavePixSolicitacao ? (favorecidoSolicitacao?.nome || parceiro?.nome || '') : '',
+      cpf_cnpj: chavePixSolicitacao ? (favorecidoSolicitacao?.cpf_cnpj || parceiro?.cpf_cnpj || '') : '',
+      pix_tipo_chave: inferPixKeyType(chavePixSolicitacao, favorecidoSolicitacao?.telefone) || 'CNPJ',
+      pix_chave: chavePixSolicitacao
+    };
+  }
   const beneficiaryDaSolicitacao = chavePixSolicitacao
     ? lista.find((item) => (
         item.ativo !== false
@@ -425,12 +443,32 @@ function getFreteTerceiroCompraDireta(solicitacao) {
   return compraDireta;
 }
 
+function getFormasCompraDireta(solicitacao) {
+  const salvas = solicitacao?.compra_direta?.formas_pagamento_json;
+  if (Array.isArray(salvas) && salvas.length) return salvas;
+  const criacao = (solicitacao?.historicos || []).find((item) => item?.acao === 'CRIADA');
+  try {
+    const metadata = typeof criacao?.metadata === 'string' ? JSON.parse(criacao.metadata) : criacao?.metadata;
+    return Array.isArray(metadata?.formas_pagamento) ? metadata.formas_pagamento : [];
+  } catch {
+    return [];
+  }
+}
+
+function exigeTitulosSeparadosCompraDireta(solicitacao) {
+  return Boolean(getFreteTerceiroCompraDireta(solicitacao) || getFormasCompraDireta(solicitacao).length > 1);
+}
+
 function createPagamento(solicitacao, valor = '', categoriaFinanceiraId = '', options = {}) {
   const parceiro = options.parceiro || solicitacao?.parceiro || null;
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    origem_frete: Boolean(options.origem_frete),
     parceiro_id: parceiro?.id ? String(parceiro.id) : '',
     parceiro_nome: parceiro?.nome || '',
+    favorecido_pagamento_id: Object.prototype.hasOwnProperty.call(options, 'favorecido_pagamento_id')
+      ? (options.favorecido_pagamento_id ? String(options.favorecido_pagamento_id) : '')
+      : (solicitacao?.compra_direta && solicitacao?.favorecido_id ? String(solicitacao.favorecido_id) : ''),
     categoria_financeira_id: categoriaFinanceiraId ? String(categoriaFinanceiraId) : '',
     valor,
     data_vencimento: options.data_vencimento || solicitacao?.data_vencimento || today(),
@@ -462,16 +500,40 @@ export function buildDefaultForm(solicitacao) {
   const valorItens = freteTerceiro
     ? formatCurrencyInput(solicitacao?.compra_direta?.valor_fechado || 0)
     : valorSolicitacao;
+  const formasCompraDireta = getFormasCompraDireta(solicitacao);
+  const valoresSugeridos = distribuirParcelasFormatadas(valorItens, formasCompraDireta.length || 1);
+  const pagamentosCompra = formasCompraDireta.length
+    ? formasCompraDireta.map((forma, index) => createPagamento(
+        solicitacao,
+        forma.valor != null ? formatCurrencyInput(forma.valor) : valoresSugeridos[index],
+        '',
+        {
+          forma_pagamento_id: String(forma.id),
+          observacoes: [
+            solicitacao?.favorecido?.nome ? `Favorecido: ${solicitacao.favorecido.nome}` : '',
+            solicitacao?.compra_direta?.dados_pagamento || ''
+          ].filter(Boolean).join('\n')
+        }
+      ))
+    : [createPagamento(solicitacao, valorItens)];
   const pagamentos = freteTerceiro
     ? [
-        createPagamento(solicitacao, valorItens),
+        ...pagamentosCompra,
         createPagamento(solicitacao, formatCurrencyInput(freteTerceiro.frete_valor), '', {
           parceiro: freteTerceiro.freteCredor,
+          favorecido_pagamento_id: freteTerceiro.frete_favorecido_id || null,
+          origem_frete: true,
           data_vencimento: freteTerceiro.frete_data_vencimento,
-          observacoes: `Frete pago a terceiro. Dados para pagamento: ${freteTerceiro.frete_dados_pagamento || '-'}`
+          forma_pagamento_id: freteTerceiro.frete_forma_pagamento_id
+            ? String(freteTerceiro.frete_forma_pagamento_id) : '',
+          observacoes: [
+            'Frete pago a terceiro.',
+            freteTerceiro.freteFavorecido?.nome ? `Favorecido: ${freteTerceiro.freteFavorecido.nome}` : '',
+            freteTerceiro.frete_dados_pagamento ? `Dados para pagamento: ${freteTerceiro.frete_dados_pagamento}` : ''
+          ].filter(Boolean).join('\n')
         })
       ]
-    : [createPagamento(solicitacao, valorSolicitacao)];
+    : pagamentosCompra;
   return {
     tipo: 'PAGAR',
     status: 'ABERTO',
@@ -677,10 +739,10 @@ function ParceiroPagamentoField({ pagamento, pagamentoIndex, tipo, onSelect }) {
   );
 }
 
-function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, onUsePartner }) {
+function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, onUsePartner, compraDireta = false }) {
   const draft = pagamento?.dados_pagamento || createPaymentDraft();
   const parceiro = context?.parceiro || null;
-  const beneficiaries = (context?.beneficiaries || []).filter((item) => item.ativo !== false);
+  const beneficiaries = compraDireta ? [] : (context?.beneficiaries || []).filter((item) => item.ativo !== false);
   const opcoesChave = [];
   const chavesIncluidas = new Set();
 
@@ -697,7 +759,7 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
     });
   }
 
-  for (const pix of getParceiroPixOptions(parceiro)) {
+  for (const pix of (compraDireta ? [] : getParceiroPixOptions(parceiro))) {
     const chaveNormalizada = normalizePixKey(pix.chave);
     if (!chaveNormalizada || chavesIncluidas.has(chaveNormalizada)) continue;
     chavesIncluidas.add(chaveNormalizada);
@@ -722,7 +784,7 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
             checked={Boolean(draft.preparar_pagamento_pix)}
             onChange={(event) => {
               const checked = event.target.checked;
-              const pix = getParceiroPixPrincipal(parceiro);
+              const pix = compraDireta ? null : getParceiroPixPrincipal(parceiro);
               onChange(pagamentoIndex, {
                 preparar_pagamento_pix: checked,
                 ...(checked && !draft.pix_chave
@@ -746,7 +808,7 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
             <div className="app-note form-campo--linha">Carregando favorecidos e chaves PIX...</div>
           )}
 
-          <CampoForm label="Favorecido bancário vinculado">
+          {!compraDireta && <CampoForm label="Favorecido bancário vinculado">
             <select
               className="input"
               value={draft.payment_beneficiary_id || ''}
@@ -770,7 +832,7 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
                 </option>
               ))}
             </select>
-          </CampoForm>
+          </CampoForm>}
 
           <label
             className="form-group flex items-start gap-2 rounded-xl border px-3 py-2 text-sm text-[var(--c-text)]"
@@ -791,7 +853,9 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
             <span>
               Usar o próprio credor como favorecido
               <span className="mt-1 block text-xs text-[var(--c-muted)]">
-                Nome, documento e chaves vêm do Cadastro de Pessoas.
+                {compraDireta
+                  ? 'Nome e documento vêm do credor; digite a chave PIX desta solicitação.'
+                  : 'Nome, documento e chaves vêm do Cadastro de Pessoas.'}
               </span>
             </span>
           </label>
@@ -854,7 +918,9 @@ function DadosPagamentoTitulo({ pagamento, pagamentoIndex, context, onChange, on
           <CampoForm
             label="Chave PIX"
             obrigatorio
-            hint="Você pode escolher uma chave cadastrada acima ou editar este campo diretamente."
+            hint={compraDireta
+              ? 'Use somente a chave informada nesta compra direta ou digite outra confirmada para este pagamento.'
+              : 'Você pode escolher uma chave cadastrada acima ou editar este campo diretamente.'}
           >
             <input
               className="input"
@@ -983,10 +1049,11 @@ export default function FinanceiroCard({
 }) {
   const { user } = useAuth();
   const podeExecutarAcoesFinanceiras = podeAcessarModuloFinanceiro && !somenteLeitura;
-  const podeEnviarParaFila = podeExecutarAcoesFinanceiras && canPrepareFilaPagamentos(user);
+  // Preparar a fila tem permissao propria e independe do setor atual da solicitacao.
+  const podeEnviarParaFila = podeVisualizarTitulos && canPrepareFilaPagamentos(user);
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const podeGerenciarDadosPagamento = canManagePaymentBeneficiaries(user);
-  const freteTerceiroObrigatorio = Boolean(getFreteTerceiroCompraDireta(solicitacao));
+  const freteTerceiroObrigatorio = exigeTitulosSeparadosCompraDireta(solicitacao);
   // Medicao escolhida pelo botao da linha do titulo — abre os anexos, os comentarios e a edicao
   // de valor/vencimento dela (PI-16 e pedido do cliente, 20/08).
   const [medicaoAberta, setMedicaoAberta] = useState(null);
@@ -1064,7 +1131,7 @@ export default function FinanceiroCard({
   const [loadingBeneficiaries, setLoadingBeneficiaries] = useState(false);
   const [paymentDraft, setPaymentDraft] = useState(createPaymentDraft);
   const [geracaoMultiplaTitulos, setGeracaoMultiplaTitulos] = useState(
-    () => Boolean(getFreteTerceiroCompraDireta(solicitacao))
+    () => exigeTitulosSeparadosCompraDireta(solicitacao)
   );
   // A tabela de parcelas e a fonte unica do fluxo novo. Solicitacoes comuns e contratos legados
   // continuam usando a relacao generica de titulos abaixo.
@@ -1089,6 +1156,7 @@ export default function FinanceiroCard({
       || solicitacao?.tipo_solicitacao
       || solicitacao?.descricao_tipo
   );
+  const compraDiretaSolicitacao = tipoSolicitacao.includes('compra direta');
   const usaTituloAutomaticoRecarga = tipoSolicitacao.includes('recarga de cartao');
   const geracaoManualDesabilitada = usaTabelaParcelasFluxoNovo
     || usaTituloAutomaticoRecarga
@@ -1099,7 +1167,7 @@ export default function FinanceiroCard({
 
   function resetModalState(baseSolicitacao = solicitacao) {
     setForm(buildDefaultForm(baseSolicitacao));
-    setGeracaoMultiplaTitulos(Boolean(getFreteTerceiroCompraDireta(baseSolicitacao)));
+    setGeracaoMultiplaTitulos(exigeTitulosSeparadosCompraDireta(baseSolicitacao));
     setSelectedPartner(baseSolicitacao?.parceiro || null);
     setSelectedCategory(null);
     setPartnerSearch('');
@@ -1202,11 +1270,9 @@ export default function FinanceiroCard({
     }
   }
 
-  async function abrirComprovante(titulo) {
-    const item = [...(titulo.filaPagamentosManuais || [])].find((fila) => fila.comprovante_hash);
-    if (!item) return;
+  async function abrirComprovante(filaId, comprovanteId) {
     try {
-      const resposta = await getComprovanteFilaPagamento(item.id);
+      const resposta = await getComprovanteFilaPagamento(filaId, comprovanteId);
       const link = document.createElement('a');
       link.href = resposta.url;
       link.target = '_blank';
@@ -1333,19 +1399,31 @@ export default function FinanceiroCard({
       const parceiroFallback = String(selectedPartner?.id) === String(parceiroId)
         ? selectedPartner
         : null;
-      const usarChaveSolicitacao = Boolean(
+      const ehFrete = compraDiretaSolicitacao && pagamento.origem_frete;
+      const favorecidoDaLinhaId = ehFrete
+        ? solicitacao?.compra_direta?.frete_favorecido_id : favorecidoId;
+      const favorecidoDaLinha = ehFrete
+        ? solicitacao?.compra_direta?.freteFavorecido : solicitacao?.favorecido;
+      const formaDaLinha = ehFrete
+        ? (solicitacao?.compra_direta?.freteFormaPagamento
+          || formasPagamento.find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id)))
+        : (getFormasCompraDireta(solicitacao).find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id))
+          || formasPagamento.find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id)));
+      const usarChaveSolicitacao = (ehFrete || Boolean(
         credorOriginalId && String(credorOriginalId) === String(parceiroId)
-      );
+      )) && (!compraDiretaSolicitacao || isFormaPix(formaDaLinha));
       const precisaCarregarFavorecido = usarChaveSolicitacao
-        && favorecidoId
-        && String(favorecidoId) !== String(parceiroId)
-        && !solicitacao?.favorecido?.cpf_cnpj;
+        && favorecidoDaLinhaId
+        && String(favorecidoDaLinhaId) !== String(parceiroId)
+        && !favorecidoDaLinha?.cpf_cnpj;
       const [parceiroCompleto, beneficiaries, favorecidoCompleto] = await Promise.all([
         buscarParceiroPorId(parceiroId).catch(() => parceiroFallback),
-        getPaymentBeneficiaries({ parceiro_id: parceiroId }).catch(() => []),
+        compraDiretaSolicitacao
+          ? Promise.resolve([])
+          : getPaymentBeneficiaries({ parceiro_id: parceiroId }).catch(() => []),
         precisaCarregarFavorecido
-          ? buscarParceiroPorId(favorecidoId).catch(() => solicitacao?.favorecido || null)
-          : Promise.resolve(solicitacao?.favorecido || null)
+          ? buscarParceiroPorId(favorecidoDaLinhaId).catch(() => favorecidoDaLinha || null)
+          : Promise.resolve(favorecidoDaLinha || null)
       ]);
 
       return {
@@ -1354,6 +1432,7 @@ export default function FinanceiroCard({
         parceiro: parceiroCompleto || parceiroFallback,
         beneficiaries: Array.isArray(beneficiaries) ? beneficiaries : [],
         favorecidoCompleto,
+        ehFrete,
         usarChaveSolicitacao
       };
     }))
@@ -1372,16 +1451,23 @@ export default function FinanceiroCard({
             if (!resultado || pagamento.dados_pagamento_parceiro_id === resultado.parceiroId) {
               return pagamento;
             }
-            const solicitacaoComFavorecido = resultado.favorecidoCompleto
-              ? { ...solicitacao, favorecido: resultado.favorecidoCompleto }
-              : solicitacao;
+            const solicitacaoComFavorecido = resultado.ehFrete
+              ? {
+                  ...solicitacao,
+                  favorecido: resultado.favorecidoCompleto || solicitacao?.compra_direta?.freteFavorecido || null,
+                  favorecido_chave_pix: solicitacao?.compra_direta?.frete_favorecido_chave_pix || null
+                }
+              : resultado.favorecidoCompleto
+                ? { ...solicitacao, favorecido: resultado.favorecidoCompleto }
+                : solicitacao;
             return {
               ...pagamento,
               dados_pagamento: buildPaymentDraftForTitle({
                 parceiro: resultado.parceiro,
                 beneficiaries: resultado.beneficiaries,
                 solicitacao: solicitacaoComFavorecido,
-                usarChaveSolicitacao: resultado.usarChaveSolicitacao
+                usarChaveSolicitacao: resultado.usarChaveSolicitacao,
+                compraDireta: compraDiretaSolicitacao
               }),
               dados_pagamento_parceiro_id: resultado.parceiroId
             };
@@ -1397,13 +1483,17 @@ export default function FinanceiroCard({
     form.tipo,
     paymentPartnerSignature,
     podeGerenciarDadosPagamento,
+    formasPagamento,
     selectedPartner?.id,
     solicitacao?.parceiro?.id,
     solicitacao?.parceiro_id,
     solicitacao?.favorecido?.id,
     solicitacao?.favorecido?.cpf_cnpj,
     solicitacao?.favorecido_id,
-    solicitacao?.favorecido_chave_pix
+    solicitacao?.favorecido_chave_pix,
+    solicitacao?.compra_direta?.frete_favorecido_id,
+    solicitacao?.compra_direta?.frete_favorecido_chave_pix,
+    compraDiretaSolicitacao
   ]);
 
   useEffect(() => {
@@ -1663,6 +1753,7 @@ export default function FinanceiroCard({
     updatePagamento(index, {
       parceiro_id: partner?.id ? String(partner.id) : '',
       parceiro_nome: partner?.nome || '',
+      favorecido_pagamento_id: '',
       dados_pagamento: createPaymentDraft(),
       dados_pagamento_parceiro_id: ''
     });
@@ -1676,6 +1767,7 @@ export default function FinanceiroCard({
         ...pagamento,
         parceiro_id: partner?.id ? String(partner.id) : pagamento.parceiro_id,
         parceiro_nome: partner?.nome || pagamento.parceiro_nome,
+        favorecido_pagamento_id: '',
         dados_pagamento: createPaymentDraft(),
         dados_pagamento_parceiro_id: ''
       }))
@@ -1698,7 +1790,7 @@ export default function FinanceiroCard({
   }
 
   function preencherFavorecidoComParceiro(index, partner) {
-    const pix = getParceiroPixPrincipal(partner);
+    const pix = compraDiretaSolicitacao ? null : getParceiroPixPrincipal(partner);
     updateDadosPagamento(index, {
       usar_credor_como_favorecido: true,
       payment_beneficiary_id: '',
@@ -1721,6 +1813,9 @@ export default function FinanceiroCard({
       pagamentos[index] = {
         ...pagamento,
         forma_pagamento_id: formaPagamentoId,
+        dados_pagamento: compraDiretaSolicitacao && !isFormaPix(forma)
+          ? { ...pagamento.dados_pagamento, preparar_pagamento_pix: false }
+          : pagamento.dados_pagamento,
         cartao_id: manterCartao ? pagamento.cartao_id : '',
         quantidade_parcelas: String(quantidade),
         data_compra: forma?.exige_cartao ? (pagamento.data_compra || today()) : pagamento.data_compra,
@@ -2005,6 +2100,7 @@ export default function FinanceiroCard({
 
     for (const pagamento of form.pagamentos || []) {
       const draft = pagamento.dados_pagamento || createPaymentDraft();
+      if (compraDiretaSolicitacao && !isFormaPix(getFormaPagamento(pagamento.forma_pagamento_id))) continue;
       if (!draft.preparar_pagamento_pix) continue;
 
       const beneficiaryPayload = {
@@ -2099,6 +2195,7 @@ export default function FinanceiroCard({
           const usaDetalhe = formaUsaParcelasDetalhadas(forma);
           return {
             parceiro_id: pagamento.parceiro_id || undefined,
+            favorecido_pagamento_id: pagamento.favorecido_pagamento_id || undefined,
             categoria_financeira_id: pagamento.categoria_financeira_id || undefined,
             payment_beneficiary_id: beneficiaryIds.get(pagamento.id) || undefined,
             valor: usaDetalhe ? undefined : pagamento.valor,
@@ -2232,29 +2329,13 @@ export default function FinanceiroCard({
     tabular, dimensionada para R$ 9.999.999.999,99 sem truncar (T7).
   */
   const colunasTitulos = [
-    ...(podeEnviarParaFila ? [{
-      id: 'selecionar',
-      titulo: 'Selecionar',
-      tipo: 'acao',
-      render: (titulo) => (
-        <input
-          type="checkbox"
-          aria-label={`Selecionar título ${titulo.codigo || titulo.id} para pagamento`}
-          checked={titulosSelecionados.includes(Number(titulo.id))}
-          disabled={!elegivelParaFila(titulo) || enviandoFila}
-          onChange={(event) => setTitulosSelecionados((atual) => event.target.checked
-            ? [...atual, Number(titulo.id)]
-            : atual.filter((id) => id !== Number(titulo.id)))}
-        />
-      )
-    }] : []),
     {
       id: 'titulo',
       titulo: 'Título',
       tipo: 'identidade',
       noCard: 'titulo',
       render: (titulo) => {
-        const nome = limparDescricaoTituloCompra(titulo.descricao) || `${titulo.tipo} #${titulo.id}`;
+        const nome = limparDescricaoTituloCompra(titulo.descricao, solicitacao) || `${titulo.tipo} #${titulo.id}`;
         return podeExecutarAcoesFinanceiras ? (
           // Link para o REGISTRO RELACIONADO fica no corpo, junto do dado que
           // o origina — e e ele que da o caminho por TECLADO da linha (A1).
@@ -2302,11 +2383,18 @@ export default function FinanceiroCard({
       titulo: 'Comprovante',
       tipo: 'acao',
       render: (titulo) => {
-        const item = (titulo.filaPagamentosManuais || []).find((fila) => fila.comprovante_hash);
-        return item ? (
-          <button type="button" className="btn btn-outline btn-sm max-w-44 truncate" title={item.comprovante_nome || 'Visualizar comprovante'} onClick={() => abrirComprovante(titulo)}>
-            {item.comprovante_nome || 'Visualizar'}
-          </button>
+        const comprovantes = (titulo.filaPagamentosManuais || []).flatMap(listarComprovantesFila);
+        return comprovantes.length ? (
+          <div className="flex max-w-60 flex-col items-start gap-1">
+            {comprovantes.map((comprovante) => (
+              <button key={`${comprovante.filaId}-${comprovante.id || 'legado'}`}
+                type="button" className="btn btn-outline btn-sm max-w-full truncate"
+                title={comprovante.nome}
+                onClick={() => abrirComprovante(comprovante.filaId, comprovante.id)}>
+                {comprovante.nome}
+              </button>
+            ))}
+          </div>
         ) : <span className="text-[var(--c-muted)]">Pendente</span>;
       }
     },
@@ -2454,16 +2542,7 @@ export default function FinanceiroCard({
         {exibirTitulosDetalhados && (
           podeEnviarParaFila && titulos.some(elegivelParaFila) ? (
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <label className="inline-flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={titulos.filter(elegivelParaFila).every((titulo) => titulosSelecionados.includes(Number(titulo.id)))}
-                  onChange={(event) => setTitulosSelecionados(event.target.checked
-                    ? titulos.filter(elegivelParaFila).map((titulo) => Number(titulo.id)) : [])}
-                  disabled={enviandoFila}
-                />
-                Selecionar elegíveis
-              </label>
+              <span className="text-sm text-[var(--c-muted)]">Selecione os títulos abertos na tabela.</span>
               <button type="button" className="btn btn-primary btn-sm" onClick={enviarSelecionadosParaFila} disabled={!titulosSelecionados.length || enviandoFila}>
                 {enviandoFila ? 'Enviando...' : `Enviar para fila de pagamento${titulosSelecionados.length ? ` (${titulosSelecionados.length})` : ''}`}
               </button>
@@ -2471,11 +2550,26 @@ export default function FinanceiroCard({
           ) : null
         )}
 
+        {exibirTitulosDetalhados && podeAcessarModuloFinanceiro && !podeEnviarParaFila
+          && titulos.some(elegivelParaFila) && (
+          <p className="mb-3 text-xs text-[var(--c-muted)]">
+            Para enviar títulos deste card à fila, é necessária a permissão Financeiro → Fila de Pagamentos → Enviar títulos para a fila.
+          </p>
+        )}
+
         {exibirTitulosDetalhados && (
           <TabelaPadrao
             colunas={colunasTitulos}
             itens={titulos}
             getId={(titulo) => titulo.id}
+            selecao={podeEnviarParaFila ? {
+              selecionados: titulosSelecionados,
+              elegivel: elegivelParaFila,
+              aoAlternar: (id) => setTitulosSelecionados((atual) => atual.includes(Number(id))
+                ? atual.filter((atualId) => atualId !== Number(id))
+                : [...atual, Number(id)]),
+              aoAlternarTodos: (marcar, ids) => setTitulosSelecionados(marcar ? ids.map(Number) : [])
+            } : undefined}
             carregando={loading}
             storageKey="tabela:solicitacao-detalhe:titulos-financeiros"
             vazio="Nenhum título financeiro foi gerado para esta solicitação."
@@ -3334,7 +3428,7 @@ export default function FinanceiroCard({
                     </label>
                     {freteTerceiroObrigatorio ? (
                       <div className="mt-1 text-xs" style={{ color: 'var(--sem-warning)' }}>
-                        Obrigatório para separar a compra do frete pago ao terceiro.
+                        Obrigatório para manter formas de pagamento e frete em títulos separados.
                       </div>
                     ) : null}
                   </div>
@@ -3383,13 +3477,15 @@ export default function FinanceiroCard({
                         />
                       )}
 
-                      {form.tipo === 'PAGAR' && podeGerenciarDadosPagamento && (
+                      {form.tipo === 'PAGAR' && podeGerenciarDadosPagamento
+                        && (!compraDiretaSolicitacao || isFormaPix(forma)) && (
                         <DadosPagamentoTitulo
                           pagamento={pagamento}
                           pagamentoIndex={pagamentoIndex}
                           context={paymentContexts[pagamento.id]}
                           onChange={updateDadosPagamento}
                           onUsePartner={preencherFavorecidoComParceiro}
+                          compraDireta={compraDiretaSolicitacao}
                         />
                       )}
 

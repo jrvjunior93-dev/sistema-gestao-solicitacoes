@@ -100,8 +100,9 @@ export async function anexarComprovanteFilaPagamento(filaId, arquivo) {
   return parseJson(response, 'Erro ao anexar comprovante de pagamento');
 }
 
-export async function getComprovanteFilaPagamento(filaId) {
-  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${filaId}/comprovante`, {
+export async function getComprovanteFilaPagamento(filaId, comprovanteId = null) {
+  const sufixo = comprovanteId ? `/comprovantes/${comprovanteId}` : '/comprovante';
+  const response = await fetch(`${API_URL}/financeiro/fila-pagamentos/${filaId}${sufixo}`, {
     headers: authHeaders()
   });
   return parseJson(response, 'Erro ao abrir comprovante de pagamento');

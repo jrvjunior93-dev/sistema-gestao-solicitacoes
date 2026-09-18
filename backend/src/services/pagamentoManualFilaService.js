@@ -7,6 +7,7 @@ const {
   Historico,
   Obra,
   PagamentoManualFilaItem,
+  PagamentoManualFilaComprovante,
   Parceiro,
   PaymentBeneficiary,
   PaymentIntent,
@@ -38,6 +39,13 @@ function roundCurrency(value) {
 function filaInclude() {
   return [
     {
+      model: PagamentoManualFilaComprovante,
+      as: 'comprovantes',
+      attributes: ['id', 'nome', 'hash', 'banco', 'tipo', 'vinculado_em'],
+      separate: true,
+      order: [['id', 'ASC']]
+    },
+    {
       model: TituloFinanceiro,
       as: 'titulo',
       required: true,
@@ -45,10 +53,11 @@ function filaInclude() {
         'id', 'codigo', 'descricao', 'numero_documento', 'status', 'tipo',
         'valor_original', 'valor_saldo', 'valor_baixado', 'data_vencimento',
         'forma_pagamento_id', 'empresa_id', 'linha_digitavel', 'codigo_barras',
-        'banco_cobranca', 'observacoes', 'solicitacao_id'
+        'banco_cobranca', 'observacoes', 'solicitacao_id', 'favorecido_pagamento_id'
       ],
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email'] },
+        { model: Parceiro, as: 'favorecidoPagamento', attributes: ['id', 'nome', 'cpf_cnpj'] },
         {
           model: PaymentBeneficiary,
           as: 'paymentBeneficiary',
@@ -244,27 +253,49 @@ async function anexarComprovanteFila(req, filaId, file) {
   }
   const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
   const itemAtual = await PagamentoManualFilaItem.findByPk(id);
-  if (!itemAtual || itemAtual.status !== 'PENDENTE') throw createHttpError(409, 'O item nao esta mais pendente na fila.');
+  if (!itemAtual || !['PENDENTE', 'BAIXADO', 'DIVERGENTE', 'RESOLVIDO'].includes(itemAtual.status)) {
+    throw createHttpError(409, 'O item nao permite anexar comprovantes.');
+  }
+  if (itemAtual.status !== 'PENDENTE' && !itemAtual.comprovante_hash) {
+    throw createHttpError(409, 'Nao e possivel anexar um primeiro comprovante apos encerrar o pagamento.');
+  }
   if (itemAtual.comprovante_hash === hash) return itemAtual;
-  if (itemAtual.comprovante_hash) throw createHttpError(409, 'O item ja possui comprovante vinculado.');
   const comprovanteExistente = await PagamentoManualFilaItem.findOne({ where: { comprovante_hash: hash } });
   if (comprovanteExistente) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
+  const comprovanteNovoExistente = await PagamentoManualFilaComprovante.findOne({ where: { hash } });
+  if (comprovanteNovoExistente?.fila_id === id) return itemAtual;
+  if (comprovanteNovoExistente) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
   const url = await uploadToS3(file, `financeiro/fila-pagamentos/${id}/comprovantes`);
   return sequelize.transaction(async (transaction) => {
     const item = await PagamentoManualFilaItem.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!item || item.status !== 'PENDENTE') throw createHttpError(409, 'O item nao esta mais pendente na fila.');
+    if (!item || !['PENDENTE', 'BAIXADO', 'DIVERGENTE', 'RESOLVIDO'].includes(item.status)) {
+      throw createHttpError(409, 'O item nao permite anexar comprovantes.');
+    }
+    if (item.status !== 'PENDENTE' && !item.comprovante_hash) {
+      throw createHttpError(409, 'Nao e possivel anexar um primeiro comprovante apos encerrar o pagamento.');
+    }
     if (item.comprovante_hash === hash) return item;
-    if (item.comprovante_hash) throw createHttpError(409, 'O item ja possui comprovante vinculado.');
     const existente = await PagamentoManualFilaItem.findOne({ where: { comprovante_hash: hash }, transaction });
     if (existente) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
-    return item.update({
-      comprovante_nome: file.originalname,
-      comprovante_url: url,
-      comprovante_hash: hash,
-      comprovante_tipo: 'PDF',
-      comprovante_vinculado_por: req.user?.id || null,
-      comprovante_vinculado_em: new Date()
+    const existenteNovo = await PagamentoManualFilaComprovante.findOne({ where: { hash }, transaction });
+    if (existenteNovo?.fila_id === id) return item;
+    if (existenteNovo) throw createHttpError(409, 'Este comprovante ja foi vinculado a outro titulo.');
+    const vinculadoEm = new Date();
+    await PagamentoManualFilaComprovante.create({
+      fila_id: id, nome: file.originalname, url, hash, tipo: 'PDF',
+      vinculado_por: req.user?.id || null, vinculado_em: vinculadoEm
     }, { transaction });
+    if (!item.comprovante_hash) {
+      await item.update({
+        comprovante_nome: file.originalname,
+        comprovante_url: url,
+        comprovante_hash: hash,
+        comprovante_tipo: 'PDF',
+        comprovante_vinculado_por: req.user?.id || null,
+        comprovante_vinculado_em: vinculadoEm
+      }, { transaction });
+    }
+    return item;
   });
 }
 
@@ -279,6 +310,28 @@ async function obterComprovanteFila(req, filaId) {
     : { allowed: await canAccessFilaPagamentos(req.user) };
   if (!acesso.allowed) throw createHttpError(403, 'Acesso negado ao comprovante.');
   return { nome: item.comprovante_nome, url: await getPresignedUrl(item.comprovante_url, 300, { strict: true }) };
+}
+
+async function obterComprovanteAdicionalFila(req, filaId, comprovanteId) {
+  const filaNumerica = Number(filaId);
+  const comprovanteNumerico = Number(comprovanteId);
+  if (!Number.isInteger(filaNumerica) || filaNumerica <= 0
+    || !Number.isInteger(comprovanteNumerico) || comprovanteNumerico <= 0) {
+    throw createHttpError(400, 'Identificador de comprovante invalido.');
+  }
+  const item = await PagamentoManualFilaItem.findByPk(filaNumerica, {
+    attributes: ['id', 'titulo_financeiro_id'],
+    include: [{ model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'solicitacao_id'] }]
+  });
+  const comprovante = item && await PagamentoManualFilaComprovante.findOne({
+    where: { id: comprovanteNumerico, fila_id: item.id }, attributes: ['nome', 'url']
+  });
+  if (!comprovante?.url) throw createHttpError(404, 'Comprovante nao encontrado.');
+  const acesso = item.titulo?.solicitacao_id
+    ? await canAccessSolicitacaoFile(req, item.titulo.solicitacao_id)
+    : { allowed: await canAccessFilaPagamentos(req.user) };
+  if (!acesso.allowed) throw createHttpError(403, 'Acesso negado ao comprovante.');
+  return { nome: comprovante.nome, url: await getPresignedUrl(comprovante.url, 300, { strict: true }) };
 }
 
 async function carregarEmpresaTitulo(titulo, transaction) {
@@ -659,6 +712,7 @@ module.exports = {
   listarContasPagadorasFila,
   listarFilaPagamentos,
   obterComprovanteFila,
+  obterComprovanteAdicionalFila,
   registrarBaixasFila,
   resolverItemFila
 };

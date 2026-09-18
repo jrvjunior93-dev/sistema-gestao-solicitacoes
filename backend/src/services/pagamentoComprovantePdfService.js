@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const {
   ContaBancaria,
   PagamentoManualFilaItem,
+  PagamentoManualFilaComprovante,
   Parceiro,
   PaymentBeneficiary,
   Solicitacao,
@@ -254,7 +255,7 @@ function roundCurrency(value) {
 
 function scoreCandidate(receipt, queueItem) {
   const title = queueItem.titulo || {};
-  const beneficiary = title.paymentBeneficiary || title.parceiro || {};
+  const beneficiary = title.paymentBeneficiary || title.favorecidoPagamento || title.parceiro || {};
   let score = 0;
   const reasons = [];
   const receiptBarcode = digits(receipt.linha_digitavel);
@@ -321,7 +322,7 @@ async function findAccount(receipt, loadedAccounts = null) {
 
 async function loadQueueRows() {
   return PagamentoManualFilaItem.findAll({
-    where: { status: 'PENDENTE', comprovante_hash: null },
+    where: { status: 'PENDENTE' },
     include: [{
       model: TituloFinanceiro,
       as: 'titulo',
@@ -332,6 +333,7 @@ async function loadQueueRows() {
       ],
       include: [
         { model: Parceiro, as: 'parceiro', attributes: ['id', 'nome', 'cpf_cnpj'] },
+        { model: Parceiro, as: 'favorecidoPagamento', attributes: ['id', 'nome', 'cpf_cnpj'] },
         { model: PaymentBeneficiary, as: 'paymentBeneficiary', attributes: ['id', 'nome', 'cpf_cnpj'] },
         { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'descricao'] }
       ]
@@ -349,8 +351,8 @@ function getQueueCandidates(receipt, rows) {
       titulo_id: row.titulo.id,
       titulo_codigo: row.titulo.codigo,
       titulo_descricao: row.titulo.descricao,
-      favorecido: row.titulo.paymentBeneficiary?.nome || row.titulo.parceiro?.nome || null,
-      documento: row.titulo.paymentBeneficiary?.cpf_cnpj || row.titulo.parceiro?.cpf_cnpj || null,
+      favorecido: row.titulo.paymentBeneficiary?.nome || row.titulo.favorecidoPagamento?.nome || row.titulo.parceiro?.nome || null,
+      documento: row.titulo.paymentBeneficiary?.cpf_cnpj || row.titulo.favorecidoPagamento?.cpf_cnpj || row.titulo.parceiro?.cpf_cnpj || null,
       valor_previsto: Number(row.valor_previsto || 0),
       valor_saldo: Number(row.titulo.valor_saldo || 0),
       vencimento: row.titulo.data_vencimento,
@@ -361,10 +363,17 @@ function getQueueCandidates(receipt, rows) {
 }
 
 async function buildPreview(parsed, queueRows, accounts) {
-  const duplicate = await PagamentoManualFilaItem.findOne({
+  const duplicateLegacy = await PagamentoManualFilaItem.findOne({
     where: { comprovante_hash: parsed.arquivo_hash },
     include: [{ model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'codigo'] }]
   });
+  const duplicateAdditional = duplicateLegacy ? null : await PagamentoManualFilaComprovante.findOne({
+    where: { hash: parsed.arquivo_hash },
+    include: [{ model: PagamentoManualFilaItem, as: 'fila', include: [{
+      model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'codigo']
+    }] }]
+  });
+  const duplicate = duplicateLegacy || duplicateAdditional?.fila;
   const candidates = duplicate ? [] : getQueueCandidates(parsed.dados, queueRows);
   const top = candidates[0] || null;
   const next = candidates[1] || null;
@@ -408,7 +417,7 @@ async function previewReceipts(files = []) {
       titulo_id: row.titulo.id,
       titulo_codigo: row.titulo.codigo,
       titulo_descricao: row.titulo.descricao,
-      favorecido: row.titulo.paymentBeneficiary?.nome || row.titulo.parceiro?.nome || null,
+      favorecido: row.titulo.paymentBeneficiary?.nome || row.titulo.favorecidoPagamento?.nome || row.titulo.parceiro?.nome || null,
       valor_previsto: Number(row.valor_previsto || 0),
       valor_saldo: Number(row.titulo.valor_saldo || 0),
       vencimento: row.titulo.data_vencimento
@@ -450,22 +459,18 @@ async function linkReceipts(req, files = [], rawMappings) {
   if (new Set(mappings.map((item) => item.arquivo_hash)).size !== mappings.length) {
     throw createHttpError(409, 'Cada comprovante pode ser vinculado apenas uma vez nesta operacao.');
   }
-  if (new Set(mappings.map((item) => item.fila_id)).size !== mappings.length) {
-    throw createHttpError(409, 'Cada titulo pode receber apenas um comprovante nesta operacao.');
-  }
-
   const validated = await sequelize.transaction(async (transaction) => {
+    const filaIds = [...new Set(mappings.map((item) => item.fila_id))];
     const queueRows = await PagamentoManualFilaItem.findAll({
-      where: { id: { [Op.in]: mappings.map((item) => item.fila_id) } },
+      where: { id: { [Op.in]: filaIds } },
       include: [{ model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'codigo', 'status', 'valor_saldo'] }],
       transaction,
       lock: transaction.LOCK.UPDATE,
       order: [['id', 'ASC']]
     });
-    if (queueRows.length !== mappings.length) throw createHttpError(404, 'Um ou mais itens da fila nao foram encontrados.');
+    if (queueRows.length !== filaIds.length) throw createHttpError(404, 'Um ou mais itens da fila nao foram encontrados.');
     for (const row of queueRows) {
       if (row.status !== 'PENDENTE') throw createHttpError(409, `O titulo ${row.titulo?.codigo || row.id} nao esta mais pendente na fila.`);
-      if (row.comprovante_hash) throw createHttpError(409, `O titulo ${row.titulo?.codigo || row.id} ja possui comprovante vinculado.`);
     }
     const duplicates = await PagamentoManualFilaItem.findAll({
       where: { comprovante_hash: { [Op.in]: mappings.map((item) => item.arquivo_hash) } },
@@ -473,14 +478,21 @@ async function linkReceipts(req, files = [], rawMappings) {
       lock: transaction.LOCK.UPDATE
     });
     if (duplicates.length) throw createHttpError(409, 'Um ou mais comprovantes ja foram vinculados anteriormente.');
-    return queueRows.map((row) => ({ id: row.id, titulo_codigo: row.titulo?.codigo || null }));
+    const duplicateAdditional = await PagamentoManualFilaComprovante.findOne({
+      where: { hash: { [Op.in]: mappings.map((item) => item.arquivo_hash) } }, transaction
+    });
+    if (duplicateAdditional) throw createHttpError(409, 'Um ou mais comprovantes ja foram vinculados anteriormente.');
+    return mappings.map((mapping) => ({
+      id: mapping.fila_id,
+      titulo_codigo: queueRows.find((row) => row.id === mapping.fila_id)?.titulo?.codigo || null
+    }));
   });
 
   const uploads = new Map();
   for (const mapping of mappings) {
     const parsed = fileByHash.get(mapping.arquivo_hash);
     const url = await uploadToS3(parsed.file, `financeiro/fila-pagamentos/${mapping.fila_id}/comprovantes`);
-    uploads.set(mapping.fila_id, { parsed, url });
+    uploads.set(mapping.arquivo_hash, { parsed, url });
   }
 
   await sequelize.transaction(async (transaction) => {
@@ -489,25 +501,49 @@ async function linkReceipts(req, files = [], rawMappings) {
         transaction,
         lock: transaction.LOCK.UPDATE
       });
-      if (!row || row.status !== 'PENDENTE' || row.comprovante_hash) {
+      if (!row || row.status !== 'PENDENTE') {
         throw createHttpError(409, `O item ${mapping.fila_id} mudou enquanto os comprovantes eram processados. Atualize a fila.`);
       }
-      const { parsed, url } = uploads.get(mapping.fila_id);
-      const account = await findAccount(parsed.dados);
-      await row.update({
-        comprovante_nome: parsed.arquivo_nome,
-        comprovante_url: url,
-        comprovante_hash: parsed.arquivo_hash,
-        comprovante_banco: parsed.dados.banco,
-        comprovante_tipo: parsed.dados.tipo,
-        comprovante_identificador: parsed.dados.identificador_transacao || parsed.dados.autenticacao || parsed.dados.linha_digitavel,
-        comprovante_dados_json: parsed.dados,
-        comprovante_vinculado_por: req.user?.id || null,
-        comprovante_vinculado_em: new Date(),
-        valor_informado: parsed.dados.valor || row.valor_informado,
-        data_baixa: parsed.dados.data_pagamento || row.data_baixa,
-        conta_bancaria_id: account?.id || row.conta_bancaria_id
+      const { parsed, url } = uploads.get(mapping.arquivo_hash);
+      const legacyDuplicate = await PagamentoManualFilaItem.findOne({
+        where: { comprovante_hash: parsed.arquivo_hash }, transaction
+      });
+      const additionalDuplicate = await PagamentoManualFilaComprovante.findOne({
+        where: { hash: parsed.arquivo_hash }, transaction
+      });
+      if (legacyDuplicate || additionalDuplicate) {
+        throw createHttpError(409, 'Um ou mais comprovantes ja foram vinculados anteriormente.');
+      }
+      const vinculadoEm = new Date();
+      await PagamentoManualFilaComprovante.create({
+        fila_id: row.id,
+        nome: parsed.arquivo_nome,
+        url,
+        hash: parsed.arquivo_hash,
+        banco: parsed.dados.banco,
+        tipo: parsed.dados.tipo,
+        identificador: parsed.dados.identificador_transacao || parsed.dados.autenticacao || parsed.dados.linha_digitavel,
+        dados_json: parsed.dados,
+        vinculado_por: req.user?.id || null,
+        vinculado_em: vinculadoEm
       }, { transaction });
+      if (!row.comprovante_hash) {
+        const account = await findAccount(parsed.dados);
+        await row.update({
+          comprovante_nome: parsed.arquivo_nome,
+          comprovante_url: url,
+          comprovante_hash: parsed.arquivo_hash,
+          comprovante_banco: parsed.dados.banco,
+          comprovante_tipo: parsed.dados.tipo,
+          comprovante_identificador: parsed.dados.identificador_transacao || parsed.dados.autenticacao || parsed.dados.linha_digitavel,
+          comprovante_dados_json: parsed.dados,
+          comprovante_vinculado_por: req.user?.id || null,
+          comprovante_vinculado_em: vinculadoEm,
+          valor_informado: parsed.dados.valor || row.valor_informado,
+          data_baixa: parsed.dados.data_pagamento || row.data_baixa,
+          conta_bancaria_id: account?.id || row.conta_bancaria_id
+        }, { transaction });
+      }
     }
   });
 

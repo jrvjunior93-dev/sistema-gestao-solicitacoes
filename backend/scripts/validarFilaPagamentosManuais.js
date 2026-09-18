@@ -20,7 +20,10 @@ const readBackend = (relativePath) => fs.readFileSync(path.join(backendRoot, rel
 const readRepository = (relativePath) => fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
 
 const migration = readBackend('migrations/202609100051_fila_pagamentos_manuais.js');
+const receiptsMigration = readBackend('migrations/202609180006_fila_pagamentos_multiplos_comprovantes.js');
 const service = readBackend('src/services/pagamentoManualFilaService.js');
+const receiptService = readBackend('src/services/pagamentoComprovantePdfService.js');
+const titleListing = readBackend('src/services/tituloFinanceiroService.js');
 const permissions = readBackend('src/constants/moduloPermissoes.js');
 const authorization = readBackend('src/services/authorizationService.js');
 const routes = readBackend('src/routes.js');
@@ -61,6 +64,13 @@ assert(
 ].forEach((contract) => assert(service.includes(contract), `Protecao ausente no servico: ${contract}`));
 
 assert(titleService.includes('filaPagamentosManuais'), 'A consulta de titulos deve expor o alerta ativo da fila.');
+assert(receiptsMigration.includes('pagamentos_manuais_fila_comprovantes') && receiptsMigration.includes("onDelete: 'RESTRICT'"),
+  'Comprovantes adicionais precisam de vinculo duravel ao item da fila.');
+assert(service.includes('PagamentoManualFilaComprovante.create') && service.includes('obterComprovanteAdicionalFila'),
+  'A fila precisa gravar e abrir comprovantes adicionais.');
+assert(receiptService.includes('PagamentoManualFilaComprovante.create') && receiptService.includes('uploads.set(mapping.arquivo_hash'),
+  'A importacao em lote precisa permitir varios arquivos para o mesmo titulo.');
+assert(titleListing.includes("as: 'comprovantes'"), 'Os titulos da solicitacao devem listar todos os comprovantes da fila.');
 assert(titleService.includes('autorizadoPorFilaPagamento'), 'A baixa restrita da fila deve usar autorizacao interna explicita.');
 assert(titleService.includes('options.autorizarValorAcimaSaldo !== true'), 'Valor acima do saldo deve exigir autorizacao interna explicita.');
 
@@ -83,11 +93,15 @@ assert(titleService.includes('options.autorizarValorAcimaSaldo !== true'), 'Valo
   "router.post('/financeiro/fila-pagamentos/aprovar-divergencias'",
   "router.post('/financeiro/fila-pagamentos/:id/resultado'",
   "router.post('/financeiro/fila-pagamentos/:id/resolver'"
+  , "router.get('/financeiro/fila-pagamentos/:id/comprovantes/:comprovanteId'"
 ].forEach((contract) => assert(routes.includes(contract), `Rota ausente: ${contract}`));
 
 assert(app.includes('path="financeiro/fila-pagamentos"'), 'Rota da tela da fila ausente.');
 assert(navigation.includes("to: '/financeiro/fila-pagamentos'"), 'Fila ausente da fonte unica de navegacao.');
-assert(page.includes('min-w-[1760px]'), 'A grade operacional deve preservar colunas com rolagem horizontal.');
+assert(page.includes('ResizableTable') && page.includes('scrollLabel="Tabela da fila de pagamentos"'),
+  'A grade operacional deve preservar colunas com rolagem horizontal.');
+assert(page.includes('listarComprovantesFila(row)') && page.includes('multiple'),
+  'A fila deve permitir varios comprovantes por item sem ocultar os anteriores.');
 assert(page.includes('O processamento em massa é atômico'), 'A tela deve explicar o contrato transacional do lote.');
 assert(page.includes('Justificativa da aprovação'), 'A autorizacao de divergencia deve exigir justificativa.');
 assert(page.includes('Justifique por que o pagamento será parcial.'), 'Pagamento parcial deve solicitar justificativa na linha.');
