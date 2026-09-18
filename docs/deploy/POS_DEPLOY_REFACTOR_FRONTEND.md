@@ -648,6 +648,145 @@ O preflight é somente leitura. Se acusar divergência de tipo, engine, chave ou
 incompatível, interrompa o deploy e corrija a causa; não force constraints manualmente sem
 analisar o schema real.
 
+### 11.1 Triggers da negociação financeira no RDS (adendo de 18/09/2026)
+
+A migration `202609180002_titulos_renegociacao.js` cria tabelas e colunas e, ao final,
+duas triggers em `titulos_financeiros`. Elas impedem a edição/exclusão de títulos
+negociados por caminhos que não passam pelos hooks do backend. Com binary logging
+ativo no RDS, o usuário da aplicação recebeu `ER_BINLOG_CREATE_ROUTINE_NEED_SUPER`
+na primeira `CREATE TRIGGER`. Nesse caso a migration **não** foi registrada como
+concluída; tabelas e colunas criadas antes do erro podem já existir. A migration
+verifica essas estruturas e as triggers antes de criá-las, permitindo retomar pelo
+runner normal. Não apagar estruturas parciais nem inserir manualmente em
+`schema_migrations`.
+
+Em 18/09/2026 os endpoints observados eram:
+
+| Ambiente | Endpoint RDS | Diretório EC2 | PM2 |
+|---|---|---|---|
+| Dev/refactor | `fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com` | `/home/ubuntu/sistema-gestao-solicitacoes-dev` | `backend-dev` |
+| Main | `gestao-solicitacoes-db.cn820k66sdx7.us-east-2.rds.amazonaws.com` | `/home/ubuntu/sistema-gestao-solicitacoes-main` | `backend-solicitacoes` |
+
+Os dois bancos se chamam `gestao_solicitacoes`, mas os endpoints e os servidores MySQL
+observados eram diferentes. Conferir novamente os endpoints antes da janela. Grupos
+de parâmetros podem ser compartilhados mesmo entre instâncias diferentes. Para
+habilitar as triggers, criar **um grupo exclusivo para a instância alvo**, copiando
+o grupo customizado atual; se ele for `default.*`, criar um grupo da mesma família.
+Não editar um grupo que também esteja associado à outra instância. Associar um
+grupo novo exige reboot **da instância alvo**; planejar a indisponibilidade.
+
+Executar as operações AWS no **CloudShell da conta AWS**, região `us-east-2`,
+não na EC2. Escolher **somente um** ambiente por execução. Para dev:
+
+```bash
+REGIAO=us-east-2
+ENDPOINT_ALVO=fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com
+ENDPOINT_OUTRO=gestao-solicitacoes-db.cn820k66sdx7.us-east-2.rds.amazonaws.com
+GRUPO_NOVO=fluxy-staging-triggers-20260918
+```
+
+Quando a implementação for promovida e aprovada para main, substituir apenas as
+três últimas variáveis pelos valores abaixo, **numa janela de produção própria**:
+
+```bash
+REGIAO=us-east-2
+ENDPOINT_ALVO=gestao-solicitacoes-db.cn820k66sdx7.us-east-2.rds.amazonaws.com
+ENDPOINT_OUTRO=fluxy-staging.cn820k66sdx7.us-east-2.rds.amazonaws.com
+GRUPO_NOVO=fluxy-main-triggers-20260918
+```
+
+Após definir as quatro variáveis, executar este bloco no **mesmo CloudShell**.
+Ele confere os endpoints, copia a configuração do grupo atual quando customizada,
+aguarda a propagação, altera apenas a instância alvo e cria snapshot antes do reboot.
+Se o grupo de destino já existir, parar e inspecioná-lo; não reaplicar o bloco.
+
+```bash
+set -euo pipefail
+: "${REGIAO:?}" "${ENDPOINT_ALVO:?}" "${ENDPOINT_OUTRO:?}" "${GRUPO_NOVO:?}"
+
+ID_ALVO=$(aws rds describe-db-instances --region "$REGIAO" \
+  --query "DBInstances[?Endpoint.Address=='$ENDPOINT_ALVO'].DBInstanceIdentifier | [0]" --output text)
+ID_OUTRO=$(aws rds describe-db-instances --region "$REGIAO" \
+  --query "DBInstances[?Endpoint.Address=='$ENDPOINT_OUTRO'].DBInstanceIdentifier | [0]" --output text)
+if [[ "$ID_ALVO" == None || "$ID_OUTRO" == None || "$ID_ALVO" == "$ID_OUTRO" ]]; then
+  echo 'Endpoints não identificados como instâncias distintas; pare aqui.' >&2
+  exit 1
+fi
+GRUPO_ATUAL=$(aws rds describe-db-instances --region "$REGIAO" \
+  --db-instance-identifier "$ID_ALVO" \
+  --query 'DBInstances[0].DBParameterGroups[0].DBParameterGroupName' --output text)
+FAMILIA=$(aws rds describe-db-parameter-groups --region "$REGIAO" \
+  --db-parameter-group-name "$GRUPO_ATUAL" \
+  --query 'DBParameterGroups[0].DBParameterGroupFamily' --output text)
+echo "Alvo=$ID_ALVO; outra instância=$ID_OUTRO; grupo atual=$GRUPO_ATUAL; família=$FAMILIA"
+
+if aws rds describe-db-parameter-groups --region "$REGIAO" \
+  --db-parameter-group-name "$GRUPO_NOVO" >/dev/null 2>&1; then
+  echo 'Grupo de destino já existe; inspecione antes de continuar.' >&2
+  exit 1
+fi
+if [[ "$GRUPO_ATUAL" == default.* ]]; then
+  aws rds create-db-parameter-group --region "$REGIAO" \
+    --db-parameter-group-name "$GRUPO_NOVO" --db-parameter-group-family "$FAMILIA" \
+    --description "Grupo exclusivo para triggers: $ID_ALVO"
+else
+  aws rds copy-db-parameter-group --region "$REGIAO" \
+    --source-db-parameter-group-identifier "$GRUPO_ATUAL" \
+    --target-db-parameter-group-identifier "$GRUPO_NOVO" \
+    --target-db-parameter-group-description "Grupo exclusivo para triggers: $ID_ALVO"
+fi
+aws rds modify-db-parameter-group --region "$REGIAO" \
+  --db-parameter-group-name "$GRUPO_NOVO" \
+  --parameters 'ParameterName=log_bin_trust_function_creators,ParameterValue=1,ApplyMethod=pending-reboot'
+
+SNAPSHOT="${ID_ALVO}-pre-triggers-$(date +%Y%m%d%H%M%S)"
+aws rds create-db-snapshot --region "$REGIAO" \
+  --db-instance-identifier "$ID_ALVO" --db-snapshot-identifier "$SNAPSHOT"
+aws rds wait db-snapshot-available --region "$REGIAO" --db-snapshot-identifier "$SNAPSHOT"
+echo "Snapshot disponível: $SNAPSHOT"
+
+sleep 300
+aws rds modify-db-instance --region "$REGIAO" \
+  --db-instance-identifier "$ID_ALVO" \
+  --db-parameter-group-name "$GRUPO_NOVO" --apply-immediately
+aws rds wait db-instance-available --region "$REGIAO" --db-instance-identifier "$ID_ALVO"
+aws rds reboot-db-instance --region "$REGIAO" --db-instance-identifier "$ID_ALVO"
+aws rds wait db-instance-available --region "$REGIAO" --db-instance-identifier "$ID_ALVO"
+aws rds describe-db-instances --region "$REGIAO" \
+  --db-instance-identifier "$ID_ALVO" \
+  --query 'DBInstances[0].{endpoint:Endpoint.Address,grupo:DBParameterGroups[0].DBParameterGroupName,status:DBParameterGroups[0].ParameterApplyStatus}' \
+  --output table
+```
+
+Confirmar que o endpoint ainda é o alvo, o grupo é o novo e o status do grupo é
+`in-sync`. Em seguida, **na EC2 do ambiente alvo, executado pelo operador**,
+consultar `@@GLOBAL.log_bin_trust_function_creators` e o banco conectado; exigir
+valor `1`/`ON` e endpoint esperado. Nenhum segredo deve aparecer na saída.
+
+```bash
+# Dev: cd /home/ubuntu/sistema-gestao-solicitacoes-dev/backend
+# Main: cd /home/ubuntu/sistema-gestao-solicitacoes-main/backend
+node -e 'const db=require("./src/database");(async()=>{const [r]=await db.query("SELECT DATABASE() AS banco, @@GLOBAL.log_bin_trust_function_creators AS permite_triggers");console.log({endpoint:db.config.host,...r[0]})})().catch(e=>{console.error(e);process.exitCode=1}).finally(()=>db.close())'
+```
+
+Só então, com backup confirmado, código certo na branch alvo e migrations
+pendentes revisadas, aplicar o runner existente e repetir o preflight. O runner
+executa **todas** as pendências em ordem; não possui `--only`.
+
+```bash
+ALLOW_SCHEMA_MIGRATIONS=true npm run migrate
+npm run preflight:schema
+```
+
+Para dev, reiniciar somente `pm2 restart backend-dev --update-env`. Para main,
+somente depois da promoção/homologação e na janela de produção, reiniciar
+`pm2 restart backend-solicitacoes --update-env`. Se a criação de trigger falhar
+novamente, parar antes do restart e conferir variável efetiva, endpoint,
+privilégios e grupo; nunca marcar a migration manualmente como concluída.
+
+Referências AWS: `https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Troubleshooting.html`
+e `https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithParamGroups.Modifying.html`.
+
 ## 12. Variáveis de ambiente
 
 O delta de `backend/.env.example` inclui variáveis de proteção para DEV/QA:

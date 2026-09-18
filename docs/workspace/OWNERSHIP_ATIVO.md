@@ -1,5 +1,11 @@
 # Ownership Ativo
 
+Ownership temporario /root em 18/09/2026: documentar o requisito de triggers
+da negociacao financeira e o procedimento RDS/dev/main em
+`docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`. Apenas documentacao local;
+sem acesso a EC2, RDS, migration ou reinicio. Preservar `outputs/`.
+Procedimento revisado e ownership de edicao liberado; execucao permanece com o usuario.
+
 Ownership /root em 18/09/2026: conferência, testes, commit e publicação das
 pendências autorizadas pelo usuário na refactor/frontend (Compras, negociação
 financeira, DP/RH e documentação). Preservar outputs locais fora dos commits.
