@@ -1,5 +1,15 @@
 # Ownership Ativo
 
+Ownership temporario da sessao `/root` em 2026-09-17 para corrigir a responsividade
+da gestao de cotacoes embutida nos detalhes da solicitacao:
+`frontend/src/modules/solicitacao-compra/pages/GerenciarCotacaoSolicitacao.jsx`,
+`frontend/src/modules/solicitacao-compra/compras-responsive.css`,
+`frontend/src/pages/SolicitacaoDetalhe/CompraEtapas.jsx`,
+`frontend/scripts/validarCotacaoResponsiva.mjs` e handoff correspondente.
+Preservar alteracoes preexistentes e nao relacionadas.
+Ownership liberado apos build, prova em navegador e registro em
+`docs/handoffs/2026-09-17-cotacao-embutida-responsiva.md`.
+
 Ownership temporario da sessao `/root` em 2026-09-17 para manter comentarios
 dos itens livres a quem visualiza e bloquear comentarios da conversa geral fora
 do setor: `backend/src/controllers/SolicitacaoController.js`,

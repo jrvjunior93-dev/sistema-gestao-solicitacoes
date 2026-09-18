@@ -512,6 +512,61 @@
   max-width: 100%;
 }
 
+/* A cotacao embutida pode viver em um bloco de meia largura na solicitacao.
+   A largura da janela (xl/2xl) nao representa o espaco real deste card. */
+.cotacao-gestao-embutida,
+.cotacao-fornecedores-secao,
+.cotacao-fornecedores-secao > * {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cotacao-fornecedores-layout {
+  container-type: inline-size;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cotacao-fornecedores-grade {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cotacao-fornecedores-grade > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@container (min-width: 68rem) {
+  .cotacao-fornecedores-grade {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cotacao-fornecedor-rapido {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (min-width: 90rem) {
+  .cotacao-fornecedores-grade {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .cotacao-fornecedor-rapido {
+    grid-column: auto;
+  }
+}
+
+@container (max-width: 35rem) {
+  .cotacao-fornecedor-rapido .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cotacao-fornecedor-rapido .form-campo--span2 {
+    grid-column: auto;
+  }
+}
+
 .compras-responsive-scope .app-list-stack {
   min-width: 0;
 }

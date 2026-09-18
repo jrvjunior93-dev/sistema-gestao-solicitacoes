@@ -1774,7 +1774,7 @@ function SecaoEnvioFornecedores({
   if (!podeComprar) return null;
 
   return (
-    <div className="grid gap-3">
+    <div className="cotacao-fornecedores-secao grid min-w-0 max-w-full gap-3">
       {/* Envio para fornecedores vinculados via WhatsApp */}
       {linksVinculados.length > 0 && (
         <div className="cotacao-whatsapp-panel rounded-xl border px-3 py-3" style={estiloTom('success')}>
@@ -1808,9 +1808,10 @@ function SecaoEnvioFornecedores({
           className="cotacao-fornecedores-panel min-w-0 max-w-full rounded-xl border p-3"
           style={{ borderColor: 'var(--c-border)', background: 'var(--ui-surface-2)' }}
         >
-          {/* R10: a grade de painéis vem de degraus e de frações, não de
-              larguras em px escritas na tela. */}
-          <div className="grid min-w-0 items-start gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+          {/* A grade acompanha o espaco do card (inclusive ao mudar o zoom),
+              nao os breakpoints da janela que tambem medem a barra lateral. */}
+          <div className="cotacao-fornecedores-layout">
+          <div className="cotacao-fornecedores-grade grid min-w-0 items-start gap-4">
             <div className="grid min-w-0 content-start gap-3">
               {/* Selecao por categoria */}
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2038,7 +2039,7 @@ function SecaoEnvioFornecedores({
               fazer.
             */}
             <div
-              className="cotacao-fornecedor-rapido grid min-w-0 content-start gap-3 rounded-xl border p-3 xl:col-span-2 2xl:col-span-1"
+              className="cotacao-fornecedor-rapido grid min-w-0 content-start gap-3 rounded-xl border p-3"
               style={{ borderColor: 'var(--c-border)', background: 'var(--c-surface)' }}
             >
               <div>
@@ -2069,6 +2070,7 @@ function SecaoEnvioFornecedores({
                 </button>
               </div>
             </div>
+          </div>
           </div>
 
           {fornecedoresSelecionados.length > 0 && (
@@ -2830,7 +2832,7 @@ function SecaoComparativo({
 
 // Componente principal
 
-export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null, embedded = false }) {
+export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null, embedded = false, onAtualizado = null }) {
   const { id: routeId } = useParams();
   const id = solicitacaoCompraId || routeId;
   const Container = embedded ? 'div' : Pagina;
@@ -2992,6 +2994,9 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       await carregarFornecedores();
       setComparativo(workspace?.comparativo || null);
       setVencedoresSelecionados({});
+      if (onAtualizado) void Promise.resolve().then(() => onAtualizado()).catch((error) => {
+        avisar.erro(error.message || 'Não foi possível atualizar os itens em cotação.');
+      });
     } catch (error) {
       console.error(error);
       const mensagem = error.message || 'Erro ao carregar solicitacao de compra';

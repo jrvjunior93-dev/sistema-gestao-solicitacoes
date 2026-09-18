@@ -6,6 +6,7 @@ const {
   PedidoCompraItem,
   PedidoCompraItemRecebimento,
   SolicitacaoCompra,
+  SolicitacaoCompraFornecedor,
   SolicitacaoCompraFornecedorItem,
   SolicitacaoCompraItem,
   SolicitacaoCompraItemApropriacao,
@@ -21,6 +22,7 @@ const { userHasSetorCapability } = require('../services/setorCapabilityService')
 const { registrarAtencaoSolicitacao } = require('../services/solicitacaoAtencaoService');
 const { publishSolicitacaoRealtimeEvent } = require('../services/solicitacaoRealtimeService');
 const { criarNotificacao } = require('../services/notificacoes');
+const { obterChavesItensEmCotacao } = require('../services/compraItensCotacaoService');
 
 function responderErro(res, error) {
   if (!error.statusCode) console.error(error);
@@ -107,7 +109,7 @@ module.exports = {
   async listar(req, res) {
     try {
       const { solicitacao, compra } = await buscarContexto(req);
-      const [itens, manuais, pedidos, historicos] = await Promise.all([
+      const [itens, manuais, pedidos, historicos, cotacoesFornecedor] = await Promise.all([
         SolicitacaoCompraItem.findAll({
           where: { solicitacao_compra_id: compra.id },
           include: [
@@ -130,8 +132,18 @@ module.exports = {
           where: { solicitacao_id: solicitacao.id, acao: 'COMENTARIO_ETAPA_COMPRA' },
           include: [{ model: User, as: 'usuario', attributes: ['id', 'nome'] }],
           order: [['id', 'ASC']]
+        }),
+        SolicitacaoCompraFornecedor.findAll({
+          where: { solicitacao_compra_id: compra.id },
+          attributes: ['id', 'status'],
+          include: [{
+            model: SolicitacaoCompraFornecedorItem,
+            as: 'itensSelecionados',
+            attributes: ['item_tipo', 'solicitacao_compra_item_id', 'solicitacao_compra_item_manual_id']
+          }]
         })
       ]);
+      const chavesEmCotacao = obterChavesItensEmCotacao(cotacoesFornecedor, itens, manuais);
       const idsPedidoItens = pedidos.flatMap((pedido) => pedido.itens.map((item) => item.id));
       const idsCadastrados = itens.map((item) => item.id);
       const idsManuais = manuais.map((item) => item.id);
@@ -157,6 +169,7 @@ module.exports = {
           && (status === null || status === 'PENDENTE');
         return {
           ...item.toJSON(), item_tipo: tipo, nome,
+          em_cotacao: chavesEmCotacao.has(`${tipo}:${item.id}`),
           vinculado_compra: vinculadoCompra,
           rejeicao_implicita: rejeicaoImplicita,
           reaproveitavel: !vinculadoCompra && (status === 'REJEITADO' || rejeicaoImplicita)

@@ -22,7 +22,7 @@ function quantidade(value) {
 
 function Comentarios({ lista }) {
   if (!lista.length) return null;
-  return <div className="space-y-1 border-l-2 border-[var(--c-border)] pl-3 text-sm">
+  return <div className="mt-2 space-y-1 border-l-2 border-[var(--c-border)] pl-3 text-sm">
     {lista.map((comentario) => <p key={comentario.id}>
       <strong>{comentario.usuario?.nome || 'Usuário'}:</strong> {comentario.descricao}
     </p>)}
@@ -100,16 +100,16 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
     }
   }
 
-  function abrirComentario(escopo, referenciaId, itemTipo = null) {
-    setComentando({ escopo, referencia_id: referenciaId, item_tipo: itemTipo });
+  function abrirComentario(escopo, referenciaId, itemTipo = null, local = '') {
+    setComentando({ escopo, referencia_id: referenciaId, item_tipo: itemTipo, local });
     setTexto('');
     setMencoes([]);
     setBuscaMencao('');
   }
 
-  function formularioComentario(escopo, referenciaId, itemTipo = null) {
+  function formularioComentario(escopo, referenciaId, itemTipo = null, local = '') {
     if (comentando?.escopo !== escopo || Number(comentando?.referencia_id) !== Number(referenciaId)
-      || (comentando?.item_tipo || null) !== itemTipo) return null;
+      || (comentando?.item_tipo || null) !== itemTipo || comentando?.local !== local) return null;
     const usuariosFiltrados = usuarios.filter((usuario) => !mencoes.some((selecionado) => selecionado.id === usuario.id)
       && String(usuario.nome || '').toLocaleLowerCase('pt-BR').includes(buscaMencao.toLocaleLowerCase('pt-BR'))).slice(0, 8);
     return <div className="mt-2 flex flex-wrap items-end gap-2">
@@ -132,7 +132,11 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       <button type="button" className="btn btn-primary btn-sm" disabled={!texto.trim() || !!processando}
         onClick={() => executar('comentar', async () => {
           await comentarEtapaCompraSolicitacao(solicitacaoId, {
-            ...comentando, descricao: texto, mencoes: mencoes.map((usuario) => usuario.id)
+            escopo: comentando.escopo,
+            referencia_id: comentando.referencia_id,
+            item_tipo: comentando.item_tipo,
+            descricao: texto,
+            mencoes: mencoes.map((usuario) => usuario.id)
           });
           setComentando(null);
           setTexto('');
@@ -164,6 +168,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
     || (!dados.revisao_geo_pendente && !itemPodeSerReaproveitado(item)
       && (!item.status_aprovacao || (item.status_aprovacao === 'PENDENTE' && item.vinculado_compra))));
   const naoAprovados = dados.itens.filter(itemPodeSerReaproveitado);
+  const itensEmCotacao = dados.itens.filter((item) => item.em_cotacao);
   const statusCompra = String(dados.status_compra || '').toUpperCase();
   const compraEncaminhada = ['LIBERADO_PARA_COMPRA', 'LIBERADO', 'COTACAO', 'COTACAO_ENVIADA',
     'EM_COTACAO', 'FECHAMENTO_PARCIAL', 'ENCERRADO', 'FINALIZADA'].includes(statusCompra)
@@ -227,7 +232,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       placeholder="Motivo para rejeição (obrigatório ao rejeitar)" />}
     {cotacaoIniciada && escopo === 'ITEM_APROVADO' && <p className="mt-1 text-xs text-[var(--c-muted)]">Em cotação ou pedido: comente no card da etapa correspondente.</p>}
     {item.especificacao && <p className="mt-1 text-sm text-[var(--c-muted)]">{item.especificacao}</p>}
-    <Comentarios lista={comentariosDoItem(dados.comentarios, item)} />
+    <Comentarios lista={comentariosDoItem(dados.comentarios, item, dados.pedidos)} />
     {formularioComentario(escopo, item.id, item.item_tipo)}
   </div>;
 
@@ -275,7 +280,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       </div>}
       {!compraEncaminhada && <p className="mt-3 text-xs text-[var(--c-muted)]">Após encaminhar os itens aprovados para Compras, será possível criar outra solicitação com estes itens.</p>}
     </BlocoConteudo>}
-    <BlocoConteudo titulo="Cotação" recolhivel recolhidoPadrao>
+    <BlocoConteudo titulo="Cotação" contagem={`${itensEmCotacao.length} item(ns)`} recolhivel recolhidoPadrao>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn btn-outline btn-sm"
           onClick={() => abrirComentario('COTACAO', dados.solicitacao_compra_id)}>Comentar na cotação</button>
@@ -284,12 +289,27 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
       </div>
       <Comentarios lista={comentariosDaEtapa(dados.comentarios, 'COTACAO', dados.solicitacao_compra_id)} />
       {formularioComentario('COTACAO', dados.solicitacao_compra_id)}
+      <div className="mt-3 border-t border-[var(--c-border)] pt-3">
+        <p className="mb-2 text-xs font-semibold text-[var(--c-muted)]">Itens enviados para fornecedores</p>
+        {itensEmCotacao.length ? <div className="divide-y divide-[var(--c-border)] rounded-md border border-[var(--c-border)]">
+          {itensEmCotacao.map((item) => <div key={`${item.item_tipo}-${item.id}`} className="px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="min-w-0 flex-1 font-semibold">{item.nome}</span>
+              <span className="text-[var(--c-muted)]">{quantidade(item.quantidade)} {item.unidade_sigla_manual || item.unidade?.sigla || ''}</span>
+              <button type="button" className="btn btn-outline btn-sm"
+                onClick={() => abrirComentario('ITEM', item.id, item.item_tipo, 'COTACAO_ITEM')}>Comentar no item</button>
+            </div>
+            <Comentarios lista={comentariosDoItem(dados.comentarios, item, dados.pedidos)} />
+            {formularioComentario('ITEM', item.id, item.item_tipo, 'COTACAO_ITEM')}
+          </div>)}
+        </div> : <p className="text-sm text-[var(--c-muted)]">Nenhum item enviado para fornecedores nesta solicitação.</p>}
+      </div>
       {mostrarCotacao && cotacaoAberta && <div className="mt-3">
         {!podeGerenciarCotacao && <p className="mb-2 text-xs text-[var(--c-muted)]">
           Para executar ações na cotação, solicite o retorno da solicitação ao setor de Compras.
         </p>}
-        <fieldset disabled={!podeGerenciarCotacao}>
-          <GerenciarCotacaoSolicitacao solicitacaoCompraId={dados.solicitacao_compra_id} embedded />
+        <fieldset className="min-w-0 max-w-full" disabled={!podeGerenciarCotacao}>
+          <GerenciarCotacaoSolicitacao solicitacaoCompraId={dados.solicitacao_compra_id} embedded onAtualizado={carregar} />
         </fieldset>
       </div>}
     </BlocoConteudo>
@@ -346,7 +366,7 @@ export default function CompraEtapas({ solicitacaoId, podeDecidir, podeReceber, 
                   setChavesEntrega((atual) => ({ ...atual, [item.id]: null }));
                 }, 'Entrega registrada para este item.')}>Marcar como entregue</button>
             </div>}
-            <Comentarios lista={comentariosDoItemPedido(dados.comentarios, item)} />
+            <Comentarios lista={comentariosDoItemPedido(dados.comentarios, item, dados.pedidos)} />
             {formularioComentario('PEDIDO_ITEM', item.id)}{formularioComentario('ENTREGA', item.id)}
           </div>;
         })}</div>
