@@ -9,9 +9,9 @@ Estado: implementado e validado localmente; ainda nao commitado.
 - A area de transferencias em Pessoal foi separada em duas subabas:
   - `Lista global de colaboradores`;
   - `Transferencias das minhas obras`.
-- A lista operacional exibe somente transferencias pendentes (`RASCUNHO` e `ABERTA`) e as mantem ate aprovacao, rejeicao ou cancelamento.
-- Transferencias resolvidas foram movidas para o modal paginado `Minhas transferencias`.
-- Pendencias e historico usam paginacao no backend e no frontend, evitando crescimento ilimitado da tela.
+- A subaba `Transferencias das minhas obras` exibe diretamente uma lista unica com transferencias pendentes e resolvidas.
+- O modal `Minhas transferencias` foi removido por decisao posterior do usuario; a separacao em subaba ja fornece o espaco necessario.
+- A lista unica usa paginacao no backend e no frontend, evitando crescimento ilimitado da tela.
 - Abertura, comentario e decisao de transferencia geram notificacao para os responsaveis envolvidos.
 - A notificacao abre diretamente a subaba de transferencias.
 - Ao acessar `Transferencias das minhas obras`, o sistema:
@@ -64,5 +64,5 @@ O diretorio preexistente `outputs/` nao pertence a esta entrega e nao deve ser i
    - confirmar alerta no sino e contador;
    - acessar a subaba e confirmar baixa do alerta;
    - aprovar/rejeitar;
-   - confirmar retirada da lista pendente e presenca no modal `Minhas transferencias`.
+   - confirmar que a transferencia resolvida permanece visivel na lista unica, com o novo status.
 3. Somente quando solicitado, criar commit na `refactor/frontend`, sem incluir `outputs/`.
