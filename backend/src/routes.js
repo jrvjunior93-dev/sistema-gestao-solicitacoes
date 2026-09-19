@@ -1657,6 +1657,7 @@ router.get('/solicitacoes/:id', validateRequest({ params: validateNumericIdParam
 router.get('/solicitacoes/:id/compra-etapas', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.listar);
 router.patch('/solicitacoes/:id/compra-itens/aprovacao-lote', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.aprovarItensEmLote);
 router.patch('/solicitacoes/:id/compra-itens/:tipo/:itemId/decisao', criticalRateLimit, validateRequest({ params: validateCompraItemDecisionParams }), SolicitacaoCompraEtapasController.decidirItem);
+router.post('/solicitacoes/:id/compra-etapas/comentarios/leitura', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.marcarLeituraComentario);
 router.post('/solicitacoes/:id/compra-etapas/comentarios', criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), SolicitacaoCompraEtapasController.comentar);
 router.post('/solicitacoes/:id/pedidos-compra/:pedidoId/itens/:itemId/recebimentos', criticalRateLimit, validateRequest({ params: validateNumericIdParams(['id', 'pedidoId', 'itemId'], 'Recebimento de item') }), require('./controllers/PedidoEntregaController').receberItem);
 router.post('/solicitacoes/:id/pedidos-compra/:pedidoId/entregas', criticalRateLimit, validateRequest({ params: validateNumericIdParams(['id', 'pedidoId'], 'Entrega de pedido') }), require('./controllers/PedidoEntregaController').operar);

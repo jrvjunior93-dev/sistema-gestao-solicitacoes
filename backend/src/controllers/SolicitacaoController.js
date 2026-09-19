@@ -885,7 +885,8 @@ async function enviarSolicitacaoParaSetorInterno({
   setorDestino,
   usuarioId,
   permitirEnvioFluxoDiretoria = false,
-  destacarAtencao = false
+  destacarAtencao = false,
+  ignorarPermissaoEnvioManual = false
 }) {
   const acessoObra = await validarAcessoObra(req, solicitacao);
   if (!acessoObra) {
@@ -899,7 +900,7 @@ async function enviarSolicitacaoParaSetorInterno({
   const podeEnviarQualquerSetor =
     perfil === 'SUPERADMIN' || Boolean(usuarioLogado?.pode_enviar_qualquer_setor);
 
-  if (!podeEnviarQualquerSetor) {
+  if (!podeEnviarQualquerSetor && !ignorarPermissaoEnvioManual) {
     const areaUsuario = await obterAreaUsuario(req);
     const tokensSetorUsuario = await obterTokensSetoresOperacionaisUsuario(req, areaUsuario);
     if (!setorPertenceAoUsuario(tokensSetorUsuario, solicitacao.area_responsavel)) {
@@ -1008,6 +1009,47 @@ async function enviarSolicitacaoParaSetorInterno({
   });
 
   return { ok: true };
+}
+
+/**
+ * Resolve o setor que efetivamente criou a solicitacao.
+ *
+ * A fonte principal e o usuario gravado em `criado_por`, seguindo a mesma regra dos fluxos de
+ * contrato. O historico de criacao e o fallback para registros cujo usuario ou setor ja nao esteja
+ * disponivel. Alguns fluxos especiais nasceram diretamente no setor destinatario, portanto o
+ * historico nao pode ter precedencia sobre o cadastro do autor em todos os tipos de solicitacao.
+ */
+async function resolverSetorCriadorSolicitacao(solicitacao) {
+  const usuarioCriadorId = Number(solicitacao.criado_por);
+  if (Number.isInteger(usuarioCriadorId) && usuarioCriadorId > 0) {
+    const usuarioCriador = await User.findByPk(usuarioCriadorId, {
+      attributes: ['id', 'setor_id']
+    });
+
+    if (usuarioCriador?.setor_id) {
+      const setorCriador = await Setor.findOne({
+        where: {
+          id: usuarioCriador.setor_id,
+          ativo: true
+        },
+        attributes: ['codigo', 'nome']
+      });
+      const setorAtualCriador = resolveSetorPersistenciaValue(setorCriador, null);
+      if (setorAtualCriador) return setorAtualCriador;
+    }
+  }
+
+  const historicoCriacao = await Historico.findOne({
+    where: {
+      solicitacao_id: solicitacao.id,
+      acao: 'SOLICITACAO_CRIADA',
+      setor: { [Op.ne]: null }
+    },
+    attributes: ['setor'],
+    order: [['createdAt', 'ASC'], ['id', 'ASC']]
+  });
+  const setorHistorico = String(historicoCriacao?.setor || '').trim();
+  return setorHistorico || null;
 }
 
 async function obterAreaUsuario(req) {
@@ -3854,6 +3896,9 @@ module.exports = {
 
       const codigo = await gerarCodigoSolicitacao();
 
+      const justificativaPersistida = campoVisivel('justificativa')
+        ? (String(justificativa || '').trim() || null)
+        : null;
       const dadosSolicitacao = {
         codigo,
         obra_id,
@@ -3863,7 +3908,7 @@ module.exports = {
         tipo_macro_id: tipo_macro_id || null,
         tipo_sub_id: campoVisivel('subtipo') ? (tipo_sub_id || null) : null,
         descricao: campoVisivel('descricao') ? descricao : '',
-        justificativa: campoVisivel('justificativa') ? (String(justificativa || '').trim() || null) : null,
+        justificativa: justificativaPersistida,
         favorecido_id: favorecido?.id || null,
         forma_pagamento_id: formaPagamentoIdPersistida,
         favorecido_chave_pix: chavePixPersistida,
@@ -3984,6 +4029,20 @@ module.exports = {
         descricao: descricaoHistorico,
         metadata: Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null
       });
+
+      // A justificativa explica a abertura e, por isso, pertence à trilha cronológica da
+      // solicitação. A coluna continua preservada como dado de domínio, mas a leitura passa a
+      // acontecer somente pelo histórico, sem duplicá-la no card de dados do detalhe.
+      if (justificativaPersistida) {
+        await Historico.create({
+          solicitacao_id: solicitacao.id,
+          usuario_responsavel_id: usuarioId,
+          setor: areaUsuario,
+          acao: 'JUSTIFICATIVA_REGISTRADA',
+          descricao: `Justificativa: ${justificativaPersistida}`,
+          metadata: JSON.stringify({ origem: 'NOVA_SOLICITACAO' })
+        });
+      }
 
       const destinatariosCriacao = await obterDestinatariosCriacaoSetor(solicitacao);
 
@@ -4381,6 +4440,17 @@ module.exports = {
         return res.sendStatus(204);
       }
 
+      const statusNovoNorm = normalizarTokenComparacao(status);
+      let setorCriadorParaAjuste = null;
+      if (statusNovoNorm === 'PENDENTE_DE_AJUSTE') {
+        setorCriadorParaAjuste = await resolverSetorCriadorSolicitacao(solicitacao);
+        if (!setorCriadorParaAjuste) {
+          return res.status(409).json({
+            error: 'Nao foi possivel identificar o setor que criou esta solicitacao para devolve-la para ajuste.'
+          });
+        }
+      }
+
       const setorAtual = solicitacao.area_responsavel;
       const setorValidacaoStatus = String(
         (!isSuperadmin && podeAlterarStatusQualquerSetor ? areaUsuario : setorAtual) || areaUsuario || ''
@@ -4476,9 +4546,34 @@ module.exports = {
 
       let envioAutomaticoExecutado = false;
 
+      // PENDENTE DE AJUSTE sempre devolve a solicitacao ao setor que a criou. A regra tem
+      // precedencia sobre as automacoes configuraveis para que nenhuma configuracao de status
+      // redirecione a devolucao para outro setor.
+      if (statusNovoNorm === 'PENDENTE_DE_AJUSTE') {
+        if (
+          normalizarTokenComparacao(solicitacao.area_responsavel)
+          !== normalizarTokenComparacao(setorCriadorParaAjuste)
+        ) {
+          const envioAjuste = await enviarSolicitacaoParaSetorInterno({
+            req,
+            solicitacao,
+            setorDestino: setorCriadorParaAjuste,
+            usuarioId,
+            permitirEnvioFluxoDiretoria: true,
+            ignorarPermissaoEnvioManual: true
+          });
+
+          if (!envioAjuste.ok) {
+            return res.status(envioAjuste.status || 400).json({
+              error: envioAjuste.error || 'Erro ao devolver solicitacao ao setor criador para ajuste'
+            });
+          }
+        }
+        envioAutomaticoExecutado = true;
+      }
+
       if (isSetorObra) {
         const statusAnteriorNorm = normalizarTokenComparacao(statusAnterior);
-        const statusNovoNorm = normalizarTokenComparacao(status);
 
         // Quando OBRA atende um ajuste, retorna automaticamente para o setor
         // que enviou a solicitacao para OBRA (ultimo envio para OBRA).
@@ -4525,32 +4620,6 @@ module.exports = {
           }
         }
 
-        // Quando OBRA marca "Mercadoria Entregue", envia automaticamente para FINANCEIRO.
-        if (!envioAutomaticoExecutado && statusNovoNorm === 'MERCADORIA_ENTREGUE') {
-          const setorFinanceiro = await findSetorByCapability('eh_setor_financeiro', {
-            attributes: ['codigo', 'nome']
-          });
-          if (!setorFinanceiro) {
-            return res.status(400).json({
-              error: 'Nenhum setor configurado como financeiro foi encontrado para o envio automatico.'
-            });
-          }
-
-          const envioFinanceiro = await enviarSolicitacaoParaSetorInterno({
-            req,
-            solicitacao,
-            setorDestino: resolveSetorPersistenciaValue(setorFinanceiro, 'FINANCEIRO'),
-            usuarioId,
-            permitirEnvioFluxoDiretoria: true
-          });
-
-          if (!envioFinanceiro.ok) {
-            return res.status(envioFinanceiro.status || 400).json({
-              error: envioFinanceiro.error || 'Erro ao enviar solicitacao automaticamente para FINANCEIRO'
-            });
-          }
-          envioAutomaticoExecutado = true;
-        }
       }
 
       if (!envioAutomaticoExecutado) {

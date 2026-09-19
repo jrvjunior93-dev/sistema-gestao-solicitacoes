@@ -28,6 +28,10 @@ const { publishSolicitacaoRealtimeEvent } = require('../services/solicitacaoReal
 const { criarNotificacao } = require('../services/notificacoes');
 const { obterChavesItensEmCotacao } = require('../services/compraItensCotacaoService');
 const { resolverCondicaoPagamentoPedido } = require('../services/pedidoCompraDocumentoUtils');
+const {
+  listarLeiturasComentarios,
+  marcarLeituraComentario
+} = require('../services/solicitacaoCompraComentarioLeituraService');
 
 function responderErro(res, error) {
   if (!error.statusCode) console.error(error);
@@ -114,7 +118,7 @@ module.exports = {
   async listar(req, res) {
     try {
       const { solicitacao, compra } = await buscarContexto(req);
-      const [itens, manuais, pedidos, historicos, cotacoesFornecedor] = await Promise.all([
+      const [itens, manuais, pedidos, historicos, cotacoesFornecedor, leiturasComentarios] = await Promise.all([
         SolicitacaoCompraItem.findAll({
           where: { solicitacao_compra_id: compra.id },
           include: [
@@ -142,7 +146,10 @@ module.exports = {
           order: [['id', 'DESC']]
         }),
         Historico.findAll({
-          where: { solicitacao_id: solicitacao.id, acao: 'COMENTARIO_ETAPA_COMPRA' },
+          where: {
+            solicitacao_id: solicitacao.id,
+            acao: { [Op.in]: ['COMENTARIO_ETAPA_COMPRA', 'ITEM_COMPRA_REJEITADO_GEO'] }
+          },
           include: [{ model: User, as: 'usuario', attributes: ['id', 'nome'] }],
           order: [['id', 'ASC']]
         }),
@@ -154,7 +161,8 @@ module.exports = {
             as: 'itensSelecionados',
             attributes: ['item_tipo', 'solicitacao_compra_item_id', 'solicitacao_compra_item_manual_id']
           }]
-        })
+        }),
+        listarLeiturasComentarios(solicitacao.id, req.user.id)
       ]);
       const chavesEmCotacao = obterChavesItensEmCotacao(cotacoesFornecedor, itens, manuais);
       const idsPedidoItens = pedidos.flatMap((pedido) => pedido.itens.map((item) => item.id));
@@ -218,13 +226,26 @@ module.exports = {
               entrega: entregasPorItem.get(Number(item.id)), recebimentos: recebimentosPorItem.get(Number(item.id)) || [] };
           })
         })),
-        comentarios: historicos.map((linha) => ({
-          id: linha.id,
-          descricao: linha.descricao,
-          usuario: linha.usuario,
-          createdAt: linha.createdAt,
-          ...parseMetadata(linha.metadata)
-        }))
+        comentarios: historicos.map((linha) => {
+          const metadata = parseMetadata(linha.metadata);
+          const motivoRejeicao = linha.acao === 'ITEM_COMPRA_REJEITADO_GEO';
+          return {
+            id: linha.id,
+            descricao: motivoRejeicao
+              ? `Motivo da rejeição: ${metadata.motivo || linha.descricao || 'Não informado'}`
+              : linha.descricao,
+            usuario: linha.usuario,
+            createdAt: linha.createdAt,
+            ...metadata,
+            ...(motivoRejeicao ? {
+              escopo: 'ITEM',
+              referencia_id: metadata.item_id,
+              item_tipo: metadata.item_tipo,
+              tipo_registro: 'MOTIVO_REJEICAO'
+            } : {})
+          };
+        }),
+        leituras_comentarios: leiturasComentarios
       });
     } catch (error) { return responderErro(res, error); }
   },
@@ -421,6 +442,19 @@ module.exports = {
       }
       await publishSolicitacaoRealtimeEvent({ action: 'COMMENT_ADDED', solicitacao, actor: { id: req.user.id } });
       return res.status(201).json({ id: historico.id });
+    } catch (error) { return responderErro(res, error); }
+  },
+
+  async marcarLeituraComentario(req, res) {
+    try {
+      const { solicitacao } = await buscarContexto(req);
+      const leitura = await marcarLeituraComentario({
+        solicitacaoId: solicitacao.id,
+        usuarioId: req.user.id,
+        alvoChave: req.body?.alvo_chave,
+        historicoId: req.body?.historico_id
+      });
+      return res.json(leitura);
     } catch (error) { return responderErro(res, error); }
   },
 

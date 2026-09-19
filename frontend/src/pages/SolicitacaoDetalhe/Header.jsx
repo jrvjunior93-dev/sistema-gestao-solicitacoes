@@ -50,12 +50,16 @@ const ESTADO_CIVIL_REPRESENTANTE = {
   - `alert()` do navegador (falha ao gravar a ref. do contrato) virou faixa
     `Avisos` dentro do bloco, ao lado do campo que a causou (R19).
 
-  Nenhum campo saiu da tela. Três mudaram de lugar, e o lugar novo é mais
-  visível que o antigo (B3 — informação aparece uma vez):
+  Três campos mudaram de lugar, e o lugar novo é mais visível que o antigo
+  (B3 — informação aparece uma vez):
     Valor      → contagem da faixa fixa (o total acompanha a rolagem);
     Setor      → ladrilho de situação, no topo do corpo;
     Vencimento → ladrilho de situação ("Data Resposta/Pagamento").
   Os três continuam no index.jsx, que é quem os desenha agora.
+
+  A justificativa é a exceção deliberada: não é dado cadastral para ocupar
+  este card. Ela aparece como evento no histórico da solicitação, ao lado do
+  momento e do responsável pela abertura.
 */
 
 function formatarData(valor) {
@@ -294,7 +298,6 @@ export default function Header({
     { label: 'Responsável', contexto: temContrato, valor: contratoDoFluxo?.responsavel?.nome || null },
     { label: 'Obra', valor: solicitacao?.obra?.nome || null, span: 2 },
     { label: 'Criado em', valor: formatarDataHora(solicitacao?.createdAt) },
-    { label: 'Justificativa', contexto: !temContrato, valor: solicitacao?.justificativa || null, span: 4 },
     { label: 'Data de demissão', valor: formatarData(solicitacao?.data_demissao) },
     { label: 'Início da medição', valor: formatarData(solicitacao?.data_inicio_medicao) },
     { label: 'Fim da medição', valor: formatarData(solicitacao?.data_fim_medicao) },

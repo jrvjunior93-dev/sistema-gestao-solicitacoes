@@ -457,11 +457,23 @@ function validateCompraQuery(query = {}) {
           if (!item || typeof item !== 'object' || Array.isArray(item)) {
             throw new ValidationError(`Forma de pagamento ${index + 1} invalida.`);
           }
-          ensureAllowedKeys(item, ['id', 'valor'], `Forma de pagamento ${index + 1}`);
-          return {
+          ensureAllowedKeys(
+            item,
+            ['id', 'valor', 'favorecido_id', 'chave_pix', 'dados_pagamento'],
+            `Forma de pagamento ${index + 1}`
+          );
+          const formaNormalizada = {
             id: parseInteger(item.id, `Forma de pagamento ${index + 1}`, { required: true }),
             valor: parseDecimal(item.valor, `Valor da forma de pagamento ${index + 1}`, { min: 0.01, scale: 2, required: true })
           };
+          const favorecidoId = parseInteger(item.favorecido_id, `Favorecido da forma de pagamento ${index + 1}`, { positiveOnly: true });
+          const chavePix = parseOptionalText(item.chave_pix, `Chave PIX da forma de pagamento ${index + 1}`, 255);
+          const dadosPagamento = parseOptionalText(item.dados_pagamento, `Dados da forma de pagamento ${index + 1}`, 1500);
+
+          if (favorecidoId !== undefined && favorecidoId !== null) formaNormalizada.favorecido_id = favorecidoId;
+          if (chavePix !== undefined && chavePix !== null) formaNormalizada.chave_pix = chavePix;
+          if (dadosPagamento !== undefined && dadosPagamento !== null) formaNormalizada.dados_pagamento = dadosPagamento;
+          return formaNormalizada;
         })
       : null;
 

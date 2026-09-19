@@ -11,6 +11,7 @@ import {
   comentarEtapaCompraSolicitacao,
   decidirItemCompraSolicitacao,
   encaminharSolicitacaoCompraParaCompras,
+  marcarComentariosEtapaCompraComoLidos,
   obterEtapasCompraSolicitacao,
   uploadAnexoTemporarioCompra
 } from '../../services/compras';
@@ -25,11 +26,40 @@ function quantidade(value) {
   return Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
 }
 
+function chaveLeituraComentario(escopo, referenciaId, itemTipo, item) {
+  if (item?.solicitacao_compra_item_id) return `ITEM:CADASTRADO:${item.solicitacao_compra_item_id}`;
+  if (item?.solicitacao_compra_item_manual_id) return `ITEM:MANUAL:${item.solicitacao_compra_item_manual_id}`;
+  if (['ITEM', 'ITEM_APROVADO'].includes(escopo) && itemTipo) {
+    return `ITEM:${String(itemTipo).toUpperCase()}:${Number(item?.id || referenciaId)}`;
+  }
+  return `ETAPA:${String(escopo || 'GERAL').toUpperCase()}:${Number(referenciaId)}`;
+}
+
+function apresentacaoStatusItem(item) {
+  const status = item?.rejeicao_implicita
+    ? 'REJEITADO'
+    : String(item?.status_aprovacao || 'PENDENTE').toUpperCase();
+  if (status === 'APROVADO') {
+    return { rotulo: 'Aprovado', classe: 'border-[var(--sem-success-border)] bg-[var(--sem-success-bg)] text-[var(--sem-success)]' };
+  }
+  if (status === 'REJEITADO') {
+    return { rotulo: 'Rejeitado', classe: 'border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] text-[var(--sem-danger)]' };
+  }
+  return { rotulo: 'Pendente', classe: 'border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] text-[var(--sem-warning)]' };
+}
+
 function Comentarios({ lista }) {
   if (!lista.length) return <p className="py-3 text-sm text-[var(--c-muted)]">Nenhum comentário registrado.</p>;
   return <div className="divide-y divide-[var(--c-border)] text-sm">
-    {lista.map((comentario) => <article key={comentario.id} className="py-3">
-      <div className="flex flex-wrap justify-between gap-2"><strong>{comentario.usuario?.nome || 'Usuário'}</strong>
+    {lista.map((comentario) => <article key={comentario.id}
+      className={`py-3 ${comentario.tipo_registro === 'MOTIVO_REJEICAO' ? 'text-[var(--sem-danger)]' : ''}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2"><span className="flex flex-wrap items-center gap-2">
+        <strong>{comentario.usuario?.nome || 'Usuário'}</strong>
+        {comentario.tipo_registro === 'MOTIVO_REJEICAO' && <span
+          className="rounded-full border border-[var(--sem-danger-border)] bg-[var(--sem-danger-bg)] px-2 py-1 text-xs font-semibold text-[var(--sem-danger)]">
+          Rejeição
+        </span>}
+      </span>
         {comentario.createdAt && <time className="text-xs text-[var(--c-muted)]">{new Date(comentario.createdAt).toLocaleString('pt-BR')}</time>}</div>
       <p className="mt-1 whitespace-pre-wrap break-words">{comentario.descricao}</p>
     </article>)}
@@ -51,17 +81,38 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
   const [buscaMencao, setBuscaMencao] = useState('');
   const [motivos, setMotivos] = useState({});
   const [selecionados, setSelecionados] = useState([]);
+  const [leiturasComentarios, setLeiturasComentarios] = useState({});
   const consultaEntregaRef = useRef(0);
+
+  function incorporarLeituras(retorno) {
+    const recebidas = retorno?.leituras_comentarios && typeof retorno.leituras_comentarios === 'object'
+      ? retorno.leituras_comentarios
+      : {};
+    setLeiturasComentarios((atuais) => {
+      const proximas = { ...recebidas };
+      Object.entries(atuais).forEach(([chave, historicoId]) => {
+        proximas[chave] = Math.max(Number(proximas[chave] || 0), Number(historicoId || 0));
+      });
+      return proximas;
+    });
+  }
 
   async function carregar() {
     const consulta = ++consultaEntregaRef.current;
     const retorno = await obterEtapasCompraSolicitacao(solicitacaoId);
-    if (consulta === consultaEntregaRef.current) setDados(retorno);
+    if (consulta === consultaEntregaRef.current) {
+      setDados(retorno);
+      incorporarLeituras(retorno);
+    }
   }
 
   useLiveUpdateSubscription({ enabled: !!solicitacaoId,
     filter: (event) => event?.entity === 'SOLICITACAO' && Number(event.record_id) === Number(solicitacaoId),
     onEvent: () => carregar().catch(() => {}) });
+  useEffect(() => {
+    setLeiturasComentarios({});
+    setComentando(null);
+  }, [solicitacaoId]);
   useEffect(() => {
     const timer = setInterval(() => { if (document.visibilityState === 'visible') void carregar().catch(() => {}); }, 60000);
     return () => clearInterval(timer);
@@ -73,7 +124,12 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
     setSelecionados([]);
     setCarregando(true);
     obterEtapasCompraSolicitacao(solicitacaoId)
-      .then((retorno) => { if (ativo && consulta === consultaEntregaRef.current) setDados(retorno); })
+      .then((retorno) => {
+        if (ativo && consulta === consultaEntregaRef.current) {
+          setDados(retorno);
+          incorporarLeituras(retorno);
+        }
+      })
       .catch((error) => { if (ativo) avisar.erro(error.message || 'Erro ao carregar itens da compra.'); })
       .finally(() => { if (ativo) setCarregando(false); });
     return () => { ativo = false; consultaEntregaRef.current += 1; };
@@ -91,6 +147,10 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
       .map((item) => `${item.item_tipo}:${item.id}`));
     setSelecionados((atuais) => atuais.filter((chave) => pendentesAtuais.has(chave)));
   }, [dados]);
+
+  useEffect(() => {
+    if (comentando && dados?.comentarios) marcarComentariosVisualizados(comentando);
+  }, [comentando, dados?.comentarios, leiturasComentarios]);
 
   useEffect(() => {
     let ativo = true;
@@ -120,11 +180,30 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
     }
   }
 
+  function marcarComentariosVisualizados(alvo) {
+    const lista = listaComentarios(alvo);
+    const historicoId = lista.reduce((maior, comentario) => Math.max(maior, Number(comentario.id || 0)), 0);
+    if (!historicoId) return;
+    const alvoChave = chaveLeituraComentario(alvo.escopo, alvo.referencia_id, alvo.item_tipo, alvo.item);
+    if (historicoId <= Number(leiturasComentarios[alvoChave] || 0)) return;
+
+    setLeiturasComentarios((atuais) => ({
+      ...atuais,
+      [alvoChave]: Math.max(Number(atuais[alvoChave] || 0), historicoId)
+    }));
+    void marcarComentariosEtapaCompraComoLidos(solicitacaoId, {
+      alvo_chave: alvoChave,
+      historico_id: historicoId
+    }).catch((error) => console.error('Falha ao registrar leitura dos comentários do item:', error));
+  }
+
   function abrirComentario(escopo, referenciaId, itemTipo, titulo, item, podeComentar) {
-    setComentando({ escopo, referencia_id: referenciaId, item_tipo: itemTipo, titulo, item, podeComentar });
+    const alvo = { escopo, referencia_id: referenciaId, item_tipo: itemTipo, titulo, item, podeComentar };
+    setComentando(alvo);
     setTexto('');
     setMencoes([]);
     setBuscaMencao('');
+    marcarComentariosVisualizados(alvo);
   }
 
   function listaComentarios(alvo) {
@@ -135,8 +214,16 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
   }
 
   function botaoComentarios(escopo, referenciaId, itemTipo = null, titulo = '', item = null, podeComentar = true) {
-    const quantidadeComentarios = listaComentarios({ escopo, referencia_id: referenciaId, item });
-    return <AcaoIconeCompra rotulo={`Comentários: ${titulo}`} icone={HiChatBubbleLeftRight} quantidade={quantidadeComentarios.length}
+    const alvo = { escopo, referencia_id: referenciaId, item_tipo: itemTipo, item };
+    const comentarios = listaComentarios(alvo);
+    const alvoChave = chaveLeituraComentario(escopo, referenciaId, itemTipo, item);
+    const ultimoLido = Number(leiturasComentarios[alvoChave] || 0);
+    const quantidadeNaoLida = comentarios.filter((comentario) => (
+      Number(comentario.id || 0) > ultimoLido
+      && Number(comentario.usuario?.id || 0) !== Number(user?.id || 0)
+    )).length;
+    return <AcaoIconeCompra rotulo={`Comentários: ${titulo}`} icone={HiChatBubbleLeftRight}
+      quantidade={quantidadeNaoLida || undefined}
       onClick={() => abrirComentario(escopo, referenciaId, itemTipo, titulo, item, podeComentar)} />;
   }
 
@@ -234,20 +321,42 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
   const cotacaoIniciada = ['COTACAO', 'COTACAO_ENVIADA', 'EM_COTACAO', 'FECHAMENTO_PARCIAL', 'ENCERRADO']
     .includes(String(dados.status_compra || '').toUpperCase());
 
-  const linhaItem = (item, escopo) => <div key={`${item.item_tipo}-${item.id}`}
-    className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] px-3 py-2">
-    <div className="flex flex-wrap items-center gap-2 text-sm">
-      {escopo === 'ITEM' && podeDecidir && chavesPendentes.has(`${item.item_tipo}:${item.id}`) &&
-        <input type="checkbox" className="h-4 w-4 shrink-0 accent-[var(--c-primary)]" disabled={!!processando}
-          aria-label={`Selecionar ${item.nome} para aprovação em lote`}
-          checked={chavesSelecionadas.has(`${item.item_tipo}:${item.id}`)}
-          onChange={(event) => setSelecionados((atuais) => event.target.checked
-            ? [...atuais, `${item.item_tipo}:${item.id}`]
-            : atuais.filter((chave) => chave !== `${item.item_tipo}:${item.id}`))} />}
-      <span className="min-w-0 flex-1 font-semibold">{item.nome}</span>
-      {escopo === 'ITEM' && item.rejeicao_implicita && <span className="text-xs text-[var(--c-muted)]">Não aprovado na análise externa</span>}
-      <span className="text-[var(--c-muted)]">{quantidade(item.quantidade)} {item.unidade_sigla_manual || item.unidade?.sigla || ''}</span>
-      {escopo === 'ITEM' && <span className="text-xs text-[var(--c-muted)]">{item.rejeicao_implicita ? 'Rejeitado' : item.status_aprovacao || 'Sem decisão'}</span>}
+  function quantidadeAprovadaItem(item) {
+    const campoOrigem = item.item_tipo === 'MANUAL'
+      ? 'solicitacao_compra_item_manual_id'
+      : 'solicitacao_compra_item_id';
+    const itensPedido = dados.pedidos.flatMap((pedido) => {
+      if (String(pedido.status || '').toUpperCase() === 'CANCELADO') return [];
+      return (pedido.itens || []).filter((itemPedido) => (
+        !itemPedido.removido && Number(itemPedido[campoOrigem]) === Number(item.id)
+      ));
+    });
+    // Antes de existir pedido, a quantidade liberada pelo GEO é a própria quantidade aprovada
+    // para seguir à compra. Depois do pedido, a coluna passa a refletir o total efetivamente
+    // colocado nos pedidos ativos, descontando cancelamentos.
+    if (!itensPedido.length) return Number(item.quantidade || 0);
+    return itensPedido.reduce((total, itemPedido) => (
+      total + Math.max(0, Number(itemPedido.quantidade_pedido || 0) - Number(itemPedido.quantidade_cancelada || 0))
+    ), 0);
+  }
+
+  const linhaItem = (item, escopo) => {
+    const itemManual = item.item_tipo === 'MANUAL';
+    const itemAprovado = escopo === 'ITEM_APROVADO';
+    const unidade = item.unidade_sigla_manual || item.unidade?.sigla || '';
+    const status = itemAprovado
+      ? { rotulo: 'Aprovado', classe: 'border-[var(--sem-success-border)] bg-[var(--sem-success-bg)] text-[var(--sem-success)]' }
+      : apresentacaoStatusItem(item);
+    const identificacao = <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2 font-semibold">
+      <span className="min-w-0 break-words">{item.nome}</span>
+      {itemManual && <span
+        className="rounded-full border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] px-2 py-1 text-xs font-semibold text-[var(--sem-warning)]">
+        Item manual
+      </span>}
+      {escopo === 'ITEM' && item.rejeicao_implicita && <span className="text-xs font-normal text-[var(--c-muted)]">Não aprovado na análise externa</span>}
+    </span>;
+    const acoes = <span className="flex flex-wrap items-center justify-end gap-2">
+      <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${status.classe}`}>{status.rotulo}</span>
       {onGerenciarItens && <AcaoIconeCompra rotulo={`Editar ${item.nome}`} icone={HiPencilSquare} disabled={!!processando}
         onClick={() => onGerenciarItens(item)} />}
       {escopo === 'ITEM' && chavesPendentes.has(`${item.item_tipo}:${item.id}`) && podeDecidir && <>
@@ -257,14 +366,47 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
           onClick={() => decidir(item, 'REJEITADO')} />
       </>}
       {botaoComentarios(escopo, item.id, item.item_tipo, item.nome, item, !cotacaoIniciada || escopo === 'ITEM')}
-    </div>
-    {escopo === 'ITEM' && chavesPendentes.has(`${item.item_tipo}:${item.id}`) && podeDecidir && <input className="input mt-2 w-full"
-      value={motivos[`${item.item_tipo}-${item.id}`] || ''}
-      onChange={(event) => setMotivos((atuais) => ({ ...atuais, [`${item.item_tipo}-${item.id}`]: event.target.value }))}
-      placeholder="Motivo para rejeição (obrigatório ao rejeitar)" />}
-    {cotacaoIniciada && escopo === 'ITEM_APROVADO' && <p className="mt-1 text-xs text-[var(--c-muted)]">Em cotação ou pedido: comente no card da etapa correspondente.</p>}
-    {item.especificacao && <p className="mt-1 text-sm text-[var(--c-muted)]">{item.especificacao}</p>}
-  </div>;
+    </span>;
+
+    return <div key={`${item.item_tipo}-${item.id}`}
+      className={`rounded-md border px-3 py-2 ${itemManual
+        ? 'border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)]'
+        : 'border-[var(--c-border)] bg-[var(--c-surface)]'}`}>
+      {itemAprovado ? (
+        <div className="grid items-center gap-2 text-sm md:grid-cols-[minmax(0,1fr)_9rem_9rem_auto]">
+          {identificacao}
+          <span className="flex flex-col md:block">
+            <span className="text-xs text-[var(--c-muted)] md:hidden">Quantidade solicitada</span>
+            <span>{quantidade(item.quantidade)} {unidade}</span>
+          </span>
+          <span className="flex flex-col md:block">
+            <span className="text-xs text-[var(--c-muted)] md:hidden">Quantidade aprovada</span>
+            <span>{quantidade(quantidadeAprovadaItem(item))} {unidade}</span>
+          </span>
+          {acoes}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {podeDecidir && chavesPendentes.has(`${item.item_tipo}:${item.id}`) &&
+            <input type="checkbox" className="h-4 w-4 shrink-0 accent-[var(--c-primary)]" disabled={!!processando}
+              aria-label={`Selecionar ${item.nome} para aprovação em lote`}
+              checked={chavesSelecionadas.has(`${item.item_tipo}:${item.id}`)}
+              onChange={(event) => setSelecionados((atuais) => event.target.checked
+                ? [...atuais, `${item.item_tipo}:${item.id}`]
+                : atuais.filter((chave) => chave !== `${item.item_tipo}:${item.id}`))} />}
+          {identificacao}
+          <span className="text-[var(--c-muted)]">{quantidade(item.quantidade)} {unidade}</span>
+          {acoes}
+        </div>
+      )}
+      {escopo === 'ITEM' && chavesPendentes.has(`${item.item_tipo}:${item.id}`) && podeDecidir && <input className="input mt-2 w-full"
+        value={motivos[`${item.item_tipo}-${item.id}`] || ''}
+        onChange={(event) => setMotivos((atuais) => ({ ...atuais, [`${item.item_tipo}-${item.id}`]: event.target.value }))}
+        placeholder="Motivo para rejeição (obrigatório ao rejeitar)" />}
+      {cotacaoIniciada && itemAprovado && <p className="mt-1 text-xs text-[var(--c-muted)]">Em cotação ou pedido: comente no card da etapa correspondente.</p>}
+      {item.especificacao && <p className="mt-1 text-sm text-[var(--c-muted)]">{item.especificacao}</p>}
+    </div>;
+  };
 
   return <div className="space-y-3">
     <Avisos avisos={avisos} aoFechar={fechar} />
@@ -300,6 +442,14 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
     </BlocoConteudo>
     <BlocoConteudo titulo="Itens aprovados" contagem={`${aprovados.length} item(ns)`} recolhivel>
       <div className="space-y-2">
+        {aprovados.length > 0 && <div
+          className="hidden grid-cols-[minmax(0,1fr)_9rem_9rem_auto] gap-2 px-3 text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:grid"
+          aria-hidden="true">
+          <span>Item</span>
+          <span>Qtd. solicitada</span>
+          <span>Qtd. aprovada</span>
+          <span className="text-right">Status e ações</span>
+        </div>}
         {aprovados.length ? aprovados.map((item) => linhaItem(item, 'ITEM_APROVADO')) : <p className="text-sm text-[var(--c-muted)]">Aprovações do GEO aparecerão aqui.</p>}
       </div>
       {podeDecidir && dados.revisao_geo_pendente && pendentes.length > 0 &&

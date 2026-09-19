@@ -322,6 +322,7 @@ export default function Timeline({
           }
 
           const acaoLabel = {
+            JUSTIFICATIVA_REGISTRADA: 'Justificativa registrada',
             NUMERO_PEDIDO_ATUALIZADO: 'Número do pedido atualizado',
             PEDIDO_COMPRA_GERADO: 'Pedido de compra gerado',
             PEDIDO_COMPRA_STATUS_ALTERADO: 'Status do pedido de compra alterado',

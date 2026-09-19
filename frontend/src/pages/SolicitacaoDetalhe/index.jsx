@@ -148,6 +148,45 @@ function lerMetadataHistorico(historico) {
   }
 }
 
+function montarHistoricosComJustificativa(solicitacao) {
+  const historicos = Array.isArray(solicitacao?.historicos)
+    ? solicitacao.historicos
+    : [];
+  const justificativa = String(solicitacao?.justificativa || '').trim();
+  if (!justificativa) return historicos;
+
+  const jaRegistrada = historicos.some((historico) => (
+    String(historico?.acao || '').trim().toUpperCase() === 'JUSTIFICATIVA_REGISTRADA'
+  ));
+  if (jaRegistrada) return historicos;
+
+  // Compatibilidade com solicitações abertas antes de a justificativa ganhar evento próprio.
+  // O valor já existe na solicitação: a linha virtual muda apenas o local de leitura e evita
+  // exigir migration ou duplicar registros no banco para todo o acervo anterior.
+  const criacao = historicos.find((historico) => (
+    ['SOLICITACAO_CRIADA', 'CRIADA'].includes(String(historico?.acao || '').trim().toUpperCase())
+  ));
+  const instanteBase = new Date(criacao?.createdAt || solicitacao?.createdAt || 0).getTime();
+  const createdAt = Number.isFinite(instanteBase) && instanteBase > 0
+    ? new Date(instanteBase + 1).toISOString()
+    : solicitacao?.createdAt;
+
+  return [
+    ...historicos,
+    {
+      id: -Math.abs(Number(solicitacao?.id) || 1),
+      solicitacao_id: solicitacao?.id,
+      usuario_responsavel_id: criacao?.usuario_responsavel_id || solicitacao?.criado_por || null,
+      usuario: criacao?.usuario || solicitacao?.criador || null,
+      setor: criacao?.setor || solicitacao?.area_responsavel || null,
+      acao: 'JUSTIFICATIVA_REGISTRADA',
+      descricao: `Justificativa: ${justificativa}`,
+      createdAt,
+      metadata: JSON.stringify({ origem: 'SOLICITACAO_LEGADA' })
+    }
+  ];
+}
+
 function formatarNumeroEntrada(valor) {
   if (valor === null || valor === undefined || valor === '') return '';
   return String(valor);
@@ -1213,14 +1252,29 @@ export default function SolicitacaoDetalhe() {
     return [{ id: historico.id, nome: historico.descricao || 'Boleto', caminho: metadata.caminho, tipo: metadata.tipo_documento }];
   });
   const linhasPagamentoCompraDireta = isCompraDiretaSolicitacao ? [
-    {
-      id: 'compra', tipo: 'Compra', credor: solicitacao.parceiro?.nome || '-',
-      formas: formasCompraDireta.map((forma) => `${forma.nome || forma.codigo || `#${forma.id}`}${forma.valor != null ? ` · ${formatarMoedaLocal(forma.valor)}` : ''}`).join(' | ') || '-',
-      favorecido: solicitacao.favorecido?.nome || '-',
+    ...(formasCompraDireta.length ? formasCompraDireta.map((forma) => {
+      const formaTexto = normalizarTextoBusca(`${forma.nome || ''} ${forma.codigo || ''}`);
+      const boleto = Boolean(forma.boleto || forma.gera_boleto || formaTexto.includes('boleto'));
+      const pix = formaTexto.includes('pix');
+      return {
+        id: `compra-${forma.id}`,
+        tipo: 'Compra',
+        credor: solicitacao.parceiro?.nome || '-',
+        formas: `${forma.nome || forma.codigo || `#${forma.id}`}${forma.valor != null ? ` · ${formatarMoedaLocal(forma.valor)}` : ''}`,
+        favorecido: boleto ? '-' : forma.favorecido_nome || solicitacao.favorecido?.nome || '-',
+        chave: pix ? forma.chave_pix || solicitacao.favorecido_chave_pix || '-' : '-',
+        dados: !boleto && !pix
+          ? forma.dados_pagamento || solicitacao.compra_direta?.dados_pagamento || metadataCriacaoCompraDireta.dados_pagamento || '-'
+          : '-',
+        boletos: boleto ? boletosCompraDireta.filter((item) => item.tipo === 'BOLETO') : []
+      };
+    }) : [{
+      id: 'compra-legado', tipo: 'Compra', credor: solicitacao.parceiro?.nome || '-',
+      formas: '-', favorecido: solicitacao.favorecido?.nome || '-',
       chave: solicitacao.favorecido_chave_pix || '-',
       dados: solicitacao.compra_direta?.dados_pagamento || metadataCriacaoCompraDireta.dados_pagamento || '-',
       boletos: boletosCompraDireta.filter((item) => item.tipo === 'BOLETO')
-    },
+    }]),
     ...(String(solicitacao.compra_direta?.frete_tipo || '').toUpperCase() === 'TERCEIRO' ? [{
       id: 'frete', tipo: 'Frete a terceiro',
       credor: solicitacao.compra_direta?.freteCredor?.nome || '-',
@@ -1473,7 +1527,13 @@ export default function SolicitacaoDetalhe() {
             colunas={[
               {
                 id: 'item', titulo: 'Item', tipo: 'identidade', noCard: 'titulo',
-                render: (item) => <span className="font-medium">{item.descricao}</span>
+                render: (item) => <span className="flex flex-wrap items-center gap-2 font-medium">
+                  <span>{item.descricao}</span>
+                  {item.item_tipo === 'MANUAL' && <span
+                    className="rounded-full border border-[var(--sem-warning-border)] bg-[var(--sem-warning-bg)] px-2 py-1 text-xs font-semibold text-[var(--sem-warning)]">
+                    Item manual
+                  </span>}
+                </span>
               },
               {
                 id: 'quantidade', titulo: 'Quantidade', tipo: 'numero',
@@ -1490,6 +1550,7 @@ export default function SolicitacaoDetalhe() {
             ]}
             itens={montarItensCompraDireta()}
             getId={(item) => `${item.item_tipo}-${item.id}`}
+            urgencia={(item) => item.item_tipo === 'MANUAL' ? 'warning' : null}
             acoesLinha={podeGerenciarItensCompra ? (item) => (
               <button type="button" className="btn btn-outline btn-sm"
                 onClick={() => abrirGerenciamentoItensCompra(item)} disabled={carregandoCompraDireta}>
@@ -1576,7 +1637,7 @@ export default function SolicitacaoDetalhe() {
       <Timeline
         ordem={historicoOrdem}
         aoMudarOrdem={definirOrdemHistorico}
-        historicos={solicitacao.historicos || []}
+        historicos={montarHistoricosComJustificativa(solicitacao)}
         canRemoveAnexo={podeInteragirSolicitacao && canDeleteSolicitacaoAnexo(user)}
         canRemoveComentario={podeInteragirSolicitacao && String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN'}
         onAnexoRemovido={aoRecarregarSilencioso}

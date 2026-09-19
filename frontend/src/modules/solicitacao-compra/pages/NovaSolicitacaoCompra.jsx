@@ -128,6 +128,24 @@ function formatarFormaPagamento(forma) {
   return forma.nome || forma.codigo || `Forma ${forma.id}`;
 }
 
+function criarDetalheFormaPagamento(detalhe = {}) {
+  const favorecido = detalhe?.favorecido && typeof detalhe.favorecido === 'object'
+    ? detalhe.favorecido
+    : detalhe?.favorecido_id
+      ? {
+          id: detalhe.favorecido_id,
+          nome: detalhe.favorecido_nome || 'Favorecido selecionado',
+          cpf_cnpj: detalhe.favorecido_cpf_cnpj || ''
+        }
+      : null;
+  return {
+    usar_credor_como_favorecido: Boolean(detalhe?.usar_credor_como_favorecido),
+    favorecido,
+    chave_pix: String(detalhe?.chave_pix || detalhe?.favorecido_chave_pix || ''),
+    dados_pagamento: String(detalhe?.dados_pagamento || '')
+  };
+}
+
 function criarNovoCredorPadrao() {
   return {
     cpf_cnpj: '',
@@ -261,6 +279,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [formaPagamentoIds, setFormaPagamentoIds] = useState([]);
   const [valoresFormaPagamento, setValoresFormaPagamento] = useState({});
+  const [detalhesFormaPagamento, setDetalhesFormaPagamento] = useState({});
   const [parceiroId, setParceiroId] = useState('');
   const [parceiroBusca, setParceiroBusca] = useState('');
   const [favorecidoSelecionado, setFavorecidoSelecionado] = useState(null);
@@ -481,6 +500,8 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     setFreteParceiros([]);
     setAnexosCabecalho([]);
     setFormaPagamentoIds([]);
+    setValoresFormaPagamento({});
+    setDetalhesFormaPagamento({});
     setParceiroId('');
     setParceiroBusca('');
     setFavorecidoSelecionado(null);
@@ -615,6 +636,37 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       );
       setValoresFormaPagamento(payload.valores_forma_pagamento && typeof payload.valores_forma_pagamento === 'object'
         ? payload.valores_forma_pagamento : {});
+      const detalhesSalvos = payload.detalhes_forma_pagamento && typeof payload.detalhes_forma_pagamento === 'object'
+        ? payload.detalhes_forma_pagamento
+        : {};
+      const formasSalvas = Array.isArray(payload.formas_pagamento)
+        ? payload.formas_pagamento
+        : Array.isArray(dados?.resumo?.formas_pagamento) ? dados.resumo.formas_pagamento : [];
+      setDetalhesFormaPagamento(Object.fromEntries(
+        (Array.isArray(payload.forma_pagamento_ids) ? payload.forma_pagamento_ids : [])
+          .map((formaId) => {
+            const id = String(formaId);
+            const formaSalva = formasSalvas.find((forma) => String(forma?.id) === id) || {};
+            const detalheSalvo = detalhesSalvos[id] || formaSalva;
+            const favorecidoLegado = payload.favorecido_id
+              ? (dados?.resumo?.favorecido || {
+                  id: payload.favorecido_id,
+                  nome: dados?.resumo?.favorecido_nome || 'Favorecido selecionado'
+                })
+              : null;
+            return [id, criarDetalheFormaPagamento({
+              ...detalheSalvo,
+              favorecido: detalheSalvo?.favorecido || favorecidoLegado,
+              favorecido_id: detalheSalvo?.favorecido_id || favorecidoLegado?.id,
+              favorecido_chave_pix: detalheSalvo?.chave_pix || payload.favorecido_chave_pix,
+              dados_pagamento: detalheSalvo?.dados_pagamento || payload.dados_pagamento,
+              usar_credor_como_favorecido: Boolean(
+                (detalheSalvo?.favorecido_id || favorecidoLegado?.id)
+                && String(detalheSalvo?.favorecido_id || favorecidoLegado?.id) === String(payload.parceiro_id)
+              )
+            })];
+          })
+      ));
       setParceiroId(payload.parceiro_id ? String(payload.parceiro_id) : '');
       if (dados?.resumo?.credor_nome) {
         setParceiroBusca(dados.resumo.credor_nome);
@@ -697,6 +749,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           anexos_cabecalho: anexosCabecalho,
           forma_pagamento_ids: formaPagamentoIds,
           valores_forma_pagamento: valoresFormaPagamento,
+          detalhes_forma_pagamento: detalhesFormaPagamento,
           parceiro_id: parceiroId || null,
           favorecido_id: favorecidoSelecionado?.id || null,
           favorecido_chave_pix: favorecidoChavePix.trim() || null,
@@ -728,6 +781,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     anexosCabecalho,
     areaResponsavelContexto,
     dadosPagamento,
+    detalhesFormaPagamento,
     descontoTotal,
     draftKey,
     formaPagamentoIds,
@@ -942,6 +996,14 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       setFavorecidoSelecionado(parceiro);
       setFavorecidoChavePix('');
     }
+    setDetalhesFormaPagamento((atual) => Object.fromEntries(
+      Object.entries(atual).map(([formaId, detalhe]) => [
+        formaId,
+        detalhe?.usar_credor_como_favorecido
+          ? { ...criarDetalheFormaPagamento(detalhe), favorecido: parceiro, chave_pix: '' }
+          : detalhe
+      ])
+    ));
     setParceiros((atual) => [
       parceiro,
       ...atual.filter((item) => Number(item.id) !== Number(parceiro.id))
@@ -1421,10 +1483,29 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   function alternarFormaPagamento(formaId) {
     const id = String(formaId);
     limparErroCampo('forma_pagamento');
-    setFormaPagamentoIds((atual) =>
-      atual.includes(id) ? atual.filter((item) => item !== id) : [...atual, id]
-    );
+    setFormaPagamentoIds((atual) => {
+      const selecionada = atual.includes(id);
+      if (!selecionada) {
+        setDetalhesFormaPagamento((detalhes) => ({
+          ...detalhes,
+          [id]: detalhes[id] || criarDetalheFormaPagamento()
+        }));
+      }
+      return selecionada ? atual.filter((item) => item !== id) : [...atual, id];
+    });
     setFormasPagamentoAberto(false);
+  }
+
+  function atualizarDetalheFormaPagamento(formaId, alteracoes) {
+    const id = String(formaId);
+    setDetalhesFormaPagamento((atual) => ({
+      ...atual,
+      [id]: {
+        ...criarDetalheFormaPagamento(atual[id]),
+        ...alteracoes
+      }
+    }));
+    limparErroCampo(`pagamento_forma_${id}`);
   }
 
   async function handleSelecionarAnexoCabecalho(file, tipoDocumento = 'NOTA_FISCAL_GUIA') {
@@ -1502,25 +1583,40 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       reprovarCampo('forma_pagamento', 'Aguarde o carregamento das formas de pagamento e confira a seleção.');
       return;
     }
-    if (compraDiretaExigeFavorecido && !favorecidoSelecionado?.id) {
-      reprovarCampo('favorecido', 'Selecione o favorecido deste pagamento.');
-      return;
-    }
-    if (compraDiretaExigeChavePix && !favorecidoChavePix.trim()) {
-      reprovarCampo('favorecido_chave_pix', 'Digite a chave PIX desta compra direta.');
-      return;
-    }
-
-    const formasPagamentoComValor = formasPagamentoSelecionadas.map((forma) => ({
-      id: Number(forma.id),
-      valor: formasPagamentoSelecionadas.length === 1
-        ? valorTotalCredorCompraDireta
-        : arredondarMoeda(parseValorMonetario(valoresFormaPagamento[String(forma.id)]))
-    }));
+    const formasPagamentoComValor = formasPagamentoSelecionadas.map((forma) => {
+      const detalhe = criarDetalheFormaPagamento(detalhesFormaPagamento[String(forma.id)]);
+      return {
+        id: Number(forma.id),
+        valor: formasPagamentoSelecionadas.length === 1
+          ? valorTotalCredorCompraDireta
+          : arredondarMoeda(parseValorMonetario(valoresFormaPagamento[String(forma.id)])),
+        favorecido_id: detalhe.favorecido?.id ? Number(detalhe.favorecido.id) : null,
+        chave_pix: detalhe.chave_pix.trim() || null,
+        dados_pagamento: detalhe.dados_pagamento.trim() || null
+      };
+    });
     if (modoCompraDireta && (formasPagamentoComValor.some((forma) => forma.valor <= 0)
       || arredondarMoeda(formasPagamentoComValor.reduce((soma, forma) => soma + forma.valor, 0)) !== valorTotalCredorCompraDireta)) {
       reprovarCampo('valores_forma_pagamento', 'Distribua o valor total do credor entre as formas selecionadas.');
       return;
+    }
+
+    for (const forma of formasPagamentoSelecionadas) {
+      if (formaPagamentoEhBoleto(forma)) continue;
+      const detalhe = criarDetalheFormaPagamento(detalhesFormaPagamento[String(forma.id)]);
+      const campoErro = `pagamento_forma_${forma.id}`;
+      if (!detalhe.favorecido?.id) {
+        reprovarCampo(campoErro, `Selecione o favorecido para ${formatarFormaPagamento(forma)}.`);
+        return;
+      }
+      if (formaPagamentoEhPix(forma) && !detalhe.chave_pix.trim()) {
+        reprovarCampo(campoErro, `Digite a chave PIX para ${formatarFormaPagamento(forma)}.`);
+        return;
+      }
+      if (!formaPagamentoEhPix(forma) && !detalhe.dados_pagamento.trim()) {
+        reprovarCampo(campoErro, `Informe os dados para pagamento por ${formatarFormaPagamento(forma)}.`);
+        return;
+      }
     }
 
     if (modoCompraDireta && compraDiretaTemBoleto && anexosBoletoCabecalho.length === 0) {
@@ -1632,17 +1728,26 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           apropriacao_id: apropriacoesItem[0]?.apropriacao_id || null
         };
       });
+      const primeiraFormaComFavorecido = formasPagamentoSelecionadas.find((forma) => !formaPagamentoEhBoleto(forma));
+      const primeiraFormaPix = formasPagamentoSelecionadas.find(formaPagamentoEhPix);
+      const detalheLegadoFavorecido = primeiraFormaComFavorecido
+        ? criarDetalheFormaPagamento(detalhesFormaPagamento[String(primeiraFormaComFavorecido.id)])
+        : criarDetalheFormaPagamento();
+      const detalheLegadoPix = primeiraFormaPix
+        ? criarDetalheFormaPagamento(detalhesFormaPagamento[String(primeiraFormaPix.id)])
+        : criarDetalheFormaPagamento();
 
       const payload = {
         obra_id: obraId,
         tipo_solicitacao_id: modoCompraDireta ? tipoSolicitacaoIdContexto || null : undefined,
         origem: modoCompraDireta ? 'COMPRA_DIRETA' : undefined,
         parceiro_id: modoCompraDireta ? parceiroId || null : undefined,
-        favorecido_id: compraDiretaExigeFavorecido ? Number(favorecidoSelecionado.id) : undefined,
-        favorecido_chave_pix: compraDiretaExigeChavePix ? favorecidoChavePix.trim() : undefined,
+        favorecido_id: detalheLegadoFavorecido.favorecido?.id
+          ? Number(detalheLegadoFavorecido.favorecido.id) : undefined,
+        favorecido_chave_pix: detalheLegadoPix.chave_pix.trim() || undefined,
         necessario_para: necessarioPara || null,
         observacoes: observacoes || null,
-        dados_pagamento: modoCompraDireta ? dadosPagamento || null : undefined,
+        dados_pagamento: modoCompraDireta ? detalheLegadoFavorecido.dados_pagamento || null : undefined,
         desconto_total: modoCompraDireta ? descontoCompraDireta : undefined,
         frete_tipo: modoCompraDireta ? freteTipo : undefined,
         frete_valor: modoCompraDireta && freteTipo !== 'SEM_FRETE' ? freteValorNumero : undefined,
@@ -1682,19 +1787,19 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         obra_codigo: obraSelecionada?.codigo || '',
         solicitante_nome: user?.nome || '',
         credor_nome: parceiroSelecionado ? formatarCredor(parceiroSelecionado) : parceiroBusca || '',
-        favorecido: compraDiretaExigeFavorecido ? {
-          id: favorecidoSelecionado.id,
-          nome: favorecidoSelecionado.nome,
-          cpf_cnpj: favorecidoSelecionado.cpf_cnpj || ''
+        favorecido: detalheLegadoFavorecido.favorecido ? {
+          id: detalheLegadoFavorecido.favorecido.id,
+          nome: detalheLegadoFavorecido.favorecido.nome,
+          cpf_cnpj: detalheLegadoFavorecido.favorecido.cpf_cnpj || ''
         } : null,
-        favorecido_nome: compraDiretaExigeFavorecido ? favorecidoSelecionado.nome : '',
+        favorecido_nome: detalheLegadoFavorecido.favorecido?.nome || '',
         formas_pagamento: modoCompraDireta
           ? formasPagamentoSelecionadas.map((forma) => ({
               id: forma.id,
               nome: formatarFormaPagamento(forma),
               codigo: forma.codigo || '',
               gera_boleto: Boolean(forma.gera_boleto),
-              valor: formasPagamentoComValor.find((item) => item.id === Number(forma.id))?.valor || 0
+              ...formasPagamentoComValor.find((item) => item.id === Number(forma.id))
             }))
           : [],
         valor_bruto: modoCompraDireta ? valorBrutoCompraDireta : null,
@@ -1713,7 +1818,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           : null,
         frete_favorecido_nome: modoCompraDireta && freteExigeFavorecido ? freteFavorecidoSelecionado.nome : '',
         valor_total: modoCompraDireta ? valorTotalSolicitacaoCompraDireta : null,
-        dados_pagamento: modoCompraDireta ? dadosPagamento || '' : '',
+        dados_pagamento: modoCompraDireta ? detalheLegadoFavorecido.dados_pagamento || '' : '',
         anexos_cabecalho: modoCompraDireta ? anexosCabecalho : [],
         itens: itensNormalizados.map((item) => ({
           ...item,
@@ -1890,29 +1995,6 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
             </div>
           )}
 
-          {modoCompraDireta && formasPagamentoSelecionadas.length > 0 && (
-            <div className="form-campo--linha grid gap-3 rounded-lg border border-[var(--c-border)] p-3 md:grid-cols-2">
-              <div className="md:col-span-2 text-sm font-semibold">Valor por forma de pagamento</div>
-              {formasPagamentoSelecionadas.map((forma) => (
-                <CampoForm key={forma.id} label={formatarFormaPagamento(forma)} obrigatorio>
-                  <input className="input input-moeda" inputMode="decimal"
-                    value={formasPagamentoSelecionadas.length === 1
-                      ? valorTotalCredorCompraDireta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-                      : valoresFormaPagamento[String(forma.id)] || ''}
-                    readOnly={formasPagamentoSelecionadas.length === 1}
-                    onChange={(event) => {
-                      setValoresFormaPagamento((atual) => ({ ...atual, [String(forma.id)]: event.target.value }));
-                      limparErroCampo('valores_forma_pagamento');
-                    }} />
-                </CampoForm>
-              ))}
-              <div className="md:col-span-2 text-xs text-[var(--c-muted)]">
-                Total do credor: {valorTotalCredorCompraDireta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-              </div>
-              <ErroCampo mensagem={errosCampo.valores_forma_pagamento} />
-            </div>
-          )}
-
           {modoCompraDireta && (
             <CampoForm label="Credor" linha erro={errosCampo.credor}>
               <div className="flex flex-wrap gap-2">
@@ -1929,6 +2011,14 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                         setFavorecidoSelecionado(null);
                         setFavorecidoChavePix('');
                       }
+                      setDetalhesFormaPagamento((atual) => Object.fromEntries(
+                        Object.entries(atual).map(([formaId, detalhe]) => [
+                          formaId,
+                          detalhe?.usar_credor_como_favorecido
+                            ? { ...criarDetalheFormaPagamento(detalhe), favorecido: null, chave_pix: '' }
+                            : detalhe
+                        ])
+                      ));
                       setAutocompleteCredorAberto(true);
                     }}
                     onFocus={() => setAutocompleteCredorAberto(true)}
@@ -2009,66 +2099,138 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
             </CampoForm>
           )}
 
-          {compraDiretaExigeFavorecido && (
-            <>
-              <label className="flex items-center gap-2 text-sm text-[var(--c-text)]">
-                <input
-                  type="checkbox"
-                  checked={usarCredorComoFavorecido}
-                  disabled={!parceiroId}
-                  onChange={(event) => {
-                    const marcado = event.target.checked;
-                    setUsarCredorComoFavorecido(marcado);
-                    setFavorecidoSelecionado(marcado
-                      ? (parceiroSelecionado || { id: parceiroId, nome: parceiroBusca })
-                      : null);
-                    setFavorecidoChavePix('');
-                    limparErroCampo('favorecido');
-                    limparErroCampo('favorecido_chave_pix');
-                  }}
-                />
-                Usar o credor como favorecido do pagamento
-              </label>
-              {!usarCredorComoFavorecido && (
-                <div className="form-group min-w-0">
-                  <ParceiroBuscaRemota
-                    label="Favorecido do pagamento"
-                    selecionado={favorecidoSelecionado}
-                    obrigatorio
-                    onSelecionar={(parceiro) => {
-                      setFavorecidoSelecionado(parceiro);
-                      setFavorecidoChavePix('');
-                      limparErroCampo('favorecido');
-                      limparErroCampo('favorecido_chave_pix');
-                    }}
-                  />
-                  <ErroCampo mensagem={errosCampo.favorecido} />
-                </div>
-              )}
-              {usarCredorComoFavorecido && favorecidoSelecionado && (
-                <p className="text-xs text-[var(--c-muted)]">
-                  Favorecido: {favorecidoSelecionado.nome || parceiroBusca}
-                </p>
-              )}
-              {compraDiretaExigeChavePix && <CampoForm
-                label="Chave PIX deste pagamento"
-                obrigatorio
-                erro={errosCampo.favorecido_chave_pix}
-                hint="Digite a chave confirmada para esta compra direta; ela não será copiada de outra solicitação."
-              >
-                <input
-                  className="input"
-                  value={favorecidoChavePix}
-                  maxLength={255}
-                  autoComplete="off"
-                  required
-                  onChange={(event) => {
-                    setFavorecidoChavePix(event.target.value);
-                    limparErroCampo('favorecido_chave_pix');
-                  }}
-                />
-              </CampoForm>}
-            </>
+          {modoCompraDireta && formasPagamentoSelecionadas.length > 0 && (
+            <div className="form-campo--linha overflow-hidden rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
+              <div className="hidden grid-cols-2 gap-4 border-b border-[var(--c-border)] bg-[var(--ui-surface-2)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:grid">
+                <span>Forma e valor</span>
+                <span>Como realizar o pagamento</span>
+              </div>
+              <div className="divide-y divide-[var(--c-border)]">
+                {formasPagamentoSelecionadas.map((forma) => {
+                  const formaId = String(forma.id);
+                  const detalhe = criarDetalheFormaPagamento(detalhesFormaPagamento[formaId]);
+                  const boleto = formaPagamentoEhBoleto(forma);
+                  const pix = formaPagamentoEhPix(forma);
+                  return (
+                    <section key={forma.id} className="grid gap-4 px-4 py-4 md:grid-cols-2">
+                      <div className="min-w-0 space-y-2">
+                        <div>
+                          <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:hidden">Forma e valor</span>
+                          <strong className="text-sm text-[var(--c-text)]">{formatarFormaPagamento(forma)}</strong>
+                        </div>
+                        <CampoForm label="Valor" obrigatorio erro={errosCampo.valores_forma_pagamento}>
+                          <input
+                            className="input input-moeda"
+                            inputMode="decimal"
+                            value={formasPagamentoSelecionadas.length === 1
+                              ? valorTotalCredorCompraDireta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                              : valoresFormaPagamento[formaId] || ''}
+                            readOnly={formasPagamentoSelecionadas.length === 1}
+                            onChange={(event) => {
+                              setValoresFormaPagamento((atual) => ({ ...atual, [formaId]: event.target.value }));
+                              limparErroCampo('valores_forma_pagamento');
+                            }}
+                          />
+                        </CampoForm>
+                      </div>
+
+                      <div className="min-w-0 space-y-3">
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:hidden">Como realizar o pagamento</span>
+                        {boleto ? (
+                          <div className="space-y-2">
+                            <p className="text-sm text-[var(--c-muted)]">Anexe o boleto que será usado nesta compra.</p>
+                            <label className={`btn btn-outline inline-flex w-fit cursor-pointer ${uploadingAnexoCabecalho ? 'pointer-events-none opacity-60' : ''}`}>
+                              <input
+                                type="file"
+                                className="hidden"
+                                accept={HEADER_ATTACHMENT_ACCEPT}
+                                disabled={uploadingAnexoCabecalho}
+                                onChange={(event) => {
+                                  const [file] = Array.from(event.target.files || []);
+                                  void handleSelecionarAnexoCabecalho(file, 'BOLETO');
+                                  event.target.value = '';
+                                }}
+                              />
+                              {uploadingAnexoCabecalho ? 'Enviando...' : 'Anexar boleto *'}
+                            </label>
+                            <span className="block text-xs text-[var(--c-muted)]">
+                              {anexosBoletoCabecalho.length} boleto(s) anexado(s).
+                            </span>
+                            <ErroCampo mensagem={errosCampo.boleto} />
+                          </div>
+                        ) : (
+                          <>
+                            <label className="flex items-center gap-2 text-sm text-[var(--c-text)]">
+                              <input
+                                type="checkbox"
+                                checked={detalhe.usar_credor_como_favorecido}
+                                disabled={!parceiroId}
+                                onChange={(event) => {
+                                  const marcado = event.target.checked;
+                                  atualizarDetalheFormaPagamento(formaId, {
+                                    usar_credor_como_favorecido: marcado,
+                                    favorecido: marcado
+                                      ? (parceiroSelecionado || { id: parceiroId, nome: parceiroBusca })
+                                      : null,
+                                    chave_pix: ''
+                                  });
+                                }}
+                              />
+                              Usar o credor como favorecido
+                            </label>
+                            {!detalhe.usar_credor_como_favorecido ? (
+                              <ParceiroBuscaRemota
+                                label="Favorecido do pagamento"
+                                selecionado={detalhe.favorecido}
+                                obrigatorio
+                                onSelecionar={(favorecido) => atualizarDetalheFormaPagamento(formaId, {
+                                  favorecido,
+                                  chave_pix: ''
+                                })}
+                              />
+                            ) : (
+                              <p className="text-xs text-[var(--c-muted)]">
+                                Favorecido: {detalhe.favorecido?.nome || parceiroBusca}
+                              </p>
+                            )}
+                            {pix ? (
+                              <CampoForm
+                                label="Chave PIX"
+                                obrigatorio
+                                hint="Digite a chave confirmada para esta solicitação."
+                              >
+                                <input
+                                  className="input"
+                                  value={detalhe.chave_pix}
+                                  maxLength={255}
+                                  autoComplete="off"
+                                  required
+                                  onChange={(event) => atualizarDetalheFormaPagamento(formaId, { chave_pix: event.target.value })}
+                                />
+                              </CampoForm>
+                            ) : (
+                              <CampoForm label="Dados para pagamento" obrigatorio>
+                                <textarea
+                                  className="input"
+                                  rows={3}
+                                  value={detalhe.dados_pagamento}
+                                  onChange={(event) => atualizarDetalheFormaPagamento(formaId, { dados_pagamento: event.target.value })}
+                                  placeholder="Informe banco, agência, conta ou orientações para o pagamento."
+                                />
+                              </CampoForm>
+                            )}
+                            <ErroCampo mensagem={errosCampo[`pagamento_forma_${formaId}`]} />
+                          </>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+              <div className="border-t border-[var(--c-border)] bg-[var(--ui-surface-2)] px-4 py-2 text-xs text-[var(--c-muted)]">
+                Total do credor: {valorTotalCredorCompraDireta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              </div>
+            </div>
           )}
 
           <CampoForm label="Observações da compra" tipo="observacao">
@@ -2081,17 +2243,6 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
             />
           </CampoForm>
 
-          {modoCompraDireta && (
-            <CampoForm label="Dados para pagamento">
-              <textarea
-                className="input"
-                rows={3}
-                value={dadosPagamento}
-                onChange={(event) => setDadosPagamento(event.target.value)}
-                placeholder="Informe linha digitável, PIX, banco/agência/conta ou orientacoes para o financeiro."
-              />
-            </CampoForm>
-          )}
         </FormSecao>
       </BlocoConteudo>
 
@@ -2338,26 +2489,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                   {uploadingAnexoCabecalho ? 'Enviando...' : 'Anexar arquivos'}
                 </label>
                 </div>
-                {compraDiretaTemBoleto && (
-                  <div className="space-y-2">
-                    <span className="block text-xs text-[var(--c-muted)]">Boleto da compra</span>
-                  <label className={`btn btn-outline w-fit cursor-pointer ${uploadingAnexoCabecalho ? 'pointer-events-none opacity-60' : ''}`}>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept={HEADER_ATTACHMENT_ACCEPT}
-                      onChange={(event) => {
-                        const [file] = Array.from(event.target.files || []);
-                        void handleSelecionarAnexoCabecalho(file, 'BOLETO');
-                        event.target.value = '';
-                      }}
-                    />
-                    {uploadingAnexoCabecalho ? 'Enviando...' : 'Anexar boleto *'}
-                  </label>
-                  </div>
-                )}
               </div>
-              <ErroCampo mensagem={errosCampo.boleto} />
 
               {anexosCabecalho.length > 0 ? (
                 <div className="mt-3 grid gap-2">

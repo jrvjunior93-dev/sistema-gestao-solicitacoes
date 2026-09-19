@@ -4104,6 +4104,7 @@ module.exports = {
         : 0;
 
       let formasPagamentoCompraDireta = [];
+      let detalhesPagamentoCompraDireta = [];
       let favorecidoCompraDireta = null;
       let chavePixCompraDireta = null;
       if (compraDireta) {
@@ -4142,26 +4143,6 @@ module.exports = {
           }
         }
 
-        if (formasPagamentoCompraDireta.some((forma) => !isFormaPagamentoBoleto(forma))) {
-          if (!favorecido_id) {
-            await transaction.rollback();
-            return res.status(400).json({ error: 'Selecione o favorecido desta compra direta.' });
-          }
-          if (formasPagamentoCompraDireta.some(isFormaPagamentoPix)) {
-            chavePixCompraDireta = String(favorecido_chave_pix || '').trim();
-          }
-          if (formasPagamentoCompraDireta.some(isFormaPagamentoPix) && !chavePixCompraDireta) {
-            await transaction.rollback();
-            return res.status(400).json({ error: 'Digite a chave PIX desta compra direta.' });
-          }
-          favorecidoCompraDireta = await Parceiro.findByPk(favorecido_id, {
-            attributes: ['id', 'nome', 'cpf_cnpj', 'ativo'], transaction
-          });
-          if (!favorecidoCompraDireta || favorecidoCompraDireta.ativo === false) {
-            await transaction.rollback();
-            return res.status(400).json({ error: 'Selecione um favorecido ativo para a compra direta.' });
-          }
-        }
         if (formas_pagamento) {
           const idsInformados = formas_pagamento.map((forma) => Number(forma.id));
           const totalInformado = arredondarMoeda(formas_pagamento.reduce((soma, forma) => soma + Number(forma.valor || 0), 0));
@@ -4172,6 +4153,57 @@ module.exports = {
             await transaction.rollback();
             return res.status(400).json({ error: 'Distribua o valor total da compra entre as formas de pagamento selecionadas.' });
           }
+        }
+
+        const payloadPorForma = new Map(
+          (Array.isArray(formas_pagamento) ? formas_pagamento : [])
+            .map((item) => [Number(item.id), item])
+        );
+        const favorecidosPorId = new Map();
+        for (const forma of formasPagamentoCompraDireta) {
+          const payloadForma = payloadPorForma.get(Number(forma.id)) || {};
+          if (isFormaPagamentoBoleto(forma)) {
+            detalhesPagamentoCompraDireta.push({ forma_id: forma.id, boleto: true });
+            continue;
+          }
+
+          const favorecidoFormaId = Number(payloadForma.favorecido_id || favorecido_id || 0);
+          if (!favorecidoFormaId) {
+            await transaction.rollback();
+            return res.status(400).json({ error: `Selecione o favorecido para ${formatarFormaPagamentoResumo(forma)}.` });
+          }
+          let favorecidoForma = favorecidosPorId.get(favorecidoFormaId);
+          if (!favorecidoForma) {
+            favorecidoForma = await Parceiro.findByPk(favorecidoFormaId, {
+              attributes: ['id', 'nome', 'cpf_cnpj', 'ativo'], transaction
+            });
+            if (!favorecidoForma || favorecidoForma.ativo === false) {
+              await transaction.rollback();
+              return res.status(400).json({ error: `Selecione um favorecido ativo para ${formatarFormaPagamentoResumo(forma)}.` });
+            }
+            favorecidosPorId.set(favorecidoFormaId, favorecidoForma);
+          }
+
+          const chavePixForma = String(payloadForma.chave_pix || favorecido_chave_pix || '').trim();
+          const dadosPagamentoForma = String(payloadForma.dados_pagamento || dados_pagamento || '').trim();
+          if (isFormaPagamentoPix(forma) && !chavePixForma) {
+            await transaction.rollback();
+            return res.status(400).json({ error: `Digite a chave PIX para ${formatarFormaPagamentoResumo(forma)}.` });
+          }
+          if (!isFormaPagamentoPix(forma) && !dadosPagamentoForma) {
+            await transaction.rollback();
+            return res.status(400).json({ error: `Informe os dados para pagamento por ${formatarFormaPagamentoResumo(forma)}.` });
+          }
+
+          detalhesPagamentoCompraDireta.push({
+            forma_id: forma.id,
+            favorecido: favorecidoForma,
+            chave_pix: isFormaPagamentoPix(forma) ? chavePixForma : null,
+            dados_pagamento: isFormaPagamentoPix(forma) ? null : dadosPagamentoForma,
+            boleto: false
+          });
+          if (!favorecidoCompraDireta) favorecidoCompraDireta = favorecidoForma;
+          if (!chavePixCompraDireta && isFormaPagamentoPix(forma)) chavePixCompraDireta = chavePixForma;
         }
       }
 
@@ -4227,7 +4259,13 @@ module.exports = {
             nome: forma.nome,
             codigo: forma.codigo,
             valor: formas_pagamento?.find((item) => Number(item.id) === Number(forma.id))?.valor
-              ?? (formasPagamentoCompraDireta.length === 1 ? valorTotalFornecedorCompraDireta : null)
+              ?? (formasPagamentoCompraDireta.length === 1 ? valorTotalFornecedorCompraDireta : null),
+            favorecido_id: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.id || null,
+            favorecido_nome: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.nome || null,
+            favorecido_cpf_cnpj: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.cpf_cnpj || null,
+            chave_pix: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.chave_pix || null,
+            dados_pagamento: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.dados_pagamento || null,
+            boleto: Boolean(detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.boleto)
           })) : null,
           dados_pagamento: compraDireta ? String(dados_pagamento || '').trim() || null : null,
           frete_forma_pagamento_id: freteTipoCompraDireta === 'TERCEIRO' ? freteFormaPagamentoCompraDireta?.id || null : null,
@@ -4305,7 +4343,13 @@ module.exports = {
         codigo: forma.codigo || null,
         gera_boleto: Boolean(forma.gera_boleto) || isFormaPagamentoBoleto(forma),
         valor: formas_pagamento?.find((item) => Number(item.id) === Number(forma.id))?.valor
-          ?? (formasPagamentoCompraDireta.length === 1 ? valorTotalFornecedorCompraDireta : null)
+          ?? (formasPagamentoCompraDireta.length === 1 ? valorTotalFornecedorCompraDireta : null),
+        favorecido_id: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.id || null,
+        favorecido_nome: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.nome || null,
+        favorecido_cpf_cnpj: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.favorecido?.cpf_cnpj || null,
+        chave_pix: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.chave_pix || null,
+        dados_pagamento: detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.dados_pagamento || null,
+        boleto: Boolean(detalhesPagamentoCompraDireta.find((item) => Number(item.forma_id) === Number(forma.id))?.boleto)
       }));
 
       const descricao = [

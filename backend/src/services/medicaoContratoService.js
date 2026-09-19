@@ -5,6 +5,7 @@ const { sequelize, Anexo, Contrato, ContratoMedicao, ContratoParcela, FormaPagam
 const { codigoDoSetor, setorParaHistorico } = require('../utils/codigoDoSetor');
 const { paraCentavos, somenteData, formatarISO } = require('./contratoParcelasService');
 const { formaPagamentoEhBoleto, formaPagamentoEhPix, listarFormasDaMedicao } = require('./formasPagamentoMedicaoService');
+const { findSetorByCapability, resolveSetorPersistenciaValue } = require('./setorCapabilityService');
 
 /**
  * Medicao de contrato do fluxo novo (wireframe 2).
@@ -29,8 +30,8 @@ const { formaPagamentoEhBoleto, formaPagamentoEhPix, listarFormasDaMedicao } = r
 // parcela e acertado para o que foi realmente pago e a diferenca ja foi redistribuida nas
 // ultimas parcelas — mexer depois desfaria essa redistribuicao. EXCLUIDO tambem nao se edita:
 // o valor dele volta para a parcela final por outro caminho.
-// Para onde a medicao aprovada vai. Codigo do setor, nao nome: a resolucao por nome e exata e
-// ha setor com espaco no fim do nome neste banco — armadilha ja registrada.
+// Codigos de recuo usados nos historicos e no envio da medicao para conferencia. O destino da
+// aprovacao e resolvido pela capacidade `eh_setor_obra`, sem depender do nome cadastrado.
 const SETOR_FINANCEIRO = 'FINANCEIRO';
 const SETOR_GERENCIA_PROCESSOS = 'GEO';
 
@@ -1495,14 +1496,15 @@ async function atualizarMedicaoDoContrato(medicaoId, { itens, usuario } = {}) {
 }
 
 /**
- * A Gerencia de Processos APROVA a medicao e ela vai ao Financeiro (item 25 do lote de 23/08).
+ * A Gerencia de Processos APROVA a medicao e devolve a solicitacao para a Obra.
  *
  * O caminho que o cliente descreveu: a Obra solicita a medicao, a Gerencia aprova no botao, e a
  * solicitacao vai para LIBERADO — o titulo esta liberado para pagamento. Ate aqui esse status era
  * posto A MAO (o historico da SOL-5116 mostra isso).
  *
  * Nao cria nem move dinheiro: os titulos ja nasceram na aprovacao do CONTRATO. O que esta aprovacao
- * faz e liberar o pagamento e passar a bola ao Financeiro.
+ * faz e liberar os titulos medidos e devolver a solicitacao para acompanhamento da Obra. O
+ * Financeiro somente assume quando um titulo for efetivamente enviado para a fila de pagamentos.
  */
 async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
   const { userHasStrictAreaPermission } = require('./authorizationService');
@@ -1622,21 +1624,51 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
       transaction
     });
 
-    // A aprovacao libera os titulos, mas a solicitacao permanece no GEO. O Financeiro somente
+    // A aprovacao libera os titulos e devolve a solicitacao para a Obra. O Financeiro somente
     // assume a solicitacao quando um titulo for efetivamente enviado para a fila de pagamentos.
     if (contrato?.solicitacao_id) {
-      const solicitacao = await Solicitacao.findByPk(contrato.solicitacao_id, { transaction });
+      const solicitacao = await Solicitacao.findByPk(contrato.solicitacao_id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
       if (solicitacao) {
+        const setorObraModel = await findSetorByCapability('eh_setor_obra', {
+          transaction,
+          attributes: ['id', 'codigo', 'nome']
+        });
+        const setorObra = resolveSetorPersistenciaValue(setorObraModel, 'OBRA');
+        const setorAnterior = solicitacao.area_responsavel || null;
+
+        if (String(setorAnterior || '').trim().toUpperCase() !== String(setorObra).trim().toUpperCase()) {
+          await solicitacao.update({ area_responsavel: setorObra }, { transaction });
+          await Historico.create({
+            solicitacao_id: solicitacao.id,
+            medicao_id: medicao.id,
+            usuario_responsavel_id: usuario?.id || null,
+            setor: setorObra,
+            acao: 'ENVIADA_SETOR',
+            descricao: `De ${setorAnterior || '-'} para ${setorObra}`,
+            status_anterior: solicitacao.status_global,
+            status_novo: solicitacao.status_global,
+            metadata: JSON.stringify({
+              origem: 'APROVACAO_MEDICAO',
+              medicao_id: medicao.id,
+              contrato_id: contrato.id
+            })
+          }, { transaction });
+        }
+
         await Historico.create({
           solicitacao_id: solicitacao.id,
           medicao_id: medicao.id,
           usuario_responsavel_id: usuario?.id || null,
-          setor: codigoDoSetor(usuario) || solicitacao.area_responsavel || '-',
+          setor: codigoDoSetor(usuario) || setorObra,
           acao: 'MEDICAO_APROVADA',
-          descricao: `Medicao ${medicao.numero} do contrato ${contrato.codigo} aprovada; titulos liberados e solicitacao mantida no GEO.`,
+          descricao: `Medicao ${medicao.numero} do contrato ${contrato.codigo} aprovada; titulos liberados e solicitacao devolvida para ${setorObra}.`,
           metadata: JSON.stringify({
             medicao_id: medicao.id,
             valor_total: Number(medicao.valor_total),
+            setor_destino: setorObra,
             movimentacao_financeiro: 'SOMENTE_AO_ENFILEIRAR_TITULO'
           })
         }, { transaction });
@@ -1655,7 +1687,7 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
 
     return {
       medicao: { id: medicao.id, numero: medicao.numero, aprovada_em: medicao.aprovada_em },
-      mantida_em: 'GEO'
+      enviada_para: 'OBRA'
     };
   });
 }

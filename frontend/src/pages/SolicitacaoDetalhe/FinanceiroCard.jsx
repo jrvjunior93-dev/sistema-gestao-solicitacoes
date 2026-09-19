@@ -521,9 +521,14 @@ export function buildDefaultForm(solicitacao) {
         '',
         {
           forma_pagamento_id: String(forma.id),
+          favorecido_pagamento_id: forma.favorecido_id
+            || solicitacao?.favorecido_id
+            || solicitacao?.favorecido?.id
+            || null,
           observacoes: [
-            solicitacao?.favorecido?.nome ? `Favorecido: ${solicitacao.favorecido.nome}` : '',
-            solicitacao?.compra_direta?.dados_pagamento || ''
+            (forma.favorecido_nome || solicitacao?.favorecido?.nome)
+              ? `Favorecido: ${forma.favorecido_nome || solicitacao.favorecido.nome}` : '',
+            forma.dados_pagamento || solicitacao?.compra_direta?.dados_pagamento || ''
           ].filter(Boolean).join('\n')
         }
       ))
@@ -1413,15 +1418,26 @@ export default function FinanceiroCard({
         ? selectedPartner
         : null;
       const ehFrete = compraDiretaSolicitacao && pagamento.origem_frete;
-      const favorecidoDaLinhaId = ehFrete
-        ? solicitacao?.compra_direta?.frete_favorecido_id : favorecidoId;
-      const favorecidoDaLinha = ehFrete
-        ? solicitacao?.compra_direta?.freteFavorecido : solicitacao?.favorecido;
       const formaDaLinha = ehFrete
         ? (solicitacao?.compra_direta?.freteFormaPagamento
           || formasPagamento.find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id)))
         : (getFormasCompraDireta(solicitacao).find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id))
           || formasPagamento.find((forma) => String(forma.id) === String(pagamento.forma_pagamento_id)));
+      const favorecidoDaLinhaId = ehFrete
+        ? solicitacao?.compra_direta?.frete_favorecido_id
+        : formaDaLinha?.favorecido_id || favorecidoId;
+      const favorecidoDaLinha = ehFrete
+        ? solicitacao?.compra_direta?.freteFavorecido
+        : formaDaLinha?.favorecido_id
+          ? {
+              id: formaDaLinha.favorecido_id,
+              nome: formaDaLinha.favorecido_nome || '',
+              cpf_cnpj: formaDaLinha.favorecido_cpf_cnpj || ''
+            }
+          : solicitacao?.favorecido;
+      const chavePixDaLinha = ehFrete
+        ? solicitacao?.compra_direta?.frete_favorecido_chave_pix
+        : formaDaLinha?.chave_pix || solicitacao?.favorecido_chave_pix;
       const usarChaveSolicitacao = (ehFrete || Boolean(
         credorOriginalId && String(credorOriginalId) === String(parceiroId)
       )) && (!compraDiretaSolicitacao || isFormaPix(formaDaLinha));
@@ -1449,6 +1465,7 @@ export default function FinanceiroCard({
         beneficiaries: Array.isArray(beneficiaries) ? beneficiaries : [],
         favorecidoCompleto,
         ehFrete,
+        chavePixDaLinha,
         usarChaveSolicitacao,
         usarFavorecidoSolicitacao
       };
@@ -1472,11 +1489,15 @@ export default function FinanceiroCard({
               ? {
                   ...solicitacao,
                   favorecido: resultado.favorecidoCompleto || solicitacao?.compra_direta?.freteFavorecido || null,
-                  favorecido_chave_pix: solicitacao?.compra_direta?.frete_favorecido_chave_pix || null
+                  favorecido_chave_pix: resultado.chavePixDaLinha || null
                 }
               : resultado.favorecidoCompleto
-                ? { ...solicitacao, favorecido: resultado.favorecidoCompleto }
-                : solicitacao;
+                ? {
+                    ...solicitacao,
+                    favorecido: resultado.favorecidoCompleto,
+                    favorecido_chave_pix: resultado.chavePixDaLinha || null
+                  }
+                : { ...solicitacao, favorecido_chave_pix: resultado.chavePixDaLinha || null };
             return {
               ...pagamento,
               dados_pagamento: buildPaymentDraftForTitle({
@@ -1509,6 +1530,7 @@ export default function FinanceiroCard({
     solicitacao?.favorecido?.cpf_cnpj,
     solicitacao?.favorecido_id,
     solicitacao?.favorecido_chave_pix,
+    solicitacao?.compra_direta?.formas_pagamento_json,
     solicitacao?.compra_direta?.frete_favorecido_id,
     solicitacao?.compra_direta?.frete_favorecido_chave_pix,
     compraDiretaSolicitacao

@@ -286,6 +286,13 @@ export async function comentarEtapaCompraSolicitacao(solicitacaoId, data) {
   return handleJsonResponse(response, 'Erro ao comentar etapa da compra');
 }
 
+export async function marcarComentariosEtapaCompraComoLidos(solicitacaoId, data) {
+  const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/compra-etapas/comentarios/leitura`, {
+    method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)
+  });
+  return handleJsonResponse(response, 'Erro ao registrar leitura dos comentários');
+}
+
 export async function receberItemCompraSolicitacao(solicitacaoId, pedidoId, itemId, data) {
   const response = await fetch(`${API_URL}/solicitacoes/${solicitacaoId}/pedidos-compra/${pedidoId}/itens/${itemId}/recebimentos`, {
     method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(data)

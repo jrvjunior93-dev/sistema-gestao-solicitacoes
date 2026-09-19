@@ -120,13 +120,17 @@ function run() {
   });
   assert.deepStrictEqual(pagamentosComValor.formas_pagamento, [{ id: 2, valor: 75 }, { id: 3, valor: 25 }]);
   includesAll(controller, [
-    'formasPagamentoCompraDireta.some((forma) => !isFormaPagamentoBoleto(forma))',
+    'for (const forma of formasPagamentoCompraDireta)',
+    'const favorecidoFormaId = Number(payloadForma.favorecido_id || favorecido_id || 0)',
+    'Digite a chave PIX para ${formatarFormaPagamentoResumo(forma)}',
+    'Informe os dados para pagamento por ${formatarFormaPagamentoResumo(forma)}',
     'favorecido_id: compraDireta ? favorecidoCompraDireta?.id || null : null',
     'favorecido_chave_pix: compraDireta ? chavePixCompraDireta : null'
   ], 'favorecido por compra direta');
   includesAll(novaCompra, [
-    'Usar o credor como favorecido do pagamento',
-    'Chave PIX deste pagamento',
+    'Usar o credor como favorecido',
+    'label="Chave PIX"',
+    'label="Dados para pagamento"',
     'setFavorecidoChavePix(\'\')'
   ], 'favorecido e chave no formulário');
   includesAll(financeiro, [
