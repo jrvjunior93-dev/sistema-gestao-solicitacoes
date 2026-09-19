@@ -1178,9 +1178,9 @@ async function criarContrato(dados, { usuarioId } = {}) {
  * Ate a aprovacao, a parcela vive so em contrato_parcelas e nao alcanca nenhuma das 27
  * rotas financeiras (ver MAPA-IMPACTO-PARCELAS.md).
  *
- * Permissao ESTRITA: `contratos.aprovacao.aprovar` e exigida inclusive de SUPERADMIN e
- * ADMINISTRADOR, que normalmente teriam bypass. Decisao do cliente (D3/D4), por se tratar
- * de liberacao de valor acima de R$ 50.000.
+ * Permissao ESTRITA: `contratos.aprovacao.aprovar` e exigida de ADMINISTRADOR e dos demais
+ * perfis. SUPERADMIN possui acesso funcional global. A regra continua protegendo a liberacao
+ * de valor acima do limite configurado para todos os demais usuarios.
  */
 /**
  * CANCELAR a solicitacao do contrato (PI-16) — terminal, ao contrario de rejeitar.

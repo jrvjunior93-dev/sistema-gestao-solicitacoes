@@ -1174,18 +1174,12 @@ async function getAreasPermissoesForUser(user) {
 }
 
 /**
- * Verificacao ESTRITA de permissao: sem bypass de perfil.
- *
- * `userHasAreaPermission` libera SUPERADMIN e ADMINISTRADOR na primeira linha — hoje 17
- * usuarios ativos. Isso e o padrao do sistema e continua valendo em todos os outros usos.
- *
- * Para a aprovacao de contrato acima do limite o cliente decidiu o contrario: so aprova
- * quem tiver a permissao marcada, independentemente do perfil. Como a regra vale apenas
- * para essa acao, ela vive em funcao propria — alterar `userHasAreaPermission` mudaria o
- * comportamento de todos os controllers que dependem dela.
+ * Verificacao estrita de permissao para perfis comuns e ADMINISTRADOR.
+ * SUPERADMIN e a excecao global e nao depende de marcacao granular.
  */
 async function userHasStrictAreaPermission(user, permissionKeys = []) {
   if (!user?.id) return false;
+  if (isSuperadmin(user)) return true;
 
   const esperadas = (Array.isArray(permissionKeys) ? permissionKeys : [])
     .map((item) => String(item || '').trim().toLowerCase())
@@ -1193,12 +1187,8 @@ async function userHasStrictAreaPermission(user, permissionKeys = []) {
 
   if (esperadas.length === 0) return false;
 
-  // Usa a montagem crua, sem o atalho por perfil.
-  //
-  // Chamar getAreasPermissoesForUser aqui seria errado: ela devolve lista vazia para
-  // SUPERADMIN/ADMINISTRADOR, e a verificacao estrita leria isso como "nada concedido" —
-  // impedindo que um SUPERADMIN aprove mesmo COM a permissao marcada. O objetivo e tirar o
-  // passe livre, nao tirar o direito.
+  // Usa a montagem crua para que ADMINISTRADOR e os demais perfis precisem da
+  // concessao nominal quando a regra de negocio exigir permissao estrita.
   const concedidas = new Set(await montarPermissoesConcedidas(user));
 
   return esperadas.every((chave) => concedidas.has(chave));

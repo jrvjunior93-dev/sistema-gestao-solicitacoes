@@ -4,7 +4,7 @@ const { Op } = require('sequelize');
 const { sequelize, RhSolicitacao, RhSolicitacaoHistorico, RhColaborador,
   CrResponsavelObra, Obra } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
-const { getUserObraIds } = require('./authorizationService');
+const { getUserObraIds, isSuperadmin } = require('./authorizationService');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const { ehTransferencia, hojeLocal, dataIso } = require('./rhPessoalDomain');
 const { vinculoAberto, registrarVinculo } = require('./rhVinculoObraService');
@@ -26,6 +26,14 @@ async function responsaveis(usuarioId, transaction) {
 }
 
 async function obrasResponsavel(user, transaction) {
+  if (isSuperadmin(user)) {
+    const obras = await Obra.findAll({
+      where: { ativo: true },
+      attributes: ['id'],
+      transaction
+    });
+    return obras.map(obra => Number(obra.id));
+  }
   return [...new Set((await responsaveis(user.id, transaction)).map(r => Number(r.obra_id)))];
 }
 
@@ -36,10 +44,12 @@ async function configuracao(user) {
 }
 
 async function diretorio(user, filtros = {}) {
-  const vinculadas = await getUserObraIds(user);
-  const responsavelIds = await obrasResponsavel(user);
-  if (!vinculadas.length && !responsavelIds.length) {
-    throw new ValidationError('O diretorio global esta disponivel para usuarios vinculados a obras.', 403);
+  if (!isSuperadmin(user)) {
+    const vinculadas = await getUserObraIds(user);
+    const responsavelIds = await obrasResponsavel(user);
+    if (!vinculadas.length && !responsavelIds.length) {
+      throw new ValidationError('O diretorio global esta disponivel para usuarios vinculados a obras.', 403);
+    }
   }
   const busca = String(filtros.busca || '').trim().slice(0, 100);
   const pagina = Math.max(1, Math.min(100000, Number.parseInt(filtros.pagina, 10) || 1));
@@ -58,8 +68,29 @@ function ladoAprovador(s) {
   return Number(d.obra_aprovadora_id || d.obra_destino_id);
 }
 
+function resolverFluxoTransferencia(origem, destino, idsResponsavel = []) {
+  const responsavelOrigem = idsResponsavel.includes(Number(origem));
+  const responsavelDestino = idsResponsavel.includes(Number(destino));
+  if (!responsavelOrigem && !responsavelDestino) {
+    throw new ValidationError('Somente o responsavel vigente da obra atual ou da obra de destino pode solicitar a transferencia.', 403);
+  }
+
+  const aprovacaoAutomatica = responsavelOrigem && responsavelDestino;
+  const obraSolicitanteId = responsavelOrigem ? Number(origem) : Number(destino);
+  return {
+    aprovacaoAutomatica,
+    obraSolicitanteId,
+    obraAprovadoraId: aprovacaoAutomatica
+      ? null
+      : (obraSolicitanteId === Number(origem) ? Number(destino) : Number(origem))
+  };
+}
+
 async function exigirAcesso(s, user, transaction) {
   if (!s || !ehTransferencia(s)) throw new ValidationError('Transferencia nao encontrada.', 404);
+  if (isSuperadmin(user)) {
+    return [...new Set([Number(s.obra_id), Number(dadosDe(s).obra_destino_id)].filter(Number.isFinite))];
+  }
   const ids = await obrasResponsavel(user, transaction);
   if (!ids.includes(Number(s.obra_id)) && !ids.includes(Number(dadosDe(s).obra_destino_id))) {
     throw new ValidationError('Acesso restrito aos responsaveis vigentes das obras envolvidas.', 403);
@@ -73,7 +104,10 @@ function resumo(s, ids, usuarioId) {
   const d = dadosDe(s);
   return { id: s.id, colaborador_id: s.colaborador_id, colaborador: s.colaborador,
     obra_id: s.obra_id, obra: s.obra, obra_destino_id: Number(d.obra_destino_id),
-    obra_aprovadora_id: ladoAprovador(s), situacao: s.situacao,
+    obra_solicitante_id: Number(d.obra_solicitante_id),
+    obra_aprovadora_id: d.aprovacao_automatica ? null : ladoAprovador(s),
+    aprovacao_automatica: Boolean(d.aprovacao_automatica), data_vigencia: d.data_vigencia || null,
+    situacao: s.situacao,
     justificativa: s.justificativa, motivo_rejeicao: s.motivo_rejeicao,
     createdAt: s.createdAt, updatedAt: s.updatedAt, decidida_em: s.decidida_em,
     pode_decidir: s.situacao === 'ABERTA' && ids.includes(ladoAprovador(s)) && Number(s.criada_por) !== Number(usuarioId),
@@ -88,14 +122,22 @@ const includes = [
 ];
 
 async function listar(user) {
-  const ids = await obrasResponsavel(user);
-  if (!ids.length) return [];
-  // JSON é parametrizado pelo Sequelize. Não há busca global antes da autorização.
-  const solicitacoes = await RhSolicitacao.findAll({ where: { [Op.and]: [tiposTransferencia, {
+  const acessoGlobal = isSuperadmin(user);
+  const ids = acessoGlobal ? [] : await obrasResponsavel(user);
+  if (!acessoGlobal && !ids.length) return [];
+  // JSON é parametrizado pelo Sequelize. A busca global e exclusiva do SUPERADMIN.
+  const where = acessoGlobal ? tiposTransferencia : { [Op.and]: [tiposTransferencia, {
     [Op.or]: [{ obra_id: { [Op.in]: ids } }, ...ids.map(id => sequelize.where(
       sequelize.cast(sequelize.json('dados_json.obra_destino_id'), 'UNSIGNED'), id))]
-  }] }, include: includes });
-  const linhas = solicitacoes.filter(ehTransferencia).map(s => resumo(s.get({ plain: true }), ids, user.id));
+  }] };
+  const solicitacoes = await RhSolicitacao.findAll({ where, include: includes });
+  const linhas = solicitacoes.filter(ehTransferencia).map((registro) => {
+    const s = registro.get({ plain: true });
+    const idsPermitidos = acessoGlobal
+      ? [...new Set([Number(s.obra_id), Number(dadosDe(s).obra_destino_id)].filter(Number.isFinite))]
+      : ids;
+    return resumo(s, idsPermitidos, user.id);
+  });
   const destinos = [...new Set(linhas.map(s => s.obra_destino_id))];
   const obras = destinos.length ? await Obra.findAll({ where: { id: destinos }, attributes: camposObra }) : [];
   const nomes = new Map(obras.map(o => [Number(o.id), o.nome]));
@@ -107,6 +149,38 @@ async function historico(s, user, acao, descricao, transaction) {
     setor: codigoDoSetor(user), acao, descricao, situacao_nova: s.situacao }, { transaction });
 }
 
+async function efetivarTransferencia(s, user, transaction) {
+  const d = dadosDe(s);
+  const colaborador = await RhColaborador.findByPk(s.colaborador_id, {
+    transaction,
+    lock: transaction.LOCK.UPDATE
+  });
+  if (!colaborador || colaborador.status !== 'ATIVO' || Number(colaborador.obra_id) !== Number(s.obra_id)) {
+    throw new ValidationError('O colaborador mudou de obra ou nao esta ativo. Cancele e abra uma nova transferencia.', 409);
+  }
+  const destino = await Obra.findByPk(d.obra_destino_id, { transaction });
+  if (!destino?.ativo) throw new ValidationError('A obra de destino nao esta ativa.');
+  const aberto = await vinculoAberto(colaborador.id, transaction);
+  const hoje = hojeLocal();
+  if (!aberto || Number(aberto.obra_id) !== Number(s.obra_id) || dataIso(aberto.vigencia_inicio) > hoje
+      || dataIso(colaborador.data_admissao || colaborador.data_inicio) > hoje
+      || (colaborador.data_demissao && dataIso(colaborador.data_demissao) < hoje)) {
+    throw new ValidationError('O vinculo atual nao permite transferencia hoje. Confira a admissao e o historico de lotacao.', 409);
+  }
+  if (dataIso(aberto.vigencia_inicio) === hoje) {
+    // Não gerar intervalo negativo quando ocorrerem duas mudanças no mesmo dia.
+    // A trajetória intradiária fica auditada no histórico das solicitações.
+    await aberto.update({ obra_id: destino.id, motivo: 'TROCA_OBRA', solicitacao_id: s.id }, { transaction });
+  } else {
+    await registrarVinculo({ colaboradorId: colaborador.id, obraId: destino.id,
+      setorId: colaborador.setor_id, vigenciaInicio: hoje, motivo: 'TROCA_OBRA',
+      solicitacaoId: s.id, criadoPor: user.id }, transaction);
+  }
+  await colaborador.update({ obra_id: destino.id, atualizado_por: user.id }, { transaction });
+  s.dados_json = { ...d, data_vigencia: hoje };
+  return hoje;
+}
+
 async function abrir(user, payload) {
   return sequelize.transaction(async transaction => {
     const colaborador = await RhColaborador.findByPk(payload.colaborador_id, { transaction, lock: transaction.LOCK.UPDATE });
@@ -115,19 +189,19 @@ async function abrir(user, payload) {
     }
     const origem = Number(colaborador.obra_id);
     const destino = Number(payload.obra_destino_id);
-    const solicitante = Number(payload.obra_solicitante_id);
-    if (!Number.isInteger(destino) || destino <= 0 || origem === destino || ![origem, destino].includes(solicitante)) {
-      throw new ValidationError('Informe obras de origem e destino diferentes e a obra que esta solicitando.');
+    if (!Number.isInteger(destino) || destino <= 0 || origem === destino) {
+      throw new ValidationError('Informe uma obra de destino diferente da obra atual.');
     }
     const ids = await obrasResponsavel(user, transaction);
-    if (!ids.includes(solicitante)) throw new ValidationError('Somente o responsavel vigente da obra pode solicitar a transferencia.', 403);
-    const aprovadora = solicitante === origem ? destino : origem;
-    const ativos = await responsaveis(null, transaction);
-    if (!ativos.some(r => Number(r.obra_id) === aprovadora && Number(r.user_id) !== Number(user.id))) {
-      throw new ValidationError('Cadastre outro responsavel ou substituto vigente na obra que aprovara a transferencia.');
-    }
+    const fluxo = resolverFluxoTransferencia(origem, destino, ids);
     const obras = await Obra.findAll({ where: { id: [origem, destino], ativo: true }, transaction });
     if (obras.length !== 2) throw new ValidationError('As duas obras precisam estar ativas.');
+    if (!fluxo.aprovacaoAutomatica) {
+      const ativos = await responsaveis(null, transaction);
+      if (!ativos.some(r => Number(r.obra_id) === fluxo.obraAprovadoraId && Number(r.user_id) !== Number(user.id))) {
+        throw new ValidationError('Cadastre outro responsavel ou substituto vigente na obra que aprovara a transferencia.');
+      }
+    }
     const existente = await RhSolicitacao.findOne({ where: { colaborador_id: colaborador.id,
       situacao: { [Op.in]: ['ABERTA', 'RASCUNHO'] }, ...tiposTransferencia }, transaction });
     if (existente) throw new ValidationError(`Ja existe uma transferencia em andamento (#${existente.id}).`, 409);
@@ -136,10 +210,22 @@ async function abrir(user, payload) {
     const s = await RhSolicitacao.create({ tipo: 'MOVIMENTACAO', subtipo: 'TRANSFERENCIA_OBRA',
       colaborador_id: colaborador.id, obra_id: origem, situacao: 'ABERTA', criada_por: user.id,
       setor_origem: codigoDoSetor(user), justificativa: motivo,
-      dados_json: { obra_destino_id: destino, obra_solicitante_id: solicitante, obra_aprovadora_id: aprovadora }
+      dados_json: { obra_destino_id: destino, obra_solicitante_id: fluxo.obraSolicitanteId,
+        obra_aprovadora_id: fluxo.obraAprovadoraId, aprovacao_automatica: fluxo.aprovacaoAutomatica }
     }, { transaction });
-    await historico(s, user, 'ABERTURA', `Transferencia da obra ${origem} para ${destino}. Aguardando a obra ${aprovadora}.`, transaction);
-    return { id: s.id };
+    if (fluxo.aprovacaoAutomatica) {
+      await historico(s, user, 'ABERTURA',
+        `Transferencia da obra ${origem} para ${destino} aberta com aprovacao automatica.`, transaction);
+      const vigencia = await efetivarTransferencia(s, user, transaction);
+      await s.update({ situacao: 'APROVADA', dados_json: s.dados_json,
+        decidida_por: user.id, decidida_em: new Date() }, { transaction });
+      await historico(s, user, 'APROVACAO_AUTOMATICA',
+        `Transferencia da obra ${origem} para ${destino} efetivada em ${vigencia}; o solicitante responde pelas duas obras.`, transaction);
+      return { id: s.id, situacao: s.situacao, aprovacao_automatica: true, data_vigencia: vigencia };
+    }
+    await historico(s, user, 'ABERTURA',
+      `Transferencia da obra ${origem} para ${destino}. Aguardando a obra ${fluxo.obraAprovadoraId}.`, transaction);
+    return { id: s.id, situacao: s.situacao, aprovacao_automatica: false };
   });
 }
 
@@ -169,30 +255,7 @@ async function agir(user, id, acao, texto) {
     }
     if (acao === 'rejeitar' && !motivo) throw new ValidationError('Informe o motivo da rejeicao.');
     if (acao === 'aprovar') {
-      const colaborador = await RhColaborador.findByPk(s.colaborador_id, { transaction, lock: transaction.LOCK.UPDATE });
-      if (!colaborador || colaborador.status !== 'ATIVO' || Number(colaborador.obra_id) !== Number(s.obra_id)) {
-        throw new ValidationError('O colaborador mudou de obra ou nao esta ativo. Cancele e abra uma nova transferencia.', 409);
-      }
-      const destino = await Obra.findByPk(d.obra_destino_id, { transaction });
-      if (!destino?.ativo) throw new ValidationError('A obra de destino nao esta ativa.');
-      const aberto = await vinculoAberto(colaborador.id, transaction);
-      const hoje = hojeLocal();
-      if (!aberto || Number(aberto.obra_id) !== Number(s.obra_id) || dataIso(aberto.vigencia_inicio) > hoje
-          || dataIso(colaborador.data_admissao || colaborador.data_inicio) > hoje
-          || (colaborador.data_demissao && dataIso(colaborador.data_demissao) < hoje)) {
-        throw new ValidationError('O vinculo atual nao permite transferencia hoje. Confira a admissao e o historico de lotacao.', 409);
-      }
-      if (dataIso(aberto.vigencia_inicio) === hoje) {
-        // Não gerar intervalo negativo quando ocorrerem duas mudanças no mesmo dia.
-        // A trajetória intradiária fica auditada no histórico das solicitações.
-        await aberto.update({ obra_id: destino.id, motivo: 'TROCA_OBRA', solicitacao_id: s.id }, { transaction });
-      } else {
-        await registrarVinculo({ colaboradorId: colaborador.id, obraId: destino.id,
-          setorId: colaborador.setor_id, vigenciaInicio: hoje, motivo: 'TROCA_OBRA',
-          solicitacaoId: s.id, criadoPor: user.id }, transaction);
-      }
-      await colaborador.update({ obra_id: destino.id, atualizado_por: user.id }, { transaction });
-      s.dados_json = { ...d, data_vigencia: hoje };
+      await efetivarTransferencia(s, user, transaction);
     }
     await s.update({ situacao: novoStatus, dados_json: s.dados_json,
       ...(acao !== 'enviar' ? { decidida_por: user.id, decidida_em: new Date() } : {}),
@@ -211,4 +274,5 @@ async function detalhe(user, id) {
   return { ...resumo(s.get({ plain: true }), ids, user.id), historicos: eventos };
 }
 
-module.exports = { configuracao, diretorio, listar, abrir, agir, detalhe, exigirAcesso, obrasResponsavel };
+module.exports = { configuracao, diretorio, listar, abrir, agir, detalhe, exigirAcesso,
+  obrasResponsavel, resolverFluxoTransferencia };

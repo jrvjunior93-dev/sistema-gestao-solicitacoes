@@ -1,6 +1,7 @@
 const assert = require('assert');
 const { Op } = require('sequelize');
-const { RhColaborador, UsuarioObra } = require('../src/models');
+const { sequelize, Obra, RhColaborador, RhColaboradorVinculo, RhSolicitacao,
+  RhSolicitacaoHistorico, CrResponsavelObra, UsuarioObra } = require('../src/models');
 const {
   canAccessRhDp,
   canManageRhDpColaboradores,
@@ -8,10 +9,14 @@ const {
   canViewRhDpDashboard,
   canViewRhDpDocumentos,
   canViewRhDpObrigacoes,
-  getRhDpObraScopeIds
+  getRhDpObraScopeIds,
+  userHasStrictAreaPermission
 } = require('../src/services/authorizationService');
+const permit = require('../src/middlewares/permissions');
 const { detalharColaboradorRh, listarColaboradoresRh } = require('../src/services/rhService');
 const rhSolicitacaoService = require('../src/services/rhSolicitacaoService');
+const rhTransferenciaService = require('../src/services/rhTransferenciaService');
+const { hojeLocal } = require('../src/services/rhPessoalDomain');
 
 async function executar() {
   const usuarioObra = {
@@ -74,7 +79,175 @@ async function executar() {
     rhSolicitacaoService.pedidosAbertosPorColaborador = originalPedidosAbertos;
   }
 
-  console.log('Validacao do escopo RH/DP para usuario de OBRA concluida com sucesso.');
+  const superadmin = { id: 123456, perfil: 'SUPERADMIN' };
+  assert.strictEqual(
+    await getRhDpObraScopeIds(superadmin),
+    null,
+    'SUPERADMIN deve possuir escopo global no RH/DP'
+  );
+  assert.strictEqual(
+    await userHasStrictAreaPermission(superadmin, ['permissao.nao.configurada']),
+    true,
+    'SUPERADMIN deve ignorar permissoes granulares estritas'
+  );
+
+  let middlewareLiberou = false;
+  await permit({
+    profiles: ['PERFIL_INEXISTENTE'],
+    scopeTokens: ['escopo.inexistente'],
+    requireObraAccess: true,
+    custom: async () => false
+  })(
+    { user: superadmin, originalUrl: '/validacao-superadmin', params: {}, body: {}, query: {} },
+    { status: () => { throw new Error('SUPERADMIN nao pode ser bloqueado pelo middleware de permissao'); } },
+    () => { middlewareLiberou = true; }
+  );
+  assert.strictEqual(middlewareLiberou, true, 'SUPERADMIN deve passar pelo middleware central');
+
+  const originalObraFindAll = Obra.findAll;
+  Obra.findAll = async () => [
+    { id: 12, get: () => ({ id: 12, nome: 'Obra A', codigo: 'A' }) },
+    { id: 35, get: () => ({ id: 35, nome: 'Obra B', codigo: 'B' }) }
+  ];
+
+  try {
+    const configuracao = await rhTransferenciaService.configuracao(superadmin);
+    assert.deepStrictEqual(
+      configuracao.obras_responsavel_ids,
+      [12, 35],
+      'a tela de transferencias deve tratar todas as obras ativas como acessiveis pelo SUPERADMIN'
+    );
+  } finally {
+    Obra.findAll = originalObraFindAll;
+  }
+
+  assert.deepStrictEqual(
+    rhTransferenciaService.resolverFluxoTransferencia(12, 35, [12]),
+    { aprovacaoAutomatica: false, obraSolicitanteId: 12, obraAprovadoraId: 35 },
+    'o responsavel da obra atual deve enviar a transferencia para aprovacao do destino'
+  );
+  assert.deepStrictEqual(
+    rhTransferenciaService.resolverFluxoTransferencia(12, 35, [35]),
+    { aprovacaoAutomatica: false, obraSolicitanteId: 35, obraAprovadoraId: 12 },
+    'o responsavel do destino deve solicitar a transferencia para aprovacao da obra atual'
+  );
+  assert.deepStrictEqual(
+    rhTransferenciaService.resolverFluxoTransferencia(12, 35, [12, 35]),
+    { aprovacaoAutomatica: true, obraSolicitanteId: 12, obraAprovadoraId: null },
+    'o responsavel pelas duas obras deve efetivar a transferencia sem segunda aprovacao'
+  );
+  assert.throws(
+    () => rhTransferenciaService.resolverFluxoTransferencia(12, 35, [77]),
+    (error) => error.statusCode === 403,
+    'usuario sem responsabilidade na origem ou no destino nao pode solicitar a transferencia'
+  );
+
+  const originaisTransferencia = {
+    transaction: sequelize.transaction,
+    colaboradorFindByPk: RhColaborador.findByPk,
+    vinculoFindOne: RhColaboradorVinculo.findOne,
+    solicitacaoFindOne: RhSolicitacao.findOne,
+    solicitacaoCreate: RhSolicitacao.create,
+    historicoCreate: RhSolicitacaoHistorico.create,
+    responsavelFindAll: CrResponsavelObra.findAll,
+    obraFindAll: Obra.findAll,
+    obraFindByPk: Obra.findByPk
+  };
+  const hoje = hojeLocal();
+  const colaboradorAutomatico = {
+    id: 91,
+    status: 'ATIVO',
+    obra_id: 12,
+    setor_id: 8,
+    data_admissao: '2020-01-01',
+    data_demissao: null,
+    update: async (dados) => Object.assign(colaboradorAutomatico, dados)
+  };
+  const vinculoAutomatico = {
+    obra_id: 12,
+    vigencia_inicio: hoje,
+    update: async (dados) => Object.assign(vinculoAutomatico, dados)
+  };
+  let solicitacaoAutomatica = null;
+  const historicosAutomaticos = [];
+
+  sequelize.transaction = async (callback) => callback({ LOCK: { UPDATE: 'UPDATE' } });
+  RhColaborador.findByPk = async () => colaboradorAutomatico;
+  RhColaboradorVinculo.findOne = async () => vinculoAutomatico;
+  CrResponsavelObra.findAll = async () => [
+    { obra_id: 12, user_id: 44 },
+    { obra_id: 35, user_id: 44 }
+  ];
+  Obra.findAll = async () => [{ id: 12, ativo: true }, { id: 35, ativo: true }];
+  Obra.findByPk = async () => ({ id: 35, ativo: true });
+  RhSolicitacao.findOne = async () => null;
+  RhSolicitacao.create = async (dados) => {
+    solicitacaoAutomatica = {
+      id: 501,
+      ...dados,
+      update: async (alteracoes) => Object.assign(solicitacaoAutomatica, alteracoes)
+    };
+    return solicitacaoAutomatica;
+  };
+  RhSolicitacaoHistorico.create = async (dados) => {
+    historicosAutomaticos.push(dados);
+    return dados;
+  };
+
+  try {
+    const resultado = await rhTransferenciaService.abrir(
+      { id: 44, perfil: 'USUARIO', setor: { codigo: 'OBRA' } },
+      { colaborador_id: 91, obra_destino_id: 35, justificativa: 'Transferencia operacional.' }
+    );
+    assert.strictEqual(resultado.aprovacao_automatica, true);
+    assert.strictEqual(resultado.situacao, 'APROVADA');
+    assert.strictEqual(colaboradorAutomatico.obra_id, 35, 'a lotacao atual deve mudar para o destino');
+    assert.strictEqual(vinculoAutomatico.obra_id, 35, 'o vinculo vigente deve mudar para o destino');
+    assert.strictEqual(solicitacaoAutomatica.dados_json.data_vigencia, hoje);
+    assert.deepStrictEqual(
+      historicosAutomaticos.map(item => item.acao),
+      ['ABERTURA', 'APROVACAO_AUTOMATICA'],
+      'a transferencia automatica deve manter trilha completa de auditoria'
+    );
+  } finally {
+    sequelize.transaction = originaisTransferencia.transaction;
+    RhColaborador.findByPk = originaisTransferencia.colaboradorFindByPk;
+    RhColaboradorVinculo.findOne = originaisTransferencia.vinculoFindOne;
+    RhSolicitacao.findOne = originaisTransferencia.solicitacaoFindOne;
+    RhSolicitacao.create = originaisTransferencia.solicitacaoCreate;
+    RhSolicitacaoHistorico.create = originaisTransferencia.historicoCreate;
+    CrResponsavelObra.findAll = originaisTransferencia.responsavelFindAll;
+    Obra.findAll = originaisTransferencia.obraFindAll;
+    Obra.findByPk = originaisTransferencia.obraFindByPk;
+  }
+
+  const originalFindAndCountAll = RhColaborador.findAndCountAll;
+  const originalUsuarioObraFindAll = UsuarioObra.findAll;
+  UsuarioObra.findAll = async () => {
+    throw new Error('SUPERADMIN nao deve depender de vinculo em usuario_obras para consultar o diretorio global');
+  };
+  RhColaborador.findAndCountAll = async ({ where, limit, offset }) => {
+    assert.strictEqual(where.status, 'ATIVO');
+    assert.strictEqual(limit, 50);
+    assert.strictEqual(offset, 0);
+    return {
+      count: 1,
+      rows: [{
+        get: () => ({ id: 77, nome: 'Colaborador Global', matricula: 'G-1', cargo: 'Teste', obra_id: 12 })
+      }]
+    };
+  };
+
+  try {
+    const diretorio = await rhTransferenciaService.diretorio(superadmin);
+    assert.strictEqual(diretorio.total, 1, 'SUPERADMIN deve listar o diretorio global sem vinculo de obra');
+    assert.strictEqual(diretorio.itens[0].id, 77);
+  } finally {
+    RhColaborador.findAndCountAll = originalFindAndCountAll;
+    UsuarioObra.findAll = originalUsuarioObraFindAll;
+  }
+
+  console.log('Validacao dos escopos RH/DP para usuario de OBRA e SUPERADMIN concluida com sucesso.');
 }
 
 executar()

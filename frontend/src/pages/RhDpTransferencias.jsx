@@ -5,6 +5,7 @@ import { rhTransferencias } from '../services/rhDp';
 import '../styles/rh-pessoal-atividade.css';
 
 const data = v => v ? new Date(v).toLocaleString('pt-BR') : '—';
+const dataDia = v => v ? new Date(`${String(v).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—';
 
 export default function RhDpTransferencias() {
   const { avisos, avisar, fechar } = useAvisos();
@@ -23,6 +24,18 @@ export default function RhDpTransferencias() {
   const versaoBusca = useRef(0);
   const minhas = config.obras.filter(o => config.obras_responsavel_ids.includes(Number(o.id)));
   const nomeObra = id => config.obras.find(o => Number(o.id) === Number(id))?.nome || `Obra #${id}`;
+  const fluxoDoFormulario = formulario => {
+    if (!formulario) return null;
+    const origem = Number(formulario.colaborador.obra_id);
+    const destino = Number(formulario.obra_destino_id);
+    const responsavelOrigem = config.obras_responsavel_ids.includes(origem);
+    const responsavelDestino = config.obras_responsavel_ids.includes(destino);
+    const automatico = Boolean(destino && responsavelOrigem && responsavelDestino);
+    const solicitante = responsavelOrigem ? origem : (responsavelDestino ? destino : null);
+    return { origem, destino, responsavelOrigem, responsavelDestino, automatico, solicitante,
+      aprovadora: automatico ? null : (solicitante === origem ? destino : origem) };
+  };
+  const fluxoForm = fluxoDoFormulario(form);
   const atualizar = useCallback(async () => {
     try { setLista(await rhTransferencias()); }
     catch (e) { avisar.erro(e.message); }
@@ -83,13 +96,12 @@ export default function RhDpTransferencias() {
   function selecionar(c) {
     const souOrigem = config.obras_responsavel_ids.includes(Number(c.obra_id));
     const destino = souOrigem ? '' : String(minhas.find(o => Number(o.id) !== Number(c.obra_id))?.id || '');
-    setForm({ colaborador: c, obra_destino_id: destino,
-      obra_solicitante_id: souOrigem ? String(c.obra_id) : destino, justificativa: '' });
+    setForm({ colaborador: c, obra_destino_id: destino, justificativa: '' });
   }
 
   return <div className="space-y-4 min-w-0">
     <Avisos avisos={avisos} aoFechar={fechar} />
-    <p className="form-hint">A obra atual pode enviar ou a obra de destino pode solicitar. Outro responsável da obra oposta aprova. O vínculo só muda na aprovação.</p>
+    <p className="form-hint">A obra atual pode enviar ou uma obra de destino pode solicitar o colaborador. A outra obra aprova; se o mesmo responsável atuar nas duas, a transferência é imediata.</p>
     {!minhas.length && <p className="alert alert-info">Para solicitar ou aprovar, configure o responsável ou substituto vigente em Configurações → Responsáveis por obra. A consulta global exige vínculo do usuário com uma obra.</p>}
     <section aria-label="Transferências entre obras">
       <div className="app-page-actions"><h3 className="app-bloco-titulo">Transferências das minhas obras</h3><button type="button" className="btn btn-outline btn-sm" onClick={atualizar}>Atualizar</button></div>
@@ -100,7 +112,7 @@ export default function RhDpTransferencias() {
           { id: 'origem', titulo: 'Origem', tipo: 'texto', render: s => s.obra?.nome || nomeObra(s.obra_id) },
           { id: 'destino', titulo: 'Destino', tipo: 'texto', render: s => s.obra_destino_nome || nomeObra(s.obra_destino_id) },
           { id: 'situacao', titulo: 'Situação', tipo: 'status', render: s => <>{s.situacao}{s.nao_lida && <span className="rh-chip rh-chip--aberta ml-2">Nova interação</span>}</> },
-          { id: 'responsavel', titulo: 'Aprovação por', tipo: 'texto', render: s => nomeObra(s.obra_aprovadora_id) },
+          { id: 'responsavel', titulo: 'Aprovação por', tipo: 'texto', render: s => s.aprovacao_automatica ? 'Automática' : nomeObra(s.obra_aprovadora_id) },
           { id: 'atividade', titulo: 'Última interação', tipo: 'data', render: s => data(s.atividade_em) }
         ]} acoesLinha={s => <button type="button" className="btn btn-outline btn-sm" onClick={() => abrir(s)}>Abrir</button>} />
     </section>
@@ -128,36 +140,42 @@ export default function RhDpTransferencias() {
     </section>
     {form && <OverlayModal rotulo="Solicitar transferência entre obras" onFechar={() => { if (!ocupado) setForm(null); }}>
       <form className="space-y-3 p-4" onSubmit={e => { e.preventDefault(); executar(async () => {
-        await rhTransferencias('', { method: 'POST', data: { colaborador_id: form.colaborador.id,
-          obra_destino_id: Number(form.obra_destino_id), obra_solicitante_id: Number(form.obra_solicitante_id), justificativa: form.justificativa } });
-        setForm(null); avisar.sucesso('Transferência enviada ao responsável da outra obra.');
+        const resultado = await rhTransferencias('', { method: 'POST', data: { colaborador_id: form.colaborador.id,
+          obra_destino_id: Number(form.obra_destino_id), justificativa: form.justificativa } });
+        setForm(null);
+        avisar.sucesso(resultado.aprovacao_automatica
+          ? `Transferência efetivada automaticamente em ${dataDia(resultado.data_vigencia)}.`
+          : 'Transferência enviada ao responsável da outra obra.');
+        await pesquisar(diretorio.pagina, buscaAplicada);
       }); }}>
         <h2 className="app-bloco-titulo">Solicitar transferência entre obras</h2>
-        <p><strong>{form.colaborador.nome}</strong> · Obra atual: {form.colaborador.obra?.nome}</p>
+        <p><strong>{form.colaborador.nome}</strong> · Obra atual: {form.colaborador.obra?.nome || nomeObra(form.colaborador.obra_id)}</p>
         <label className="form-field"><span className="form-label">Obra de destino</span>
-          <select className="form-control" aria-label="Obra de destino" required value={form.obra_destino_id} onChange={e => {
-            const destino = e.target.value;
-            setForm(f => ({ ...f, obra_destino_id: destino, obra_solicitante_id: config.obras_responsavel_ids.includes(Number(f.colaborador.obra_id)) ? String(f.colaborador.obra_id) : destino }));
-          }}><option value="">Selecione</option>{config.obras.filter(o => Number(o.id) !== Number(form.colaborador.obra_id)
-            && (config.obras_responsavel_ids.includes(Number(form.colaborador.obra_id)) || config.obras_responsavel_ids.includes(Number(o.id))))
-            .map(o => <option key={o.id} value={o.id}>{o.codigo} · {o.nome}</option>)}</select>
-        </label>
-        <label className="form-field"><span className="form-label">Obra que está solicitando</span>
-          <select className="form-control" aria-label="Obra que está solicitando" required value={form.obra_solicitante_id} onChange={e => setForm(f => ({ ...f, obra_solicitante_id: e.target.value }))}>
-            <option value="">Selecione</option>{minhas.filter(o => [Number(form.colaborador.obra_id), Number(form.obra_destino_id)].includes(Number(o.id)))
-              .map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}
+          <select className="form-control" aria-label="Obra de destino" required value={form.obra_destino_id}
+            onChange={e => setForm(f => ({ ...f, obra_destino_id: e.target.value }))}>
+            <option value="">Selecione</option>
+            {config.obras.filter(o => Number(o.id) !== Number(form.colaborador.obra_id)).map(o => {
+              const habilitada = fluxoForm?.responsavelOrigem || config.obras_responsavel_ids.includes(Number(o.id));
+              return <option key={o.id} value={o.id} disabled={!habilitada}>
+                {o.codigo} · {o.nome}{habilitada ? '' : ' · sem responsabilidade atribuída'}
+              </option>;
+            })}
           </select>
         </label>
-        <p className="form-hint">Aprovação pela obra {nomeObra(Number(form.obra_solicitante_id) === Number(form.colaborador.obra_id) ? form.obra_destino_id : form.colaborador.obra_id)}. Vigência na data de aprovação.</p>
+        {fluxoForm?.destino ? <div className={`alert ${fluxoForm.automatico ? 'alert-success' : 'alert-info'}`}>
+          {fluxoForm.automatico
+            ? <>Você responde pela obra atual e pela obra de destino. A transferência será aprovada automaticamente e terá vigência hoje.</>
+            : <>Solicitação feita pela obra <strong>{nomeObra(fluxoForm.solicitante)}</strong>. Aprovação necessária pela obra <strong>{nomeObra(fluxoForm.aprovadora)}</strong>; a vigência começa na aprovação.</>}
+        </div> : null}
         <label className="form-field"><span className="form-label">Justificativa</span><textarea className="form-control" required maxLength={2000} value={form.justificativa} onChange={e => setForm(f => ({ ...f, justificativa: e.target.value }))} /></label>
-        <div className="app-page-actions"><button className="btn btn-primary" disabled={ocupado}>{ocupado ? 'Enviando…' : 'Enviar para aprovação'}</button><button type="button" className="btn btn-outline" disabled={ocupado} onClick={() => setForm(null)}>Cancelar</button></div>
+        <div className="app-page-actions"><button className="btn btn-primary" disabled={ocupado || !fluxoForm?.destino || !fluxoForm?.solicitante}>{ocupado ? 'Processando…' : fluxoForm?.automatico ? 'Confirmar transferência' : 'Enviar para aprovação'}</button><button type="button" className="btn btn-outline" disabled={ocupado} onClick={() => setForm(null)}>Cancelar</button></div>
       </form>
     </OverlayModal>}
     {aberta && <OverlayModal rotulo={`Transferência #${aberta.id}`} onFechar={() => { if (!ocupado) setAberta(null); }}>
       <div className="space-y-3 p-4">
         <div className="app-page-actions"><h2 className="app-bloco-titulo">Transferência #{aberta.id}</h2><button type="button" className="btn btn-outline btn-sm" disabled={ocupado} onClick={() => setAberta(null)}>Fechar</button></div>
         <p><strong>{aberta.colaborador?.nome}</strong> · {aberta.obra?.nome} → {nomeObra(aberta.obra_destino_id)}</p>
-        <p>{aberta.situacao} · Aprovação por: {nomeObra(aberta.obra_aprovadora_id)}</p>
+        <p>{aberta.situacao} · Aprovação: {aberta.aprovacao_automatica ? 'Automática' : nomeObra(aberta.obra_aprovadora_id)}{aberta.data_vigencia ? ` · Vigência: ${dataDia(aberta.data_vigencia)}` : ''}</p>
         <p>{aberta.justificativa}</p>
         <ul className="rh-pessoal-historico">{(aberta.historicos || []).map(h => <li key={h.id}><small>{data(h.createdAt)} · Usuário #{h.usuario_id} · {h.setor}</small><div>{h.descricao}</div></li>)}</ul>
         <label className="form-field"><span className="form-label">Comentário / motivo da rejeição</span><textarea className="form-control" maxLength={2000} value={comentario} onChange={e => setComentario(e.target.value)} /></label>

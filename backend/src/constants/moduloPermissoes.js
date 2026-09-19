@@ -4,7 +4,8 @@
  * Registro central de permissões de área por módulo.
  *
  * Regras:
- * - SUPERADMIN e ADMINISTRADOR têm bypass total — nunca são afetados.
+ * - SUPERADMIN tem bypass global e nunca e afetado por permissoes granulares.
+ * - ADMINISTRADOR tem bypass nas permissoes comuns, mas respeita verificacoes estritas.
  * - Se um usuário NÃO tiver entradas neste sistema → acesso completo ao que seu perfil já permite (backwards compat).
  * - Se um usuário TIVER entradas → somente as permissões listadas são concedidas.
  *
@@ -675,8 +676,8 @@ const MODULO_PERMISSION_GROUPS = [
           {
             key: 'contratos.aprovacao.aprovar',
             label: 'Aprovar / rejeitar contratos',
-            // Unica permissao do sistema sem bypass: nem SUPERADMIN nem ADMINISTRADOR
-            // aprovam sem te-la marcada. Excecao deliberada, decidida pelo cliente.
+            // ADMINISTRADOR e os demais perfis precisam desta permissao marcada.
+            // SUPERADMIN possui acesso funcional global em todo o sistema.
             //
             // O rotulo dizia "acima do limite" e estava ERRADO: a checagem roda antes de o limite
             // ser sequer lido (`aprovarContrato`), entao ela vale para QUALQUER valor. Quem lesse
@@ -686,7 +687,7 @@ const MODULO_PERMISSION_GROUPS = [
               + 'O que o limite decide e o caminho depois da aprovacao: abaixo dele o contrato vai '
               + 'direto a ATIVO e os titulos nascem; a partir dele segue para o JURIDICO, e os '
               + 'titulos so nascem na conferencia final. '
-              + 'Exigida inclusive de SUPERADMIN e ADMINISTRADOR — sem ela, ninguem aprova.'
+              + 'Exigida de ADMINISTRADOR e dos demais perfis; SUPERADMIN possui acesso global.'
           }
         ]
       },

@@ -1485,13 +1485,9 @@ const allowRhDpColaboradoresWrite = permit({
 /**
  * PEDIDO DE PESSOAL (Fase 6 do modulo DP, 26/08).
  *
- * ONDE E ESTRITO E ONDE NAO E — a distincao foi corrigida em 26/08 depois de um SUPERADMIN levar
- * "Acesso negado" numa tela que mostrava o botao para ele.
- *
- * `userHasStrictAreaPermission` tira o atalho por perfil: nem SUPERADMIN passa sem a permissao
- * marcada. Isso e o certo para UMA acao aqui — aprovar alteracao salarial, que o cliente definiu
- * como decisao de Diretoria concedida nominalmente. Aumento de salario nao pode ser consequencia
- * de alguem ser administrador do sistema.
+ * ONDE E ESTRITO E ONDE NAO E: SUPERADMIN possui acesso funcional global. Para ADMINISTRADOR e
+ * os demais perfis, `userHasStrictAreaPermission` exige concessao nominal para aprovar alteracao
+ * salarial. Assim, o acesso amplo de outros perfis administrativos nao autoriza aumento salarial.
  *
  * Para abrir, decidir e anexar, estrito era ERRADO por dois motivos:
  *

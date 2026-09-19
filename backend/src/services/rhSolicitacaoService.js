@@ -851,10 +851,9 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
     /**
      * A DECISAO E DA DIRETORIA, e nao do DP (Fase 5).
      *
-     * A permissao e ESTRITA: `userHasStrictAreaPermission` nao tem atalho de SUPERADMIN e nao trata
-     * "nao configurado" como liberado. Foi o que o item 31 estabeleceu no fluxo de contratos, e
-     * aqui vale pela mesma razao: quem pode aumentar salario tem de ser escolha explicita de quem
-     * concede, nunca consequencia de um perfil amplo.
+     * A permissao e ESTRITA para ADMINISTRADOR e os demais perfis e nao trata "nao configurado"
+     * como liberado. SUPERADMIN possui acesso funcional global. Fora dessa excecao, quem pode
+     * aumentar salario precisa continuar sendo uma escolha explicita de quem concede.
      *
      * O cliente definiu em 25/08 que a Diretoria "e uma configuracao de permissao granular que pode
      * ser concedida a um usuario do sistema" — nao um setor, nao um cargo.
