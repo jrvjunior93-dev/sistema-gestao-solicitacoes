@@ -1,7 +1,7 @@
 const assert = require('assert');
 const { Op } = require('sequelize');
 const { sequelize, Obra, RhColaborador, RhColaboradorVinculo, RhSolicitacao,
-  RhSolicitacaoHistorico, CrResponsavelObra, UsuarioObra } = require('../src/models');
+  RhSolicitacaoHistorico, RhSolicitacaoAnexo, CrResponsavelObra, UsuarioObra } = require('../src/models');
 const {
   canAccessRhDp,
   canManageRhDpColaboradores,
@@ -77,6 +77,39 @@ async function executar() {
     RhColaborador.findAll = originalColaboradorFindAll;
     RhColaborador.findOne = originalColaboradorFindOne;
     rhSolicitacaoService.pedidosAbertosPorColaborador = originalPedidosAbertos;
+  }
+
+  // Um usuario envolvido pode anexar um arquivo avulso enquanto a solicitacao esta em tratamento;
+  // a classificacao e opcional, mas o evento de auditoria e obrigatorio.
+  const originaisAnexo = {
+    transaction: sequelize.transaction,
+    solicitacaoFindByPk: RhSolicitacao.findByPk,
+    anexoCreate: RhSolicitacaoAnexo.create,
+    historicoCreate: RhSolicitacaoHistorico.create
+  };
+  const eventosDoAnexo = [];
+  sequelize.transaction = async (callback) => callback({});
+  RhSolicitacao.findByPk = async () => ({ id: 701, situacao: 'ABERTA' });
+  RhSolicitacaoAnexo.create = async (dados) => ({ id: 801, ...dados });
+  RhSolicitacaoHistorico.create = async (dados) => {
+    eventosDoAnexo.push(dados);
+    return dados;
+  };
+
+  try {
+    const anexo = await rhSolicitacaoService.anexarNoPedido(
+      701,
+      { arquivo_url: '/uploads/atestado.pdf', nome_original: 'atestado.pdf' },
+      { usuarioId: 44, setor: 'OBRA' }
+    );
+    assert.strictEqual(anexo.documento_tipo_id, null, 'anexo avulso deve poder ficar sem classificacao');
+    assert.strictEqual(eventosDoAnexo[0].acao, 'ANEXO', 'o upload deve registrar evento no historico');
+    assert.strictEqual(eventosDoAnexo[0].usuario_id, 44, 'o historico deve identificar quem anexou');
+  } finally {
+    sequelize.transaction = originaisAnexo.transaction;
+    RhSolicitacao.findByPk = originaisAnexo.solicitacaoFindByPk;
+    RhSolicitacaoAnexo.create = originaisAnexo.anexoCreate;
+    RhSolicitacaoHistorico.create = originaisAnexo.historicoCreate;
   }
 
   const superadmin = { id: 123456, perfil: 'SUPERADMIN' };
@@ -245,6 +278,72 @@ async function executar() {
   } finally {
     RhColaborador.findAndCountAll = originalFindAndCountAll;
     UsuarioObra.findAll = originalUsuarioObraFindAll;
+  }
+
+  const originalTransferenciaFindAndCountAll = RhSolicitacao.findAndCountAll;
+  const originalObrasTransferenciaFindAll = Obra.findAll;
+  const originalQueryTransferencia = sequelize.query;
+  RhSolicitacao.findAndCountAll = async ({ where, limit, offset }) => {
+    const filtroSituacao = where[Op.and].find(item => item?.situacao);
+    assert.deepStrictEqual(
+      filtroSituacao.situacao[Op.in],
+      ['APROVADA', 'REJEITADA', 'CANCELADA'],
+      'o historico deve consultar somente transferencias resolvidas'
+    );
+    assert.strictEqual(limit, 20, 'a listagem de transferencias deve ser paginada');
+    assert.strictEqual(offset, 20, 'a segunda pagina deve respeitar o deslocamento');
+    return {
+      count: 21,
+      rows: [{
+        obra_id: 12,
+        tipo: 'MOVIMENTACAO',
+        subtipo: 'TRANSFERENCIA_OBRA',
+        dados_json: { obra_destino_id: 35 },
+        get: () => ({
+          id: 902,
+          tipo: 'MOVIMENTACAO',
+          subtipo: 'TRANSFERENCIA_OBRA',
+          colaborador_id: 77,
+          colaborador: { id: 77, nome: 'Colaborador Global' },
+          obra_id: 12,
+          obra: { id: 12, nome: 'Obra A' },
+          dados_json: {
+            obra_destino_id: 35,
+            obra_solicitante_id: 12,
+            obra_aprovadora_id: 35,
+            aprovacao_automatica: false
+          },
+          situacao: 'APROVADA',
+          criada_por: 44,
+          createdAt: new Date('2026-09-18T10:00:00Z'),
+          updatedAt: new Date('2026-09-18T11:00:00Z')
+        })
+      }]
+    };
+  };
+  Obra.findAll = async () => [{ id: 35, nome: 'Obra B' }];
+  sequelize.query = async () => [[{
+    solicitacao_id: 902,
+    ultimo: 10,
+    atividade_em: new Date('2026-09-18T11:00:00Z'),
+    lido: 9
+  }], {}];
+
+  try {
+    const historico = await rhTransferenciaService.listar(superadmin, {
+      grupo: 'RESOLVIDAS',
+      pagina: 2,
+      limite: 20
+    });
+    assert.strictEqual(historico.total, 21);
+    assert.strictEqual(historico.pagina, 2);
+    assert.strictEqual(historico.total_paginas, 2);
+    assert.strictEqual(historico.itens[0].obra_destino_nome, 'Obra B');
+    assert.strictEqual(historico.itens[0].nao_lida, true);
+  } finally {
+    RhSolicitacao.findAndCountAll = originalTransferenciaFindAndCountAll;
+    Obra.findAll = originalObrasTransferenciaFindAll;
+    sequelize.query = originalQueryTransferencia;
   }
 
   console.log('Validacao dos escopos RH/DP para usuario de OBRA e SUPERADMIN concluida com sucesso.');

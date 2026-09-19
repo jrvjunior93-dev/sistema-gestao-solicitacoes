@@ -11,6 +11,7 @@ const {
   Obra,
   RhCargo,
   RhSolicitacaoChecklist,
+  User,
   sequelize
 } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
@@ -1211,8 +1212,9 @@ function vinculoDoPedidoOuColaborador(solicitacao, colaborador) {
  * O anexo fica no PEDIDO, e nao em `rh_documentos`, porque na admissao o colaborador ainda nao
  * existe (ver a migration 202608250052). Na aprovacao ele e copiado para o colaborador.
  *
- * So aceita anexo em pedido ABERTO ou devolvido: pedido ja decidido e historico, e anexar depois
- * permitiria acrescentar prova a uma decisao ja tomada.
+ * So aceita anexo enquanto o pedido ainda esta em tratamento. Depois da decisao, o detalhe
+ * continua disponivel para consulta e comentarios, mas a prova documental daquela decisao fica
+ * preservada sem inclusoes posteriores.
  */
 async function anexarNoPedido(solicitacaoId, dados = {}, contexto = {}, arquivo = null) {
   return sequelize.transaction(async (transaction) => {
@@ -1558,7 +1560,12 @@ async function detalharSolicitacao(id) {
     include: [
       { model: RhColaborador, as: 'colaborador', required: false },
       { model: Obra, as: 'obra', required: false },
-      { model: RhSolicitacaoHistorico, as: 'historicos', required: false }
+      {
+        model: RhSolicitacaoHistorico,
+        as: 'historicos',
+        required: false,
+        include: [{ model: User, as: 'usuario', attributes: ['id', 'nome'], required: false }]
+      }
     ],
     order: [[{ model: RhSolicitacaoHistorico, as: 'historicos' }, 'id', 'ASC']]
   });

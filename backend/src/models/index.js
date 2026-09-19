@@ -1720,6 +1720,12 @@ db.RhSolicitacaoHistorico.belongsTo(db.RhSolicitacao, {
   as: 'solicitacao'
 });
 
+db.RhSolicitacaoHistorico.belongsTo(db.User, {
+  foreignKey: 'usuario_id',
+  as: 'usuario',
+  constraints: false
+});
+
 // Anexos do pedido. Vivem aqui porque na ADMISSAO o colaborador ainda nao existe — eles viram
 // `rh_documentos` na aprovacao (ver a migration 202608250052).
 db.RhSolicitacao.hasMany(db.RhSolicitacaoAnexo, {

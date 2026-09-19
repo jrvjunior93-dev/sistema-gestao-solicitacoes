@@ -22,6 +22,7 @@ import {
 } from '../components/padrao';
 import { useAuth } from '../contexts/AuthContext';
 import { getMinhasObras, getObras } from '../services/obras';
+import { getNotificacoes } from '../services/notificacoes';
 import {
   abrirRhSolicitacao,
   aprovarRhSolicitacao,
@@ -322,6 +323,8 @@ export default function RhDpPessoal() {
    */
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
+  const [transferenciasNaoLidas, setTransferenciasNaoLidas] = useState(0);
+  const limparNotificacoesTransferencia = useCallback(() => setTransferenciasNaoLidas(0), []);
 
   /**
    * DUAS ABAS, e a de solicitacoes vem PRIMEIRO de proposito.
@@ -417,6 +420,31 @@ export default function RhDpPessoal() {
     }
   }, [abaDaUrl, abasDisponiveis, setParametros]);
 
+  useEffect(() => {
+    let ativo = true;
+    const carregarAvisosTransferencia = async () => {
+      try {
+        const resposta = await getNotificacoes({
+          nao_lidas: true,
+          limit: 1,
+          tipos: ['RH_TRANSFERENCIA_ATUALIZADA']
+        });
+        if (ativo) setTransferenciasNaoLidas(Number(resposta.total_nao_lidas || 0));
+      } catch {
+        // A central global continua sendo a fonte de verdade. Uma falha temporaria
+        // neste contador nao deve impedir o restante da tela de Pessoal.
+      }
+    };
+    carregarAvisosTransferencia();
+    const timer = setInterval(carregarAvisosTransferencia, 30000);
+    window.addEventListener('notificacoes:atualizar', carregarAvisosTransferencia);
+    return () => {
+      ativo = false;
+      clearInterval(timer);
+      window.removeEventListener('notificacoes:atualizar', carregarAvisosTransferencia);
+    };
+  }, [user?.id]);
+
   /**
    * R12: o recorte por obra e MARCACAO, nao lista suspensa.
    *
@@ -435,6 +463,30 @@ export default function RhDpPessoal() {
   const [formulario, setFormulario] = useState(null);
   const [conferencia, setConferencia] = useState(null);
   const [pedidosDoColaborador, setPedidosDoColaborador] = useState({ id: null, lista: [] });
+
+  // A troca de usuario de teste preserva o componente montado. Sem limpar estas colecoes, a tela
+  // podia exibir por alguns instantes colaboradores e obras do usuario anterior; ao agir sobre uma
+  // dessas linhas, o backend aplicava o novo escopo e respondia "Acesso negado a este colaborador".
+  useEffect(() => {
+    setColaboradores([]);
+    setObras([]);
+    setObrasDestino([]);
+    setStatusObrasDestino('ocioso');
+    setMarcados({ obra_id: new Set() });
+    setBusca('');
+    setFormulario(null);
+    setPedidosDoColaborador({ id: null, lista: [] });
+  }, [user?.id]);
+
+  const abrirDetalheDaSolicitacao = useCallback((solicitacaoId) => {
+    setPedidosDoColaborador({ id: null, lista: [] });
+    setParametros((atuais) => {
+      const proximos = new URLSearchParams(atuais);
+      proximos.delete('aba');
+      proximos.set('solicitacao', String(solicitacaoId));
+      return proximos;
+    });
+  }, [setParametros]);
 
   /**
    * `hasAnyExplicitPermissao`, e NAO `hasPermissao`.
@@ -479,7 +531,7 @@ export default function RhDpPessoal() {
       setCarregando(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtroObra, busca, obras, empresas, usuarioOperacionalDaObra]);
+  }, [filtroObra, busca, obras, empresas, usuarioOperacionalDaObra, user?.id]);
 
   /**
    * A marcacao aplica sozinha; a busca digitada espera 350ms para nao martelar
@@ -621,7 +673,7 @@ export default function RhDpPessoal() {
        * ela precisa existir primeiro. E por isso que o pedido nasce RASCUNHO — o rascunho e o que
        * segura o trabalho entre "gravei o pedido" e "a papelada esta toda la".
        */
-      const comArquivo = (f.anexos || []).filter((a) => a.arquivo && a.documento_tipo_id);
+      const comArquivo = (f.anexos || []).filter((a) => a.arquivo);
       const falhas = comArquivo.length ? await subirAnexosDoModal(criada.id, comArquivo) : [];
 
       /**
@@ -864,12 +916,12 @@ export default function RhDpPessoal() {
   async function subirAnexosDoModal(solicitacaoId, anexos) {
     const falhas = [];
     for (const linha of anexos) {
-      if (!linha?.arquivo || !linha?.documento_tipo_id) continue;
+      if (!linha?.arquivo) continue;
       try {
         // eslint-disable-next-line no-await-in-loop
         await anexarNaRhSolicitacao(
           solicitacaoId,
-          { documento_tipo_id: Number(linha.documento_tipo_id) },
+          { documento_tipo_id: linha.documento_tipo_id ? Number(linha.documento_tipo_id) : undefined },
           linha.arquivo
         );
       } catch (error) {
@@ -997,6 +1049,9 @@ export default function RhDpPessoal() {
             {aba.rotulo}
             {aba.id === 'solicitacoes' && pendentes.length
               ? <span className="rh-pessoal-aba-contador">{pendentes.length}</span>
+              : null}
+            {aba.id === 'transferencias' && transferenciasNaoLidas > 0
+              ? <span className="rh-pessoal-aba-contador">{transferenciasNaoLidas > 99 ? '99+' : transferenciasNaoLidas}</span>
               : null}
           </button>
         ))}
@@ -1169,7 +1224,9 @@ export default function RhDpPessoal() {
         Montadas so quando a aba esta ativa: cada uma carrega obras, empresas e a propria lista, e
         deixa-las montadas em segundo plano faria tres telas buscarem dados a cada visita.
       */}
-      {abaAtiva === 'transferencias' ? <RhDpTransferencias /> : null}
+      {abaAtiva === 'transferencias' ? <RhDpTransferencias
+        onNotificacoesLidas={limparNotificacoesTransferencia}
+      /> : null}
       {abaAtiva === 'jornada' ? <RhDpJornada /> : null}
       {abaAtiva === 'apuracao' && podeVerApuracao ? <RhDpApuracao /> : null}
 
@@ -1204,6 +1261,13 @@ export default function RhDpPessoal() {
                     ) : null}
                   </div>
                   <div className="app-page-actions">
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => abrirDetalheDaSolicitacao(pedido.id)}
+                    >
+                      Abrir detalhes
+                    </button>
                     {podeDecidir && pedido.situacao === 'ABERTA' ? (
                       <>
                         {/*
@@ -1512,7 +1576,13 @@ export default function RhDpPessoal() {
                     // Os anexos ja escolhidos sao zerados: o tipo deles pode nao existir na lista
                     // nova, e deixar um `documento_tipo_id` orfao faria o envio ser recusado com
                     // uma mensagem que nao explica nada.
-                    setFormulario({ ...formulario, subtipo, anexos: [] });
+                    setFormulario({
+                      ...formulario,
+                      subtipo,
+                      // Movimentacoes como atestado normalmente nascem de um documento. A linha
+                      // ja aberta deixa o campo visivel sem exigir um clique intermediario.
+                      anexos: subtipo ? [{ documento_tipo_id: '', arquivo: null }] : []
+                    });
                     carregarChecklist(formulario.tipo, subtipo);
                     if (subtipo === 'TRANSFERENCIA_OBRA') carregarObrasDestinoSePreciso();
                   }}>
@@ -1862,12 +1932,11 @@ export default function RhDpPessoal() {
               solicitacao, entao ela precisa existir primeiro. E exatamente o que o RASCUNHO resolve:
               ele segura o trabalho entre "gravei o pedido" e "a papelada esta toda la".
 
-              UMA LINHA POR ARQUIVO, cada uma com o SEU tipo. Um `<input multiple>` puro deixaria os
-              arquivos sem tipo, e todos com o mesmo tipo seria pior — a certidao do dependente e o
-              comprovante de escolaridade viriam etiquetados igual. E arquivo sem tipo entra como
-              anexo AVULSO: nao conta para o checklist e nao vai para a pasta do colaborador.
+              UMA LINHA POR ARQUIVO. Quando o checklist do movimento trouxer classificacoes, cada
+              arquivo pode receber o seu tipo; sem classificacao ele continua registrado como
+              anexo da solicitacao, mas nao entra na pasta documental do colaborador.
             */}
-            {checklistDoTipo.length ? (
+            {formulario.tipo ? (
               <div className="rh-anexos-do-modal">
                 <div className="rh-anexos-cabecalho">
                   <span className="form-label">Documentos</span>
@@ -1891,7 +1960,7 @@ export default function RhDpPessoal() {
                         value={linha.documento_tipo_id}
                         onChange={(e) => alterarLinhaDeAnexo(indice, 'documento_tipo_id', e.target.value)}
                       >
-                        <option value="">Selecione</option>
+                        <option value="">Sem classificacao (somente nesta solicitacao)</option>
                         {checklistDoTipo.map((item) => (
                           <option key={item.documento_tipo_id} value={item.documento_tipo_id}>
                             {item.nome}{item.nivel === 'OBRIGATORIO' ? ' (obrigatorio)' : ''}

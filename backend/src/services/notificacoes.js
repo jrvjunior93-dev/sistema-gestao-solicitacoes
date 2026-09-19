@@ -248,7 +248,49 @@ async function criarNotificacao({
   return notificacao;
 }
 
+// Eventos internos que nao pertencem a uma solicitacao operacional comum
+// (por exemplo, transferencias de colaboradores entre obras) informam os
+// destinatarios explicitamente. Isso evita associar o alerta a um id da tabela
+// errada e mantem a navegacao descrita apenas no metadata.
+async function criarNotificacaoDireta({
+  tipo,
+  mensagem,
+  metadata,
+  created_by,
+  destinatarios,
+  transaction = null
+}) {
+  const tipoNormalizado = String(tipo || '').trim().toUpperCase();
+  if (!(await notificacaoEventoAtivo(tipoNormalizado))) return null;
+
+  const destinatariosSet = new Set(
+    (Array.isArray(destinatarios) ? destinatarios : [])
+      .map(usuarioId => Number(usuarioId))
+      .filter(usuarioId => Number.isInteger(usuarioId) && usuarioId > 0)
+  );
+  if (created_by) destinatariosSet.delete(Number(created_by));
+  if (!destinatariosSet.size) return null;
+
+  const notificacao = await Notificacao.create({
+    solicitacao_id: null,
+    tipo: tipoNormalizado,
+    mensagem,
+    metadata: metadata ? JSON.stringify(metadata) : null,
+    created_by: created_by || null
+  }, { transaction });
+
+  await NotificacaoDestinatario.bulkCreate(
+    Array.from(destinatariosSet).map(usuario_id => ({
+      notificacao_id: notificacao.id,
+      usuario_id
+    })),
+    { transaction }
+  );
+  return notificacao;
+}
+
 module.exports = {
   criarNotificacao,
+  criarNotificacaoDireta,
   obterDestinatariosCriacaoSetor
 };

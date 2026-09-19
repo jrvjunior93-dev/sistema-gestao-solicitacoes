@@ -7,7 +7,8 @@ const executar = fn => async (req, res) => {
 module.exports = {
   configuracao: executar(req => service.configuracao(req.user)),
   diretorio: executar(req => service.diretorio(req.user, req.query)),
-  index: executar(req => service.listar(req.user)),
+  index: executar(req => service.listar(req.user, req.query)),
+  marcarListaLida: executar(req => service.marcarListaLida(req.user)),
   show: executar(req => service.detalhe(req.user, req.params.id)),
   create: executar(req => service.abrir(req.user, req.body || {})),
   agir: executar(req => service.agir(req.user, req.params.id, req.params.acao, req.body?.texto))

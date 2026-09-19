@@ -2,27 +2,34 @@
 
 const { Op } = require('sequelize');
 const { sequelize, RhSolicitacao, RhSolicitacaoHistorico, RhColaborador,
-  CrResponsavelObra, Obra } = require('../models');
+  CrResponsavelObra, Obra, Notificacao, NotificacaoDestinatario } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
 const { getUserObraIds, isSuperadmin } = require('./authorizationService');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const { ehTransferencia, hojeLocal, dataIso } = require('./rhPessoalDomain');
 const { vinculoAberto, registrarVinculo } = require('./rhVinculoObraService');
-const { comAtividade, marcarLida } = require('./rhSolicitacaoAtividadeService');
+const { comAtividade, marcarLida, marcarListaLida: registrarListaLida } = require('./rhSolicitacaoAtividadeService');
+const { criarNotificacaoDireta } = require('./notificacoes');
 
 const camposColaborador = ['id', 'nome', 'matricula', 'cargo', 'obra_id'];
 const camposObra = ['id', 'nome', 'codigo'];
 const tiposTransferencia = { [Op.or]: [{ tipo: 'TROCA_OBRA' }, { tipo: 'MOVIMENTACAO', subtipo: 'TRANSFERENCIA_OBRA' }] };
+const SITUACOES_PENDENTES = ['RASCUNHO', 'ABERTA'];
+const SITUACOES_RESOLVIDAS = ['APROVADA', 'REJEITADA', 'CANCELADA'];
+const TIPO_NOTIFICACAO_TRANSFERENCIA = 'RH_TRANSFERENCIA_ATUALIZADA';
 const dadosDe = s => typeof s.dados_json === 'string' ? JSON.parse(s.dados_json) : (s.dados_json || {});
 
 async function responsaveis(usuarioId, transaction) {
   const hoje = hojeLocal();
-  return CrResponsavelObra.findAll({ where: {
-    ...(usuarioId ? { user_id: usuarioId } : {}), ativo: true,
-    papel: { [Op.in]: ['RESPONSAVEL', 'SUBSTITUTO'] },
-    vigencia_inicio: { [Op.lte]: hoje },
-    [Op.or]: [{ vigencia_fim: null }, { vigencia_fim: { [Op.gte]: hoje } }]
-  }, transaction });
+  return CrResponsavelObra.findAll({
+    where: {
+      ...(usuarioId ? { user_id: usuarioId } : {}), ativo: true,
+      papel: { [Op.in]: ['RESPONSAVEL', 'SUBSTITUTO'] },
+      vigencia_inicio: { [Op.lte]: hoje },
+      [Op.or]: [{ vigencia_fim: null }, { vigencia_fim: { [Op.gte]: hoje } }]
+    },
+    transaction
+  });
 }
 
 async function obrasResponsavel(user, transaction) {
@@ -121,16 +128,41 @@ const includes = [
   { model: Obra, as: 'obra', attributes: camposObra, required: false }
 ];
 
-async function listar(user) {
+function montarEscopoTransferencias(acessoGlobal, ids, grupo = '') {
+  const filtros = [tiposTransferencia];
+  if (grupo === 'PENDENTES') filtros.push({ situacao: { [Op.in]: SITUACOES_PENDENTES } });
+  if (grupo === 'RESOLVIDAS') filtros.push({ situacao: { [Op.in]: SITUACOES_RESOLVIDAS } });
+  if (!acessoGlobal) {
+    filtros.push({
+      [Op.or]: [{ obra_id: { [Op.in]: ids } }, ...ids.map(id => sequelize.where(
+        sequelize.cast(sequelize.json('dados_json.obra_destino_id'), 'UNSIGNED'), id))]
+    });
+  }
+  return { [Op.and]: filtros };
+}
+
+async function listar(user, filtros = {}) {
   const acessoGlobal = isSuperadmin(user);
   const ids = acessoGlobal ? [] : await obrasResponsavel(user);
-  if (!acessoGlobal && !ids.length) return [];
+  const grupo = String(filtros.grupo || 'PENDENTES').trim().toUpperCase();
+  if (!['PENDENTES', 'RESOLVIDAS', 'TODAS'].includes(grupo)) {
+    throw new ValidationError('Grupo de transferencias invalido.');
+  }
+  const pagina = Math.max(1, Math.min(100000, Number.parseInt(filtros.pagina, 10) || 1));
+  const limite = Math.max(1, Math.min(50, Number.parseInt(filtros.limite, 10) || 20));
+  if (!acessoGlobal && !ids.length) {
+    return { itens: [], total: 0, pagina, limite, total_paginas: 1, nao_lidas: 0 };
+  }
   // JSON é parametrizado pelo Sequelize. A busca global e exclusiva do SUPERADMIN.
-  const where = acessoGlobal ? tiposTransferencia : { [Op.and]: [tiposTransferencia, {
-    [Op.or]: [{ obra_id: { [Op.in]: ids } }, ...ids.map(id => sequelize.where(
-      sequelize.cast(sequelize.json('dados_json.obra_destino_id'), 'UNSIGNED'), id))]
-  }] };
-  const solicitacoes = await RhSolicitacao.findAll({ where, include: includes });
+  const where = montarEscopoTransferencias(acessoGlobal, ids, grupo);
+  const { count, rows: solicitacoes } = await RhSolicitacao.findAndCountAll({
+    where,
+    include: includes,
+    distinct: true,
+    order: [['updatedAt', 'DESC'], ['id', 'DESC']],
+    limit: limite,
+    offset: (pagina - 1) * limite
+  });
   const linhas = solicitacoes.filter(ehTransferencia).map((registro) => {
     const s = registro.get({ plain: true });
     const idsPermitidos = acessoGlobal
@@ -141,7 +173,49 @@ async function listar(user) {
   const destinos = [...new Set(linhas.map(s => s.obra_destino_id))];
   const obras = destinos.length ? await Obra.findAll({ where: { id: destinos }, attributes: camposObra }) : [];
   const nomes = new Map(obras.map(o => [Number(o.id), o.nome]));
-  return comAtividade(linhas.map(s => ({ ...s, obra_destino_nome: nomes.get(s.obra_destino_id) })), user.id);
+  const itens = await comAtividade(
+    linhas.map(s => ({ ...s, obra_destino_nome: nomes.get(s.obra_destino_id) })),
+    user.id
+  );
+  return {
+    itens,
+    total: Number(count || 0),
+    pagina,
+    limite,
+    total_paginas: Math.max(1, Math.ceil(Number(count || 0) / limite)),
+    nao_lidas: itens.filter(item => item.nao_lida).length
+  };
+}
+
+async function notificarTransferencia(s, user, acao, transaction) {
+  const d = dadosDe(s);
+  const obraIds = [...new Set([Number(s.obra_id), Number(d.obra_destino_id)].filter(Number.isSafeInteger))];
+  const vinculados = await responsaveis(null, transaction);
+  const destinatarios = vinculados
+    .filter(item => obraIds.includes(Number(item.obra_id)))
+    .map(item => Number(item.user_id));
+  if (s.criada_por) destinatarios.push(Number(s.criada_por));
+
+  const rotulo = {
+    ABERTURA: 'Nova transferencia aguardando analise',
+    COMENTARIO: 'Nova interacao em uma transferencia',
+    APROVAR: 'Transferencia aprovada',
+    REJEITAR: 'Transferencia rejeitada',
+    CANCELAR: 'Transferencia cancelada',
+    ENVIAR: 'Transferencia enviada para aprovacao'
+  }[acao] || 'Transferencia atualizada';
+
+  await criarNotificacaoDireta({
+    tipo: TIPO_NOTIFICACAO_TRANSFERENCIA,
+    mensagem: `${rotulo} (#${s.id}). Acesse Transferencias das minhas obras.`,
+    metadata: {
+      rota: '/rh-dp/pessoal?aba=transferencias&secao=transferencias',
+      rh_transferencia_id: Number(s.id)
+    },
+    created_by: user.id,
+    destinatarios,
+    transaction
+  });
 }
 
 async function historico(s, user, acao, descricao, transaction) {
@@ -225,6 +299,7 @@ async function abrir(user, payload) {
     }
     await historico(s, user, 'ABERTURA',
       `Transferencia da obra ${origem} para ${destino}. Aguardando a obra ${fluxo.obraAprovadoraId}.`, transaction);
+    await notificarTransferencia(s, user, 'ABERTURA', transaction);
     return { id: s.id, situacao: s.situacao, aprovacao_automatica: false };
   });
 }
@@ -240,6 +315,7 @@ async function agir(user, id, acao, texto) {
     if (acao === 'comentar') {
       if (!motivo) throw new ValidationError('Informe o comentario.');
       await historico(s, user, 'COMENTARIO', motivo, transaction);
+      await notificarTransferencia(s, user, 'COMENTARIO', transaction);
       return { id: s.id };
     }
     if (['enviar', 'cancelar'].includes(acao)) {
@@ -261,8 +337,37 @@ async function agir(user, id, acao, texto) {
       ...(acao !== 'enviar' ? { decidida_por: user.id, decidida_em: new Date() } : {}),
       ...(acao === 'rejeitar' ? { motivo_rejeicao: motivo } : {}) }, { transaction });
     await historico(s, user, acao.toUpperCase(), motivo || `Transferencia: ${novoStatus}.`, transaction);
+    await notificarTransferencia(s, user, acao.toUpperCase(), transaction);
     return { id: s.id, situacao: s.situacao };
   });
+}
+
+async function marcarListaLida(user) {
+  const acessoGlobal = isSuperadmin(user);
+  const ids = acessoGlobal ? [] : await obrasResponsavel(user);
+  if (!acessoGlobal && !ids.length) return { marcadas: 0 };
+
+  const acessiveis = await RhSolicitacao.findAll({
+    where: montarEscopoTransferencias(acessoGlobal, ids, 'TODAS'),
+    attributes: ['id'],
+    raw: true
+  });
+  await registrarListaLida(acessiveis.map(item => item.id), user.id);
+
+  const notificacoes = await Notificacao.findAll({
+    where: { tipo: TIPO_NOTIFICACAO_TRANSFERENCIA },
+    attributes: ['id'],
+    raw: true
+  });
+  const notificacaoIds = notificacoes.map(item => Number(item.id));
+  let marcadas = 0;
+  if (notificacaoIds.length) {
+    [marcadas] = await NotificacaoDestinatario.update(
+      { lida_em: new Date() },
+      { where: { usuario_id: user.id, lida_em: null, notificacao_id: { [Op.in]: notificacaoIds } } }
+    );
+  }
+  return { marcadas };
 }
 
 async function detalhe(user, id) {
@@ -274,5 +379,5 @@ async function detalhe(user, id) {
   return { ...resumo(s.get({ plain: true }), ids, user.id), historicos: eventos };
 }
 
-module.exports = { configuracao, diretorio, listar, abrir, agir, detalhe, exigirAcesso,
-  obrasResponsavel, resolverFluxoTransferencia };
+module.exports = { configuracao, diretorio, listar, abrir, agir, detalhe, marcarListaLida, exigirAcesso,
+  obrasResponsavel, resolverFluxoTransferencia, montarEscopoTransferencias };

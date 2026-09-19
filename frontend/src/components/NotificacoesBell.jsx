@@ -57,10 +57,12 @@ export default function NotificacoesBell() {
       if (!document.hidden) carregar();
     };
     window.addEventListener('focus', aoVoltarParaTela);
+    window.addEventListener('notificacoes:atualizar', aoVoltarParaTela);
     document.addEventListener('visibilitychange', aoVoltarParaTela);
     return () => {
       clearInterval(id);
       window.removeEventListener('focus', aoVoltarParaTela);
+      window.removeEventListener('notificacoes:atualizar', aoVoltarParaTela);
       document.removeEventListener('visibilitychange', aoVoltarParaTela);
     };
   }, []);
@@ -136,7 +138,12 @@ export default function NotificacoesBell() {
     }
 
     await carregar({ page: 1 });
-    if (item.solicitacao_id) {
+    const rotaInterna = typeof item.metadata?.rota === 'string' && item.metadata.rota.startsWith('/')
+      ? item.metadata.rota
+      : null;
+    if (rotaInterna) {
+      navigate(rotaInterna);
+    } else if (item.solicitacao_id) {
       navigate(`/solicitacoes/${item.solicitacao_id}`);
     }
     setAberto(false);
@@ -251,7 +258,7 @@ export default function NotificacoesBell() {
                   </div>
 
                   <div className="notification-item-body">
-                    {item.tipo === 'RETORNO_SOLICITADO' && !item.lida_em && (
+                    {['RETORNO_SOLICITADO', 'RH_TRANSFERENCIA_ATUALIZADA'].includes(item.tipo) && !item.lida_em && (
                       <span className="mb-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wide text-amber-800">
                         Ação necessária
                       </span>

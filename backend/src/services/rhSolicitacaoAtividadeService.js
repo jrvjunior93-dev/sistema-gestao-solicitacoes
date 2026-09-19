@@ -30,4 +30,18 @@ async function marcarLida(solicitacaoId, usuarioId, historicoId) {
     ON DUPLICATE KEY UPDATE historico_id=GREATEST(historico_id,VALUES(historico_id)),updatedAt=NOW()`,
   { replacements: { solicitacaoId, usuarioId, historicoId } });
 }
-module.exports = { comAtividade, marcarLida };
+
+async function marcarListaLida(solicitacaoIds, usuarioId) {
+  const ids = [...new Set((solicitacaoIds || []).map(Number).filter(Number.isSafeInteger))];
+  if (!ids.length) return;
+  await sequelize.query(`INSERT INTO rh_solicitacao_leituras
+    (solicitacao_id,usuario_id,historico_id,createdAt,updatedAt)
+    SELECT h.solicitacao_id,:usuarioId,MAX(h.id),NOW(),NOW()
+    FROM rh_solicitacao_historicos h
+    WHERE h.solicitacao_id IN (:ids)
+    GROUP BY h.solicitacao_id
+    ON DUPLICATE KEY UPDATE historico_id=GREATEST(historico_id,VALUES(historico_id)),updatedAt=NOW()`,
+  { replacements: { ids, usuarioId } });
+}
+
+module.exports = { comAtividade, marcarLida, marcarListaLida };

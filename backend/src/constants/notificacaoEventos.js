@@ -78,7 +78,8 @@ const NOTIFICACAO_EVENTOS = [
       ['RH_DP_APURACAO_GERADA', 'Apuracao gerada', 'Apuracao de competencia criada.'],
       ['RH_DP_FECHAMENTO_GERADO', 'Fechamento gerado', 'Fechamento criou titulos financeiros.'],
       ['RH_DP_FECHAMENTO_REABERTO', 'Fechamento estornado', 'Fechamento reaberto e financeiro notificado.'],
-      ['RH_DP_TITULOS_GERADOS', 'Titulos RH/DP gerados', 'Titulos gerados a partir do fechamento.']
+      ['RH_DP_TITULOS_GERADOS', 'Titulos RH/DP gerados', 'Titulos gerados a partir do fechamento.'],
+      ['RH_TRANSFERENCIA_ATUALIZADA', 'Transferencia entre obras atualizada', 'Nova transferencia, comentario ou decisao que exige consulta dos responsaveis das obras.']
     ]
   },
   {

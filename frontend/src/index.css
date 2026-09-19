@@ -12268,6 +12268,18 @@ body {
 
 .dark .rh-pessoal-aba-contador { background: #7BA0F5; color: #0E1116; }
 
+/* A segunda regua organiza a operacao de transferencias sem competir com as
+   abas principais de Pessoal. Mantem densidade de sistema e rolagem mobile. */
+.rh-transferencias-subabas {
+  margin-top: -2px;
+  background: color-mix(in srgb, var(--card-bg, #fff) 72%, transparent);
+}
+
+.rh-transferencias-subabas .rh-pessoal-aba {
+  padding: 8px 12px;
+  font-size: var(--fonte-pequena);
+}
+
 /* --- conferencia de documentos na solicitacao --- */
 .rh-pessoal-conferencia {
   display: flex;
@@ -12311,6 +12323,52 @@ body {
 }
 
 .dark .rh-pessoal-historico li { border-left-color: #2A303A; }
+
+.rh-pessoal-historico-meta {
+  color: var(--app-muted-color, #64748b);
+  font-size: var(--fonte-legenda);
+  margin-bottom: 2px;
+}
+
+/* Resumo operacional do pedido de pessoal: dados densos e escaneaveis, sem transformar cada
+   campo em um card. A justificativa ocupa a linha toda porque e o unico conteudo livre/longo. */
+.rh-solicitacao-resumo {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--border-color, #DDE1E8);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.rh-solicitacao-resumo > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 11px;
+  border-right: 1px solid var(--border-color, #DDE1E8);
+  border-bottom: 1px solid var(--border-color, #DDE1E8);
+}
+
+.rh-solicitacao-resumo > div:nth-child(3n) { border-right: 0; }
+.rh-solicitacao-resumo > div > span {
+  color: var(--app-muted-color, #64748b);
+  font-size: var(--fonte-legenda);
+}
+.rh-solicitacao-resumo > div > strong { overflow-wrap: anywhere; }
+.rh-solicitacao-resumo .rh-solicitacao-resumo--largo {
+  grid-column: 1 / -1;
+  border-right: 0;
+}
+
+.dark .rh-solicitacao-resumo,
+.dark .rh-solicitacao-resumo > div { border-color: #2A303A; }
+
+@media (max-width: 720px) {
+  .rh-solicitacao-resumo { grid-template-columns: 1fr; }
+  .rh-solicitacao-resumo > div,
+  .rh-solicitacao-resumo > div:nth-child(3n) { border-right: 0; }
+}
 
 /* Envio de documento na solicitacao: tipo, arquivo e o botao, na mesma linha em tela larga. */
 .rh-pessoal-envio {

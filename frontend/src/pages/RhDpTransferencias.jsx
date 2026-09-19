@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Avisos, TabelaPadrao, useAvisos, useConfirmacao } from '../components/padrao';
 import OverlayModal from '../components/ui/OverlayModal';
 import { rhTransferencias } from '../services/rhDp';
@@ -6,24 +7,33 @@ import '../styles/rh-pessoal-atividade.css';
 
 const data = v => v ? new Date(v).toLocaleString('pt-BR') : '—';
 const dataDia = v => v ? new Date(`${String(v).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—';
+const paginaVazia = { itens: [], total: 0, pagina: 1, limite: 20, total_paginas: 1, nao_lidas: 0 };
 
-export default function RhDpTransferencias() {
+export default function RhDpTransferencias({ onNotificacoesLidas }) {
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
+  const [parametros, setParametros] = useSearchParams();
+  const secao = parametros.get('secao') === 'transferencias' ? 'transferencias' : 'global';
   const [config, setConfig] = useState({ obras: [], obras_responsavel_ids: [] });
-  const [lista, setLista] = useState([]);
+  const [pendentes, setPendentes] = useState(paginaVazia);
+  const [resolvidas, setResolvidas] = useState(paginaVazia);
   const [diretorio, setDiretorio] = useState({ itens: [], total: 0, pagina: 1 });
   const [busca, setBusca] = useState('');
   const [buscaAplicada, setBuscaAplicada] = useState('');
   const [carregando, setCarregando] = useState(false);
+  const [carregandoTransferencias, setCarregandoTransferencias] = useState(false);
+  const [carregandoResolvidas, setCarregandoResolvidas] = useState(false);
+  const [historicoAberto, setHistoricoAberto] = useState(false);
   const [form, setForm] = useState(null);
   const [aberta, setAberta] = useState(null);
   const [comentario, setComentario] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const trava = useRef(false);
   const versaoBusca = useRef(0);
+  const paginaPendentes = useRef(1);
   const minhas = config.obras.filter(o => config.obras_responsavel_ids.includes(Number(o.id)));
   const nomeObra = id => config.obras.find(o => Number(o.id) === Number(id))?.nome || `Obra #${id}`;
+
   const fluxoDoFormulario = formulario => {
     if (!formulario) return null;
     const origem = Number(formulario.colaborador.obra_id);
@@ -36,10 +46,51 @@ export default function RhDpTransferencias() {
       aprovadora: automatico ? null : (solicitante === origem ? destino : origem) };
   };
   const fluxoForm = fluxoDoFormulario(form);
-  const atualizar = useCallback(async () => {
-    try { setLista(await rhTransferencias()); }
-    catch (e) { avisar.erro(e.message); }
+
+  const atualizar = useCallback(async (pagina = 1) => {
+    paginaPendentes.current = pagina;
+    setCarregandoTransferencias(true);
+    try {
+      const resultado = await rhTransferencias('', { params: { grupo: 'PENDENTES', pagina, limite: 20 } });
+      if (resultado.pagina > resultado.total_paginas) {
+        return atualizar(resultado.total_paginas);
+      }
+      setPendentes(resultado);
+      return resultado;
+    } catch (e) {
+      avisar.erro(e.message);
+      return null;
+    } finally {
+      setCarregandoTransferencias(false);
+    }
   }, [avisar]);
+
+  const carregarResolvidas = useCallback(async (pagina = 1) => {
+    setCarregandoResolvidas(true);
+    try {
+      const resultado = await rhTransferencias('', { params: { grupo: 'RESOLVIDAS', pagina, limite: 20 } });
+      setResolvidas(resultado);
+    } catch (e) {
+      avisar.erro(e.message);
+    } finally {
+      setCarregandoResolvidas(false);
+    }
+  }, [avisar]);
+
+  const reconhecerTransferencias = useCallback(async () => {
+    try {
+      await rhTransferencias('/leituras', { method: 'POST' });
+      setPendentes(atual => ({
+        ...atual,
+        nao_lidas: 0,
+        itens: atual.itens.map(item => ({ ...item, nao_lida: false }))
+      }));
+      onNotificacoesLidas?.();
+      window.dispatchEvent(new Event('notificacoes:atualizar'));
+    } catch (e) {
+      avisar.erro(e.message);
+    }
+  }, [avisar, onNotificacoesLidas]);
 
   const pesquisar = useCallback(async (pagina = 1, termo = '') => {
     const versao = ++versaoBusca.current;
@@ -59,37 +110,61 @@ export default function RhDpTransferencias() {
 
   useEffect(() => {
     rhTransferencias('/configuracao').then(setConfig).catch(e => avisar.erro(e.message));
-    atualizar();
+    atualizar(1);
     pesquisar(1);
-    const atualizarVisivel = () => { if (!document.hidden) atualizar(); };
+    const atualizarVisivel = () => { if (!document.hidden) atualizar(paginaPendentes.current); };
     const timer = setInterval(atualizarVisivel, 30000);
     window.addEventListener('focus', atualizarVisivel);
     return () => { clearInterval(timer); window.removeEventListener('focus', atualizarVisivel); };
   }, [atualizar, avisar, pesquisar]);
 
-  async function abrir(s) {
+  useEffect(() => {
+    if (secao !== 'transferencias') return;
+    atualizar(paginaPendentes.current).then(() => reconhecerTransferencias());
+  }, [atualizar, reconhecerTransferencias, secao]);
+
+  function trocarSecao(proxima) {
+    setParametros(atuais => {
+      const novos = new URLSearchParams(atuais);
+      if (proxima === 'transferencias') novos.set('secao', 'transferencias');
+      else novos.delete('secao');
+      return novos;
+    });
+  }
+
+  async function abrir(s, { fecharHistorico = false } = {}) {
     try {
       const detalhe = await rhTransferencias(`/${s.id}`);
-      setAberta(detalhe); setComentario(''); await atualizar();
+      if (fecharHistorico) setHistoricoAberto(false);
+      setAberta(detalhe);
+      setComentario('');
+      await atualizar(paginaPendentes.current);
     } catch (e) { avisar.erro(e.message); }
   }
 
   async function executar(fn) {
     if (trava.current) return;
-    trava.current = true; setOcupado(true);
-    try { await fn(); await atualizar(); }
-    catch (e) { avisar.erro(e.message); }
+    trava.current = true;
+    setOcupado(true);
+    try {
+      await fn();
+      await atualizar(paginaPendentes.current);
+      if (historicoAberto) await carregarResolvidas(resolvidas.pagina);
+    } catch (e) { avisar.erro(e.message); }
     finally { trava.current = false; setOcupado(false); }
   }
 
   async function decidir(acao) {
     if (acao === 'rejeitar' && !comentario.trim()) { avisar.erro('Informe o motivo no campo de comentário.'); return; }
-    const { ok } = await confirmar({ titulo: `${acao === 'aprovar' ? 'Aprovar' : acao === 'rejeitar' ? 'Rejeitar' : acao === 'enviar' ? 'Enviar' : 'Cancelar'} transferência?`,
-      mensagem: acao === 'aprovar' ? 'O colaborador passará para a obra de destino a partir de hoje.' : 'Confirme a ação sobre esta transferência.' });
+    const { ok } = await confirmar({
+      titulo: `${acao === 'aprovar' ? 'Aprovar' : acao === 'rejeitar' ? 'Rejeitar' : acao === 'enviar' ? 'Enviar' : 'Cancelar'} transferência?`,
+      mensagem: acao === 'aprovar' ? 'O colaborador passará para a obra de destino a partir de hoje.' : 'Confirme a ação sobre esta transferência.'
+    });
     if (!ok) return;
     executar(async () => {
       await rhTransferencias(`/${aberta.id}/${acao}`, { method: 'POST', data: { texto: comentario } });
-      setAberta(null); avisar.sucesso('Transferência atualizada.');
+      setAberta(null);
+      avisar.sucesso('Transferência atualizada.');
     });
   }
 
@@ -99,25 +174,49 @@ export default function RhDpTransferencias() {
     setForm({ colaborador: c, obra_destino_id: destino, justificativa: '' });
   }
 
+  const colunasTransferencias = [
+    { id: 'colaborador', titulo: 'Colaborador', tipo: 'identidade', noCard: 'titulo', render: s => s.colaborador?.nome || '—' },
+    { id: 'origem', titulo: 'Origem', tipo: 'texto', render: s => s.obra?.nome || nomeObra(s.obra_id) },
+    { id: 'destino', titulo: 'Destino', tipo: 'texto', render: s => s.obra_destino_nome || nomeObra(s.obra_destino_id) },
+    { id: 'situacao', titulo: 'Situação', tipo: 'status', render: s => <>{s.situacao}{s.nao_lida && <span className="rh-chip rh-chip--aberta ml-2">Nova interação</span>}</> },
+    { id: 'responsavel', titulo: 'Aprovação por', tipo: 'texto', render: s => s.aprovacao_automatica ? 'Automática' : nomeObra(s.obra_aprovadora_id) },
+    { id: 'atividade', titulo: 'Última interação', tipo: 'data', render: s => data(s.atividade_em) }
+  ];
+
+  const paginacao = (pagina, aoMudar) => (
+    <div className="app-page-actions">
+      <span aria-live="polite">{pagina.total} transferência(ões) · Página {pagina.pagina} de {pagina.total_paginas}</span>
+      <button type="button" className="btn btn-outline btn-sm" disabled={pagina.pagina <= 1} onClick={() => aoMudar(pagina.pagina - 1)}>Anterior</button>
+      <button type="button" className="btn btn-outline btn-sm" disabled={pagina.pagina >= pagina.total_paginas} onClick={() => aoMudar(pagina.pagina + 1)}>Próxima</button>
+    </div>
+  );
+
   return <div className="space-y-4 min-w-0">
     <Avisos avisos={avisos} aoFechar={fechar} />
-    <p className="form-hint">A obra atual pode enviar ou uma obra de destino pode solicitar o colaborador. A outra obra aprova; se o mesmo responsável atuar nas duas, a transferência é imediata.</p>
-    {!minhas.length && <p className="alert alert-info">Para solicitar ou aprovar, configure o responsável ou substituto vigente em Configurações → Responsáveis por obra. A consulta global exige vínculo do usuário com uma obra.</p>}
-    <section aria-label="Transferências entre obras">
-      <div className="app-page-actions"><h3 className="app-bloco-titulo">Transferências das minhas obras</h3><button type="button" className="btn btn-outline btn-sm" onClick={atualizar}>Atualizar</button></div>
-      <TabelaPadrao storageKey="tabela:rh-transferencias" itens={lista} urgencia={s => s.nao_lida ? 'warning' : null} classeLinha={s => s.nao_lida ? 'rh-solicitacao-nao-lida' : ''}
-        vazio="Nenhuma transferência para os responsáveis deste usuário."
-        colunas={[
-          { id: 'colaborador', titulo: 'Colaborador', tipo: 'identidade', noCard: 'titulo', render: s => s.colaborador?.nome || '—' },
-          { id: 'origem', titulo: 'Origem', tipo: 'texto', render: s => s.obra?.nome || nomeObra(s.obra_id) },
-          { id: 'destino', titulo: 'Destino', tipo: 'texto', render: s => s.obra_destino_nome || nomeObra(s.obra_destino_id) },
-          { id: 'situacao', titulo: 'Situação', tipo: 'status', render: s => <>{s.situacao}{s.nao_lida && <span className="rh-chip rh-chip--aberta ml-2">Nova interação</span>}</> },
-          { id: 'responsavel', titulo: 'Aprovação por', tipo: 'texto', render: s => s.aprovacao_automatica ? 'Automática' : nomeObra(s.obra_aprovadora_id) },
-          { id: 'atividade', titulo: 'Última interação', tipo: 'data', render: s => data(s.atividade_em) }
-        ]} acoesLinha={s => <button type="button" className="btn btn-outline btn-sm" onClick={() => abrir(s)}>Abrir</button>} />
-    </section>
-    <section aria-label="Diretório global de colaboradores">
-      <h3 className="app-bloco-titulo">Lista global de colaboradores</h3>
+    <div className="rh-pessoal-abas rh-transferencias-subabas" role="tablist" aria-label="Consultas de transferências">
+      <button type="button" role="tab" aria-selected={secao === 'global'} className={`rh-pessoal-aba${secao === 'global' ? ' rh-pessoal-aba--ativa' : ''}`} onClick={() => trocarSecao('global')}>Lista global de colaboradores</button>
+      <button type="button" role="tab" aria-selected={secao === 'transferencias'} className={`rh-pessoal-aba${secao === 'transferencias' ? ' rh-pessoal-aba--ativa' : ''}`} onClick={() => trocarSecao('transferencias')}>
+        Transferências das minhas obras
+        {pendentes.nao_lidas > 0 ? <span className="rh-pessoal-aba-contador">{pendentes.nao_lidas}</span> : null}
+      </button>
+    </div>
+
+    {secao === 'transferencias' ? <>
+      <p className="form-hint">Pendências permanecem nesta lista até uma decisão. Transferências concluídas ficam disponíveis no histórico.</p>
+      {!minhas.length && <p className="alert alert-info">Para solicitar ou aprovar, configure o responsável ou substituto vigente em Configurações → Responsáveis por obra.</p>}
+      <section aria-label="Transferências entre obras">
+        <div className="app-page-actions">
+          <h3 className="app-bloco-titulo">Transferências das minhas obras</h3>
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => { setHistoricoAberto(true); carregarResolvidas(1); }}>Minhas transferências</button>
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => atualizar(pendentes.pagina)}>Atualizar</button>
+        </div>
+        <TabelaPadrao storageKey="tabela:rh-transferencias-pendentes" itens={pendentes.itens} carregando={carregandoTransferencias}
+          urgencia={s => s.nao_lida ? 'warning' : null} classeLinha={s => s.nao_lida ? 'rh-solicitacao-nao-lida' : ''}
+          vazio="Nenhuma transferência pendente para os responsáveis deste usuário."
+          colunas={colunasTransferencias} acoesLinha={s => <button type="button" className="btn btn-outline btn-sm" onClick={() => abrir(s)}>Abrir</button>} />
+        {paginacao(pendentes, atualizar)}
+      </section>
+    </> : <section aria-label="Diretório global de colaboradores">
       <p className="form-hint">Somente identificação profissional e obra atual. Sem dados financeiros ou documentos pessoais.</p>
       <form className="app-page-actions" onSubmit={e => { e.preventDefault(); pesquisar(1, busca.trim()); }}>
         <label className="form-field flex-1 min-w-0"><span className="form-label">Nome, matrícula ou função</span>
@@ -137,7 +236,18 @@ export default function RhDpTransferencias() {
         <button type="button" className="btn btn-outline btn-sm" disabled={carregando || diretorio.pagina <= 1} onClick={() => pesquisar(diretorio.pagina - 1, buscaAplicada)}>Anterior</button>
         <button type="button" className="btn btn-outline btn-sm" disabled={carregando || diretorio.pagina * 50 >= diretorio.total} onClick={() => pesquisar(diretorio.pagina + 1, buscaAplicada)}>Próxima</button>
       </div>
-    </section>
+    </section>}
+
+    {historicoAberto && <OverlayModal rotulo="Minhas transferências" onFechar={() => setHistoricoAberto(false)}>
+      <div className="space-y-3 p-4">
+        <div className="app-page-actions"><div><h2 className="app-bloco-titulo">Minhas transferências</h2><p className="form-hint">Histórico de transferências aprovadas, rejeitadas ou canceladas.</p></div><button type="button" className="btn btn-outline btn-sm" onClick={() => setHistoricoAberto(false)}>Fechar</button></div>
+        <TabelaPadrao storageKey="tabela:rh-transferencias-resolvidas" itens={resolvidas.itens} carregando={carregandoResolvidas}
+          vazio="Nenhuma transferência resolvida."
+          colunas={colunasTransferencias} acoesLinha={s => <button type="button" className="btn btn-outline btn-sm" onClick={() => abrir(s, { fecharHistorico: true })}>Abrir</button>} />
+        {paginacao(resolvidas, carregarResolvidas)}
+      </div>
+    </OverlayModal>}
+
     {form && <OverlayModal rotulo="Solicitar transferência entre obras" onFechar={() => { if (!ocupado) setForm(null); }}>
       <form className="space-y-3 p-4" onSubmit={e => { e.preventDefault(); executar(async () => {
         const resultado = await rhTransferencias('', { method: 'POST', data: { colaborador_id: form.colaborador.id,
@@ -171,6 +281,7 @@ export default function RhDpTransferencias() {
         <div className="app-page-actions"><button className="btn btn-primary" disabled={ocupado || !fluxoForm?.destino || !fluxoForm?.solicitante}>{ocupado ? 'Processando…' : fluxoForm?.automatico ? 'Confirmar transferência' : 'Enviar para aprovação'}</button><button type="button" className="btn btn-outline" disabled={ocupado} onClick={() => setForm(null)}>Cancelar</button></div>
       </form>
     </OverlayModal>}
+
     {aberta && <OverlayModal rotulo={`Transferência #${aberta.id}`} onFechar={() => { if (!ocupado) setAberta(null); }}>
       <div className="space-y-3 p-4">
         <div className="app-page-actions"><h2 className="app-bloco-titulo">Transferência #{aberta.id}</h2><button type="button" className="btn btn-outline btn-sm" disabled={ocupado} onClick={() => setAberta(null)}>Fechar</button></div>

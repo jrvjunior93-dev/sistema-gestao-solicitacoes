@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Avisos,
   BarraFiltros,
@@ -21,9 +22,10 @@ import {
   reenviarRhSolicitacao,
   rejeitarRhSolicitacao,
   validarAnexoRhSolicitacao,
-  getRhDocumentoTiposParaAnexo
-,
-  enviarRhSolicitacao} from '../services/rhDp';
+  getRhChecklistDoTipo,
+  enviarRhSolicitacao
+} from '../services/rhDp';
+import { getLinkSeguroAnexoSolicitacao } from '../services/solicitacoes';
 
 /**
  * A ABA DE SOLICITACOES — acompanhar e decidir (26/08).
@@ -49,6 +51,7 @@ const ROTULO_TIPO = {
 };
 
 const ROTULO_SITUACAO = {
+  RASCUNHO: 'Rascunho',
   ABERTA: 'Aguardando decisao',
   APROVADA: 'Aprovada',
   REJEITADA: 'Devolvida para correcao',
@@ -95,9 +98,48 @@ function chipDaSituacao(situacao) {
   return 'rh-chip';
 }
 
+const ROTULO_DADO = {
+  data_inicial: 'Data inicial',
+  data_final: 'Data final',
+  data_vigencia: 'Vigência',
+  dias_afastamento: 'Dias de afastamento',
+  motivo: 'Motivo',
+  novo_salario: 'Novo salário',
+  novo_cargo_id: 'Novo cargo',
+  data_desligamento: 'Data de desligamento',
+  ultimo_dia_trabalhado: 'Último dia trabalhado',
+  solicitado_por: 'Solicitado por',
+  tem_aviso_previo: 'Aviso prévio',
+  tipo_aviso_previo: 'Tipo do aviso prévio',
+  codigo: 'Evento',
+  natureza: 'Natureza',
+  valor: 'Valor',
+  competencia_inicio: 'Competência inicial',
+  parcelas_total: 'Parcelas'
+};
+
+function formatarDado(chave, valor) {
+  if (valor === null || valor === undefined || valor === '') return '—';
+  if (typeof valor === 'boolean') return valor ? 'Sim' : 'Não';
+  if (/^data_|_em$|competencia_inicio/.test(chave) && /^\d{4}-\d{2}-\d{2}/.test(String(valor))) {
+    return new Date(`${String(valor).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR');
+  }
+  if (['valor', 'novo_salario'].includes(chave) && !Number.isNaN(Number(valor))) {
+    return Number(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+  return String(valor).replaceAll('_', ' ');
+}
+
+function dadosOperacionais(solicitacao) {
+  return Object.entries(solicitacao?.dados_json || {})
+    .filter(([chave, valor]) => ROTULO_DADO[chave] && valor !== null && valor !== undefined && valor !== '')
+    .map(([chave, valor]) => ({ chave, rotulo: ROTULO_DADO[chave], valor: formatarDado(chave, valor) }));
+}
+
 export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAprovarSalario, aoMudar }) {
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
+  const [parametros, setParametros] = useSearchParams();
 
   const [solicitacoes, setSolicitacoes] = useState([]);
   const [carregando, setCarregando] = useState(false);
@@ -197,12 +239,61 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
       setSolicitacoes(lista => lista.map(s => s.id === solicitacao.id ? { ...s, nao_lida: false } : s));
       setAnexos(Array.isArray(listaAnexos) ? listaAnexos : []);
       setConferencia(conferido);
-      if (!tiposDocumento.length) {
-        const tipos = await getRhDocumentoTiposParaAnexo();
-        setTiposDocumento(Array.isArray(tipos) ? tipos : []);
-      }
+      const checklist = await getRhChecklistDoTipo(detalhe.tipo, detalhe.subtipo || undefined)
+        .catch(() => ({ itens: [] }));
+      setTiposDocumento((checklist?.itens || []).map((item) => ({
+        id: item.documento_tipo_id,
+        nome: item.nome,
+        obrigatorio: item.nivel === 'OBRIGATORIO'
+      })));
     } catch (error) {
       avisar.erro(error.message || 'Nao foi possivel abrir a solicitacao.');
+      if (detalheAtual.current === solicitacao.id) {
+        detalheAtual.current = null;
+        setAberta(null);
+        setParametros((atuais) => {
+          const proximos = new URLSearchParams(atuais);
+          proximos.delete('solicitacao');
+          return proximos;
+        }, { replace: true });
+      }
+    }
+  }
+
+  function selecionarDetalhe(solicitacao) {
+    setParametros((atuais) => {
+      const proximos = new URLSearchParams(atuais);
+      proximos.set('solicitacao', String(solicitacao.id));
+      return proximos;
+    });
+  }
+
+  function fecharDetalhe() {
+    detalheAtual.current = null;
+    setAberta(null);
+    setParametros((atuais) => {
+      const proximos = new URLSearchParams(atuais);
+      proximos.delete('solicitacao');
+      return proximos;
+    }, { replace: true });
+  }
+
+  useEffect(() => {
+    const solicitacaoId = Number(parametros.get('solicitacao'));
+    if (Number.isInteger(solicitacaoId) && solicitacaoId > 0 && detalheAtual.current !== solicitacaoId) {
+      abrirDetalhe({ id: solicitacaoId });
+    }
+    // A URL e a fonte do detalhe selecionado; `abrirDetalhe` apenas materializa esse estado.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parametros]);
+
+  async function abrirAnexo(anexo) {
+    limpar();
+    try {
+      const url = await getLinkSeguroAnexoSolicitacao(anexo.arquivo_url);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      avisar.erro(error.message || 'Nao foi possivel abrir o documento.');
     }
   }
 
@@ -385,7 +476,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
         mensagem = 'Solicitacao cancelada.';
       }
 
-      setAberta(null);
+      fecharDetalhe();
       await carregar();
       if (typeof aoMudar === 'function') aoMudar();
       // Por ultimo: `carregar()` comeca limpando os avisos, entao a confirmacao emitida antes
@@ -533,7 +624,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
           classeLinha={(s) => (s.nao_lida ? 'rh-solicitacao-nao-lida' : '')}
           acoesLinha={(s) => (
             <>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirDetalhe(s)}>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionarDetalhe(s)}>
                 Abrir
               </button>
               {podeDecidir && s.situacao === 'ABERTA' ? (
@@ -580,8 +671,8 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
       {aberta ? (
         <OverlayModal
           rotulo={`${ROTULO_TIPO[aberta.tipo] || aberta.tipo} #${aberta.id}`}
-          largura="900px"
-          onFechar={() => { detalheAtual.current = null; setAberta(null); }}
+          largura="1120px"
+          onFechar={fecharDetalhe}
         >
         <div className="rh-modal-conteudo space-y-4">
           {faixaAvisos}
@@ -606,8 +697,23 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
                 {aberta.justificativa ? ` — ${aberta.justificativa}` : ''}
               </p>
             </div>
-            <button type="button" className="btn btn-outline btn-sm" onClick={() => { detalheAtual.current = null; setAberta(null); }}>Fechar</button>
+            <button type="button" className="btn btn-outline btn-sm" onClick={fecharDetalhe}>Fechar</button>
           </div>
+
+          <section className="rh-solicitacao-resumo" aria-label="Dados da solicitacao de pessoal">
+            <div><span>Situacao</span><strong>{ROTULO_SITUACAO[aberta.situacao] || aberta.situacao}</strong></div>
+            <div><span>Colaborador</span><strong>{aberta.colaborador?.nome || aberta.dados_json?.nome || 'A admitir'}</strong></div>
+            <div><span>Obra</span><strong>{aberta.obra?.nome || aberta.colaborador?.obra?.nome || '—'}</strong></div>
+            <div><span>Tipo</span><strong>{ROTULO_TIPO[aberta.tipo] || aberta.tipo}{aberta.subtipo ? ` · ${String(aberta.subtipo).replaceAll('_', ' ')}` : ''}</strong></div>
+            <div><span>Aberta em</span><strong>{aberta.createdAt ? new Date(aberta.createdAt).toLocaleString('pt-BR') : '—'}</strong></div>
+            <div><span>Ultima atualizacao</span><strong>{aberta.updatedAt ? new Date(aberta.updatedAt).toLocaleString('pt-BR') : '—'}</strong></div>
+            {dadosOperacionais(aberta).map((campo) => (
+              <div key={campo.chave}><span>{campo.rotulo}</span><strong>{campo.valor}</strong></div>
+            ))}
+            {aberta.justificativa ? (
+              <div className="rh-solicitacao-resumo--largo"><span>Justificativa</span><strong>{aberta.justificativa}</strong></div>
+            ) : null}
+          </section>
 
           {conferencia?.exigeConferencia ? (
             <div className="rh-pessoal-conferencia">
@@ -631,8 +737,8 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
             </div>
           ) : null}
 
-          {/* A obra envia enquanto o pedido esta ABERTO ou foi devolvido — depois de decidido, nao. */}
-          {podeAbrir && ['RASCUNHO', 'ABERTA', 'REJEITADA'].includes(aberta.situacao) ? (
+          {/* Os envolvidos enviam enquanto o pedido esta em tratamento — depois de decidido, nao. */}
+          {['RASCUNHO', 'ABERTA', 'REJEITADA'].includes(aberta.situacao) ? (
             <form onSubmit={enviarDocumento} className="rh-pessoal-envio">
               <label className="form-field">
                 <span className="form-label">Tipo do documento</span>
@@ -699,6 +805,9 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
                       >
                         {anexo.situacao}
                       </span>
+                      <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirAnexo(anexo)}>
+                        Abrir arquivo
+                      </button>
                       {/* Depois que virou documento, atestar de novo nao significa nada. */}
                       {podeDecidir && anexo.situacao !== 'VALIDADO' && !anexo.documento_gerado_id ? (
                         <button type="button" className="btn btn-primary btn-sm" onClick={() => decidirAnexo(anexo, true)}>
@@ -717,7 +826,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
             )}
           </div>
 
-          {podeAbrir && <form className="space-y-2" onSubmit={async e => {
+          <form className="space-y-2" onSubmit={async e => {
             e.preventDefault();
             if (travaComentario.current || !comentario.trim()) return;
             travaComentario.current = true; setComentando(true);
@@ -727,14 +836,17 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
           }}>
             <label className="form-field"><span className="form-label">Comentário</span><textarea className="form-control" required maxLength={2000} value={comentario} onChange={e => setComentario(e.target.value)} /></label>
             <button className="btn btn-outline btn-sm" disabled={comentando || !comentario.trim()}>{comentando ? 'Enviando…' : 'Comentar'}</button>
-          </form>}
+          </form>
           {aberta.historicos?.length ? (
             <div>
               <h3 className="app-bloco-titulo mb-2">Histórico</h3>
               <ul className="rh-pessoal-historico">
                 {aberta.historicos.map((h) => (
                   <li key={h.id}>
-                    <span className="opacity-70">{h.setor || '—'}</span> · {h.acao} · {h.descricao}
+                    <div className="rh-pessoal-historico-meta">
+                      {h.createdAt ? new Date(h.createdAt).toLocaleString('pt-BR') : '—'} · {h.usuario?.nome || `Usuario #${h.usuario_id || '—'}`} · {h.setor || '—'}
+                    </div>
+                    <strong>{h.acao}</strong>{h.descricao ? ` · ${h.descricao}` : ''}
                   </li>
                 ))}
               </ul>

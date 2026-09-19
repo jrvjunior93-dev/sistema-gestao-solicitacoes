@@ -1515,14 +1515,6 @@ const allowRhDpSolicitacaoDecidir = permit({
       : 'Acesso negado: decidir solicitacao de pessoal exige permissao especifica'
   )
 });
-const allowRhDpSolicitacaoAnexar = permit({
-  resource: 'RH_DP_SOLICITACOES',
-  custom: async (req) => (
-    (await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.anexar', 'rh_dp.solicitacoes.abrir']))
-      ? true
-      : 'Acesso negado: anexar na solicitacao de pessoal exige permissao especifica'
-  )
-});
 // Ver a lista exige apenas poder ver colaborador: a visibilidade por obra e aplicada no controller.
 const allowRhDpSolicitacaoVer = permit({
   resource: 'RH_DP_SOLICITACOES',
@@ -1945,6 +1937,7 @@ router.post('/rh/colaboradores/importar-massa', allowRhDpColaboradoresWrite, upl
 router.get('/rh/transferencias/configuracao', allowRhDpSolicitacaoVer, RhTransferenciaController.configuracao);
 router.get('/rh/transferencias/diretorio', allowRhDpSolicitacaoVer, RhTransferenciaController.diretorio);
 router.get('/rh/transferencias', allowRhDpSolicitacaoVer, RhTransferenciaController.index);
+router.post('/rh/transferencias/leituras', allowRhDpSolicitacaoVer, RhTransferenciaController.marcarListaLida);
 router.post('/rh/transferencias', allowRhDpSolicitacaoVer, criticalRateLimit, RhTransferenciaController.create);
 router.get('/rh/transferencias/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Transferencia') }), RhTransferenciaController.show);
 router.post('/rh/transferencias/:id/:acao', allowRhDpSolicitacaoVer, criticalRateLimit, RhTransferenciaController.agir);
@@ -1953,12 +1946,15 @@ router.get('/rh/solicitacoes/checklist', allowRhDpSolicitacaoVer, RhSolicitacaoC
 router.get('/rh/solicitacoes/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.show);
 router.get('/rh/solicitacoes/:id/conferencia', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.conferencia);
 router.post('/rh/solicitacoes', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhSolicitacaoController.create);
-router.post('/rh/solicitacoes/:id/anexos', allowRhDpSolicitacaoAnexar, uploadRateLimit, uploadComprovantes.single('file'), validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.anexar);
+// A autorizacao fina continua no controller: somente DP ou usuario vinculado a obra da solicitacao
+// passa. A permissao de visualizacao e a correta para a colaboracao no detalhe; exigir "abrir"
+// impedia um usuario envolvido de comentar/anexar numa solicitacao que ele podia consultar.
+router.post('/rh/solicitacoes/:id/anexos', allowRhDpSolicitacaoVer, uploadRateLimit, uploadComprovantes.single('file'), validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.anexar);
 router.post('/rh/solicitacoes/:id/aprovar', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.aprovar);
 router.post('/rh/solicitacoes/:id/rejeitar', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.rejeitar);
 router.post('/rh/solicitacoes/:id/reenviar', allowRhDpSolicitacaoAbrir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.reenviar);
 router.post('/rh/solicitacoes/:id/cancelar', allowRhDpSolicitacaoAbrir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.cancelar);
-router.post('/rh/solicitacoes/:id/comentar', allowRhDpSolicitacaoAbrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.comentar);
+router.post('/rh/solicitacoes/:id/comentar', allowRhDpSolicitacaoVer, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.comentar);
 // --- Fases 9 a 11 do DP (27/08). O checklist do TIPO vem antes do `:id` de proposito: sem barra
 // numerica, `/rh/solicitacoes/checklist` seria capturado por `/rh/solicitacoes/:id` se viesse depois.
 router.post('/rh/solicitacoes/:id/enviar', allowRhDpSolicitacaoAbrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.enviar);
