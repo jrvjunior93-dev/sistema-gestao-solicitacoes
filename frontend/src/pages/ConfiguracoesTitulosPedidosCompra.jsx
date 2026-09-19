@@ -123,7 +123,7 @@ export default function ConfiguracoesTitulosPedidosCompra() {
         {loading ? <p className="app-note">Carregando...</p> : (
           <TabelaPadrao
             id="config-categorias-titulos-pedidos"
-            dados={categorias}
+            itens={categorias}
             colunas={colunas}
             mensagemVazia="Nenhuma categoria financeira ativa para títulos a pagar."
           />
