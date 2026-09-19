@@ -35,7 +35,7 @@ const NOTIFICACAO_EVENTOS = [
       ['PEDIDO_COMPRA_GERADO', 'Pedido de compra gerado', 'Pedido criado a partir de cotacao.'],
       ['PEDIDO_COMPRA_STATUS_ALTERADO', 'Status do pedido alterado', 'Mudanca no status do pedido de compra.'],
       ['PEDIDO_COMPRA_CANCELADO', 'Pedido de compra cancelado', 'Pedido ou item cancelado no fluxo de compras.'],
-      ['PEDIDO_COMPRA_AGUARDANDO_GEO', 'Pedido aguardando GEO', 'Pedido fechado com fornecedor e encaminhado ao GEO para previsao financeira.'],
+      ['PEDIDO_COMPRA_AGUARDANDO_GEO', 'Pedido legado aguardando revisão', 'Evento histórico de pedidos que aguardavam preparação financeira pelo GEO.'],
       ['PEDIDO_COMPRA_REABERTURA_SOLICITADA', 'Reabertura de pedido solicitada', 'Compras solicitou ao GEO a reabertura de um pedido com titulo vinculado.'],
       ['PEDIDO_COMPRA_REABERTURA_DECIDIDA', 'Reabertura de pedido decidida', 'GEO aprovou ou rejeitou uma solicitacao de reabertura do pedido.'],
       ['COMPRAS_ATRASO_DELEGACAO', 'Atraso em delegacao de compras', 'Solicitacao atribuida ao comprador ultrapassou prazo.']

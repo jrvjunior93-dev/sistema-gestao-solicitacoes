@@ -1,6 +1,5 @@
 const { Op } = require('sequelize');
 const {
-  CategoriaFinanceira,
   FormaPagamentoFinanceira,
   FornecedorCompra,
   Historico,
@@ -17,6 +16,10 @@ const {
 } = require('../models');
 const { criarTituloManual } = require('./tituloFinanceiroService');
 const { criarNotificacao } = require('./notificacoes');
+const {
+  obterConfiguracaoCategoriasTituloPedido,
+  validarCategoriaTituloPedido
+} = require('./pedidoCompraTituloConfigService');
 
 const STATUS_FLUXO = Object.freeze({
   AGUARDANDO_GEO: 'AGUARDANDO_GEO',
@@ -110,7 +113,7 @@ async function registrarHistorico({ pedido, solicitacao, usuarioId, acao, descri
   await Historico.create({
     solicitacao_id: solicitacaoPrincipalId,
     usuario_responsavel_id: usuarioId || null,
-    setor: 'GEO',
+    setor: String(acao || '').includes('_GEO') ? 'GEO' : 'COMPRAS',
     acao,
     observacao: descricao,
     descricao,
@@ -224,7 +227,7 @@ function derivarStatusFinanceiro(pedido, titulos = []) {
   }
   return pedido.status_financeiro || (
     STATUS_PEDIDO_FECHADO.has(normalize(pedido.status))
-      ? STATUS_FLUXO.AGUARDANDO_GEO
+      ? STATUS_FLUXO.AGUARDANDO_PREVISAO
       : 'NAO_INICIADO'
   );
 }
@@ -252,19 +255,14 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
   };
   if (!incluirDetalhes) return resumo;
 
-  const [documentos, categorias, formasPagamento] = await Promise.all([
+  const [documentos, categoriasConfig, formasPagamento] = await Promise.all([
     PedidoCompraDocumentoFinanceiro.findAll({
       where: { pedido_compra_id: Number(pedido.id) },
       include: [{ model: User, as: 'criadoPor', attributes: ['id', 'nome'] }],
       order: [['id', 'DESC']],
       transaction
     }),
-    CategoriaFinanceira.findAll({
-      where: { ativo: true, tipo: { [Op.in]: ['PAGAR', 'AMBOS'] } },
-      attributes: ['id', 'nome', 'tipo'],
-      order: [['nome', 'ASC']],
-      transaction
-    }),
+    obterConfiguracaoCategoriasTituloPedido({ transaction }),
     FormaPagamentoFinanceira.findAll({
       where: { ativo: true, exige_cartao: false },
       attributes: ['id', 'nome', 'codigo', 'tipo', 'permite_parcelamento', 'exige_cartao'],
@@ -277,7 +275,9 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
     titulos,
     documentos: documentos.map((documento) => documento.toJSON()),
     opcoes: {
-      categorias: categorias.map((item) => item.toJSON()),
+      categorias: categoriasConfig.categorias,
+      categoria_padrao_id: categoriasConfig.categoria_padrao_id,
+      categorias_configuradas: categoriasConfig.configurada,
       formas_pagamento: formasPagamento.map((item) => item.toJSON())
     }
   };
@@ -417,7 +417,7 @@ async function sincronizarPedidoFinanceiroAoFechar({ pedido, usuarioId, transact
   const agora = new Date();
   await pedido.update({
     financeiro_fluxo_versao: pedido.financeiro_fluxo_versao || 1,
-    status_financeiro: STATUS_FLUXO.AGUARDANDO_GEO,
+    status_financeiro: STATUS_FLUXO.AGUARDANDO_PREVISAO,
     financeiro_encaminhado_em: agora,
     financeiro_atualizado_em: agora
   }, { transaction });
@@ -430,16 +430,9 @@ async function sincronizarPedidoFinanceiroAoFechar({ pedido, usuarioId, transact
     pedido,
     solicitacao,
     usuarioId,
-    acao: 'PEDIDO_COMPRA_ENCAMINHADO_GEO_FINANCEIRO',
-    descricao: `${buildPedidoCodigo(pedido.id)} fechado com o fornecedor e encaminhado para gestao financeira do GEO.`,
-    transaction
-  });
-  await notificarGeo({
-    pedido,
-    solicitacao,
-    tipo: 'PEDIDO_COMPRA_AGUARDANDO_GEO',
-    mensagem: `${buildPedidoCodigo(pedido.id)} foi fechado com o fornecedor e aguarda previsao financeira do GEO.`,
-    usuarioId,
+    acao: 'PEDIDO_COMPRA_AGUARDANDO_TITULOS_COMPRAS',
+    descricao: `${buildPedidoCodigo(pedido.id)} fechado com o fornecedor e mantido em Compras para geracao dos titulos.`,
+    metadata: { setor_responsavel: 'COMPRAS' },
     transaction
   });
   return pedido;
@@ -453,7 +446,7 @@ async function adotarPedidoLegado({ pedidoId, usuarioId, transaction }) {
   if (!pedido) throw httpError(404, 'Pedido de compra nao encontrado.');
   if (pedido.financeiro_fluxo_versao) return pedido;
   if (!STATUS_PEDIDO_FECHADO.has(normalize(pedido.status))) {
-    throw httpError(409, 'Somente pedidos fechados podem entrar na gestao financeira do GEO.');
+    throw httpError(409, 'Somente pedidos fechados podem entrar na gestao de titulos de Compras.');
   }
 
   const idsLegados = await buscarIdsTitulosLegados(pedido.id, transaction);
@@ -481,7 +474,7 @@ async function adotarPedidoLegado({ pedidoId, usuarioId, transaction }) {
   await pedido.update({
     financeiro_fluxo_versao: 1,
     status_financeiro: status === STATUS_FLUXO.LEGADO_PENDENTE_REVISAO
-      ? STATUS_FLUXO.AGUARDANDO_GEO
+      ? STATUS_FLUXO.AGUARDANDO_PREVISAO
       : status,
     financeiro_encaminhado_em: pedido.financeiro_encaminhado_em || agora,
     financeiro_atualizado_em: agora
@@ -494,8 +487,8 @@ async function adotarPedidoLegado({ pedidoId, usuarioId, transaction }) {
     pedido,
     solicitacao,
     usuarioId,
-    acao: 'PEDIDO_COMPRA_LEGADO_ADOTADO_GEO',
-    descricao: `${buildPedidoCodigo(pedido.id)} legado revisado e adotado na gestao financeira do GEO.`,
+    acao: 'PEDIDO_COMPRA_LEGADO_ADOTADO_COMPRAS',
+    descricao: `${buildPedidoCodigo(pedido.id)} legado revisado e adotado na gestao de titulos de Compras.`,
     metadata: { titulos_ids: titulos.map((titulo) => titulo.id) },
     transaction
   });
@@ -533,10 +526,10 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
   });
   if (!pedido) throw httpError(404, 'Pedido de compra nao encontrado.');
   if (!pedido.financeiro_fluxo_versao) {
-    throw httpError(409, 'O pedido legado precisa ser revisado pelo GEO antes de gerar previsoes.');
+    throw httpError(409, 'O pedido legado precisa ser revisado antes de Compras gerar os titulos.');
   }
   if (!STATUS_PEDIDO_FECHADO.has(normalize(pedido.status))) {
-    throw httpError(409, 'O pedido precisa estar fechado com o fornecedor para gerar previsoes.');
+    throw httpError(409, 'O pedido precisa estar fechado com o fornecedor para gerar os titulos.');
   }
   if (!pedido.fornecedor?.parceiro_id) {
     throw httpError(409, 'O fornecedor do pedido precisa estar vinculado a um parceiro antes de gerar o titulo.');
@@ -552,13 +545,15 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
 
   const existentes = await buscarTitulosPedido(pedido.id, { transaction, incluirLegados: true });
   if (existentes.some((item) => !STATUS_TITULO_ENCERRADO.has(normalize(item.titulo?.status)))) {
-    throw httpError(409, 'Este pedido ja possui titulo financeiro ativo ou em previsao.', 'PEDIDO_JA_POSSUI_TITULO');
+    throw httpError(409, 'Este pedido ja possui titulo financeiro ativo.', 'PEDIDO_JA_POSSUI_TITULO');
   }
 
   const valorPedido = roundMoney(pedido.valor_total_fornecedor ?? pedido.valor_total);
   const parcelas = normalizarParcelas(payload?.parcelas, valorPedido);
-  const categoriaId = Number(payload?.categoria_financeira_id || 0);
-  if (!categoriaId) throw httpError(400, 'Selecione a categoria financeira dos titulos.');
+  const categoriaId = await validarCategoriaTituloPedido(
+    payload?.categoria_financeira_id,
+    { transaction }
+  );
 
   const resultado = await criarTituloManual(req, {
     solicitacao_id: Number(pedido.solicitacao?.solicitacao_principal_id || 0) || null,
@@ -566,7 +561,9 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
     parceiro_id: pedido.fornecedor.parceiro_id,
     categoria_financeira_id: categoriaId,
     tipo: 'PAGAR',
-    status: 'PREVISAO',
+    // Compras cria o titulo ja operacional. A autorizacao do pagamento acontece depois,
+    // quando o GEO seleciona o titulo no Contas a Pagar e o envia para a fila.
+    status: 'ABERTO',
     valor: valorPedido,
     descricao: String(payload?.descricao || `Pedido ${buildPedidoCodigo(pedido.id)} - ${pedido.fornecedor.nome}`).trim(),
     numero_documento: buildPedidoCodigo(pedido.id),
@@ -593,22 +590,22 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
       total_parcelas: parcelas.length > 1 ? parcelas.length : null,
       valor: titulo.valor_original,
       data_vencimento: titulo.data_vencimento,
-      status_liberacao: 'PREVISAO',
+      status_liberacao: 'LIBERADO',
       origem: 'NOVO_FLUXO',
       idempotency_key: `PEDIDO:${pedido.id}:${chave}:${index + 1}`,
       criado_por: req.user?.id || null
     }, { transaction });
   }
   await pedido.update({
-    status_financeiro: STATUS_FLUXO.PREVISAO_CRIADA,
+    status_financeiro: STATUS_FLUXO.LIBERADO_FINANCEIRO,
     financeiro_atualizado_em: new Date()
   }, { transaction });
   await registrarHistorico({
     pedido,
     solicitacao: pedido.solicitacao,
     usuarioId: req.user?.id,
-    acao: 'PEDIDO_COMPRA_PREVISOES_CRIADAS',
-    descricao: `${titulosCriados.length} previsao(oes) financeira(s) criada(s) para ${buildPedidoCodigo(pedido.id)}.`,
+    acao: 'PEDIDO_COMPRA_TITULOS_CRIADOS_COMPRAS',
+    descricao: `${titulosCriados.length} titulo(s) financeiro(s) criado(s) por Compras para ${buildPedidoCodigo(pedido.id)}.`,
     metadata: { titulos_ids: titulosCriados.map((titulo) => titulo.id), valor_total: valorPedido },
     transaction
   });

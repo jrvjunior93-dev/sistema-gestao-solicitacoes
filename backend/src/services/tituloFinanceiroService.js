@@ -56,7 +56,7 @@ const {
 const { sincronizarStatusSolicitacaoPorBaixaTitulos } = require('./solicitacaoFinanceiroStatusService');
 const { reabrirConciliacoesPorMovimentos } = require('./conciliacaoEstornoService');
 const { assertTituloDisponivelParaBaixa } = require('./tituloBloqueioRetornoObraService');
-const { resolveTituloStatusFilter } = require('../utils/tituloFinanceiroStatusFilter');
+const { resolveTituloStatusFilters } = require('../utils/tituloFinanceiroStatusFilter');
 const { sincronizarContratoComercialPorTituloEditado } = require('./comercialService');
 
 const FORMAS_COBRANCA = ['BOLETO', 'PIX', 'OUTROS'];
@@ -2256,16 +2256,24 @@ async function listarTitulos(req, filters = {}) {
     where.tipo = filters.tipo;
   }
   if (filters.status) {
-    const statusFilter = resolveTituloStatusFilter(filters.status);
-    where.status = statusFilter.statuses.length === 1
-      ? statusFilter.statuses[0]
-      : { [Op.in]: statusFilter.statuses };
-
-    if (statusFilter.vencido) {
+    const statusFilters = resolveTituloStatusFilters(filters.status);
+    const statusClauses = statusFilters.map((statusFilter) => {
+      const statusCondition = statusFilter.statuses.length === 1
+        ? statusFilter.statuses[0]
+        : { [Op.in]: statusFilter.statuses };
+      if (!statusFilter.vencido) return { status: statusCondition };
+      return {
+        [Op.and]: [
+          { status: statusCondition },
+          { data_vencimento: { [Op.lt]: getHoje() } },
+          { valor_saldo: { [Op.gt]: 0 } }
+        ]
+      };
+    });
+    if (statusClauses.length > 0) {
       where[Op.and] = [
         ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
-        { data_vencimento: { [Op.lt]: getHoje() } },
-        { valor_saldo: { [Op.gt]: 0 } }
+        statusClauses.length === 1 ? statusClauses[0] : { [Op.or]: statusClauses }
       ];
     }
   }

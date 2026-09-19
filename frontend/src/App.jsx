@@ -182,6 +182,7 @@ const ArquivosModelosConfig = lazy(() => import('./pages/ArquivosModelosConfig')
 const Treinamento = lazy(() => import('./pages/Treinamento'));
 const ConfiguracoesCotacao = lazy(() => import('./pages/ConfiguracoesCotacao'));
 const ConfiguracoesStatusPedidoCompra = lazy(() => import('./pages/ConfiguracoesStatusPedidoCompra'));
+const ConfiguracoesTitulosPedidosCompra = lazy(() => import('./pages/ConfiguracoesTitulosPedidosCompra'));
 const ConfiguracoesComercialCategorias = lazy(() => import('./pages/ConfiguracoesComercialCategorias'));
 const ConfiguracoesProvisionamentoFluxo = lazy(() => import('./pages/ConfiguracoesProvisionamentoFluxo'));
 const ConfiguracoesModulos = lazy(() => import('./pages/ConfiguracoesModulos'));
@@ -971,6 +972,7 @@ export default function App() {
         <Route path="arquivos-modelos-config" element={<SuperadminRoute><ArquivosModelosConfig /></SuperadminRoute>} />
         <Route path="configuracoes-cotacao" element={<EnabledModuleRoute moduleKey="COMPRAS"><EnabledModuleRoute moduleKey="COTACOES"><ComprasConfiguracoesRoute><ConfiguracoesCotacao /></ComprasConfiguracoesRoute></EnabledModuleRoute></EnabledModuleRoute>} />
         <Route path="configuracoes-status-pedidos-compra" element={<EnabledModuleRoute moduleKey="COMPRAS"><ComprasConfiguracoesRoute><ConfiguracoesStatusPedidoCompra /></ComprasConfiguracoesRoute></EnabledModuleRoute>} />
+        <Route path="configuracoes-titulos-pedidos-compra" element={<EnabledModuleRoute moduleKey="COMPRAS"><SuperadminRoute><ConfiguracoesTitulosPedidosCompra /></SuperadminRoute></EnabledModuleRoute>} />
         <Route path="configuracoes-comercial-categorias" element={<EnabledModuleRoute moduleKey="COMERCIAL"><ConfiguracoesAreaRoute area="geral"><ConfiguracoesComercialCategorias /></ConfiguracoesAreaRoute></EnabledModuleRoute>} />
         <Route path="configuracoes-provisionamento-fluxo" element={<EnabledModuleRoute moduleKey="PROVISOES"><ConfiguracoesAreaRoute area="geral"><ConfiguracoesProvisionamentoFluxo /></ConfiguracoesAreaRoute></EnabledModuleRoute>} />
         <Route path="configuracoes-modulos" element={<ConfiguracoesAreaRoute area="modulos"><ConfiguracoesModulos /></ConfiguracoesAreaRoute>} />

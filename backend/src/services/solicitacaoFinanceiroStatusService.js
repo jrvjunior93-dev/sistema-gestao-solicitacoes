@@ -4,8 +4,13 @@ const {
   Historico,
   Solicitacao,
   SolicitacaoPedidoRetorno,
+  StatusArea,
   TituloFinanceiro
 } = require('../models');
+const {
+  findSetorByCapability,
+  resolveSetorPersistenciaValue
+} = require('./setorCapabilityService');
 
 const STATUS_SOLICITACAO_PAGA = 'PAGA';
 const STATUS_SOLICITACAO_PAGAMENTO_PARCIAL = 'PARCIALMENTE PAGO';
@@ -48,18 +53,57 @@ function setoresEquivalentes(a, b) {
   return aliasesGeo.has(esquerda) && aliasesGeo.has(direita);
 }
 
-function parseMetadata(value) {
-  if (!value) return {};
-  if (typeof value === 'object') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
+async function encaminharSolicitacaoParaFinanceiroAoEnfileirar({ solicitacao, usuarioId, transaction }) {
+  if (!solicitacao) return false;
+  const setorFinanceiroModel = await findSetorByCapability('eh_setor_financeiro', { transaction });
+  const setorFinanceiro = resolveSetorPersistenciaValue(setorFinanceiroModel, 'FINANCEIRO');
+  const setorAnterior = solicitacao.area_responsavel || null;
+  const statusAnterior = solicitacao.status_global || null;
+  const mudouSetor = !setoresEquivalentes(setorAnterior, setorFinanceiro);
+  const mudouStatus = normalizarStatus(statusAnterior) !== 'ENVIADO PARA PAGAMENTO';
+  if (!mudouSetor && !mudouStatus) return false;
+
+  await solicitacao.update({
+    area_responsavel: setorFinanceiro,
+    status_global: 'ENVIADO PARA PAGAMENTO'
+  }, { transaction });
+  if (mudouStatus) {
+    await Historico.create({
+      solicitacao_id: solicitacao.id,
+      usuario_responsavel_id: usuarioId || null,
+      setor: setorFinanceiro,
+      acao: 'STATUS_ALTERADO',
+      status_anterior: statusAnterior,
+      status_novo: 'ENVIADO PARA PAGAMENTO',
+      observacao: 'Titulo financeiro encaminhado para a fila de pagamentos.'
+    }, { transaction });
+    await StatusArea.create({
+      solicitacao_id: solicitacao.id,
+      setor: setorFinanceiro,
+      status: 'ENVIADO PARA PAGAMENTO',
+      observacao: 'Titulo financeiro encaminhado para a fila de pagamentos.'
+    }, { transaction });
   }
+  if (mudouSetor) {
+    await Historico.create({
+      solicitacao_id: solicitacao.id,
+      usuario_responsavel_id: usuarioId || null,
+      setor: setorFinanceiro,
+      acao: 'ENVIADA_SETOR',
+      observacao: `De ${setorAnterior || '-'} para ${setorFinanceiro}`,
+      descricao: 'Solicitacao assumida pelo Financeiro porque um titulo entrou na fila de pagamentos.',
+      metadata: JSON.stringify({
+        origem: 'FILA_PAGAMENTOS',
+        setor_origem: setorAnterior,
+        setor_destino: setorFinanceiro
+      })
+    }, { transaction });
+  }
+  return true;
 }
 
-async function devolverAoSetorCriadorAposQuitacao({ solicitacao, usuarioId, transaction }) {
-  const titulosQuitados = await TituloFinanceiro.findAll({
+async function devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transaction, titulos = null }) {
+  const titulosAtuais = Array.isArray(titulos) ? titulos : await TituloFinanceiro.findAll({
     where: {
       solicitacao_id: solicitacao.id,
       status: { [Op.notIn]: STATUS_TITULOS_IGNORADOS }
@@ -68,86 +112,31 @@ async function devolverAoSetorCriadorAposQuitacao({ solicitacao, usuarioId, tran
     transaction,
     lock: transaction?.LOCK?.UPDATE
   });
-  const idsQuitados = (await require('./tituloRenegociacaoVinculos').projetarOrigens(titulosQuitados, { transaction }))
-    .filter(tituloQuitado).map((titulo) => Number(titulo.id));
-  if (idsQuitados.length === 0) return false;
+  if (!titulosAtuais.some(tituloComBaixa)) return false;
 
-  // Cada titulo quitado provoca no maximo um retorno automatico. Sem esta marca, um retry de
-  // conciliacao poderia puxar novamente a solicitacao depois de um envio manual posterior.
-  const movimentosAutomaticos = await Historico.findAll({
-    where: {
-      solicitacao_id: solicitacao.id,
-      acao: { [Op.in]: ['ENVIADA_SETOR', 'TITULO_QUITADO_RETORNO_ORIGEM'] }
-    },
-    attributes: ['metadata'],
-    transaction
-  });
-  const idsJaProcessados = new Set();
-  movimentosAutomaticos.forEach((item) => {
-    const metadata = parseMetadata(item.metadata);
-    if (metadata?.retorno_automatico_quitacao !== true) return;
-    (Array.isArray(metadata.titulos_quitados_ids) ? metadata.titulos_quitados_ids : [])
-      .map(Number)
-      .filter(Boolean)
-      .forEach((id) => idsJaProcessados.add(id));
-  });
-  const idsNovos = idsQuitados.filter((id) => !idsJaProcessados.has(id));
-  if (idsNovos.length === 0) return false;
+  const setorFinanceiroModel = await findSetorByCapability('eh_setor_financeiro', { transaction });
+  const setorFinanceiro = resolveSetorPersistenciaValue(setorFinanceiroModel, 'FINANCEIRO');
+  if (!setoresEquivalentes(solicitacao.area_responsavel, setorFinanceiro)) return false;
 
-  let historicoCriacao = await Historico.findOne({
-    where: { solicitacao_id: solicitacao.id, acao: 'SOLICITACAO_CRIADA' },
-    attributes: ['id', 'setor', 'metadata'],
-    order: [['createdAt', 'ASC'], ['id', 'ASC']],
-    transaction
-  });
-  // Solicitacoes legadas podem nao ter a acao padronizada. O primeiro evento com setor e o
-  // melhor snapshot auditavel disponivel; nao usamos o setor atual do criador, que pode ter
-  // mudado desde a abertura.
-  if (!historicoCriacao) {
-    historicoCriacao = await Historico.findOne({
-      where: {
-        solicitacao_id: solicitacao.id,
-        setor: { [Op.ne]: null }
-      },
-      attributes: ['id', 'setor', 'metadata'],
-      order: [['createdAt', 'ASC'], ['id', 'ASC']],
-      transaction
-    });
-  }
-  const metadataCriacao = parseMetadata(historicoCriacao?.metadata);
-  const setorCriador = String(
-    historicoCriacao?.setor || metadataCriacao?.area_responsavel || metadataCriacao?.setor_origem || ''
-  ).trim();
-  if (!setorCriador) return false;
-
+  const setorObraModel = await findSetorByCapability('eh_setor_obra', { transaction });
+  const setorObra = resolveSetorPersistenciaValue(setorObraModel, 'OBRA');
   const setorAnterior = solicitacao.area_responsavel || null;
+  const idsComBaixa = titulosAtuais.filter(tituloComBaixa).map((titulo) => Number(titulo.id)).filter(Boolean);
   const metadataRetorno = {
-    retorno_automatico_quitacao: true,
+    retorno_automatico_baixa: true,
     setor_origem: setorAnterior,
-    setor_destino: setorCriador,
-    titulos_quitados_ids: idsNovos
+    setor_destino: setorObra,
+    titulos_com_baixa_ids: idsComBaixa
   };
 
-  if (setoresEquivalentes(setorAnterior, setorCriador)) {
-    await Historico.create({
-      solicitacao_id: solicitacao.id,
-      usuario_responsavel_id: usuarioId || null,
-      setor: setorCriador,
-      acao: 'TITULO_QUITADO_RETORNO_ORIGEM',
-      descricao: `Quitacao confirmada; a solicitacao ja estava no setor criador ${setorCriador}.`,
-      metadata: JSON.stringify(metadataRetorno)
-    }, { transaction });
-    return false;
-  }
-
-  await solicitacao.update({ area_responsavel: setorCriador }, { transaction });
+  await solicitacao.update({ area_responsavel: setorObra }, { transaction });
   await Historico.create({
     solicitacao_id: solicitacao.id,
     usuario_responsavel_id: usuarioId || null,
-    setor: setorCriador,
+    setor: setorObra,
     acao: 'ENVIADA_SETOR',
-    observacao: `De ${setorAnterior || '-'} para ${setorCriador}`,
-    descricao: `Retorno automatico ao setor criador apos quitacao de titulo financeiro.`,
+    observacao: `De ${setorAnterior || '-'} para ${setorObra}`,
+    descricao: 'Retorno automatico para Obra apos baixa integral ou parcial de titulo financeiro.',
     metadata: JSON.stringify(metadataRetorno)
   }, { transaction });
 
@@ -159,12 +148,12 @@ async function devolverAoSetorCriadorAposQuitacao({ solicitacao, usuarioId, tran
       await SolicitacaoPedidoRetorno.update(
         {
           status: 'EXPIRADO',
-          motivo_decisao: 'A solicitacao voltou automaticamente ao setor criador apos quitacao de titulo.'
+          motivo_decisao: 'A solicitacao voltou automaticamente para Obra apos baixa de titulo.'
         },
         { where: { solicitacao_id: solicitacao.id, status: 'PENDENTE' } }
       );
     } catch (error) {
-      console.error('Falha ao expirar pedidos de retorno apos quitacao:', error);
+      console.error('Falha ao expirar pedidos de retorno apos baixa:', error);
     }
   };
   if (transaction && typeof transaction.afterCommit === 'function') {
@@ -243,7 +232,7 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
       { usuarioId, setor, motivo: observacao || 'Status atualizado apos baixa de titulo do contrato.' },
       transaction
     );
-    await devolverAoSetorCriadorAposQuitacao({ solicitacao, usuarioId, transaction });
+    await devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transaction, titulos });
     return statusContrato;
   }
 
@@ -258,7 +247,7 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
     transaction
   });
   if (statusRecarga) {
-    await devolverAoSetorCriadorAposQuitacao({ solicitacao, usuarioId, transaction });
+    await devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transaction, titulos });
     return statusRecarga;
   }
 
@@ -266,7 +255,7 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
   const titulosEfetivos = await require('./tituloRenegociacaoVinculos').projetarOrigens(titulos, { transaction });
   const statusNovo = calcularStatusSolicitacaoPorTitulos(titulosEfetivos, statusAnterior);
   if (!statusNovo || normalizarStatus(statusAnterior) === normalizarStatus(statusNovo)) {
-    await devolverAoSetorCriadorAposQuitacao({ solicitacao, usuarioId, transaction });
+    await devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transaction, titulos: titulosEfetivos });
     return statusAnterior;
   }
 
@@ -288,7 +277,7 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
     { transaction }
   );
 
-  await devolverAoSetorCriadorAposQuitacao({ solicitacao, usuarioId, transaction });
+  await devolverAoSetorObraAposBaixa({ solicitacao, usuarioId, transaction, titulos: titulosEfetivos });
 
   return statusNovo;
 }
@@ -296,6 +285,7 @@ async function sincronizarStatusSolicitacaoPorBaixaTitulos({
 module.exports = {
   STATUS_SOLICITACAO_PAGA,
   STATUS_SOLICITACAO_PAGAMENTO_PARCIAL,
-  devolverAoSetorCriadorAposQuitacao,
+  encaminharSolicitacaoParaFinanceiroAoEnfileirar,
+  devolverAoSetorObraAposBaixa,
   sincronizarStatusSolicitacaoPorBaixaTitulos
 };

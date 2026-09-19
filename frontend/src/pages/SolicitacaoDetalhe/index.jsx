@@ -707,8 +707,8 @@ export default function SolicitacaoDetalhe() {
     const status = fluxo.status_destino_nome || fluxo.status_destino;
     const { ok } = await confirmar({
       titulo: 'Aprovar solicitação',
-      mensagem: `Aprovar a solicitação ${alvo.codigo} (${alvo.tipo?.nome || 'sem tipo'}) e enviá-la para ${destino} com o status ${status}? A aprovação ficará registrada em seu nome no histórico.`,
-      rotuloConfirmar: 'Aprovar e enviar'
+      mensagem: `Aprovar a solicitação ${alvo.codigo} (${alvo.tipo?.nome || 'sem tipo'}) em ${destino} com o status ${status}? Ela só seguirá ao Financeiro quando um título entrar na fila de pagamentos.`,
+      rotuloConfirmar: 'Aprovar solicitação'
     });
     if (!ok) return;
 
@@ -717,10 +717,10 @@ export default function SolicitacaoDetalhe() {
       await aprovarSolicitacaoPorTipo(alvo.id);
       registrarMutacaoLocal(alvo.id);
       await carregar({ silent: true });
-      avisar.sucesso(`Solicitação ${alvo.codigo} aprovada e enviada para ${destino} com status ${status}.`);
+      avisar.sucesso(`Solicitação ${alvo.codigo} aprovada em ${destino} com status ${status}.`);
     } catch (error) {
       console.error(error);
-      avisar.erro(error?.message || 'Erro ao aprovar e encaminhar a solicitação.');
+      avisar.erro(error?.message || 'Erro ao aprovar a solicitação.');
     } finally {
       setAprovandoSolicitacao(false);
     }

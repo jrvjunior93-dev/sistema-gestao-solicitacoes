@@ -105,7 +105,8 @@ class AnexoController {
         'SOLICITACAO',
         'CONTRATO',
         'COMPROVANTE',
-        'BOLETO'
+        'BOLETO',
+        'PRESTACAO_RECARGA'
       ];
 
       const tipoNormalizado = String(tipo).toUpperCase();

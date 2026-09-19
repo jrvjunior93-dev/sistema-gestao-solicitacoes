@@ -4,7 +4,6 @@ const {
   ContaBancaria,
   EmpresaGrupo,
   FormaPagamentoFinanceira,
-  Historico,
   Obra,
   PagamentoManualFilaItem,
   PagamentoManualFilaComprovante,
@@ -22,6 +21,7 @@ const { registrarEventoSeguranca } = require('./securityLogService');
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { canAccessSolicitacaoFile } = require('./fileAccessService');
 const { canAccessFilaPagamentos, getFinanceiroObraScopeIds } = require('./authorizationService');
+const { encaminharSolicitacaoParaFinanceiroAoEnfileirar } = require('./solicitacaoFinanceiroStatusService');
 
 const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
@@ -213,18 +213,12 @@ async function enfileirarTitulos(req, payload = {}) {
 
     for (const solicitacaoId of new Set(titulos.map((titulo) => Number(titulo.solicitacao_id)).filter(Boolean))) {
       const solicitacao = await Solicitacao.findByPk(solicitacaoId, { transaction, lock: transaction.LOCK.UPDATE });
-      if (!solicitacao || solicitacao.status_global === 'ENVIADO PARA PAGAMENTO') continue;
-      const statusAnterior = solicitacao.status_global;
-      await solicitacao.update({ status_global: 'ENVIADO PARA PAGAMENTO' }, { transaction });
-      await Historico.create({
-        solicitacao_id: solicitacaoId,
-        usuario_responsavel_id: req.user?.id || null,
-        setor: solicitacao.area_responsavel || 'FINANCEIRO',
-        acao: 'STATUS_ALTERADO',
-        status_anterior: statusAnterior,
-        status_novo: 'ENVIADO PARA PAGAMENTO',
-        observacao: 'Titulo financeiro encaminhado para a fila de pagamentos.'
-      }, { transaction });
+      if (!solicitacao) continue;
+      await encaminharSolicitacaoParaFinanceiroAoEnfileirar({
+        solicitacao,
+        usuarioId: req.user?.id || null,
+        transaction
+      });
     }
     return criados;
   });

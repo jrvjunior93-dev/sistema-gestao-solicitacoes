@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import ApropriacaoAutocomplete from '../ui/ApropriacaoAutocomplete';
 import { listarApropriacoes } from '../../services/apropriacoes';
 import { decidirPrestacaoRecarga, editarRateiosPrestacaoRecarga, enviarPrestacaoRecarga } from '../../services/recargasCartao';
+import { uploadArquivos } from '../../services/uploads';
+import { getLinkSeguroAnexoSolicitacao } from '../../services/solicitacoes';
 
 function moeda(value) {
   return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -31,16 +33,23 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
   const prestacao = recarga?.prestacao || null;
   const obras = contexto?.obras_disponiveis || [];
   const podeValidar = contexto?.pode_validar === true;
+  const documentosContexto = contexto?.documentos_prestacao || [];
   const [linhas, setLinhas] = useState([linhaVazia(obras.length === 1 ? obras[0]?.id : '')]);
   const [apropriacoesPorObra, setApropriacoesPorObra] = useState({});
   const [observacoes, setObservacoes] = useState('');
   const [motivo, setMotivo] = useState('');
   const [valorEmEdicao, setValorEmEdicao] = useState(null);
   const [salvando, setSalvando] = useState(false);
+  const [enviandoDocumentos, setEnviandoDocumentos] = useState(false);
+  const [abrindoDocumentoId, setAbrindoDocumentoId] = useState(null);
+  const [documentos, setDocumentos] = useState(documentosContexto);
   const [erro, setErro] = useState('');
   const [rateiosAlterados, setRateiosAlterados] = useState(false);
   const assinaturaRateios = (prestacao?.rateios || [])
     .map((item) => `${item.id}:${item.obra_id}:${item.apropriacao_id}:${item.valor_rateio}`)
+    .join('|');
+  const assinaturaDocumentos = documentosContexto
+    .map((documento) => `${documento.id}:${documento.nome_original}:${documento.caminho_arquivo}`)
     .join('|');
 
   useEffect(() => {
@@ -57,6 +66,10 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
     setMotivo(prestacao?.motivo_rejeicao || '');
     setRateiosAlterados(false);
   }, [prestacao?.id, prestacao?.updatedAt, assinaturaRateios, obras.length]);
+
+  useEffect(() => {
+    setDocumentos(documentosContexto);
+  }, [assinaturaDocumentos]);
 
   useEffect(() => {
     const ids = [...new Set(linhas.map((linha) => Number(linha.obra_id)).filter(Boolean))];
@@ -93,7 +106,11 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
   }
 
   async function enviar() {
-    if (!solicitacaoId || salvando) return;
+    if (!solicitacaoId || salvando || enviandoDocumentos) return;
+    if (documentos.length === 0) {
+      setErro('Anexe ao menos um documento da prestação de contas antes de enviar.');
+      return;
+    }
     setErro('');
     setSalvando(true);
     try {
@@ -110,6 +127,50 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
       setErro(error.message);
     } finally {
       setSalvando(false);
+    }
+  }
+
+  async function anexarDocumentos(event) {
+    const arquivos = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!solicitacaoId || arquivos.length === 0 || enviandoDocumentos || salvando) return;
+    setErro('');
+    setEnviandoDocumentos(true);
+    try {
+      const novos = await uploadArquivos({
+        files: arquivos,
+        tipo: 'PRESTACAO_RECARGA',
+        solicitacao_id: solicitacaoId
+      });
+      const registros = Array.isArray(novos) ? novos : [];
+      setDocumentos((atuais) => {
+        const idsNovos = new Set(registros.map((item) => String(item.id)));
+        return [...registros, ...atuais.filter((item) => !idsNovos.has(String(item.id)))];
+      });
+    } catch (error) {
+      setErro(error.message || 'Não foi possível anexar os documentos da prestação.');
+    } finally {
+      setEnviandoDocumentos(false);
+    }
+  }
+
+  async function abrirDocumento(documento) {
+    if (!documento?.caminho_arquivo || abrindoDocumentoId) return;
+    setErro('');
+    setAbrindoDocumentoId(documento.id);
+    try {
+      const url = await getLinkSeguroAnexoSolicitacao(documento.caminho_arquivo);
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      setErro(error.message || 'Não foi possível abrir o documento.');
+    } finally {
+      setAbrindoDocumentoId(null);
     }
   }
 
@@ -251,6 +312,54 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
         </button>
       ) : null}
 
+      <div className="grid gap-2 border-y border-[var(--c-border)] py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="text-sm font-semibold text-[var(--c-text)]">
+              Documentos da prestação <span className="text-red-600" aria-hidden="true">*</span>
+            </div>
+            <p className="text-xs text-[var(--c-muted)]">
+              Anexe ao menos um comprovante ou documento antes de enviar a prestação.
+            </p>
+          </div>
+          {podeEditarPrestacao ? (
+            <label className={`btn btn-outline btn-sm ${enviandoDocumentos || salvando ? 'pointer-events-none opacity-60' : 'cursor-pointer'}`}>
+              {enviandoDocumentos ? 'Enviando documentos...' : 'Anexar documentos'}
+              <input
+                type="file"
+                className="sr-only"
+                multiple
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.png,.jpg,.jpeg,.rar"
+                onChange={anexarDocumentos}
+                disabled={enviandoDocumentos || salvando}
+              />
+            </label>
+          ) : null}
+        </div>
+
+        {documentos.length > 0 ? (
+          <ul className="divide-y divide-[var(--c-border)] rounded-lg border border-[var(--c-border)]">
+            {documentos.map((documento) => (
+              <li key={documento.id} className="flex min-w-0 items-center justify-between gap-3 px-3 py-2">
+                <span className="min-w-0 truncate text-sm text-[var(--c-text)]" title={documento.nome_original}>
+                  {documento.nome_original || `Documento #${documento.id}`}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm shrink-0"
+                  onClick={() => abrirDocumento(documento)}
+                  disabled={abrindoDocumentoId === documento.id}
+                >
+                  {abrindoDocumentoId === documento.id ? 'Abrindo...' : 'Abrir'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs font-medium text-amber-700">Nenhum documento anexado.</p>
+        )}
+      </div>
+
       <div className="grid gap-3 text-sm lg:grid-cols-[1fr_auto] lg:items-center">
         <div className="grid gap-1 tabular-nums sm:grid-cols-3 sm:gap-x-5">
           <span>Valor a prestar: <strong>{moeda(valorBase)}</strong></span>
@@ -258,7 +367,7 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
           <span className={saldo === 0 ? 'text-emerald-700' : 'text-amber-700'}>Diferença: <strong>{moeda(saldo)}</strong></span>
         </div>
         {podeEditarPrestacao ? (
-          <button type="button" className="btn btn-primary btn-sm w-full sm:w-auto" onClick={enviar} disabled={salvando || saldo !== 0}>
+          <button type="button" className="btn btn-primary btn-sm w-full sm:w-auto" onClick={enviar} disabled={salvando || enviandoDocumentos || saldo !== 0 || documentos.length === 0}>
             {salvando ? 'Enviando prestação...' : 'Enviar prestação'}
           </button>
         ) : null}

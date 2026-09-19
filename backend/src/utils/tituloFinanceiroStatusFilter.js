@@ -40,8 +40,20 @@ function resolveTituloStatusFilter(value) {
   };
 }
 
+function resolveTituloStatusFilters(value) {
+  const values = Array.isArray(value)
+    ? value
+    : String(value || '').split(',');
+  return [...new Set(values
+    .map((item) => String(item || '').trim().toUpperCase())
+    .filter(Boolean))]
+    .map((item) => resolveTituloStatusFilter(item))
+    .filter(Boolean);
+}
+
 module.exports = {
   STATUS_TITULO_FILTROS_CALCULADOS,
   STATUS_TITULOS_EM_ABERTO,
-  resolveTituloStatusFilter
+  resolveTituloStatusFilter,
+  resolveTituloStatusFilters
 };

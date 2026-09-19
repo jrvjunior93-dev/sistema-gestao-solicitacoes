@@ -672,3 +672,27 @@ export async function salvarContratoObraCategorias(categoriaIds) {
   }
   return res.json();
 }
+
+export async function getCategoriasTitulosPedidosCompra() {
+  const res = await fetch(`${API_URL}/configuracoes/categorias-titulos-pedidos-compra`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(mensagemDeErro(txt, 'Erro ao buscar categorias dos títulos de pedidos', res.status));
+  }
+  return res.json();
+}
+
+export async function salvarCategoriasTitulosPedidosCompra(data) {
+  const res = await fetch(`${API_URL}/configuracoes/categorias-titulos-pedidos-compra`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(mensagemDeErro(txt, 'Erro ao salvar categorias dos títulos de pedidos', res.status));
+  }
+  return res.json();
+}

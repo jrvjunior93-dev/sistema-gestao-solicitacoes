@@ -1622,35 +1622,24 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
       transaction
     });
 
-    // A solicitacao vai para o FINANCEIRO junto com o status: aprovar sem encaminhar deixaria o
-    // titulo liberado numa caixa que ninguem abre.
+    // A aprovacao libera os titulos, mas a solicitacao permanece no GEO. O Financeiro somente
+    // assume a solicitacao quando um titulo for efetivamente enviado para a fila de pagamentos.
     if (contrato?.solicitacao_id) {
       const solicitacao = await Solicitacao.findByPk(contrato.solicitacao_id, { transaction });
       if (solicitacao) {
-        const areaAnterior = solicitacao.area_responsavel;
-        await solicitacao.update({ area_responsavel: SETOR_FINANCEIRO }, { transaction });
-
         await Historico.create({
           solicitacao_id: solicitacao.id,
           medicao_id: medicao.id,
           usuario_responsavel_id: usuario?.id || null,
-          setor: codigoDoSetor(usuario) || areaAnterior || '-',
+          setor: codigoDoSetor(usuario) || solicitacao.area_responsavel || '-',
           acao: 'MEDICAO_APROVADA',
-          descricao: `Medicao ${medicao.numero} do contrato ${contrato.codigo} aprovada e liberada para pagamento.`,
-          metadata: JSON.stringify({ medicao_id: medicao.id, valor_total: Number(medicao.valor_total) })
+          descricao: `Medicao ${medicao.numero} do contrato ${contrato.codigo} aprovada; titulos liberados e solicitacao mantida no GEO.`,
+          metadata: JSON.stringify({
+            medicao_id: medicao.id,
+            valor_total: Number(medicao.valor_total),
+            movimentacao_financeiro: 'SOMENTE_AO_ENFILEIRAR_TITULO'
+          })
         }, { transaction });
-
-        if (areaAnterior !== SETOR_FINANCEIRO) {
-          // FORMATO EXATO — a regra de visibilidade "passou pelo meu setor" casa o TEXTO do
-          // historico. Ver a armadilha registrada no LEIA-PRIMEIRO.
-          await Historico.create({
-            solicitacao_id: solicitacao.id,
-            usuario_responsavel_id: usuario?.id || null,
-            setor: SETOR_FINANCEIRO,
-            acao: 'ENVIADA_SETOR',
-            descricao: `De ${areaAnterior || '-'} para ${SETOR_FINANCEIRO}`
-          }, { transaction });
-        }
       }
     }
 
@@ -1666,7 +1655,7 @@ async function aprovarMedicaoDoContrato(medicaoId, { usuario, req } = {}) {
 
     return {
       medicao: { id: medicao.id, numero: medicao.numero, aprovada_em: medicao.aprovada_em },
-      enviada_para: SETOR_FINANCEIRO
+      mantida_em: 'GEO'
     };
   });
 }

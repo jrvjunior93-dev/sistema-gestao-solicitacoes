@@ -206,12 +206,14 @@ function CelulaValor({ solicitacao, podeEditar, onAtualizar, avisar }) {
 
 function CelulaVencimento({ solicitacao, podeEditar, onAtualizar, avisar }) {
   const [editando, setEditando] = useState(false);
-  const [dataEditada, setDataEditada] = useState(solicitacao.data_vencimento || '');
+  const dataVencimentoSolicitacao = solicitacao.data_vencimento_solicitacao || solicitacao.data_vencimento || '';
+  const vencimentoDaMedicao = solicitacao.data_vencimento_origem === 'MEDICAO';
+  const [dataEditada, setDataEditada] = useState(dataVencimentoSolicitacao);
   const data = dataVencimentoDe(solicitacao);
 
   useEffect(() => {
-    if (!editando) setDataEditada(solicitacao.data_vencimento || '');
-  }, [solicitacao.data_vencimento, editando]);
+    if (!editando) setDataEditada(dataVencimentoSolicitacao);
+  }, [dataVencimentoSolicitacao, editando]);
 
   async function salvarData() {
     const alvo = solicitacao;                     // R26: alvo fixado antes do await
@@ -241,7 +243,7 @@ function CelulaVencimento({ solicitacao, podeEditar, onAtualizar, avisar }) {
             type="button"
             className="btn btn-outline"
             onClick={() => {
-              setDataEditada(solicitacao.data_vencimento || '');
+              setDataEditada(dataVencimentoSolicitacao);
               setEditando(false);
             }}
           >
@@ -257,7 +259,12 @@ function CelulaVencimento({ solicitacao, podeEditar, onAtualizar, avisar }) {
       <span title={data ? data.toLocaleString('pt-BR') : ''}>
         {data ? data.toLocaleDateString('pt-BR') : '-'}
       </span>
-      {podeEditar && (
+      {vencimentoDaMedicao ? (
+        <span className="text-xs text-[var(--c-muted)]" title="Vencimento mais próximo entre as medições pendentes">
+          Medição
+        </span>
+      ) : null}
+      {podeEditar && !vencimentoDaMedicao && (
         <button type="button" className="btn btn-outline" onClick={() => setEditando(true)}>
           Editar
         </button>

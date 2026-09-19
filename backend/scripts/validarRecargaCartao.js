@@ -3,6 +3,7 @@
 const assert = require('assert');
 const { QueryTypes } = require('sequelize');
 const {
+  Anexo,
   CartaoRecarga,
   CartaoRecargaPrestacao,
   CartaoRecargaPrestacaoRateio,
@@ -278,6 +279,19 @@ async function executar() {
       observacoes: 'QA transacional',
       rateios: [{ obra_id: base.obra_id, apropriacao_id: base.apropriacao_id, valor_rateio: 60 }]
     };
+    await assert.rejects(
+      () => salvarPrestacao(ids.solicitacao, payloadPrestacao, usuario, transaction),
+      (error) => error?.statusCode === 400 && /documento/i.test(error.message),
+      'A prestacao nao pode ser enviada sem ao menos um documento.'
+    );
+    await Anexo.create({
+      solicitacao_id: ids.solicitacao,
+      tipo: 'PRESTACAO_RECARGA',
+      nome_original: 'comprovante-recarga-qa.pdf',
+      caminho_arquivo: '/uploads/qa/comprovante-recarga-qa.pdf',
+      area_origem: 'OBRA',
+      uploaded_by: base.user_id
+    }, { transaction });
     const enviosDuplicados = await Promise.allSettled([
       salvarPrestacao(ids.solicitacao, payloadPrestacao, usuario, transaction),
       salvarPrestacao(ids.solicitacao, payloadPrestacao, usuario, transaction)
@@ -298,7 +312,7 @@ async function executar() {
     ]);
     assert.strictEqual(recargaEnviada.status_ciclo, 'PRESTACAO_ENVIADA');
     assert(isGeoToken(solicitacaoEmConferencia.area_responsavel), 'Prestacao enviada deve mover a solicitacao para a Gerencia de Processos.');
-    assert.strictEqual(solicitacaoEmConferencia.status_global, 'PENDENTE');
+    assert.strictEqual(solicitacaoEmConferencia.status_global, 'ATENDIDO');
 
     const rateioEnviado = await CartaoRecargaPrestacaoRateio.findOne({
       where: { prestacao_id: ids.prestacao },
@@ -384,7 +398,7 @@ async function executar() {
     assert.strictEqual(solicitacaoRestante, 0);
     assert.strictEqual(tituloRestante, 0);
     assert.strictEqual(sequenciaDepois ? Number(sequenciaDepois.ultimo_numero) : null, sequenciaAntes);
-    console.log('QA Recarga de Cartao aprovado: forma ausente, edicao, criacao, previsao, baixa parcial, apropriacoes invalidas, repeticao de envio/validacao, rateio e rollback conferidos.');
+    console.log('QA Recarga de Cartao aprovado: forma ausente, edicao, criacao, previsao, baixa parcial, documento obrigatorio, status atendido, apropriacoes invalidas, repeticao de envio/validacao, rateio e rollback conferidos.');
   } catch (error) {
     if (!transaction.finished) await transaction.rollback();
     throw error;

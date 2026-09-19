@@ -126,6 +126,11 @@ const {
 } = require('../services/setoresVisiveisUsuarioService');
 const { resolverDestinoInicialNovaSolicitacao } = require('../services/novaSolicitacaoDestinoService');
 const { assertTipoDisponivelNoDestino } = require('../services/tipoSolicitacaoDisponibilidadeService');
+const {
+  aplicarVencimentoEfetivoSolicitacao,
+  sqlVencimentoEfetivoSolicitacao,
+  sqlVencimentoMedicaoPendente
+} = require('../services/solicitacaoVencimentoListaService');
 
 const CHAVE_AREAS_POR_SETOR_ORIGEM = 'AREAS_POR_SETOR_ORIGEM';
 const CHAVE_TIPOS_SOLICITACAO_POR_SETOR = 'TIPOS_SOLICITACAO_POR_SETOR';
@@ -442,7 +447,7 @@ async function montarResumoSolicitacoesLista(solicitacoes, usuarioId = null) {
 
   return solicitacoes
     .map((item) => {
-      const solicitacao = item.toJSON();
+      const solicitacao = aplicarVencimentoEfetivoSolicitacao(item.toJSON());
       const resumoFinanceiro = calcularResumoFinanceiroSolicitacao(solicitacao);
       solicitacao.responsavel = responsavelPorSolicitacao.get(Number(item.id)) || null;
       solicitacao.setor_status_atual =
@@ -512,6 +517,9 @@ function buildSolicitacaoResumoListaInclude() {
 
 async function buscarResumoListaSolicitacaoPorId(id) {
   const solicitacao = await Solicitacao.findByPk(id, {
+    attributes: {
+      include: [[Sequelize.literal(sqlVencimentoMedicaoPendente()), 'data_vencimento_medicao']]
+    },
     include: buildSolicitacaoResumoListaInclude()
   });
 
@@ -1201,6 +1209,22 @@ async function obterContextoAprovacaoDiretoria(solicitacao, obraCarregada = null
     solicitacao?.tipo_solicitacao_id,
     configuracao.setoresDestinoPorTipo
   );
+  const setorDestinoOriginal = setorDestinoPersistido || setorDestinoConfigurado;
+  const setorDestinoModel = setorDestinoOriginal
+    ? await resolveSetorReferencia(setorDestinoOriginal, {
+      attributes: ['id', 'codigo', 'nome', 'eh_setor_financeiro']
+    })
+    : null;
+  const destinoEhFinanceiro = hasSetorCapability(
+    setorDestinoModel || { codigo: setorDestinoOriginal, nome: setorDestinoOriginal },
+    'eh_setor_financeiro'
+  );
+  const setorGeo = destinoEhFinanceiro
+    ? await findSetorByCapability('eh_setor_geo', { attributes: ['id', 'codigo', 'nome'] })
+    : null;
+  const setorDestinoEfetivo = destinoEhFinanceiro
+    ? resolveSetorPersistenciaValue(setorGeo, 'GEO')
+    : setorDestinoOriginal;
 
   return {
     obra,
@@ -1208,9 +1232,7 @@ async function obterContextoAprovacaoDiretoria(solicitacao, obraCarregada = null
     diretoriaEsperada:
       diretoriaPersistida ||
       obterDiretoriaParaObra(obra, configuracao.diretoriasPorClassificacao),
-    setorDestinoAprovacao:
-      setorDestinoPersistido ||
-      setorDestinoConfigurado,
+    setorDestinoAprovacao: setorDestinoEfetivo,
     diretoriasPorClassificacao: configuracao.diretoriasPorClassificacao,
     setoresDestinoPorTipo: configuracao.setoresDestinoPorTipo
   };
@@ -2167,7 +2189,8 @@ module.exports = {
         where,
         attributes: [
           'id', 'obra_id', 'area_responsavel', 'tipo_solicitacao_id',
-          'criado_por', 'status_global', 'data_vencimento', 'createdAt'
+          'criado_por', 'status_global', 'data_vencimento', 'createdAt',
+          [Sequelize.literal(sqlVencimentoMedicaoPendente()), 'data_vencimento_medicao']
         ],
         raw: true
       });
@@ -2238,11 +2261,12 @@ module.exports = {
 
       const contagem = { ...zeros, todas: itens.length };
       itens.forEach((item) => {
+        const itemComVencimento = aplicarVencimentoEfetivoSolicitacao(item);
         const id = Number(item.id);
         const areaItem = String(item.area_responsavel || '').trim().toUpperCase();
         const responsavel = responsavelAtual.get(id) || null;
-        const vencimento = item.data_vencimento
-          ? String(item.data_vencimento).slice(0, 10)
+        const vencimento = itemComVencimento.data_vencimento
+          ? String(itemComVencimento.data_vencimento).slice(0, 10)
           : null;
 
         if (responsavel === usuarioId || idsComEnvio.has(id)) {
@@ -2379,6 +2403,11 @@ module.exports = {
         'createdAt', 'codigo', 'descricao', 'valor', 'status_global',
         'area_responsavel', 'data_vencimento', 'numero_sienge'
       ]);
+      const colunaOrdenacaoSolicitada = String(ordenar || '').trim();
+      const direcaoOrdenacaoSolicitada = String(direcao || '').trim().toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+      const ordenacaoColunaSolicitada = colunaOrdenacaoSolicitada === 'data_vencimento'
+        ? [Sequelize.literal(sqlVencimentoEfetivoSolicitacao()), direcaoOrdenacaoSolicitada]
+        : [colunaOrdenacaoSolicitada, direcaoOrdenacaoSolicitada];
       // Pedido de retorno e uma interrupcao operacional: precisa aparecer antes das demais
       // solicitacoes, inclusive quando estiver fora da pagina que o usuario tinha carregado.
       // A prioridade entra no banco antes de limit/offset e continua valendo quando ha uma
@@ -2419,8 +2448,8 @@ module.exports = {
       ];
       const ordenacaoEfetiva = [
         ...ordenacaoRetornoPendente,
-        ...(CAMPOS_ORDENAVEIS.has(String(ordenar || '').trim())
-          ? [[String(ordenar).trim(), String(direcao || '').trim().toLowerCase() === 'asc' ? 'ASC' : 'DESC'], ['id', 'DESC']]
+        ...(CAMPOS_ORDENAVEIS.has(colunaOrdenacaoSolicitada)
+          ? [ordenacaoColunaSolicitada, ['id', 'DESC']]
           : ordenacaoLista)
       ];
 
@@ -2726,7 +2755,7 @@ module.exports = {
         if (isDataIsoValida(dataVencimentoInicioStr)) {
           where[Op.and].push(
             Sequelize.where(
-              Sequelize.fn('DATE', Sequelize.col('Solicitacao.data_vencimento')),
+              Sequelize.fn('DATE', Sequelize.literal(sqlVencimentoEfetivoSolicitacao())),
               { [Op.gte]: dataVencimentoInicioStr }
             )
           );
@@ -2734,7 +2763,7 @@ module.exports = {
         if (isDataIsoValida(dataVencimentoFimStr)) {
           where[Op.and].push(
             Sequelize.where(
-              Sequelize.fn('DATE', Sequelize.col('Solicitacao.data_vencimento')),
+              Sequelize.fn('DATE', Sequelize.literal(sqlVencimentoEfetivoSolicitacao())),
               { [Op.lte]: dataVencimentoFimStr }
             )
           );
@@ -2745,7 +2774,7 @@ module.exports = {
           where[Op.and] = where[Op.and] || [];
           where[Op.and].push(
             Sequelize.where(
-              Sequelize.fn('DATE', Sequelize.col('Solicitacao.data_vencimento')),
+              Sequelize.fn('DATE', Sequelize.literal(sqlVencimentoEfetivoSolicitacao())),
               dataVencimentoStr
             )
           );
@@ -2875,6 +2904,9 @@ module.exports = {
           const ordemPagina = new Map(idsPagina.map((id, index) => [id, index]));
           const solicitacoesPagina = await Solicitacao.findAll({
             where: { id: { [Op.in]: idsPagina } },
+            attributes: {
+              include: [[Sequelize.literal(sqlVencimentoMedicaoPendente()), 'data_vencimento_medicao']]
+            },
             include: includeBase
           });
           resultado = await montarResumoSolicitacoesLista(solicitacoesPagina, usuarioId);
@@ -2912,6 +2944,9 @@ module.exports = {
         totalRegistros = await Solicitacao.count({ where });
         const solicitacoes = await Solicitacao.findAll({
           where,
+          attributes: {
+            include: [[Sequelize.literal(sqlVencimentoMedicaoPendente()), 'data_vencimento_medicao']]
+          },
           include: includeBase,
           order: ordenacaoEfetiva,
           ...(paginacaoSolicitada
@@ -5490,6 +5525,7 @@ module.exports = {
         area_responsavel: contexto.setorDestino,
         status_global: contexto.statusDestino
       }, { transaction });
+      const manteveNoMesmoSetor = normalizarTokenComparacao(areaAnterior) === normalizarTokenComparacao(contexto.setorDestino);
 
       // A abertura do titulo de recarga decorre da aprovacao, nao do nome escolhido para o
       // status de chegada. Assim a configuracao pode usar qualquer status ativo do GEO.
@@ -5503,10 +5539,12 @@ module.exports = {
         solicitacao_id: solicitacao.id,
         usuario_responsavel_id: req.user.id,
         setor: areaAnterior,
-        acao: 'SOLICITACAO_APROVADA_ENCAMINHADA',
+        acao: manteveNoMesmoSetor ? 'SOLICITACAO_APROVADA' : 'SOLICITACAO_APROVADA_ENCAMINHADA',
         status_anterior: statusAnterior,
         status_novo: contexto.statusDestino,
-        descricao: `Solicitacao aprovada e enviada para ${contexto.setorDestinoNome} com status ${contexto.statusDestinoNome}`,
+        descricao: manteveNoMesmoSetor
+          ? `Solicitacao aprovada e mantida em ${contexto.setorDestinoNome} com status ${contexto.statusDestinoNome}`
+          : `Solicitacao aprovada e enviada para ${contexto.setorDestinoNome} com status ${contexto.statusDestinoNome}`,
         metadata: JSON.stringify({
           tipo_solicitacao_id: solicitacao.tipo_solicitacao_id,
           area_anterior: areaAnterior,
@@ -5522,7 +5560,9 @@ module.exports = {
         solicitacao_id: solicitacao.id,
         setor: contexto.setorDestino,
         status: contexto.statusDestino,
-        observacao: `Aprovada pelo GEO e encaminhada conforme a configuracao do tipo`
+        observacao: manteveNoMesmoSetor
+          ? 'Aprovada pelo GEO e mantida no setor ate o envio de titulo para pagamento.'
+          : 'Aprovada pelo GEO e encaminhada conforme a configuracao do tipo.'
       }, { transaction });
 
       await transaction.commit();
@@ -5530,7 +5570,9 @@ module.exports = {
       void criarNotificacao({
         solicitacao_id: solicitacao.id,
         tipo: 'SOLICITACAO_APROVADA',
-        mensagem: `${req.user?.nome || 'Usuario'} aprovou a solicitacao ${solicitacao.codigo} e a enviou para ${contexto.setorDestinoNome}`,
+        mensagem: manteveNoMesmoSetor
+          ? `${req.user?.nome || 'Usuario'} aprovou a solicitacao ${solicitacao.codigo}; ela permanece em ${contexto.setorDestinoNome}`
+          : `${req.user?.nome || 'Usuario'} aprovou a solicitacao ${solicitacao.codigo} e a enviou para ${contexto.setorDestinoNome}`,
         created_by: req.user.id,
         metadata: {
           setor_destino: contexto.setorDestino,
@@ -5622,7 +5664,20 @@ module.exports = {
         });
       }
 
-      const destino = solicitacao.setor_destino_pos_aprovacao;
+      const destinoConfigurado = solicitacao.setor_destino_pos_aprovacao;
+      const setorFinanceiroConfigurado = await resolveSetorReferencia(destinoConfigurado, {
+        attributes: ['id', 'codigo', 'nome', 'eh_setor_financeiro']
+      });
+      const destinoEhFinanceiro = hasSetorCapability(
+        setorFinanceiroConfigurado || { codigo: destinoConfigurado, nome: destinoConfigurado },
+        'eh_setor_financeiro'
+      );
+      const setorGeo = destinoEhFinanceiro
+        ? await findSetorByCapability('eh_setor_geo', { attributes: ['id', 'codigo', 'nome'] })
+        : null;
+      const destino = destinoEhFinanceiro
+        ? resolveSetorPersistenciaValue(setorGeo, 'GEO')
+        : destinoConfigurado;
       const destinoNormalizado = normalizarTokenComparacao(destino);
       const liberarCompraParaCompras = destinoNormalizado === 'COMPRAS';
       await solicitacao.update({
@@ -5652,6 +5707,7 @@ module.exports = {
         observacao: `Aprovada pela diretoria e enviada para ${destino}`,
         metadata: JSON.stringify({
           diretoria_fluxo_codigo: solicitacao.diretoria_fluxo_codigo,
+          setor_destino_configurado: destinoConfigurado,
           setor_destino_pos_aprovacao: destino,
           solicitacao_compra_status: liberarCompraParaCompras ? 'LIBERADO_PARA_COMPRA' : 'ENVIADO'
         })

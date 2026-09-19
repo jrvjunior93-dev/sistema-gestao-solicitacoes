@@ -2521,6 +2521,8 @@ router.get('/configuracoes/cotacoes', requireEnabledModule('COTACOES'), allowCom
 router.patch('/configuracoes/cotacoes', requireEnabledModule('COTACOES'), allowComprasConfiguracoesManage, ConfiguracaoSistemaController.setCotacoesConfig);
 router.get('/configuracoes/status-pedidos-compra', allowComprasPedidosRead, ConfiguracaoSistemaController.getStatusPedidosCompra);
 router.patch('/configuracoes/status-pedidos-compra', allowComprasConfiguracoesManage, ConfiguracaoSistemaController.setStatusPedidosCompra);
+router.get('/configuracoes/categorias-titulos-pedidos-compra', permit(['SUPERADMIN']), ConfiguracaoSistemaController.getCategoriasTitulosPedidosCompra);
+router.patch('/configuracoes/categorias-titulos-pedidos-compra', permit(['SUPERADMIN']), criticalRateLimit, ConfiguracaoSistemaController.setCategoriasTitulosPedidosCompra);
 // Limite que decide se o contrato passa pelo JURIDICO (PI-1). Configuravel pela Diretoria.
 // Formas de pagamento que a medicao oferece (item 9, 23/08). A configuracao cura a lista; o cadastro
 // financeiro continua sendo a fonte.

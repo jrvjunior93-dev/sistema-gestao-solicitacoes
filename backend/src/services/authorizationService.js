@@ -1995,7 +1995,7 @@ async function canViewPedidoCompraFinanceiro(user) {
   if (await userHasConfiguredAreaPermissions(user)) {
     return userHasAreaPermission(user, COMPRAS_PEDIDOS_FINANCEIRO_VIEW_KEYS);
   }
-  return userHasSetorCapability(user, 'eh_setor_geo');
+  return userHasSetorCapability(user, 'eh_setor_compras');
 }
 
 async function canAnexarDocumentoPedidoCompraFinanceiro(user) {
@@ -2003,7 +2003,7 @@ async function canAnexarDocumentoPedidoCompraFinanceiro(user) {
   if (await userHasConfiguredAreaPermissions(user)) {
     return userHasAreaPermission(user, COMPRAS_PEDIDOS_FINANCEIRO_DOCUMENTO_KEYS);
   }
-  return userHasSetorCapability(user, 'eh_setor_geo');
+  return userHasSetorCapability(user, 'eh_setor_compras');
 }
 
 async function canGerarPrevisaoPedidoCompraFinanceiro(user) {
@@ -2011,7 +2011,7 @@ async function canGerarPrevisaoPedidoCompraFinanceiro(user) {
   if (await userHasConfiguredAreaPermissions(user)) {
     return userHasAreaPermission(user, COMPRAS_PEDIDOS_FINANCEIRO_PREVISAO_KEYS);
   }
-  return userHasSetorCapability(user, 'eh_setor_geo');
+  return userHasSetorCapability(user, 'eh_setor_compras');
 }
 
 async function canLiberarPedidoCompraFinanceiro(user) {

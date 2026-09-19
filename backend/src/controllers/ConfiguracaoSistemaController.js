@@ -13,6 +13,10 @@ const {
   savePedidoCompraStatusConfig
 } = require('../services/pedidoCompraStatusConfig');
 const {
+  obterConfiguracaoCategoriasTituloPedido,
+  salvarConfiguracaoCategoriasTituloPedido
+} = require('../services/pedidoCompraTituloConfigService');
+const {
   getModuloConfig,
   saveModuloConfig
 } = require('../services/moduleConfigService');
@@ -1641,6 +1645,26 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao salvar configuracoes de status dos pedidos' });
+    }
+  },
+
+  async getCategoriasTitulosPedidosCompra(req, res) {
+    try {
+      return res.json(await obterConfiguracaoCategoriasTituloPedido());
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao buscar as categorias dos titulos de pedidos' });
+    }
+  },
+
+  async setCategoriasTitulosPedidosCompra(req, res) {
+    try {
+      return res.json(await salvarConfiguracaoCategoriasTituloPedido(req.body || {}));
+    } catch (error) {
+      console.error(error);
+      return res.status(error?.statusCode || 400).json({
+        error: error?.message || 'Erro ao salvar as categorias dos titulos de pedidos'
+      });
     }
   },
 

@@ -364,6 +364,27 @@ function parseEnum(value, fieldName, allowedValues = [], { required = false } = 
   return normalized;
 }
 
+function parseEnumList(value, fieldName, allowedValues = [], { required = false, maxItems = 20 } = {}) {
+  if (isBlank(value)) {
+    if (required) {
+      throw new ValidationError(`${fieldName} e obrigatorio.`);
+    }
+    return undefined;
+  }
+
+  const rawValues = Array.isArray(value) ? value : String(value).split(',');
+  const normalized = [...new Set(rawValues
+    .flatMap((item) => String(item || '').split(','))
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean))];
+
+  if (normalized.length === 0 || normalized.length > maxItems || normalized.some((item) => !allowedValues.includes(item))) {
+    throw new ValidationError(`${fieldName} invalido.`);
+  }
+
+  return normalized.join(',');
+}
+
 function parseNullableEnum(value, fieldName, allowedValues = []) {
   if (value === undefined) {
     return undefined;
@@ -460,7 +481,7 @@ function validateFinanceTituloQuery(query = {}) {
 
   return {
     tipo: parseEnum(query.tipo, 'Tipo', ['PAGAR', 'RECEBER']),
-    status: parseEnum(query.status, 'Status', [
+    status: parseEnumList(query.status, 'Status', [
       ...STATUS_TITULO,
       ...STATUS_TITULO_FILTROS_CALCULADOS,
       'ATIVA',

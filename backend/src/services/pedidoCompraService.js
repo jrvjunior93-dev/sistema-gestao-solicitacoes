@@ -42,6 +42,7 @@ const {
   sincronizarRateiosFretesPendentesPedido
 } = require('./pedidoCompraFreteService');
 const { validarResponsavelElegivelDelegacaoCompras } = require('./comprasDelegacaoService');
+const { findSetorByCapability, resolveSetorPersistenciaValue } = require('./setorCapabilityService');
 const {
   sincronizarTotaisFretePedido,
   sincronizarValoresSolicitacaoCompra
@@ -1102,6 +1103,43 @@ async function sincronizarStatusSolicitacaoCompraPorSaldo({
       },
       transaction
     });
+  }
+
+  if (quantidadeFechada > 0 && Number(solicitacao.solicitacao_principal_id || 0) > 0) {
+    const setorComprasModel = await findSetorByCapability('eh_setor_compras', { transaction });
+    const setorCompras = resolveSetorPersistenciaValue(setorComprasModel, 'COMPRAS');
+    const statusPrincipal = proximoStatus === 'ENCERRADO' ? 'FECHADO_FORNECEDOR' : 'PEDIDO_PARCIAL';
+    const principal = await Solicitacao.findByPk(solicitacao.solicitacao_principal_id, {
+      attributes: ['id', 'status_global', 'area_responsavel'],
+      transaction,
+      lock: transaction?.LOCK?.UPDATE
+    });
+    if (principal && (
+      normalizeText(principal.status_global) !== normalizeText(statusPrincipal)
+      || normalizeText(principal.area_responsavel) !== normalizeText(setorCompras)
+    )) {
+      const statusAnterior = principal.status_global;
+      const setorAnterior = principal.area_responsavel;
+      await principal.update({
+        status_global: statusPrincipal,
+        area_responsavel: setorCompras
+      }, { transaction });
+      await Historico.create({
+        solicitacao_id: principal.id,
+        usuario_responsavel_id: usuarioId || null,
+        setor: setorCompras,
+        acao: 'STATUS_COMPRA_SINCRONIZADO',
+        status_anterior: statusAnterior,
+        status_novo: statusPrincipal,
+        descricao: `Compra mantida em ${setorCompras} com status ${statusPrincipal}.`,
+        metadata: JSON.stringify({
+          setor_anterior: setorAnterior,
+          setor_novo: setorCompras,
+          quantidade_fechada: quantidadeFechada,
+          saldo_restante: saldoRestante
+        })
+      }, { transaction });
+    }
   }
 
   return solicitacao;
@@ -3080,7 +3118,9 @@ async function atualizarStatusPedido({ pedidoId, status, usuarioId, transaction 
     attributes: ['id', 'solicitacao_principal_id']
   });
   const isStatusFinal = Boolean(statusConfig.bloqueia_edicao) || ['ENCERRADO', 'CANCELADO'].includes(statusConfig.codigo);
-  const statusSolicitacaoCompra = `PEDIDO_${statusConfig.codigo}`;
+  const statusSolicitacaoCompra = statusConfig.codigo === 'FECHADO_FORNECEDOR'
+    ? 'FECHADO_FORNECEDOR'
+    : `PEDIDO_${statusConfig.codigo}`;
 
   if (solicitacao && !pedido.fechamento_id) {
     await SolicitacaoCompra.update(
@@ -3089,8 +3129,10 @@ async function atualizarStatusPedido({ pedidoId, status, usuarioId, transaction 
     );
 
     if (Number(solicitacao.solicitacao_principal_id || 0) > 0) {
+      const setorComprasModel = await findSetorByCapability('eh_setor_compras', { transaction });
+      const setorCompras = resolveSetorPersistenciaValue(setorComprasModel, 'COMPRAS');
       await Solicitacao.update(
-        { status_global: statusSolicitacaoCompra },
+        { status_global: statusSolicitacaoCompra, area_responsavel: setorCompras },
         { where: { id: solicitacao.solicitacao_principal_id }, transaction }
       );
     }

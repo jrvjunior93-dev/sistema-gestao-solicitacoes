@@ -87,7 +87,13 @@ function getTituloCodigo(titulo = {}) {
 
 function getStatusLabel(status) {
   const normalized = String(status || '').trim().toUpperCase();
-  return STATUS_LABELS[normalized] || normalizeText(status);
+  if (!normalized) return normalizeText(status);
+  return normalized
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => STATUS_LABELS[item] || item)
+    .join(', ');
 }
 
 function getStatusColor(titulo = {}) {

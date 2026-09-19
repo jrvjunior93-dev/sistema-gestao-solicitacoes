@@ -6,7 +6,6 @@ import {
   adotarFinanceiroPedidoCompra,
   criarPrevisoesPedidoCompra,
   decidirReaberturaPedidoCompra,
-  liberarTitulosPedidoCompra,
   obterUrlAssinadaCompra,
   reparcelarPrevisoesPedidoCompra,
   registrarDocumentoFinanceiroPedidoCompra,
@@ -17,17 +16,16 @@ import {
   canAnexarDocumentoPedidoCompraFinanceiro,
   canAprovarReaberturaPedidoCompraFinanceiro,
   canGerarPrevisaoPedidoCompraFinanceiro,
-  canLiberarPedidoCompraFinanceiro,
   canViewPedidoCompraFinanceiro
 } from '../../../utils/acessoProduto';
 
 const STATUS_LABEL = {
   NAO_INICIADO: 'Não iniciado',
-  AGUARDANDO_GEO: 'Aguardando GEO',
-  AGUARDANDO_PREVISAO: 'Aguardando previsão',
-  PREVISAO_CRIADA: 'Previsão criada',
+  AGUARDANDO_GEO: 'Legado aguardando revisão',
+  AGUARDANDO_PREVISAO: 'Aguardando títulos de Compras',
+  PREVISAO_CRIADA: 'Previsões legadas criadas',
   PARCIALMENTE_LIBERADO: 'Parcialmente liberado',
-  LIBERADO_FINANCEIRO: 'Liberado ao Financeiro',
+  LIBERADO_FINANCEIRO: 'Títulos criados',
   PAGO_PARCIALMENTE: 'Pago parcialmente',
   CONCLUIDO: 'Concluído',
   LEGADO_PENDENTE_REVISAO: 'Legado pendente de revisão',
@@ -65,7 +63,6 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const podeVer = canViewPedidoCompraFinanceiro(user);
   const podePrever = canGerarPrevisaoPedidoCompraFinanceiro(user);
   const podeAnexar = canAnexarDocumentoPedidoCompraFinanceiro(user);
-  const podeLiberar = canLiberarPedidoCompraFinanceiro(user);
   const podeDecidirReabertura = canAprovarReaberturaPedidoCompraFinanceiro(user);
   const podeAbrirTituloFinanceiro = canAccessFinanceiro(user);
   const totalPedido = Number(pedido?.valor_total_fornecedor ?? pedido?.valor_total ?? 0);
@@ -75,8 +72,6 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const [descricao, setDescricao] = useState('');
   const [parcelas, setParcelas] = useState([{ valor: valorInput(totalPedido), data_vencimento: amanhaOuHoje() }]);
   const [editandoParcelas, setEditandoParcelas] = useState(false);
-  const [selecionados, setSelecionados] = useState([]);
-  const [formaPagamentoId, setFormaPagamentoId] = useState('');
   const [documento, setDocumento] = useState({
     tipo: 'NOTA_FISCAL',
     numero_documento: '',
@@ -87,8 +82,14 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
 
   useEffect(() => {
     setParcelas([{ valor: valorInput(totalPedido), data_vencimento: amanhaOuHoje() }]);
+    setDescricao(`Pedido PC-${String(pedido?.id || '').padStart(5, '0')} - ${pedido?.fornecedor?.nome || 'Fornecedor'}`);
     setEditandoParcelas(false);
-  }, [pedido?.id, totalPedido]);
+  }, [pedido?.id, pedido?.fornecedor?.nome, totalPedido]);
+
+  useEffect(() => {
+    const categoriaPadrao = financeiro?.opcoes?.categoria_padrao_id;
+    if (categoriaPadrao) setCategoriaId(String(categoriaPadrao));
+  }, [pedido?.id, financeiro?.opcoes?.categoria_padrao_id]);
 
   const titulos = financeiro?.titulos || [];
   const previsoes = titulos.filter((item) => String(item.titulo?.status || '').toUpperCase() === 'PREVISAO');
@@ -172,7 +173,6 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
     setCategoriaId(primeiroTitulo?.categoria_financeira_id ? String(primeiroTitulo.categoria_financeira_id) : '');
     setDescricao(String(primeiroTitulo?.descricao || ''));
     setParcelas(atuais.length ? atuais : [{ valor: valorInput(totalPedido), data_vencimento: amanhaOuHoje() }]);
-    setSelecionados([]);
     setEditandoParcelas(true);
   }
 
@@ -207,7 +207,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
       }
     }, reparcelando
       ? 'Parcelas das previsões atualizadas para este pedido.'
-      : 'Previsões financeiras criadas para este pedido.');
+      : 'Títulos financeiros criados para este pedido.');
   }
 
   async function salvarDocumento() {
@@ -237,15 +237,6 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
     }
   }
 
-  async function liberarSelecionados() {
-    if (!selecionados.length) return avisar.alerta('Selecione ao menos uma previsão.');
-    if (!formaPagamentoId) return avisar.alerta('Selecione a forma de pagamento.');
-    return executar('liberar', () => liberarTitulosPedidoCompra(pedido.id, {
-      titulo_ids: selecionados,
-      forma_pagamento_id: Number(formaPagamentoId)
-    }), 'Títulos liberados para pagamento no Financeiro.');
-  }
-
   async function decidir(decisao) {
     if (!motivoDecisao.trim()) return avisar.alerta('Informe o motivo da decisão.');
     return executar('decisao', () => decidirReaberturaPedidoCompra(pedido.id, reabertura.id, {
@@ -258,7 +249,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
     <BlocoConteudo
       titulo="Gestão financeira do pedido"
       contagem={STATUS_LABEL[financeiro.status] || String(financeiro.status || '').replace(/_/g, ' ')}
-      descricao="O pedido permanece com Compras; o GEO prepara as previsões e só libera o pagamento após a confirmação do fornecedor."
+      descricao="O pedido permanece com Compras. Compras cria os títulos; o GEO autoriza o envio pela tela de Contas a Pagar."
       variante="primario"
       cor="var(--module-financeiro)"
     >
@@ -274,7 +265,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
               type="button"
               className="btn btn-outline mt-3"
               disabled={Boolean(processando)}
-              onClick={() => executar('adotar', () => adotarFinanceiroPedidoCompra(pedido.id), 'Pedido legado incorporado à gestão financeira do GEO.')}
+              onClick={() => executar('adotar', () => adotarFinanceiroPedidoCompra(pedido.id), 'Pedido legado incorporado à gestão de títulos de Compras.')}
             >
               Revisar e adotar pedido legado
             </button>
@@ -284,7 +275,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
 
       {exibirFormularioParcelas ? (
         <div className="mt-4 border-t border-[var(--c-border)] pt-4">
-          <h3 className="font-semibold text-[var(--c-text)]">{editandoParcelas ? 'Editar parcelas das previsões' : 'Criar títulos de previsão'}</h3>
+          <h3 className="font-semibold text-[var(--c-text)]">{editandoParcelas ? 'Editar parcelas legadas' : 'Criar títulos do pedido'}</h3>
           <dl className="my-3 grid gap-3 sm:grid-cols-3 text-sm">
             <div><dt className="text-[var(--c-muted)]">Credor (fornecedor do pedido)</dt><dd className="break-words font-semibold">{pedido.fornecedor?.nome || 'Não vinculado'}</dd></div>
             <div><dt className="text-[var(--c-muted)]">Obra</dt><dd className="break-words font-semibold">{pedido.obra?.nome || 'Não vinculada'}</dd></div>
@@ -292,7 +283,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
           </dl>
           <p className="text-sm text-[var(--c-muted)]">O vínculo e o valor são deste pedido, não do total da solicitação. Os demais pedidos têm títulos próprios.</p>
           <p className="mt-1 text-sm text-[var(--c-muted)]">
-            Distribua {moeda(totalPedido)} entre as parcelas. O Financeiro ainda não poderá baixá-las.
+            Distribua {moeda(totalPedido)} entre as parcelas. Os títulos serão criados no Contas a Pagar e somente chegarão ao Financeiro quando o GEO os enviar para a fila.
             {editandoParcelas ? ' As previsões atuais serão canceladas e substituídas somente ao salvar.' : ''}
           </p>
           {!pedido?.fornecedor?.parceiro_id ? (
@@ -345,7 +336,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
               <button type="button" className="btn btn-primary" disabled={Boolean(processando) || !pedido?.fornecedor?.parceiro_id} onClick={salvarPrevisoes}>
                 {processando === 'previsoes'
                   ? 'Salvando...'
-                  : (editandoParcelas ? 'Salvar novo parcelamento' : 'Criar previsões')}
+                  : (editandoParcelas ? 'Salvar novo parcelamento' : 'Criar títulos')}
               </button>
             </div>
           </div>
@@ -364,10 +355,9 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
           </div>
           <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--c-border)]">
             <table className="w-full min-w-[720px] text-sm">
-              <thead className="bg-[var(--c-surface-2)] text-left"><tr><th className="p-3">Sel.</th><th className="p-3">Título</th><th className="p-3">Vencimento</th><th className="p-3">Valor</th><th className="p-3">Status</th><th className="p-3">Origem</th></tr></thead>
+              <thead className="bg-[var(--c-surface-2)] text-left"><tr><th className="p-3">Título</th><th className="p-3">Vencimento</th><th className="p-3">Valor</th><th className="p-3">Status</th><th className="p-3">Origem</th></tr></thead>
               <tbody>{titulosAtivos.map((item) => (
                 <tr key={`${item.origem}-${item.titulo?.id}`} className="border-t border-[var(--c-border)]">
-                  <td className="p-3"><input type="checkbox" disabled={!podeLiberar || String(item.titulo?.status).toUpperCase() !== 'PREVISAO'} checked={selecionados.includes(Number(item.titulo?.id))} onChange={(event) => setSelecionados((atuais) => event.target.checked ? [...atuais, Number(item.titulo.id)] : atuais.filter((id) => id !== Number(item.titulo.id)))} /></td>
                   <td className="p-3">{podeAbrirTituloFinanceiro ? (
                     <Link className="font-semibold text-[var(--c-primary)] hover:underline" to={`/financeiro/titulos/${item.titulo?.id}`}>{item.titulo?.codigo || `#${item.titulo?.id}`}</Link>
                   ) : (
@@ -410,15 +400,6 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
               ))}
             </div>
           ) : null}
-        </div>
-      ) : null}
-
-      {podeLiberar && previsoes.length ? (
-        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-[var(--c-border)] pt-4">
-          <CampoForm label="Forma de pagamento" obrigatorio>
-            <select className="input min-w-64" value={formaPagamentoId} onChange={(event) => setFormaPagamentoId(event.target.value)}><option value="">Selecione</option>{(financeiro.opcoes?.formas_pagamento || []).map((forma) => <option key={forma.id} value={forma.id}>{forma.nome}</option>)}</select>
-          </CampoForm>
-          <button type="button" className="btn btn-primary" disabled={Boolean(processando) || !selecionados.length || editandoParcelas} onClick={liberarSelecionados}>{processando === 'liberar' ? 'Liberando...' : `Liberar ${selecionados.length || ''} para pagamento`}</button>
         </div>
       ) : null}
 

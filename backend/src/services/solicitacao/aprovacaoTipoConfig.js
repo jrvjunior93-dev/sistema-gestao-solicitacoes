@@ -248,6 +248,12 @@ async function resolverContextoAprovacaoPorTipo(solicitacao, options = {}) {
     return { configurada: true, valida: false, regra, setor, erro: 'Setor GEO inativo ou inexistente.' };
   }
 
+  // A solicitacao de compra continua seguindo para Compras. Para os demais tipos, a aprovacao
+  // nao pode mais antecipar a movimentacao ao Financeiro (nem a outro setor): ela apenas aplica
+  // o status configurado e mantem a solicitacao no GEO ate um titulo entrar na fila.
+  const ehCompra = await tipoEhSolicitacaoCompra(solicitacao?.tipo_solicitacao_id);
+  const setorEfetivo = ehCompra ? setor : setorGeo;
+
   const etapas = await EtapaSetor.findAll({
     where: { ativo: true },
     attributes: ['id', 'setor', 'nome'],
@@ -274,8 +280,8 @@ async function resolverContextoAprovacaoPorTipo(solicitacao, options = {}) {
     regra,
     setor,
     setorGeo,
-    setorDestino: String(setor.codigo || setor.nome).trim(),
-    setorDestinoNome: setor.nome || setor.codigo,
+    setorDestino: String(setorEfetivo.codigo || setorEfetivo.nome).trim(),
+    setorDestinoNome: setorEfetivo.nome || setorEfetivo.codigo,
     statusDestino: normalizarToken(etapa.nome),
     statusDestinoNome: etapa.nome
   };

@@ -62,11 +62,12 @@ const STATUS_PEDIDOS_FALLBACK = [
 ];
 
 const STATUS_FINANCEIRO_OPTIONS = [
-  ['AGUARDANDO_GEO', 'Aguardando GEO'],
+  ['AGUARDANDO_GEO', 'Legado aguardando revisão'],
+  ['AGUARDANDO_PREVISAO', 'Aguardando títulos de Compras'],
   ['LEGADO_PENDENTE_REVISAO', 'Legado pendente de revisão'],
   ['PREVISAO_CRIADA', 'Previsão criada'],
   ['PARCIALMENTE_LIBERADO', 'Parcialmente liberado'],
-  ['LIBERADO_FINANCEIRO', 'Liberado ao Financeiro'],
+  ['LIBERADO_FINANCEIRO', 'Títulos criados'],
   ['PAGO_PARCIALMENTE', 'Pago parcialmente'],
   ['CONCLUIDO', 'Concluído'],
   ['CORRECAO_SOLICITADA', 'Reabertura solicitada']
@@ -318,7 +319,7 @@ export default function PedidosCompra() {
     },
     {
       id: 'financeiro_geo',
-      titulo: 'Financeiro GEO',
+      titulo: 'Títulos do pedido',
       tipo: 'status',
       render: (pedido) => (
         <StatusBadge
@@ -334,7 +335,7 @@ export default function PedidosCompra() {
       <PageHeader
         titulo="Pedidos de Compra"
         contagem={loading ? null : `${totalPedidos} pedido(s)`}
-        descricao="Compras acompanha o pedido; o GEO prepara e libera os títulos financeiros após o fechamento com o fornecedor."
+        descricao="Compras acompanha o pedido e cria seus títulos. O GEO autoriza o envio para pagamento pelo Contas a Pagar."
         secundarias={[
           {
             rotulo: loading ? 'Buscando...' : 'Atualizar',

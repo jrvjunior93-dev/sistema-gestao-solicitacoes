@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const {
+  Anexo,
   Apropriacao,
   CartaoRecarga,
   CartaoRecargaPrestacao,
@@ -30,6 +31,8 @@ const STATUS_CICLO = {
   VALIDADA: 'VALIDADA',
   CANCELADA: 'CANCELADA'
 };
+
+const TIPO_DOCUMENTO_PRESTACAO = 'PRESTACAO_RECARGA';
 
 function erro(statusCode, message, code = null) {
   return Object.assign(new Error(message), { statusCode, code });
@@ -289,7 +292,12 @@ async function calcularMedia(cartaoId) {
   };
 }
 
-function serializarContexto(recarga, { obras = [], media = null, podeValidar = false } = {}) {
+function serializarContexto(recarga, {
+  obras = [],
+  media = null,
+  podeValidar = false,
+  documentosPrestacao = []
+} = {}) {
   const bloqueio = motivoBloqueio(recarga);
   return {
     bloqueado: Boolean(bloqueio),
@@ -297,8 +305,22 @@ function serializarContexto(recarga, { obras = [], media = null, podeValidar = f
     ultima_recarga: recarga || null,
     obras_disponiveis: obras,
     media_recarga: media,
-    pode_validar: podeValidar
+    pode_validar: podeValidar,
+    documentos_prestacao: documentosPrestacao
   };
+}
+
+async function listarDocumentosPrestacao(solicitacaoId, transaction = null) {
+  return Anexo.findAll({
+    where: {
+      solicitacao_id: Number(solicitacaoId),
+      tipo: TIPO_DOCUMENTO_PRESTACAO,
+      deleted_at: null
+    },
+    attributes: ['id', 'nome_original', 'caminho_arquivo', 'uploaded_by', 'createdAt'],
+    order: [['createdAt', 'DESC'], ['id', 'DESC']],
+    transaction
+  });
 }
 
 async function listarMeusCartoes(user) {
@@ -615,8 +637,11 @@ async function obterContextoSolicitacao(solicitacaoId, user, { acessoSolicitacao
   const obras = podeOperarRecarga
     ? await listarObrasDoUsuario(recarga.solicitacao?.criado_por || recarga.criado_por)
     : [];
-  const media = podeValidar ? await calcularMedia(recarga.cartao_recarga_id) : null;
-  return serializarContexto(recarga, { obras, media, podeValidar });
+  const [media, documentosPrestacao] = await Promise.all([
+    podeValidar ? calcularMedia(recarga.cartao_recarga_id) : Promise.resolve(null),
+    listarDocumentosPrestacao(solicitacaoId)
+  ]);
+  return serializarContexto(recarga, { obras, media, podeValidar, documentosPrestacao });
 }
 
 function normalizarRateios(rateios = []) {
@@ -677,6 +702,18 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
     const base = roundCurrency(recarga.prestacao.valor_base);
     if (total !== base) throw erro(400, `O rateio deve totalizar R$ ${base.toFixed(2)}.`);
 
+    const totalDocumentos = await Anexo.count({
+      where: {
+        solicitacao_id: recarga.solicitacao_id,
+        tipo: TIPO_DOCUMENTO_PRESTACAO,
+        deleted_at: null
+      },
+      transaction
+    });
+    if (totalDocumentos === 0) {
+      throw erro(400, 'Anexe ao menos um documento da prestacao de contas antes de enviar.');
+    }
+
     const [prestacaoReservada] = await CartaoRecargaPrestacao.update(
       { status: 'ENVIANDO' },
       {
@@ -713,7 +750,7 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
     const setorGeo = await resolverDestinoGeo(transaction);
     await recarga.solicitacao.update({
       area_responsavel: setorGeo,
-      status_global: 'PENDENTE'
+      status_global: 'ATENDIDO'
     }, { transaction });
     await Historico.create({
       solicitacao_id: recarga.solicitacao_id,
@@ -721,8 +758,8 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
       setor: user.area || recarga.solicitacao.area_responsavel,
       acao: 'PRESTACAO_RECARGA_ENVIADA',
       status_anterior: statusAnterior,
-      status_novo: 'PENDENTE',
-      observacao: `Prestacao de contas enviada com ${rateios.length} rateio(s), total R$ ${base.toFixed(2)}.`
+      status_novo: 'ATENDIDO',
+      observacao: `Prestacao de contas enviada com ${rateios.length} rateio(s), ${totalDocumentos} documento(s) e total R$ ${base.toFixed(2)}.`
     }, { transaction });
     if (normalizarToken(setorAnterior) !== normalizarToken(setorGeo)) {
       await Historico.create({
@@ -743,7 +780,7 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
       mensagem: `A prestacao de contas da solicitacao ${recarga.solicitacao.codigo || recarga.solicitacao_id} foi enviada para conferencia.`,
       setorOrigem: setorAnterior,
       setorDestino: setorGeo,
-      status: 'PENDENTE'
+      status: 'ATENDIDO'
     });
     return carregarRecargaPorSolicitacao(solicitacaoId, transaction);
   };

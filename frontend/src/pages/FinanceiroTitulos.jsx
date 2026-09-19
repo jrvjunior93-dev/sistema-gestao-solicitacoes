@@ -5,6 +5,7 @@ import {
   HiOutlineAdjustmentsHorizontal,
   HiOutlineArrowDownTray,
   HiOutlineArrowUpTray,
+  HiOutlineChevronDown,
   HiOutlineDocumentText,
   HiOutlineEye,
   HiOutlineExclamationTriangle,
@@ -162,6 +163,107 @@ const FILTER_DEFINITIONS = [
   { id: 'forma_pagamento_id', rotulo: 'Forma de pagamento', group: 'advanced', span: 'xl:col-span-3', padrao: false },
   { id: 'cartao_id', rotulo: 'Cartão', group: 'advanced', span: 'xl:col-span-3', padrao: false }
 ];
+
+const STATUS_FILTER_OPTIONS = [
+  { value: 'EM_ABERTO', label: 'Em aberto (previsão + aberto + parcial)' },
+  { value: 'VENCIDO', label: 'Vencidos (previsão + aberto + parcial)' },
+  { value: 'PREVISAO', label: 'Previsão' },
+  { value: 'PREVISAO_VENCIDA', label: 'Previsão - vencida' },
+  { value: 'ABERTO', label: 'Aberto' },
+  { value: 'ABERTO_VENCIDO', label: 'Aberto - vencido' },
+  { value: 'PARCIAL', label: 'Parcial' },
+  { value: 'PARCIAL_VENCIDO', label: 'Parcial - vencido' },
+  { value: 'QUITADO', label: 'Quitado' },
+  { value: 'CANCELADO', label: 'Cancelado' },
+  { value: 'ESTORNADO', label: 'Estornado' },
+  { value: 'RENEGOCIADO', label: 'Renegociado' }
+];
+
+function parseStatusFilterValues(value) {
+  return [...new Set(String(value || '')
+    .split(',')
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean))];
+}
+
+function StatusFilterMultiSelect({ className = '', value, onChange }) {
+  const wrapRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const selectedValues = useMemo(() => parseStatusFilterValues(value), [value]);
+  const selectedSet = useMemo(() => new Set(selectedValues), [selectedValues]);
+  const selectedLabels = STATUS_FILTER_OPTIONS
+    .filter((option) => selectedSet.has(option.value))
+    .map((option) => option.label);
+  const summary = selectedLabels.length === 0
+    ? 'Todos'
+    : selectedLabels.length === 1
+      ? selectedLabels[0]
+      : `${selectedLabels.length} selecionados`;
+
+  useFecharAoSair(wrapRef, open, () => setOpen(false));
+
+  function toggleStatus(status) {
+    const next = new Set(selectedSet);
+    if (next.has(status)) next.delete(status);
+    else next.add(status);
+    onChange(STATUS_FILTER_OPTIONS
+      .map((option) => option.value)
+      .filter((optionValue) => next.has(optionValue))
+      .join(','));
+  }
+
+  return (
+    <div ref={wrapRef} className={`${className} relative ${open ? 'z-dropdown' : 'z-base'}`}>
+      <span className="app-filter-label">Status</span>
+      <button
+        type="button"
+        className="input input-sm flex w-full items-center justify-between gap-2 text-left"
+        onClick={() => setOpen((current) => !current)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span className="min-w-0 truncate">{summary}</span>
+        <HiOutlineChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+
+      {open ? (
+        <div
+          className="absolute left-0 top-full z-dropdown mt-1 max-h-80 min-w-full overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl sm:min-w-80"
+          role="listbox"
+          aria-label="Selecionar status"
+          aria-multiselectable="true"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--c-border)] px-2 py-2">
+            <span className="text-xs font-semibold text-[var(--c-muted)]">
+              {selectedValues.length ? `${selectedValues.length} selecionado(s)` : 'Todos os status'}
+            </span>
+            {selectedValues.length ? (
+              <button type="button" className="btn btn-ghost btn-xs" onClick={() => onChange('')}>
+                Limpar
+              </button>
+            ) : null}
+          </div>
+          {STATUS_FILTER_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--c-text)] hover:bg-[var(--c-bg)]"
+              role="option"
+              aria-selected={selectedSet.has(option.value)}
+            >
+              <input
+                type="checkbox"
+                className="h-4 w-4 shrink-0 accent-[var(--c-primary)]"
+                checked={selectedSet.has(option.value)}
+                onChange={() => toggleStatus(option.value)}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /*
   D2 (decisão do cliente) — PORTA ÚNICA COM O RECORTE NA URL.
@@ -2478,28 +2580,12 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
         );
       case 'status':
         return (
-          <label key={filter.id} className={commonClass}>
-            <span className="app-filter-label">Status</span>
-            <select
-              className="input w-full input-sm"
-              value={draftFilters.status}
-              onChange={(event) => setFilter('status', event.target.value)}
-            >
-              <option value="">Todos</option>
-              <option value="EM_ABERTO">Em aberto (previsão + aberto + parcial)</option>
-              <option value="VENCIDO">Vencidos (previsão + aberto + parcial)</option>
-              <option value="PREVISAO">Previsão</option>
-              <option value="PREVISAO_VENCIDA">Previsão - vencida</option>
-              <option value="ABERTO">Aberto</option>
-              <option value="ABERTO_VENCIDO">Aberto - vencido</option>
-              <option value="PARCIAL">Parcial</option>
-              <option value="PARCIAL_VENCIDO">Parcial - vencido</option>
-              <option value="QUITADO">Quitado</option>
-              <option value="CANCELADO">Cancelado</option>
-              <option value="ESTORNADO">Estornado</option>
-              <option value="RENEGOCIADO">Renegociado</option>
-            </select>
-          </label>
+          <StatusFilterMultiSelect
+            key={filter.id}
+            className={commonClass}
+            value={draftFilters.status}
+            onChange={(value) => setFilter('status', value)}
+          />
         );
       case 'numero_documento':
         return (

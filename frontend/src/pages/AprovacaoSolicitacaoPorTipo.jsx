@@ -58,7 +58,7 @@ function sugerirDestinoCompra(regrasAtuais = {}, tiposAtivos = [], setoresAtivos
   };
 }
 
-const DESCRICAO = 'Defina para onde cada tipo segue depois da aprovação e qual status do GEO será aplicado na chegada.';
+const DESCRICAO = 'Defina o status aplicado pelo GEO. Solicitações de compra seguem para Compras; os demais tipos permanecem no GEO até um título entrar na fila de pagamentos.';
 
 export default function AprovacaoSolicitacaoPorTipo() {
   const [tipos, setTipos] = useState([]);
@@ -134,13 +134,16 @@ export default function AprovacaoSolicitacaoPorTipo() {
     }));
   }
 
-  function alterarStatus(tipoId, statusDestino) {
-    const chave = String(tipoId);
+  function alterarStatus(tipo, statusDestino) {
+    const chave = String(tipo.id);
+    const setorFixo = tipoEhSolicitacaoCompra(tipo)
+      ? encontrarSetorCompras(setores)?.codigo || encontrarSetorCompras(setores)?.nome || 'COMPRAS'
+      : setorGeo?.codigo || setorGeo?.nome || 'GEO';
     setTiposAlterados((atuais) => new Set(atuais).add(chave));
     setRegras((atual) => ({
       ...atual,
       [chave]: {
-        setor_destino: atual[chave]?.setor_destino || '',
+        setor_destino: String(setorFixo).toUpperCase(),
         status_destino: statusDestino
       }
     }));
@@ -224,7 +227,7 @@ export default function AprovacaoSolicitacaoPorTipo() {
 
       <BlocoConteudo
         titulo="Destino após aprovação"
-        descricao="O botão Aprovar solicitação aparece no detalhe enquanto o registro está no GEO. O destino define para onde ela segue; o status é escolhido entre os status ativos do GEO."
+        descricao="O destino é fixo para evitar encaminhamentos antecipados: Compras somente para solicitação de compra e GEO para os demais tipos."
         variante="primario"
         cor="var(--c-primary)"
       >
@@ -235,6 +238,8 @@ export default function AprovacaoSolicitacaoPorTipo() {
             {tiposOrdenados.map((tipo) => {
               const regra = regras[String(tipo.id)] || {};
               const compra = tipoEhSolicitacaoCompra(tipo);
+              const setorFixo = compra ? encontrarSetorCompras(setoresOrdenados) : setorGeo;
+              const setorDestinoEfetivo = String(setorFixo?.codigo || setorFixo?.nome || (compra ? 'COMPRAS' : 'GEO')).toUpperCase();
               const opcoesStatus = statusDoGeo;
               const statusAtualEstaAtivo = !regra.status_destino || opcoesStatus.some(
                 (etapa) => normalizar(etapa.nome) === normalizar(regra.status_destino)
@@ -251,9 +256,9 @@ export default function AprovacaoSolicitacaoPorTipo() {
                         ? regra.status_destino
                           ? 'Fluxo operacional de Compras configurado.'
                           : 'Compras já está definido. Escolha um status apenas quando quiser ativar esta aprovação.'
-                        : regra.setor_destino
-                          ? 'Aprovação configurada.'
-                          : 'Sem aprovação configurada.'}
+                        : regra.status_destino
+                          ? 'Aprovação configurada; permanece no GEO.'
+                          : 'Permanece no GEO; escolha um status para ativar esta aprovação.'}
                     </p>
                     {!statusAtualEstaAtivo && (
                       <p className="mt-1 text-sm font-medium text-[var(--c-danger)]">
@@ -266,9 +271,9 @@ export default function AprovacaoSolicitacaoPorTipo() {
                     <span className="form-label">Setor destino</span>
                     <select
                       className="input w-full"
-                      value={regra.setor_destino || ''}
+                      value={setorDestinoEfetivo}
                       onChange={(event) => alterarSetor(tipo, event.target.value)}
-                      disabled={compra}
+                      disabled
                     >
                       <option value="">Sem configuração</option>
                       {setoresOrdenados.map((setor) => (
@@ -284,8 +289,7 @@ export default function AprovacaoSolicitacaoPorTipo() {
                     <select
                       className="input w-full"
                       value={regra.status_destino || ''}
-                      onChange={(event) => alterarStatus(tipo.id, event.target.value)}
-                      disabled={!regra.setor_destino}
+                      onChange={(event) => alterarStatus(tipo, event.target.value)}
                     >
                       <option value="">Selecione</option>
                       {!statusAtualEstaAtivo && (

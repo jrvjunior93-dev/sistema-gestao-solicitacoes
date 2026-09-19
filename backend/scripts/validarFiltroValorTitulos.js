@@ -6,7 +6,8 @@ const {
   validateFinanceTituloQuery
 } = require('../src/validators/financialValidators');
 const {
-  resolveTituloStatusFilter
+  resolveTituloStatusFilter,
+  resolveTituloStatusFilters
 } = require('../src/utils/tituloFinanceiroStatusFilter');
 
 function expectValidationError(callback, messagePart) {
@@ -39,6 +40,10 @@ expectValidationError(
 
 assert.strictEqual(validateFinanceTituloQuery({ status: 'ABERTO_VENCIDO' }).status, 'ABERTO_VENCIDO');
 assert.strictEqual(validateFinanceTituloQuery({ status: 'VENCIDO' }).status, 'VENCIDO');
+assert.strictEqual(
+  validateFinanceTituloQuery({ status: 'aberto, quitado,ABERTO' }).status,
+  'ABERTO,QUITADO'
+);
 const colunasOrdenaveis = [
   'titulo', 'status', 'status_interno_pagar', 'tipo', 'documento',
   'parceiro', 'obra', 'categoria', 'forma_pagamento', 'origem',
@@ -65,6 +70,11 @@ assert.deepStrictEqual(resolveTituloStatusFilter('ABERTO_VENCIDO'), {
   statuses: ['ABERTO'],
   vencido: true
 });
+assert.deepStrictEqual(resolveTituloStatusFilters('ABERTO,QUITADO,ABERTO_VENCIDO'), [
+  { statuses: ['ABERTO'], vencido: false },
+  { statuses: ['QUITADO'], vencido: false },
+  { statuses: ['ABERTO'], vencido: true }
+]);
 
 expectValidationError(
   () => validateFinanceTituloQuery({ valor_min: '-1' }),
@@ -99,9 +109,10 @@ assert(
 );
 
 assert(
-  frontendSource.includes('<option value="VENCIDO">')
-    && frontendSource.includes('<option value="ABERTO_VENCIDO">'),
-  'A consulta de titulos deve expor os filtros de vencimento calculado.'
+  frontendSource.includes("{ value: 'VENCIDO'")
+    && frontendSource.includes("{ value: 'ABERTO_VENCIDO'")
+    && frontendSource.includes('aria-multiselectable="true"'),
+  'A consulta de titulos deve expor selecao multipla e filtros de vencimento calculado.'
 );
 
 console.log('Validacao dos filtros de valor e status dos titulos concluida com sucesso.');

@@ -1700,7 +1700,7 @@ export default function PedidoCompraDetalhe() {
         </div>
       ) : !podeGerenciarPedido && podeGerenciarFinanceiroPedido ? (
         <div className="app-alert">
-          A gestão operacional permanece com Compras. Você pode consultar o pedido e executar apenas as ações financeiras autorizadas ao GEO.
+          A gestão operacional e a criação dos títulos permanecem com Compras. Você pode consultar o pedido e executar apenas as ações liberadas por sua permissão.
         </div>
       ) : null}
 

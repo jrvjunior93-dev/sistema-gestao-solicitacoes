@@ -468,7 +468,7 @@ export function canViewPedidoCompraFinanceiro(user) {
       'compras.pedidos.financeiro.aprovar_reabertura'
     ]);
   }
-  return userHasSetorCapability(user, 'eh_setor_geo');
+  return userHasSetorCapability(user, 'eh_setor_compras');
 }
 
 export function canAnexarDocumentoPedidoCompraFinanceiro(user) {
@@ -477,7 +477,7 @@ export function canAnexarDocumentoPedidoCompraFinanceiro(user) {
   if (hasConfiguredAreaPermissions(user)) {
     return hasPermissao(user, 'compras.pedidos.financeiro.anexar_documentos');
   }
-  return userHasSetorCapability(user, 'eh_setor_geo');
+  return userHasSetorCapability(user, 'eh_setor_compras');
 }
 
 export function canGerarPrevisaoPedidoCompraFinanceiro(user) {
@@ -486,7 +486,7 @@ export function canGerarPrevisaoPedidoCompraFinanceiro(user) {
   if (hasConfiguredAreaPermissions(user)) {
     return hasPermissao(user, 'compras.pedidos.financeiro.gerar_previsao');
   }
-  return userHasSetorCapability(user, 'eh_setor_geo');
+  return userHasSetorCapability(user, 'eh_setor_compras');
 }
 
 export function canLiberarPedidoCompraFinanceiro(user) {

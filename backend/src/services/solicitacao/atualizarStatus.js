@@ -30,11 +30,6 @@ module.exports = async function atualizarStatus({
     novoStatusGlobal = 'Em Compras';
   }
 
-  if (usuario.perfil === 'GEO' && novoStatus === 'Encaminhada para Financeiro') {
-    novaArea = 'FINANCEIRO';
-    novoStatusGlobal = 'Em Financeiro';
-  }
-
   if (usuario.perfil === 'COMPRAS' && novoStatus === 'Entregue') {
     novoStatusGlobal = 'Concluída';
   }
@@ -60,7 +55,7 @@ module.exports = async function atualizarStatus({
   // 3. Criar histórico
   await db.Historico.create({
     solicitacao_id,
-    usuario_responsavel_id: usuario_responsavel_id,
+    usuario_responsavel_id: usuario.id,
     setor: usuario.perfil,
     acao: 'Atualização de status',
     status_anterior: statusAnterior,
