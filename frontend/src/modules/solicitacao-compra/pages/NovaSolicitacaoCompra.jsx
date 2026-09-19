@@ -1939,63 +1939,6 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           </CampoForm>
 
           {modoCompraDireta && (
-            /* Não usa `CampoForm`: o menu de marcação é feito de <label>, e
-               label dentro de label é HTML inválido. Mesmas classes .form-*. */
-            <div className="form-group form-campo--linha">
-              <span className="form-label form-label--required">Formas de pagamento</span>
-              <div className="relative" ref={formasPagamentoRef}>
-                <button
-                  type="button"
-                  className="input flex w-full cursor-pointer items-center justify-between gap-3 text-left"
-                  aria-expanded={formasPagamentoAberto}
-                  onClick={() => setFormasPagamentoAberto((aberto) => !aberto)}
-                >
-                  <span className="min-w-0 truncate">{resumoFormasPagamento}</span>
-                  <svg className={`h-4 w-4 shrink-0 transition${formasPagamentoAberto ? ' rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                    <path d="m7 10 5 5 5-5" />
-                  </svg>
-                </button>
-                {formasPagamentoAberto && (
-                <div className="absolute left-0 right-0 top-full z-dropdown mt-1 max-h-64 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl">
-                  {formasPagamento.map((forma) => {
-                    const selecionada = formaPagamentoIds.includes(String(forma.id));
-                    const boleto = formaPagamentoEhBoleto(forma);
-                    return (
-                      <label
-                        key={forma.id}
-                        className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-[var(--c-text)] hover:bg-[var(--ui-surface-2)]"
-                      >
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4"
-                          checked={selecionada}
-                          onChange={() => alternarFormaPagamento(forma.id)}
-                        />
-                        <span className="min-w-0 flex-1 truncate font-medium">{formatarFormaPagamento(forma)}</span>
-                        {boleto && <span className="shrink-0 text-xs text-[var(--sem-warning)]">Exige anexo</span>}
-                      </label>
-                    );
-                  })}
-                </div>
-                )}
-              </div>
-              <ErroCampo mensagem={errosCampo.forma_pagamento} />
-              {formasPagamento.length === 0 && (
-                <div
-                  className="mt-2 rounded-xl border px-3 py-2 text-sm"
-                  style={{
-                    borderColor: 'var(--sem-warning-border)',
-                    background: 'var(--sem-warning-bg)',
-                    color: 'var(--sem-warning)'
-                  }}
-                >
-                  Nenhuma forma de pagamento ativa foi encontrada. Verifique os cadastros financeiros.
-                </div>
-              )}
-            </div>
-          )}
-
-          {modoCompraDireta && (
             <CampoForm label="Credor" linha erro={errosCampo.credor}>
               <div className="flex flex-wrap gap-2">
                 <div ref={campoCredorRef} className="relative min-w-0 flex-1 app-busca">
@@ -2097,6 +2040,63 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                 </span>
               )}
             </CampoForm>
+          )}
+
+          {modoCompraDireta && (
+            /* Não usa `CampoForm`: o menu de marcação é feito de <label>, e
+               label dentro de label é HTML inválido. Mesmas classes .form-*. */
+            <div className="form-group form-campo--linha">
+              <span className="form-label form-label--required">Formas de pagamento</span>
+              <div className="relative" ref={formasPagamentoRef}>
+                <button
+                  type="button"
+                  className="input flex w-full cursor-pointer items-center justify-between gap-3 text-left"
+                  aria-expanded={formasPagamentoAberto}
+                  onClick={() => setFormasPagamentoAberto((aberto) => !aberto)}
+                >
+                  <span className="min-w-0 truncate">{resumoFormasPagamento}</span>
+                  <svg className={`h-4 w-4 shrink-0 transition${formasPagamentoAberto ? ' rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="m7 10 5 5 5-5" />
+                  </svg>
+                </button>
+                {formasPagamentoAberto && (
+                <div className="absolute left-0 right-0 top-full z-dropdown mt-1 max-h-64 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl">
+                  {formasPagamento.map((forma) => {
+                    const selecionada = formaPagamentoIds.includes(String(forma.id));
+                    const boleto = formaPagamentoEhBoleto(forma);
+                    return (
+                      <label
+                        key={forma.id}
+                        className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-[var(--c-text)] hover:bg-[var(--ui-surface-2)]"
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4"
+                          checked={selecionada}
+                          onChange={() => alternarFormaPagamento(forma.id)}
+                        />
+                        <span className="min-w-0 flex-1 truncate font-medium">{formatarFormaPagamento(forma)}</span>
+                        {boleto && <span className="shrink-0 text-xs text-[var(--sem-warning)]">Exige anexo</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+                )}
+              </div>
+              <ErroCampo mensagem={errosCampo.forma_pagamento} />
+              {formasPagamento.length === 0 && (
+                <div
+                  className="mt-2 rounded-xl border px-3 py-2 text-sm"
+                  style={{
+                    borderColor: 'var(--sem-warning-border)',
+                    background: 'var(--sem-warning-bg)',
+                    color: 'var(--sem-warning)'
+                  }}
+                >
+                  Nenhuma forma de pagamento ativa foi encontrada. Verifique os cadastros financeiros.
+                </div>
+              )}
+            </div>
           )}
 
           {modoCompraDireta && formasPagamentoSelecionadas.length > 0 && (
