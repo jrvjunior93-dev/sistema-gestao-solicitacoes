@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Avisos,
   BarraFiltros,
@@ -17,6 +18,8 @@ import {
   decidirEdicaoJornadaRh,
   getEdicoesJornadaPendentesRh,
   getRhEmpresasGrupo,
+  anexarNaRhSolicitacao,
+  listarRhSolicitacoes,
   registrarJornadaRh,
   solicitarEdicaoJornadaRh
 } from '../services/rhDp';
@@ -143,8 +146,9 @@ const FILTROS_DA_TELA = [
   { id: 'empresa', rotulo: 'Empresa do grupo' }
 ];
 
-export default function RhDpJornada() {
+export default function RhDpJornada({ onAbrirApuracao }) {
   const { user } = useAuth();
+  const [parametros, setParametros] = useSearchParams();
   const usuarioOperacionalDaObra = !isBusinessAdmin(user)
     && userHasSetorCapability(user, 'eh_setor_obra');
   const { avisos, avisar, fechar, limpar } = useAvisos();
@@ -230,6 +234,23 @@ export default function RhDpJornada() {
   const [salvando, setSalvando] = useState(false);
   const [processandoEdicao, setProcessandoEdicao] = useState(null);
   const [edicoesPendentes, setEdicoesPendentes] = useState([]);
+  const [jornadasEnviadas, setJornadasEnviadas] = useState([]);
+  const [carregandoEnviadas, setCarregandoEnviadas] = useState(false);
+  const [jornadaEnviada, setJornadaEnviada] = useState(null);
+  const [anexandoFichas, setAnexandoFichas] = useState(false);
+  const inputFichasRef = useRef(null);
+
+  const secaoDaUrl = parametros.get('jornada_secao');
+  const secaoAtiva = secaoDaUrl === 'enviadas' ? 'enviadas' : 'enviar';
+
+  const mudarSecao = useCallback((secao) => {
+    setParametros((atuais) => {
+      const proximos = new URLSearchParams(atuais);
+      if (secao === 'enviadas') proximos.set('jornada_secao', 'enviadas');
+      else proximos.delete('jornada_secao');
+      return proximos;
+    });
+  }, [setParametros]);
 
   const obra = useMemo(() => primeiroValor(ativos.obra), [ativos]);
   const empresa = useMemo(() => primeiroValor(ativos.empresa), [ativos]);
@@ -238,6 +259,7 @@ export default function RhDpJornada() {
   const podeDecidirEdicao = hasAnyExplicitPermissao(user, ['rh_dp.solicitacoes.decidir']);
 
   function mudarCompetencia(valor) {
+    setJornadaEnviada(null);
     setCompetencia(valor);
     const proximo = periodoPadrao(valor, periodicidade);
     setPeriodoInicio(proximo.inicio);
@@ -247,6 +269,7 @@ export default function RhDpJornada() {
   }
 
   function mudarPeriodicidade(valor) {
+    setJornadaEnviada(null);
     setPeriodicidade(valor);
     const proximo = periodoPadrao(competencia, valor);
     setPeriodoInicio(proximo.inicio);
@@ -275,6 +298,24 @@ export default function RhDpJornada() {
   useEffect(() => {
     carregarEdicoesPendentes();
   }, [carregarEdicoesPendentes]);
+
+  const carregarJornadasEnviadas = useCallback(async () => {
+    setCarregandoEnviadas(true);
+    limpar();
+    try {
+      const lista = await listarRhSolicitacoes({ tipo: 'JORNADA' });
+      setJornadasEnviadas(Array.isArray(lista) ? lista : []);
+    } catch (error) {
+      setJornadasEnviadas([]);
+      avisar.erro(error.message || 'Não foi possível carregar as jornadas enviadas.');
+    } finally {
+      setCarregandoEnviadas(false);
+    }
+  }, [avisar, limpar]);
+
+  useEffect(() => {
+    if (secaoAtiva === 'enviadas') carregarJornadasEnviadas();
+  }, [secaoAtiva, carregarJornadasEnviadas]);
 
   useEffect(() => {
     (async () => {
@@ -539,9 +580,10 @@ export default function RhDpJornada() {
       if (!ok) return;
     }
 
+    setJornadaEnviada(null);
     setSalvando(true);
     try {
-      await registrarJornadaRh({
+      const resultado = await registrarJornadaRh({
         competencia,
         periodicidade,
         periodo_inicio: periodoInicio,
@@ -559,6 +601,7 @@ export default function RhDpJornada() {
           observacoes: l.observacoes || undefined
         }))
       });
+      setJornadaEnviada(resultado?.solicitacao || null);
       /**
        * A confirmacao vem DEPOIS de remontar a lista, e nao antes.
        *
@@ -579,9 +622,163 @@ export default function RhDpJornada() {
     }
   }
 
+  async function anexarFichasAssinadas(evento) {
+    const arquivos = Array.from(evento.target.files || []);
+    evento.target.value = '';
+    if (!jornadaEnviada?.id || !arquivos.length || anexandoFichas) return;
+
+    setAnexandoFichas(true);
+    limpar();
+    let enviados = 0;
+    try {
+      for (const arquivo of arquivos) {
+        await anexarNaRhSolicitacao(jornadaEnviada.id, {}, arquivo);
+        enviados += 1;
+      }
+      avisar.sucesso(
+        `${enviados} arquivo(s) anexado(s) à Jornada #${jornadaEnviada.id}. `
+        + 'As fichas já estão disponíveis no detalhe da solicitação.'
+      );
+    } catch (error) {
+      avisar.erro(
+        enviados
+          ? `${enviados} arquivo(s) foram anexados, mas o envio não foi concluído: ${error.message}`
+          : (error.message || 'Não foi possível anexar as fichas assinadas.')
+      );
+    } finally {
+      setAnexandoFichas(false);
+    }
+  }
+
+  const abasJornada = (
+    <div className="rh-pessoal-abas rh-jornada-subabas" role="tablist" aria-label="Operações de jornada">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={secaoAtiva === 'enviar'}
+        className={`rh-pessoal-aba${secaoAtiva === 'enviar' ? ' rh-pessoal-aba--ativa' : ''}`}
+        onClick={() => mudarSecao('enviar')}
+      >
+        Enviar jornada
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={secaoAtiva === 'enviadas'}
+        className={`rh-pessoal-aba${secaoAtiva === 'enviadas' ? ' rh-pessoal-aba--ativa' : ''}`}
+        onClick={() => mudarSecao('enviadas')}
+      >
+        Jornadas enviadas
+      </button>
+    </div>
+  );
+
+  if (secaoAtiva === 'enviadas') {
+    return (
+      <div className="app-pagina">
+        <Avisos avisos={avisos} aoFechar={fechar} />
+        {abasJornada}
+        <BlocoConteudo
+          titulo="Jornadas enviadas"
+          descricao={usuarioOperacionalDaObra
+            ? 'Jornadas das obras às quais você tem acesso.'
+            : 'Jornadas enviadas por todas as obras para o Departamento Pessoal.'}
+          contagem={`${jornadasEnviadas.length} registro(s)`}
+        >
+          <div className="app-actionbar">
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={carregarJornadasEnviadas}
+              disabled={carregandoEnviadas}
+            >
+              {carregandoEnviadas ? 'Atualizando...' : 'Atualizar lista'}
+            </button>
+          </div>
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'competencia',
+                titulo: 'Competência',
+                tipo: 'identidade',
+                noCard: 'titulo',
+                render: (item) => item.dados_json?.competencia || '—'
+              },
+              {
+                id: 'obra',
+                titulo: 'Obra',
+                tipo: 'texto',
+                render: (item) => item.obra?.nome || `Obra #${item.obra_id}`
+              },
+              {
+                id: 'periodo',
+                titulo: 'Período',
+                tipo: 'texto',
+                render: (item) => `${formatarData(item.dados_json?.periodo_inicio)} a ${formatarData(item.dados_json?.periodo_fim)}`
+              },
+              {
+                id: 'periodicidade',
+                titulo: 'Periodicidade',
+                tipo: 'badge',
+                render: (item) => PERIODICIDADES.find(
+                  (opcao) => opcao.valor === item.dados_json?.periodicidade
+                )?.rotulo || item.dados_json?.periodicidade || '—'
+              },
+              {
+                id: 'colaboradores',
+                titulo: 'Colaboradores',
+                tipo: 'numero',
+                render: (item) => item.dados_json?.total_colaboradores ?? '—'
+              },
+              {
+                id: 'situacao',
+                titulo: 'Situação',
+                tipo: 'status',
+                render: (item) => (
+                  <span className={`rh-chip ${item.situacao === 'ABERTA' ? 'rh-chip--aberta' : 'rh-chip--evento'}`}>
+                    {{
+                      ABERTA: 'Aguardando apuração',
+                      APROVADA: 'Apuração gerada',
+                      REJEITADA: 'Devolvida',
+                      CANCELADA: 'Cancelada'
+                    }[item.situacao] || item.situacao}
+                  </span>
+                )
+              },
+              {
+                id: 'envio',
+                titulo: 'Enviada em',
+                tipo: 'data',
+                render: (item) => (item.createdAt ? new Date(item.createdAt).toLocaleString('pt-BR') : '—')
+              }
+            ]}
+            itens={jornadasEnviadas}
+            getId={(item) => item.id}
+            storageKey="tabela:rh-dp-jornada:enviadas"
+            rotuloRolagem="Jornadas enviadas"
+            carregando={carregandoEnviadas}
+            vazio="Nenhuma jornada enviada encontrada."
+            acoesLinha={onAbrirApuracao ? (item) => (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => onAbrirApuracao(item)}
+              >
+                Ir para Apuração
+              </button>
+            ) : undefined}
+            larguraAcoes={onAbrirApuracao ? 150 : undefined}
+          />
+        </BlocoConteudo>
+        {elementoConfirmacao}
+      </div>
+    );
+  }
+
   return (
     <div className="app-pagina">
       <Avisos avisos={avisos} aoFechar={fechar} />
+      {abasJornada}
 
       {podeDecidirEdicao && edicoesPendentes.length ? (
         <BlocoConteudo
@@ -679,6 +876,7 @@ export default function RhDpJornada() {
               tipo: 'select',
               valor: obra,
               aoMudar: (valor) => {
+                setJornadaEnviada(null);
                 setAtivos((atuais) => ({
                   ...atuais,
                   obra: valor ? new Set([String(valor)]) : new Set()
@@ -714,7 +912,7 @@ export default function RhDpJornada() {
               rotulo: 'Início do período *',
               tipo: 'date',
               valor: periodoInicio,
-              aoMudar: (valor) => { setPeriodoInicio(valor); setLinhas([]); },
+              aoMudar: (valor) => { setJornadaEnviada(null); setPeriodoInicio(valor); setLinhas([]); },
               min: limitesDaCompetencia(competencia).inicio,
               max: limitesDaCompetencia(competencia).fim
             },
@@ -723,7 +921,7 @@ export default function RhDpJornada() {
               rotulo: 'Fim do período *',
               tipo: 'date',
               valor: periodoFim,
-              aoMudar: (valor) => { setPeriodoFim(valor); setLinhas([]); },
+              aoMudar: (valor) => { setJornadaEnviada(null); setPeriodoFim(valor); setLinhas([]); },
               min: periodoInicio || limitesDaCompetencia(competencia).inicio,
               max: limitesDaCompetencia(competencia).fim
             },
@@ -732,7 +930,7 @@ export default function RhDpJornada() {
               rotulo: 'Dias base do período',
               tipo: 'number',
               valor: diasBase,
-              aoMudar: setDiasBase,
+              aoMudar: (valor) => { setJornadaEnviada(null); setDiasBase(valor); },
               min: 1,
               max: 31
             }
@@ -742,10 +940,14 @@ export default function RhDpJornada() {
           ))}
           filtros={dimensoesFiltro.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}
           ativos={ativos}
-          aoAlternar={(dimensao, valor, opcoes) => setAtivos(
-            (atuais) => alternarValorFiltro(atuais, dimensao, valor, opcoes)
-          )}
-          aoLimpar={() => setAtivos((atuais) => ({ ...atuais, empresa: new Set() }))}
+          aoAlternar={(dimensao, valor, opcoes) => {
+            setJornadaEnviada(null);
+            setAtivos((atuais) => alternarValorFiltro(atuais, dimensao, valor, opcoes));
+          }}
+          aoLimpar={() => {
+            setJornadaEnviada(null);
+            setAtivos((atuais) => ({ ...atuais, empresa: new Set() }));
+          }}
           visibilidade={visibilidadeFiltros}
         />
 
@@ -993,9 +1195,33 @@ export default function RhDpJornada() {
 
           <div className="app-actionbar">
             {podeEnviar ? (
-              <button type="submit" className="btn btn-primary" disabled={salvando || comProblema.length > 0}>
-                {salvando ? 'Enviando...' : 'Enviar jornada'}
-              </button>
+              <>
+                <button type="submit" className="btn btn-primary" disabled={salvando || comProblema.length > 0}>
+                  {salvando ? 'Enviando...' : 'Enviar jornada'}
+                </button>
+                <input
+                  ref={inputFichasRef}
+                  type="file"
+                  multiple
+                  className="sr-only"
+                  aria-label="Selecionar fichas assinadas da jornada"
+                  onChange={anexarFichasAssinadas}
+                />
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  disabled={!jornadaEnviada?.id || anexandoFichas}
+                  title={jornadaEnviada?.id
+                    ? `Anexar fichas à Jornada #${jornadaEnviada.id}`
+                    : 'Envie a jornada antes de anexar as fichas assinadas.'}
+                  onClick={() => inputFichasRef.current?.click()}
+                >
+                  {anexandoFichas ? 'Anexando...' : 'Anexar fichas assinadas'}
+                </button>
+                {jornadaEnviada?.id ? (
+                  <span className="app-bloco-lead">Arquivos serão vinculados à Jornada #{jornadaEnviada.id}.</span>
+                ) : null}
+              </>
             ) : (
               <p className="app-bloco-lead" title="Você não tem permissão para enviar jornada.">Você não tem permissão para enviar jornada.</p>
             )}

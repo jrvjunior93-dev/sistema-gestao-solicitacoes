@@ -12268,14 +12268,16 @@ body {
 
 .dark .rh-pessoal-aba-contador { background: #7BA0F5; color: #0E1116; }
 
-/* A segunda regua organiza a operacao de transferencias sem competir com as
+/* As segundas reguas organizam operacoes da mesma area sem competir com as
    abas principais de Pessoal. Mantem densidade de sistema e rolagem mobile. */
-.rh-transferencias-subabas {
+.rh-transferencias-subabas,
+.rh-jornada-subabas {
   margin-top: -2px;
   background: color-mix(in srgb, var(--card-bg, #fff) 72%, transparent);
 }
 
-.rh-transferencias-subabas .rh-pessoal-aba {
+.rh-transferencias-subabas .rh-pessoal-aba,
+.rh-jornada-subabas .rh-pessoal-aba {
   padding: 8px 12px;
   font-size: var(--fonte-pequena);
 }

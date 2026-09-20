@@ -414,6 +414,7 @@ export default function RhDpPessoal() {
       const proximos = new URLSearchParams(atuais);
       proximos.set('aba', 'apuracao');
       proximos.delete('solicitacao');
+      proximos.delete('jornada_secao');
       if (solicitacao?.dados_json?.competencia) {
         proximos.set('competencia', String(solicitacao.dados_json.competencia));
       }
@@ -421,6 +422,16 @@ export default function RhDpPessoal() {
       return proximos;
     });
   }, [podeVerApuracao, setParametros]);
+
+  const abrirListaDeJornadas = useCallback(() => {
+    setParametros((atuais) => {
+      const proximos = new URLSearchParams(atuais);
+      proximos.set('aba', 'jornada');
+      proximos.set('jornada_secao', 'enviadas');
+      proximos.delete('solicitacao');
+      return proximos;
+    });
+  }, [setParametros]);
 
   // Normalização da URL: `?aba=` inválido (ou de uma aba que esta pessoa não
   // pode ver) é corrigido SEM empilhar histórico — senão "voltar" ficaria
@@ -1081,7 +1092,7 @@ export default function RhDpPessoal() {
           podeDecidir={podeDecidir}
           podeAprovarSalario={podeAprovarSalario}
           aoMudar={carregar}
-          onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined}
+          onAbrirListaJornadas={abrirListaDeJornadas}
           aoContarAbertas={setTotalSolicitacoesAbertas}
         />
       ) : null}
@@ -1247,7 +1258,9 @@ export default function RhDpPessoal() {
       {abaAtiva === 'transferencias' ? <RhDpTransferencias
         onNotificacoesLidas={limparNotificacoesTransferencia}
       /> : null}
-      {abaAtiva === 'jornada' ? <RhDpJornada /> : null}
+      {abaAtiva === 'jornada' ? (
+        <RhDpJornada onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined} />
+      ) : null}
       {abaAtiva === 'apuracao' && podeVerApuracao ? <RhDpApuracao /> : null}
 
       {pedidosDoColaborador.id ? (

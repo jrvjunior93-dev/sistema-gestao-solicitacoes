@@ -144,7 +144,7 @@ function dadosOperacionais(solicitacao) {
     .map(([chave, valor]) => ({ chave, rotulo: ROTULO_DADO[chave], valor: formatarDado(chave, valor) }));
 }
 
-export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAprovarSalario, aoMudar, onAbrirApuracao, aoContarAbertas }) {
+export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAprovarSalario, aoMudar, onAbrirListaJornadas, aoContarAbertas }) {
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [parametros, setParametros] = useSearchParams();
@@ -731,14 +731,14 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
             ) : null}
           </section>
 
-          {aberta.tipo === 'JORNADA' && onAbrirApuracao ? (
+          {aberta.tipo === 'JORNADA' && onAbrirListaJornadas ? (
             <div className="app-actionbar">
               <div>
-                <strong>Próxima etapa</strong>
-                <p className="app-bloco-lead">A jornada já foi registrada. Abra a Apuração para conferir e calcular esta competência.</p>
+                <strong>Consultar jornada</strong>
+                <p className="app-bloco-lead">A jornada já foi registrada. Abra a lista de jornadas enviadas para acompanhar este envio.</p>
               </div>
-              <button type="button" className="btn btn-primary" onClick={() => onAbrirApuracao(aberta)}>
-                Ir para Apuração
+              <button type="button" className="btn btn-primary" onClick={onAbrirListaJornadas}>
+                Ir para Jornadas enviadas
               </button>
             </div>
           ) : null}
