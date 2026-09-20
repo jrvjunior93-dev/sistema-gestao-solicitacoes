@@ -325,7 +325,11 @@ export default function RhDpPessoal() {
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [transferenciasNaoLidas, setTransferenciasNaoLidas] = useState(0);
   const [totalSolicitacoesAbertas, setTotalSolicitacoesAbertas] = useState(0);
+  const [totalSolicitacoesNaoLidas, setTotalSolicitacoesNaoLidas] = useState(0);
   const limparNotificacoesTransferencia = useCallback(() => setTransferenciasNaoLidas(0), []);
+  const marcarSolicitacaoVisualizada = useCallback(() => {
+    setTotalSolicitacoesNaoLidas((quantidade) => Math.max(0, quantidade - 1));
+  }, []);
 
   /**
    * DUAS ABAS, e a de solicitacoes vem PRIMEIRO de proposito.
@@ -376,8 +380,8 @@ export default function RhDpPessoal() {
     { id: 'transferencias', rotulo: 'Transferências entre obras', apoio: 'Consulta global e transferências aprovadas pelos responsáveis das obras, sem passar pelo DP.' },
     {
       id: 'jornada',
-      rotulo: 'Jornada',
-      apoio: 'A obra informa dias trabalhados, faltas e horas extras; o sistema calcula o pagamento.'
+      rotulo: 'Pagamento de Mão de Obra',
+      apoio: 'A obra envia a jornada com dias trabalhados, faltas e horas extras; o DP confere e gera a apuração.'
     },
     ...(podeVerApuracao ? [{
       id: 'apuracao',
@@ -503,6 +507,7 @@ export default function RhDpPessoal() {
     setFormulario(null);
     setPedidosDoColaborador({ id: null, lista: [] });
     setTotalSolicitacoesAbertas(0);
+    setTotalSolicitacoesNaoLidas(0);
   }, [user?.id]);
 
   const abrirDetalheDaSolicitacao = useCallback((solicitacaoId) => {
@@ -1076,8 +1081,15 @@ export default function RhDpPessoal() {
             onClick={() => setAbaAtiva(aba.id)}
           >
             {aba.rotulo}
-            {aba.id === 'solicitacoes' && totalSolicitacoesAbertas
-              ? <span className="rh-pessoal-aba-contador">{totalSolicitacoesAbertas}</span>
+            {aba.id === 'solicitacoes' && totalSolicitacoesNaoLidas > 0
+              ? (
+                <span
+                  className="rh-pessoal-aba-contador"
+                  title={`${totalSolicitacoesNaoLidas} solicitação(ões) ainda não visualizada(s)`}
+                >
+                  {totalSolicitacoesNaoLidas > 99 ? '99+' : totalSolicitacoesNaoLidas}
+                </span>
+              )
               : null}
             {aba.id === 'transferencias' && transferenciasNaoLidas > 0
               ? <span className="rh-pessoal-aba-contador">{transferenciasNaoLidas > 99 ? '99+' : transferenciasNaoLidas}</span>
@@ -1094,6 +1106,8 @@ export default function RhDpPessoal() {
           aoMudar={carregar}
           onAbrirListaJornadas={abrirListaDeJornadas}
           aoContarAbertas={setTotalSolicitacoesAbertas}
+          aoContarNaoLidas={setTotalSolicitacoesNaoLidas}
+          aoMarcarVisualizada={marcarSolicitacaoVisualizada}
         />
       ) : null}
 

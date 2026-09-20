@@ -144,7 +144,7 @@ function dadosOperacionais(solicitacao) {
     .map(([chave, valor]) => ({ chave, rotulo: ROTULO_DADO[chave], valor: formatarDado(chave, valor) }));
 }
 
-export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAprovarSalario, aoMudar, onAbrirListaJornadas, aoContarAbertas }) {
+export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAprovarSalario, aoMudar, onAbrirListaJornadas, aoContarAbertas, aoContarNaoLidas, aoMarcarVisualizada }) {
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [parametros, setParametros] = useSearchParams();
@@ -170,6 +170,19 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
   const [conferencia, setConferencia] = useState(null);
   const [tiposDocumento, setTiposDocumento] = useState([]);
   const [envio, setEnvio] = useState({ tipo: '', arquivo: null, enviando: false });
+  // Evita que uma resposta de listagem iniciada antes da abertura do modal
+  // recoloque o destaque já lido. Se surgir um histórico mais novo, o id será
+  // maior e a solicitação volta corretamente a aparecer como não visualizada.
+  const leiturasDaSessao = useRef(new Map());
+
+  const normalizarLeiturasLocais = useCallback((lista) => (
+    (Array.isArray(lista) ? lista : []).map((solicitacao) => {
+      const historicoLido = Number(leiturasDaSessao.current.get(Number(solicitacao.id)) || 0);
+      return historicoLido >= Number(solicitacao.ultimo_historico_id || 0)
+        ? { ...solicitacao, nao_lida: false }
+        : solicitacao;
+    })
+  ), []);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -179,16 +192,13 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
         situacao: filtroSituacao || undefined,
         tipo: filtroTipo || undefined
       });
-      setSolicitacoes(Array.isArray(lista) ? lista : []);
-      if (filtroSituacao === 'ABERTA' && !filtroTipo) {
-        aoContarAbertas?.(Array.isArray(lista) ? lista.length : 0);
-      }
+      setSolicitacoes(normalizarLeiturasLocais(lista));
     } catch (error) {
       avisar.erro(error.message || 'Nao foi possivel carregar as solicitacoes.');
     } finally {
       setCarregando(false);
     }
-  }, [filtroSituacao, filtroTipo, avisar, limpar, aoContarAbertas]);
+  }, [filtroSituacao, filtroTipo, avisar, limpar, normalizarLeiturasLocais]);
 
   useEffect(() => { carregar(); }, [carregar]);
   useEffect(() => {
@@ -196,16 +206,19 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
       if (document.hidden) return;
       try {
         const lista = await listarRhSolicitacoes({ situacao: filtroSituacao || undefined, tipo: filtroTipo || undefined });
-        setSolicitacoes(Array.isArray(lista) ? lista : []);
-        if (filtroSituacao === 'ABERTA' && !filtroTipo) {
-          aoContarAbertas?.(Array.isArray(lista) ? lista.length : 0);
-        }
+        setSolicitacoes(normalizarLeiturasLocais(lista));
       } catch { /* A atualização manual mantém o tratamento visível de erros. */ }
     };
     const timer = setInterval(atualizar, 30000);
     window.addEventListener('focus', atualizar);
     return () => { clearInterval(timer); window.removeEventListener('focus', atualizar); };
-  }, [filtroSituacao, filtroTipo, aoContarAbertas]);
+  }, [filtroSituacao, filtroTipo, normalizarLeiturasLocais]);
+
+  useEffect(() => {
+    if (filtroSituacao !== 'ABERTA' || filtroTipo) return;
+    aoContarAbertas?.(solicitacoes.length);
+    aoContarNaoLidas?.(solicitacoes.filter((solicitacao) => solicitacao.nao_lida).length);
+  }, [solicitacoes, filtroSituacao, filtroTipo, aoContarAbertas, aoContarNaoLidas]);
 
   const contagem = useMemo(() => {
     const porTipo = {};
@@ -249,8 +262,14 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
         getRhSolicitacao(solicitacao.id)
       ]);
       if (detalheAtual.current !== solicitacao.id) return;
+      const ultimoHistorico = (detalhe.historicos || []).reduce(
+        (maior, historico) => Math.max(maior, Number(historico.id || 0)),
+        0
+      );
+      leiturasDaSessao.current.set(Number(solicitacao.id), ultimoHistorico);
       setAberta(detalhe);
       setSolicitacoes(lista => lista.map(s => s.id === solicitacao.id ? { ...s, nao_lida: false } : s));
+      if (solicitacao.nao_lida) aoMarcarVisualizada?.();
       setAnexos(Array.isArray(listaAnexos) ? listaAnexos : []);
       setConferencia(conferido);
       const checklist = await getRhChecklistDoTipo(detalhe.tipo, detalhe.subtipo || undefined)
@@ -280,6 +299,10 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
       proximos.set('solicitacao', String(solicitacao.id));
       return proximos;
     });
+    // Inicia com o resumo completo da linha, inclusive o estado visual de
+    // leitura. O ref preenchido sincronicamente impede o efeito da URL de
+    // disparar uma segunda abertura da mesma solicitação.
+    abrirDetalhe(solicitacao);
   }
 
   function fecharDetalhe() {
