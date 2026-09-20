@@ -134,6 +134,12 @@ export function resolverArranjoBlocos(catalogo, prefsUsuario = null, opcoes = {}
     if (adicionados.has(bloco.id) || ligadosPeloSetor.has(bloco.id)) continue;
     ocultos.add(bloco.id);
   }
+  // Blocos que representam decisão ou ação pendente podem participar da
+  // ordem e do recolhimento, mas não podem desaparecer da tela. A proteção
+  // também corrige preferências antigas que tenham o id em `removidos`.
+  for (const bloco of blocos) {
+    if (bloco.removivel === false) ocultos.delete(bloco.id);
+  }
 
   // Largura FINAL por bloco: escolha do usuário > padrão do bloco >
   // padrão da tela.

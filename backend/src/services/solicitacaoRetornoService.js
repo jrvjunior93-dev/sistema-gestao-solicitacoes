@@ -599,7 +599,7 @@ async function devolverAoSetorAnterior(req, solicitacaoId) {
       solicitacao: resultado.solicitacao,
       atorId: req.user.id,
       tipo: 'RETORNO_DEVOLVIDO',
-      resumo: `Devolvida para ${resultado.setorDestino} apos retorno aprovado`
+      resumo: `${req.user?.nome || 'Usuário'} devolveu para ${resultado.setorDestino} após retorno aprovado`
     });
   } catch (error) {
     console.error('Devolucao concluida, mas o destaque da solicitacao falhou:', error);

@@ -1169,6 +1169,13 @@
   flex-shrink: 0;
 }
 
+.hub-pendencia-cartao-criterio {
+  margin-left: 20px;
+  font-size: var(--fonte-detalhe);
+  line-height: var(--lh-detalhe);
+  color: var(--app-muted-color);
+}
+
 .hub-card-count--danger {
   background: var(--sem-danger-bg);
   border-color: var(--sem-danger-border);

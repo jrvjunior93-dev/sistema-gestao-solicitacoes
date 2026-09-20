@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Alert from '../ui/Alert';
 
 /**
@@ -11,14 +11,16 @@ import Alert from '../ui/Alert';
  * rastro. O RH/DP tinha 51 chamadas dessas — o sistema inteiro, 857.
  *
  * A faixa fica DENTRO da página, no topo do conteúdo, com o tom semântico
- * do sistema. `erro` e `alerta` esperam ser fechados; `sucesso` some
- * sozinho depois de 6s, porque confirmação de coisa que deu certo não
- * merece um clique a mais.
+ * do sistema. Em toda a tela fica visível apenas o RESULTADO MAIS RECENTE:
+ * uma nova ação limpa também avisos publicados por outro card, evitando uma
+ * pilha sem relação clara com o que a pessoa acabou de executar. Sucesso e
+ * informação somem sozinhos; erro e alerta permanecem até fechamento ou
+ * até a próxima ação.
  *
  * ## O que NÃO passa por aqui — a fronteira (02/09)
  *
  * `useAvisos` é para EVENTO: algo aconteceu agora (salvou, falhou, importou).
- * Aviso empilhável, fechável, que some.
+ * Aviso substituível e fechável; sucesso/informação somem por tempo.
  *
  * CONDIÇÃO DERIVADA DO CONTEÚDO não é evento e NÃO usa este componente:
  * "esta obra já tem jornada informada em 09/2026", "dias mais faltas passam
@@ -39,11 +41,25 @@ import Alert from '../ui/Alert';
  *   <Avisos avisos={avisos} aoFechar={fechar} />
  */
 const TEMPO_SUCESSO = 6000;
+const TEMPO_INFORMACAO = 8000;
+const TITULOS_PADRAO = {
+  error: 'Ação não concluída',
+  success: 'Ação concluída',
+  warning: 'Atenção necessária',
+  info: 'Informação da última ação'
+};
+const OUVINTES_AVISOS = new Set();
 
 export function useAvisos() {
   const [avisos, setAvisos] = useState([]);
   const sequencia = useRef(0);
   const timers = useRef(new Map());
+  const instancia = useRef(Symbol('avisos'));
+
+  const limparTimers = useCallback(() => {
+    timers.current.forEach((timer) => clearTimeout(timer));
+    timers.current.clear();
+  }, []);
 
   const fechar = useCallback((id) => {
     const timer = timers.current.get(id);
@@ -54,78 +70,59 @@ export function useAvisos() {
     setAvisos((atuais) => atuais.filter((aviso) => aviso.id !== id));
   }, []);
 
-  /*
-    CONFIRMACAO DE GRAVACAO PODE PEDIR PARA FICAR (04/09).
-
-    Só `success` tem timer; erro, alerta e informacao ja ficam na tela. O
-    problema aparece na confirmacao de que gravou: some em 6s, e quem
-    desviou o olhar nao sabe se salvou. Fica pior do que fixa.
-
-    Usar `informacao` para ganhar persistencia seria trocar o SIGNIFICADO
-    pelo efeito colateral — a faixa sairia azul para dizer que deu certo, e
-    este projeto ja registrou o defeito inverso (erro pintado de sucesso no
-    upload de comprovantes). Tom semantico nao se negocia por comportamento.
-
-    Entao a persistencia virou OPCAO, e nao um tipo novo. Mudanca aditiva de
-    proposito: quem ja chama `avisar.sucesso(msg)` continua com os 6s, byte
-    a byte. A R21 registra por que isso importa — mudar o contrato de um
-    componente padrao no meio de uma leva nao e mudanca compativel; ACRESCENTAR
-    parametro opcional e.
-  */
-  const empilhar = useCallback((tipo, mensagem, titulo, opcoes) => {
+  const publicar = useCallback((tipo, mensagem, titulo, opcoes) => {
     const texto = String(mensagem ?? '').trim();
     if (!texto) return null;
     sequencia.current += 1;
     const id = sequencia.current;
-    // Mensagem repetida não empilha: dois cliques no mesmo botão com erro
-    // viravam duas faixas idênticas.
-    setAvisos((atuais) => {
-      const iguais = atuais.some((aviso) => aviso.tipo === tipo && aviso.mensagem === texto);
-      return iguais ? atuais : [...atuais, { id, tipo, mensagem: texto, titulo }];
-    });
-    /*
-      R28 (decisão do cliente, 04/09; executada aqui em 05/09): o aviso de
-      SUCESSO passa a ser PERSISTENTE por padrão, fechado pela pessoa.
+    // Um evento novo encerra visualmente o anterior. Condições permanentes
+    // não usam este hook; ficam junto do campo ou bloco que as explica.
+    OUVINTES_AVISOS.forEach((ouvir) => ouvir(instancia.current));
+    limparTimers();
+    setAvisos([{
+      id,
+      tipo,
+      mensagem: texto,
+      titulo: String(titulo || '').trim() || TITULOS_PADRAO[tipo] || 'Atualização'
+    }]);
 
-      O motivo é o que se viu em dezenas de telas: a confirmação de gravação
-      sumia em 6s. Quem desviou o olhar para conferir outra coisa voltava
-      para uma tela sem nenhum sinal de que o registro tinha sido salvo — e
-      salvava de novo. Confirmação que some sozinha não confirma nada a quem
-      não estava olhando.
-
-      A mudança é GLOBAL de propósito: alterar isso tela a tela deixaria o
-      sistema falando dois idiomas sobre a mesma coisa.
-
-      `opcoes.efemero` reintroduz o sumiço automático para o caso raro em que
-      o sucesso é ruído (retorno de rotina que se repete muitas vezes na
-      mesma sessão). Não é o padrão, é a exceção — e quem a usar tem de dizer
-      por quê.
-
-      Verificado antes de inverter: os 117 arquivos que renderizam <Avisos>
-      passam `aoFechar`, então o "x" sempre existe. E o "x" só virou alvo
-      clicável de verdade nesta mesma leva (M1: ele tinha 16px). Aviso
-      persistente sem botão de fechar seria armadilha, não melhoria.
-    */
-    if (tipo === 'success' && opcoes?.efemero) {
-      timers.current.set(id, setTimeout(() => fechar(id), TEMPO_SUCESSO));
+    const persistentePorTipo = tipo === 'error' || tipo === 'warning';
+    const persistente = opcoes?.persistente === true
+      || (persistentePorTipo && opcoes?.efemero !== true);
+    if (!persistente) {
+      const duracaoInformada = Number(opcoes?.duracaoMs);
+      const duracao = Number.isFinite(duracaoInformada) && duracaoInformada > 0
+        ? duracaoInformada
+        : tipo === 'info' ? TEMPO_INFORMACAO : TEMPO_SUCESSO;
+      timers.current.set(id, setTimeout(() => fechar(id), duracao));
     }
     return id;
-  }, [fechar]);
+  }, [fechar, limparTimers]);
 
   const limpar = useCallback(() => {
-    timers.current.forEach((timer) => clearTimeout(timer));
-    timers.current.clear();
+    limparTimers();
     setAvisos([]);
-  }, []);
+  }, [limparTimers]);
+
+  useEffect(() => {
+    const ouvir = (origem) => {
+      if (origem === instancia.current) return;
+      limparTimers();
+      setAvisos([]);
+    };
+    OUVINTES_AVISOS.add(ouvir);
+    return () => {
+      OUVINTES_AVISOS.delete(ouvir);
+      limparTimers();
+    };
+  }, [limparTimers]);
 
   const avisar = useMemo(() => ({
-    erro: (mensagem, titulo) => empilhar('error', mensagem, titulo),
-    // R28: sucesso e PERSISTENTE por padrao. `opcoes.efemero` devolve o
-    // sumico automatico dos 6s — excecao, nao regra.
-    sucesso: (mensagem, titulo, opcoes) => empilhar('success', mensagem, titulo, opcoes),
-    alerta: (mensagem, titulo) => empilhar('warning', mensagem, titulo),
-    informacao: (mensagem, titulo) => empilhar('info', mensagem, titulo)
-  }), [empilhar]);
+    erro: (mensagem, titulo, opcoes) => publicar('error', mensagem, titulo, opcoes),
+    sucesso: (mensagem, titulo, opcoes) => publicar('success', mensagem, titulo, opcoes),
+    alerta: (mensagem, titulo, opcoes) => publicar('warning', mensagem, titulo, opcoes),
+    informacao: (mensagem, titulo, opcoes) => publicar('info', mensagem, titulo, opcoes)
+  }), [publicar]);
 
   return { avisos, avisar, fechar, limpar };
 }

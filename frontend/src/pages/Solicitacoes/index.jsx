@@ -13,6 +13,7 @@ import { solicitacaoEstaNoSetorDoUsuario, userHasSetorCapability } from '../../u
 import { hasEnabledModule } from '../../utils/acessoProduto';
 import ListaAvancada from '../../components/lista-avancada/ListaAvancada';
 import StatusBadge from '../../components/StatusBadge';
+import AtencaoPendente from './AtencaoPendente';
 import OverlayModal from '../../components/ui/OverlayModal';
 import {
   Pagina,
@@ -124,7 +125,7 @@ function obterErrosFiltrosData(filtros) {
 }
 
 const ROTULOS_VISAO_PENDENCIA = {
-  'paradas-no-setor': 'solicitações paradas no seu setor',
+  'paradas-no-setor': 'solicitações abertas sem movimentação há 3 dias ou mais no seu setor',
   'aprovacoes-diretoria': 'aprovações aguardando você',
   'devolucoes-recebidas': 'devoluções recebidas no seu setor',
   'contratos-aguardando-aprovacao': 'contratos aguardando aprovação no seu setor'
@@ -1910,11 +1911,7 @@ export default function Solicitacoes({ arquivadas = false }) {
               Retorno solicitado
             </span>
           )}
-          {item.atencao_pendente && (
-            <span className="sol-retorno-pendente" title={item.atencao_pendente.resumo || 'Nova interação nesta solicitação.'}>
-              {item.atencao_pendente.tipo === 'ENVIO_MANUAL' ? 'Enviada ao setor' : 'Novo comentário'}
-            </span>
-          )}
+          <AtencaoPendente atencao={item.atencao_pendente} />
           {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
             Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}
           </span>}

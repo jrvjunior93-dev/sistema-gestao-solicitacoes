@@ -424,7 +424,7 @@ module.exports = {
       try {
         await registrarAtencaoSolicitacao({
           solicitacao, atorId: req.user.id, tipo: 'COMENTARIO_ITEM',
-          resumo: `Novo comentário em ${escopo === 'ENTREGA' ? 'item entregue' : escopo.toLowerCase().replace('_', ' ')}`,
+          resumo: `${req.user?.nome || 'Usuário'} comentou em ${escopo === 'ENTREGA' ? 'item entregue' : escopo.toLowerCase().replace('_', ' ')}`,
           mencoes: mencionados.map((usuario) => usuario.id)
         });
       } catch (atencaoError) {

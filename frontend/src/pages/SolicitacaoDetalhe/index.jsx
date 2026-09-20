@@ -18,9 +18,7 @@ import { API_URL, authHeaders, fileUrl } from '../../services/api';
 import ModalAlterarStatus from './ModalAlterarStatus';
 import { getAcoesPrincipais, resolverAcaoPrincipal } from '../../services/acoesPrincipais';
 import { BLOCOS_DETALHE, resolverLayoutDetalhe } from './blocosDetalhe';
-import { getDetalheLayouts } from '../../services/detalheLayout';
 import { getListaPreferencias, salvarListaPreferencias } from '../../services/listasPreferencias';
-import { tokenSetorDe } from '../../services/atalhos';
 import ModalEnviarSetor from '../Solicitacoes/ModalEnviarSetor';
 import ApropriacaoAutocomplete from '../../components/ui/ApropriacaoAutocomplete';
 import TratamentoItemManual from '../../modules/solicitacao-compra/components/TratamentoItemManual';
@@ -282,16 +280,6 @@ function mapearItemManualCompraDireta(item) {
 }
 
 /*
-  Regra de organização do cliente: "histórico e registros por último". O
-  catálogo `ORDEM_PADRAO` (blocosDetalhe.js) é espelhado no backend e
-  validado pelo validarNavegacao.mjs — a ORDEM de apresentação, não. Então o
-  rebaixamento acontece aqui, e SÓ quando nenhuma camada declarou arranjo:
-  usuário e setor que já escolheram uma ordem continuam com a deles, byte a
-  byte.
-*/
-const BLOCOS_DE_REGISTRO = ['historico', 'conversa', 'auditoria'];
-
-/*
   IR POR ÚLTIMO E NASCER RECOLHIDO ERAM A MESMA LISTA — E NÃO SÃO A MESMA
   COISA (decisão do cliente, 07/09).
 
@@ -343,16 +331,8 @@ export default function SolicitacaoDetalhe() {
         if (ativo) setMapeamentosAcaoPrincipal(lista);
       })
       .catch(() => {});
-    // Layout configurável do detalhe: camada do setor (admin) + camada do
-    // usuário (banco). Falha em qualquer uma = layout atual, nada quebra.
-    const setorUsuario = tokenSetorDe(user);
-    if (setorUsuario) {
-      getDetalheLayouts(setorUsuario)
-        .then((linhas) => {
-          if (ativo) setLayoutSetor(linhas[0]?.config || null);
-        })
-        .catch(() => {});
-    }
+    // O detalhe usa um único padrão global; somente a preferência individual
+    // pode reorganizá-lo. Isso evita que o mesmo tipo mude de lugar por setor.
     getListaPreferencias('detalhe-solicitacao')
       .then((prefs) => {
         const temAlgo = prefs && (
@@ -394,8 +374,7 @@ export default function SolicitacaoDetalhe() {
   // Mapeamento configurável setor+estado → ação em destaque (Configurações
   // → Ação principal por setor). Vazio/indisponível = layout atual.
   const [mapeamentosAcaoPrincipal, setMapeamentosAcaoPrincipal] = useState([]);
-  // Camadas do layout configurável do detalhe (usuário → setor → padrão).
-  const [layoutSetor, setLayoutSetor] = useState(null);
+  // Camada individual sobre o padrão global do detalhe.
   const [prefsLayoutUsuario, setPrefsLayoutUsuario] = useState(null);
   const [personalizando, setPersonalizando] = useState(false);
   /*
@@ -1382,31 +1361,18 @@ export default function SolicitacaoDetalhe() {
       : null
   ].filter(Boolean);
 
-  // ----- LAYOUT CONFIGURÁVEL: resolução usuário → setor → padrão --------
+  // ----- LAYOUT CONFIGURÁVEL: resolução usuário → padrão global --------
   const {
     ordem: ordemResolvida,
     ocultos: blocosOcultos,
     recolhidos: recolhidosResolvidos,
     larguras: largurasBlocos,
     historicoOrdem
-  } = resolverLayoutDetalhe({ configSetor: layoutSetor, prefsUsuario: prefsLayoutUsuario });
+  } = resolverLayoutDetalhe({ prefsUsuario: prefsLayoutUsuario });
 
-  /*
-    Regra de organização do cliente aplicada SÓ ao padrão: histórico,
-    conversa e auditoria vão para o fim; só a auditoria nasce recolhida
-    (07/09 — ver a nota da `BLOCOS_QUE_NASCEM_RECOLHIDOS`). Quem já
-    declarou ordem (usuário ou admin do setor) mantém a dele — mudar o
-    arranjo de quem escolheu seria trocar a decisão da pessoa por uma
-    regra genérica. Recolher é reversível e persiste no clique.
-  */
-  const usuarioDeclarouOrdem = Boolean(prefsLayoutUsuario?.ordem?.length);
-  const setorDeclarouOrdem = Array.isArray(layoutSetor) && layoutSetor.length > 0;
-  const ordemBlocos = (usuarioDeclarouOrdem || setorDeclarouOrdem)
-    ? ordemResolvida
-    : [
-      ...ordemResolvida.filter((blocoId) => !BLOCOS_DE_REGISTRO.includes(blocoId)),
-      ...ordemResolvida.filter((blocoId) => BLOCOS_DE_REGISTRO.includes(blocoId))
-    ];
+  // O catálogo já declara a sequência operacional completa. Uma ordem
+  // individual, quando existir, continua prevalecendo sobre ela.
+  const ordemBlocos = ordemResolvida;
 
   const usuarioDeclarouRecolhidos = Array.isArray(prefsLayoutUsuario?.recolhidos);
   const blocosRecolhidos = usuarioDeclarouRecolhidos
@@ -1429,14 +1395,14 @@ export default function SolicitacaoDetalhe() {
     ordem: prefsLayoutUsuario?.ordem?.length ? ordemBlocos : [],
     recolhidos: Array.from(blocosRecolhidos),
     removidos: Array.from(blocosOcultos),
-    larguras: { ...largurasBlocos },
+    larguras: { ...(prefsLayoutUsuario?.larguras || {}) },
     historico_ordem: historicoOrdem
   });
   /*
     AS SEIS FUNÇÕES DE MUTAÇÃO SAÍRAM DAQUI (05/09).
 
     `moverBloco`, `alternarBlocoRecolhido`, `removerBloco`,
-    `readicionarBloco`, `definirLarguraBloco` e o `restaurarPadraoSetor`
+    `readicionarBloco`, `definirLarguraBloco` e o `restaurarPadraoGlobal`
     existiam palavra por palavra na Home também. Elas agora vivem UMA vez,
     no `BlocosPersonalizaveis`, que devolve a camada de BLOCOS inteira; o
     que sobrou aqui é o que é DO DETALHE e não é bloco — a ordem do
@@ -1448,7 +1414,7 @@ export default function SolicitacaoDetalhe() {
   const definirOrdemHistorico = (ordem) => {
     persistirLayoutUsuario({ ...camadaAtual(), historico_ordem: ordem === 'desc' ? 'desc' : 'asc' });
   };
-  const restaurarPadraoSetor = () => {
+  const restaurarPadraoGlobal = () => {
     persistirLayoutUsuario(null);
   };
 
@@ -1790,8 +1756,7 @@ export default function SolicitacaoDetalhe() {
     o que sempre foi — a grade neutra do componente é a da Home.
   */
   const catalogoBlocos = BLOCOS_DETALHE.map((bloco) => ({
-    id: bloco.id,
-    rotulo: bloco.rotulo,
+    ...bloco,
     conteudo: conteudoBlocos[bloco.id]
   }));
   const arranjoBlocos = {
@@ -1931,7 +1896,8 @@ export default function SolicitacaoDetalhe() {
             arranjo={arranjoBlocos}
             preferenciasBrutas={prefsLayoutUsuario}
             aoMudarArranjo={persistirArranjoBlocos}
-            aoRestaurar={restaurarPadraoSetor}
+            aoRestaurar={restaurarPadraoGlobal}
+            larguraPadrao="total"
             personalizando={false}
             classes={{
               arranjo: 'sol-detail-arranjo',
@@ -1952,8 +1918,9 @@ export default function SolicitacaoDetalhe() {
           arranjo={arranjoBlocos}
           preferenciasBrutas={prefsLayoutUsuario}
           aoMudarArranjo={persistirArranjoBlocos}
-          aoRestaurar={restaurarPadraoSetor}
-          rotuloRestaurar="Restaurar padrão do setor"
+          aoRestaurar={restaurarPadraoGlobal}
+          larguraPadrao="total"
+          rotuloRestaurar="Restaurar padrão global"
           /* O modo é ligado pelo botão "Personalizar layout" da faixa (ação
              SOBRE ESTA TELA — R11/C6), então ele é controlado daqui e a
              entrada própria do componente não aparece: dois botões para a

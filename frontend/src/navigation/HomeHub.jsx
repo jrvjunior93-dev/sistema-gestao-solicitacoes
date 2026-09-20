@@ -316,13 +316,17 @@ export default function HomeHub() {
                 <Link
                   to={item.link || '/'}
                   className={`hub-pendencia-cartao ${item.tom === 'danger' ? 'hub-pendencia-cartao--danger' : ''}`}
-                  aria-label={`${item.quantidade} ${item.rotulo}`}
+                  aria-label={`${item.quantidade} ${item.rotulo}${item.criterio ? `. Critério: ${item.criterio}` : ''}`}
+                  title={item.criterio || undefined}
                 >
                   <span className="hub-pendencia-cartao-numero">{item.quantidade}</span>
                   <span className="hub-pendencia-cartao-rotulo">
                     <Icone aria-hidden="true" />
                     {item.rotulo}
                   </span>
+                  {item.criterio && (
+                    <span className="hub-pendencia-cartao-criterio">{item.criterio}</span>
+                  )}
                 </Link>
               </li>
             );

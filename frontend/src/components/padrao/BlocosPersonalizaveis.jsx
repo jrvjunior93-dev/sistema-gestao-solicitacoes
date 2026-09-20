@@ -260,6 +260,7 @@ export default function BlocosPersonalizaveis({
   };
 
   const ocultarBloco = (blocoId) => {
+    if (porId.get(blocoId)?.removivel === false) return;
     const camada = camadaAtual();
     aplicar({
       removidos: Array.from(new Set([...camada.removidos, blocoId])),
@@ -398,15 +399,17 @@ export default function BlocosPersonalizaveis({
                 {recolhido ? 'Mostrar' : 'Recolher'}
               </button>
             )}
-            <button
-              type="button"
-              className="app-blocos-remover"
-              onClick={() => ocultarBloco(bloco.id)}
-              title={`Remover ${bloco.rotulo} desta tela`}
-              aria-label={`Remover ${bloco.rotulo} desta tela`}
-            >
-              ×
-            </button>
+            {bloco.removivel !== false && (
+              <button
+                type="button"
+                className="app-blocos-remover"
+                onClick={() => ocultarBloco(bloco.id)}
+                title={`Remover ${bloco.rotulo} desta tela`}
+                aria-label={`Remover ${bloco.rotulo} desta tela`}
+              >
+                ×
+              </button>
+            )}
           </div>
         )}
         {recolhido ? (

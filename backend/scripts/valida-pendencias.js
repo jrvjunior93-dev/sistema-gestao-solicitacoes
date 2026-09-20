@@ -139,14 +139,20 @@ async function main() {
       codigo: qaCodigo('SOL', `A${String(i).padStart(3, '0')}`),
       fluxo_aprovacao_diretoria: true,
       aprovada_diretoria_em: null,
+      diretoria_fluxo_codigo: setorFin.codigo,
+      setor_destino_pos_aprovacao: setorEng.codigo,
       descricao: `aprovação QA ${QA_RUN_ID} ${i}`
     });
   }
-  // 25 paradas comuns no setor (sem fluxo de diretoria)
+  // 25 paradas comuns no setor (sem fluxo de diretoria e sem qualquer
+  // movimentação há mais de três dias).
+  const quatroDiasAtras = new Date(Date.now() - 4 * 86400000);
   for (let i = 0; i < 25; i += 1) {
     await criarSol({
       codigo: qaCodigo('SOL', `P${String(i).padStart(3, '0')}`),
-      descricao: `parada QA ${QA_RUN_ID} ${i}`
+      descricao: `parada QA ${QA_RUN_ID} ${i}`,
+      createdAt: quatroDiasAtras,
+      updatedAt: quatroDiasAtras
     });
   }
   // 3 devoluções: criadas pelo usuárioFin, no setor dele, com ENVIADA_SETOR
@@ -262,9 +268,9 @@ async function main() {
       const lista = await chamar(SolicitacaoController.index, query);
       totalLista = Number(lista.body?.meta?.total ?? NaN);
       detalheLista = `visao=${query.visao || '-'}`;
-    } else if (url.pathname.startsWith('/financeiro/contas-a-')) {
+    } else if (url.pathname === '/financeiro/titulos') {
       // Reproduz EXATAMENTE o que a tela faz com os params do link.
-      const tipoTela = url.pathname.endsWith('pagar') ? 'PAGAR' : 'RECEBER';
+      const tipoTela = String(url.searchParams.get('tipo') || '').toUpperCase();
       const filtros = { tipo: tipoTela, paginated: 'true', page: '1', limit: '20' };
       const hoje = isoLocalHoje();
       if (url.searchParams.get('vencidos') === '1') {

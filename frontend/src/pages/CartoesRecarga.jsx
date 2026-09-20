@@ -119,9 +119,8 @@ export default function CartoesRecarga() {
     presente, texto certo, significado trocado — a classe de defeito que este
     projeto chama de SIGNIFICADO, e nenhum check de forma pega.
 
-    A confirmacao de gravacao entra como PERSISTENTE, por decisao do
-    responsavel: sumir sozinha em 6s e pior que ficar, porque quem desviou o
-    olhar nao sabe se salvou. O erro ja era persistente e continua.
+    A confirmação usa o componente padrão de eventos: a última ação
+    substitui a anterior, sucesso some automaticamente e erro permanece.
   */
   const { avisos, avisar, fechar, limpar } = useAvisos();
   // R22: hook usado é hook importado — o useRef está no import acima.

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import AtencaoPendente from './AtencaoPendente';
 import StatusBadge from '../../components/StatusBadge';
 import MenuMais from '../../components/padrao/MenuMais';
 import { CelulaDupla } from '../../components/padrao/TabelaPadrao';
@@ -549,11 +550,7 @@ export function construirColunas({
               Retorno solicitado
             </span>
           )}
-          {item.atencao_pendente && (
-            <span className="sol-retorno-pendente" title={item.atencao_pendente.resumo || 'Nova interação nesta solicitação.'}>
-              {item.atencao_pendente.tipo === 'ENVIO_MANUAL' ? 'Enviada ao setor' : 'Novo comentário'}
-            </span>
-          )}
+          <AtencaoPendente atencao={item.atencao_pendente} />
           {item.entrega_pendente && <span className="sol-retorno-pendente" title={item.entrega_pendente.resumo}>
             Entrega: {item.entrega_pendente.vencida ? 'ação vencida' : 'pendência'}
           </span>}

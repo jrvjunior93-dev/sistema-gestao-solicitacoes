@@ -652,6 +652,7 @@
 .sol-card-compacto-codigo {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 7px;
   min-width: 0;
 }
@@ -670,6 +671,34 @@
   line-height: 1.2;
   letter-spacing: 0.01em;
   text-transform: uppercase;
+}
+
+.sol-atencao-pendente {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: min(320px, 100%);
+  min-width: 0;
+  padding: 3px 7px;
+  border: 1px solid var(--sem-danger-border);
+  border-radius: 6px;
+  background: var(--ui-surface);
+  color: var(--sem-danger);
+  font-size: var(--fonte-detalhe);
+  font-weight: 650;
+  line-height: var(--lh-detalhe);
+}
+
+.sol-atencao-pendente-prefixo {
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.sol-atencao-pendente-texto {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .la-grupo-linha td {

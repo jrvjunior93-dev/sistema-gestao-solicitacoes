@@ -8,14 +8,12 @@ import {
   useConfirmacao
 } from '../components/padrao';
 import { getSetores } from '../services/setores';
-import { BLOCOS_DETALHE, ORDEM_PADRAO, rotuloBloco } from './SolicitacaoDetalhe/blocosDetalhe';
 import { BLOCOS_HOME, ORDEM_PADRAO_HOME, rotuloBlocoHome } from '../navigation/blocosHome';
 import { getDetalheLayouts, salvarDetalheLayout, excluirDetalheLayout } from '../services/detalheLayout';
 
-// Catálogo por tela — o MESMO motor serve o detalhe da solicitação e a
-// Home; o admin escolhe a tela e configura o padrão do setor.
+// O detalhe da solicitação passou a ter padrão global + personalização
+// individual. A camada por setor permanece apenas para a Home.
 const TELAS = [
-  { id: 'detalhe-solicitacao', rotulo: 'Detalhe da solicitação', blocos: BLOCOS_DETALHE, ordemPadrao: ORDEM_PADRAO, rotuloBloco },
   { id: 'home', rotulo: 'Início (Home)', blocos: BLOCOS_HOME, ordemPadrao: ORDEM_PADRAO_HOME, rotuloBloco: rotuloBlocoHome }
 ];
 
@@ -39,18 +37,16 @@ function rotuloDoSetor(listaSetores, codigo) {
 }
 
 // =====================================================================
-// LAYOUT DO DETALHE POR SETOR — Configurações
+// LAYOUT DA HOME POR SETOR — Configurações
 // ---------------------------------------------------------------------
-// O admin define, por setor, a ORDEM dos blocos do detalhe e QUAIS
-// aparecem. O usuário pode personalizar por cima (arrastar/recolher no
-// próprio detalhe) e restaurar o padrão do setor. Sem configuração,
-// vale o layout atual da tela. O catálogo de blocos é fixo: só se
-// ordena/oculta o que a tela já tem, e as permissões continuam valendo.
+// O admin ainda pode definir por setor a ordem dos blocos da Home. O
+// detalhe da solicitação não participa mais desta camada: usa padrão
+// global e preferência individual.
 // =====================================================================
 export default function ConfiguracoesDetalheLayout() {
   const [setores, setSetores] = useState([]);
   const [layouts, setLayouts] = useState([]);
-  const [telaSelecionada, setTelaSelecionada] = useState('detalhe-solicitacao');
+  const [telaSelecionada, setTelaSelecionada] = useState('home');
   const [setorSelecionado, setSetorSelecionado] = useState('');
   const [linhas, setLinhas] = useState([]); // [{bloco, visivel}] na ordem
   const [carregando, setCarregando] = useState(true);
@@ -211,7 +207,7 @@ export default function ConfiguracoesDetalheLayout() {
       <PageHeader
         titulo="Layout por setor"
         contagem={carregando ? null : `${layouts.length} setor(es) com layout próprio`}
-        descricao="Define, por setor, a ordem dos blocos de uma tela e quais aparecem — o detalhe da solicitação e a Home usam o mesmo motor. O usuário pode personalizar por cima e restaurar o padrão do setor; sem configuração vale o layout atual, e as permissões e condições de cada bloco continuam decidindo se ele aparece."
+        descricao="Define por setor a ordem dos blocos da Home. O detalhe da solicitação agora usa um único padrão global, com personalização individual feita na própria tela."
         acaoPrincipal={{
           rotulo: salvando ? 'Salvando…' : 'Salvar layout do setor',
           onClick: salvar,

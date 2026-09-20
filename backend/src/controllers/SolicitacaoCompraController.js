@@ -3883,7 +3883,7 @@ module.exports = {
             solicitacao: principal,
             atorId: usuario.id,
             tipo: 'COMENTARIO_COTACAO',
-            resumo: 'Novo comentário na cotação'
+            resumo: `${usuario.nome || 'Usuário'} comentou na cotação`
           });
         } catch (atencaoError) {
           console.error('Comentario da cotacao salvo, mas destaque da solicitacao falhou:', atencaoError);

@@ -16,11 +16,13 @@ const {
 const {
   canAccessFinanceiro,
   canViewCompraSolicitacoes,
-  getFinanceiroObraScopeIds
+  getFinanceiroObraScopeIds,
+  userHasAreaPermission
 } = require('../services/authorizationService');
 const { resolverEscopoObrasComprasLista } = require('../middlewares/resourceAccess');
 const { isModuleEnabled } = require('../services/moduleConfigService');
 const {
+  DIAS_SEM_MOVIMENTACAO_PARA_PARADA,
   contarVisaoPendencia,
   buscarLinhasVisaoPendencia
 } = require('../services/pendenciasVisoes');
@@ -138,13 +140,33 @@ module.exports = {
         // Contexto compartilhado com a lista (?visao=): cada cartão
         // conta com o MESMO recorte que a lista aplica ao abrir, e o
         // link leva à visão nomeada — número e lista sempre batem.
-        const ctxVisao = { usuarioId, tokensSetor, idsOcultos };
+        const ctxVisao = { usuarioId, tokensSetor, idsOcultos, acessoGlobal: superadmin };
+        // O contador precisa atravessar exatamente as mesmas duas camadas
+        // da lista: WHERE de visibilidade e, no perfil misto, o pós-filtro
+        // por tipo. Antes ele usava só o recorte da pendência e podia
+        // contar uma solicitação que desaparecia ao abrir o cartão.
+        const filtrarItensVisiveis = contextoLista.usuarioComRegraMistaPorTipo
+          ? (linhas) => SolicitacaoController.filtrarRegraMistaPorTipo(linhas, contextoLista)
+          : null;
+        const opcoesVisao = {
+          baseWhere: escopoLista.where,
+          filtrarItens: filtrarItensVisiveis
+        };
 
-        if (tokensSetor.length > 0 && (podeVerSetor || podeVerTodas)) {
-          const [totalAprovacoes, linhasAprovacoes] = await Promise.all([
-            contarVisaoPendencia('aprovacoes-diretoria', ctxVisao),
-            buscarLinhasVisaoPendencia('aprovacoes-diretoria', ctxVisao, { limit: 5 })
-          ]);
+        if ((tokensSetor.length > 0 || superadmin) && (podeVerSetor || podeVerTodas)) {
+          const podeAprovarDiretoria = superadmin || !permissoesConfiguradas || await userHasAreaPermission(
+            req.user,
+            ['solicitacoes.acoes.aprovar']
+          );
+          const [totalAprovacoes, linhasAprovacoes] = podeAprovarDiretoria
+            ? await Promise.all([
+                contarVisaoPendencia('aprovacoes-diretoria', ctxVisao, opcoesVisao),
+                buscarLinhasVisaoPendencia('aprovacoes-diretoria', ctxVisao, {
+                  ...opcoesVisao,
+                  limit: 5
+                })
+              ])
+            : [0, []];
           for (const linha of linhasAprovacoes) {
             paraResolver.push(itemSolicitacaoParaResolver(linha, 'Aprovação aguardando você', 'danger'));
           }
@@ -159,12 +181,14 @@ module.exports = {
               quantidade: totalAprovacoes,
               // Aguardando aprovação é bloqueio de fluxo: urgência máxima.
               tom: 'danger',
+              criterio: 'Ação Aprovar disponível para o seu acesso.',
               link: '/solicitacoes?visao=aprovacoes-diretoria'
             });
           }
 
           const jaListadas = new Set(linhasAprovacoes.map((linha) => linha.id));
           const paradasUrgentes = await buscarLinhasVisaoPendencia('paradas-no-setor', ctxVisao, {
+            ...opcoesVisao,
             limit: 5,
             order: [['data_vencimento', 'ASC']],
             extraWhere: [{ data_vencimento: { [Op.ne]: null } }]
@@ -180,7 +204,7 @@ module.exports = {
             ));
           }
 
-          const quantidadeSetor = await contarVisaoPendencia('paradas-no-setor', ctxVisao);
+          const quantidadeSetor = await contarVisaoPendencia('paradas-no-setor', ctxVisao, opcoesVisao);
           if (quantidadeSetor > 0) {
             itens.push({
               chave: 'solicitacoes_no_setor',
@@ -190,6 +214,7 @@ module.exports = {
                 : 'solicitações paradas no seu setor',
               quantidade: quantidadeSetor,
               tom: 'warning',
+              criterio: `Aberta no seu setor e sem movimentação há ${DIAS_SEM_MOVIMENTACAO_PARA_PARADA}+ dias.`,
               link: '/solicitacoes?visao=paradas-no-setor'
             });
           }
@@ -199,7 +224,11 @@ module.exports = {
         // acontece na solicitação-mãe do contrato, parada no setor).
         const moduloContratos = superadmin || (await isModuleEnabled('CONTRATOS'));
         if (moduloContratos && tokensSetor.length > 0 && (podeVerSetor || podeVerTodas)) {
-          const totalContratos = await contarVisaoPendencia('contratos-aguardando-aprovacao', ctxVisao);
+          const totalContratos = await contarVisaoPendencia(
+            'contratos-aguardando-aprovacao',
+            ctxVisao,
+            opcoesVisao
+          );
           if (totalContratos > 0) {
             itens.push({
               chave: 'contratos_aguardando_aprovacao',
@@ -216,8 +245,9 @@ module.exports = {
 
         if (tokensSetor.length > 0 && (podeVerMinhas || podeVerSetor || podeVerTodas)) {
           const [totalDevolucoes, linhasDevolucoes] = await Promise.all([
-            contarVisaoPendencia('devolucoes-recebidas', ctxVisao),
+            contarVisaoPendencia('devolucoes-recebidas', ctxVisao, opcoesVisao),
             buscarLinhasVisaoPendencia('devolucoes-recebidas', ctxVisao, {
+              ...opcoesVisao,
               limit: 3,
               order: [['updatedAt', 'DESC']]
             })
@@ -288,7 +318,7 @@ module.exports = {
                 data_vencimento: titulo.data_vencimento || null,
                 atraso_dias: diasDeAtraso(titulo.data_vencimento),
                 tom: 'danger',
-                link: `/financeiro/contas-a-pagar?q=${encodeURIComponent(titulo.codigo || String(titulo.id))}`
+                link: `/financeiro/titulos?tipo=pagar&q=${encodeURIComponent(titulo.codigo || String(titulo.id))}`
               });
             }
           }
@@ -325,7 +355,7 @@ module.exports = {
               obra: linha.obra?.nome || `Obra #${linha.obra_id}`,
               total: Number(linha.get('total')),
               quantidade: Number(linha.get('quantidade')),
-              link: `/financeiro/contas-a-pagar?status=EM_ABERTO&obra_id=${linha.obra_id}&vencimento_inicial=${inicioMes}&vencimento_final=${fimMes}`
+              link: `/financeiro/titulos?tipo=pagar&status=EM_ABERTO&obra_id=${linha.obra_id}&vencimento_inicial=${inicioMes}&vencimento_final=${fimMes}`
             }));
 
           if (pagarVencidos > 0) {
@@ -335,7 +365,8 @@ module.exports = {
               rotulo: pagarVencidos === 1 ? 'título a pagar vencido' : 'títulos a pagar vencidos',
               quantidade: pagarVencidos,
               tom: 'danger',
-              link: '/financeiro/contas-a-pagar?vencidos=1'
+              criterio: 'Previsão, aberto ou parcial; vencido até ontem.',
+              link: '/financeiro/titulos?tipo=pagar&vencidos=1'
             });
           }
 
@@ -348,7 +379,8 @@ module.exports = {
                 : `títulos a pagar vencem em ${DIAS_VENCENDO} dias`,
               quantidade: pagarVencendo,
               tom: 'warning',
-              link: `/financeiro/contas-a-pagar?vencendo_ate=${dataLimite}`
+              criterio: `Previsão, aberto ou parcial; vence entre hoje e ${DIAS_VENCENDO} dias.`,
+              link: `/financeiro/titulos?tipo=pagar&vencendo_ate=${dataLimite}`
             });
           }
 
@@ -359,7 +391,8 @@ module.exports = {
               rotulo: receberVencidos === 1 ? 'título a receber vencido' : 'títulos a receber vencidos',
               quantidade: receberVencidos,
               tom: 'warning',
-              link: '/financeiro/contas-a-receber?vencidos=1'
+              criterio: 'Previsão, aberto ou parcial; vencido até ontem.',
+              link: '/financeiro/titulos?tipo=receber&vencidos=1'
             });
           }
         }

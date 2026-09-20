@@ -24,15 +24,15 @@ const { SetorDetalheLayout } = require('../models');
 // Aditivos entrou (decisões do próprio oficial, preservadas na onda 2).
 const BLOCOS_POR_TELA = {
   'detalhe-solicitacao': new Set([
-    'apropriacoes',
     'itens_compra_direta',
+    'apropriacoes',
     'rateio_contrato',
     'aditivos_contrato',
-    'acoes_contrato',
     'aprovacao_diretoria',
-    'historico',
+    'acoes_contrato',
     'financeiro',
     'conversa',
+    'historico',
     'auditoria'
   ]),
   home: new Set([

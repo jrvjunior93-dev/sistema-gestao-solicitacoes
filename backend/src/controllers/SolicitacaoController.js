@@ -977,7 +977,7 @@ async function enviarSolicitacaoParaSetorInterno({
         solicitacao,
         atorId: usuarioId,
         tipo: 'ENVIO_MANUAL',
-        resumo: `Enviada manualmente para ${nomeDestino}`
+        resumo: `${req.user?.nome || 'Usuário'} enviou para ${nomeDestino}`
       });
     } catch (atencaoError) {
       console.error('Envio concluido, mas destaque da solicitacao falhou:', atencaoError);
@@ -2543,7 +2543,8 @@ module.exports = {
       if (visaoPendencia) {
         const condicoesVisao = condicoesVisaoPendencia(visaoPendencia, {
           usuarioId,
-          tokensSetor: setorTokens
+          tokensSetor: setorTokens,
+          acessoGlobal: String(escopo.contexto?.perfil || '').trim().toUpperCase() === 'SUPERADMIN'
         });
         if (condicoesVisao === undefined) {
           return res.status(400).json({ error: `Visão desconhecida: ${visaoPendencia}` });
@@ -6215,7 +6216,7 @@ module.exports = {
           solicitacao,
           atorId: req.user.id,
           tipo: 'COMENTARIO',
-          resumo: `Novo comentário de ${usuario?.nome || 'usuário'}`,
+          resumo: `${usuario?.nome || 'Usuário'} adicionou um comentário`,
           mencoes: idsMencionados
         });
       } catch (atencaoError) {

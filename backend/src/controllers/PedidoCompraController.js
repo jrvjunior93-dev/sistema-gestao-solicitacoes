@@ -776,7 +776,7 @@ module.exports = {
           solicitacao: principal,
           atorId: usuario.id,
           tipo: 'COMENTARIO_PEDIDO',
-          resumo: `Novo comentário no pedido #${pedido.id}`
+          resumo: `${usuario.nome || 'Usuário'} comentou no pedido #${pedido.id}`
         });
       } catch (atencaoError) {
         console.error('Comentario do pedido salvo, mas destaque da solicitacao falhou:', atencaoError);

@@ -18,6 +18,66 @@ const { Solicitacao, SolicitacaoVisibilidadeUsuario, Sequelize } = require('../m
 
 const { Op } = Sequelize;
 
+const DIAS_SEM_MOVIMENTACAO_PARA_PARADA = 3;
+const STATUS_SOLICITACAO_ENCERRADA = [
+  'PAGA',
+  'PAGO',
+  'QUITADA',
+  'QUITADO',
+  'ATENDIDA',
+  'ATENDIDO',
+  'CANCELADA',
+  'CANCELADO',
+  'REJEITADA',
+  'REJEITADO',
+  'CONCLUIDA',
+  'CONCLUIDO',
+  'FINALIZADA',
+  'FINALIZADO',
+  'ENCERRADA',
+  'ENCERRADO'
+];
+
+function normalizarToken(valor) {
+  return String(valor || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s-]+/g, '_');
+}
+
+function condicaoCampoNormalizadoNosTokens(campo, tokens = []) {
+  const normalizados = Array.from(new Set(tokens.map(normalizarToken).filter(Boolean)));
+  if (normalizados.length === 0) return { id: -1 };
+  return Sequelize.where(
+    Sequelize.fn(
+      'REPLACE',
+      Sequelize.fn(
+        'REPLACE',
+        Sequelize.fn('UPPER', Sequelize.fn('TRIM', Sequelize.col(campo))),
+        ' ',
+        '_'
+      ),
+      '-',
+      '_'
+    ),
+    { [Op.in]: normalizados }
+  );
+}
+
+function condicaoSemMovimentacaoRecente() {
+  const limite = new Date(Date.now() - DIAS_SEM_MOVIMENTACAO_PARA_PARADA * 86400000);
+  return Sequelize.where(
+    Sequelize.literal(`COALESCE(
+      (SELECT MAX(h.createdAt) FROM historicos h WHERE h.solicitacao_id = Solicitacao.id),
+      Solicitacao.updatedAt,
+      Solicitacao.createdAt
+    )`),
+    { [Op.lte]: limite }
+  );
+}
+
 // ⚠️ TOKENS DE SETOR: este serviço NÃO resolve tokens. Todo consumidor
 // (DashboardPendenciasController, SolicitacaoController ?visao=) recebe
 // `tokensSetor` do contexto de montarEscopoVisibilidadeLista — o MESMO
@@ -57,6 +117,8 @@ const VISOES = {
   // pendentes (elas têm cartão próprio — os dois não se sobrepõem).
   'paradas-no-setor': ({ tokensSetor }) => (tokensSetor.length === 0 ? null : [
     { cancelada: false },
+    { status_global: { [Op.notIn]: STATUS_SOLICITACAO_ENCERRADA } },
+    condicaoSemMovimentacaoRecente(),
     { [Op.or]: [
       { area_responsavel: { [Op.in]: tokensSetor } },
       ...(tokensSetor.includes('COMPRAS') || tokensSetor.includes('OBRA')
@@ -70,10 +132,18 @@ const VISOES = {
     }
   ]),
 
-  'aprovacoes-diretoria': ({ tokensSetor }) => (tokensSetor.length === 0 ? null : [
+  'aprovacoes-diretoria': ({ tokensSetor, acessoGlobal = false }) => (
+    tokensSetor.length === 0 && !acessoGlobal ? null : [
     { cancelada: false },
     ...APROVACAO_PENDENTE,
-    { area_responsavel: { [Op.in]: tokensSetor } }
+    { setor_destino_pos_aprovacao: { [Op.ne]: null } },
+    ...(!acessoGlobal ? [
+      { area_responsavel: { [Op.in]: tokensSetor } },
+      // O setor atual sozinho não torna o usuário aprovador. A diretoria
+      // gravada na própria solicitação precisa ser uma das identidades do
+      // setor do usuário; é a mesma exigência do endpoint de aprovação.
+      condicaoCampoNormalizadoNosTokens('diretoria_fluxo_codigo', tokensSetor)
+    ] : [])
   ]),
 
   // Criadas pelo usuário, de volta ao setor dele após passarem por
@@ -107,36 +177,64 @@ function condicoesVisaoPendencia(nome, contexto) {
 
 // COUNT do contador — o mesmo recorte, mais a exclusão das arquivadas
 // do usuário (a lista as exclui pelo escopo padrão).
-async function contarVisaoPendencia(nome, contexto) {
+function montarWhereVisao(nome, contexto, { baseWhere = null, extraWhere = [] } = {}) {
   const condicoes = condicoesVisaoPendencia(nome, contexto);
-  if (!condicoes) return 0;
-  const where = { [Op.and]: [...condicoes] };
-  if (contexto.idsOcultos?.length > 0) {
+  if (!condicoes) return null;
+  const where = {
+    [Op.and]: [
+      ...(baseWhere ? [baseWhere] : []),
+      ...condicoes,
+      ...extraWhere
+    ]
+  };
+  if (!baseWhere && contexto.idsOcultos?.length > 0) {
     where[Op.and].push({ id: { [Op.notIn]: contexto.idsOcultos } });
   }
-  return Solicitacao.count({ where });
+  return where;
+}
+
+async function contarVisaoPendencia(nome, contexto, { baseWhere = null, filtrarItens = null } = {}) {
+  const where = montarWhereVisao(nome, contexto, { baseWhere });
+  if (!where) return 0;
+  if (typeof filtrarItens !== 'function') {
+    return Solicitacao.count({ where });
+  }
+
+  const itens = await Solicitacao.findAll({
+    where,
+    attributes: ['id', 'area_responsavel', 'tipo_solicitacao_id', 'criado_por'],
+    raw: true
+  });
+  const filtrados = await filtrarItens(itens);
+  return filtrados.length;
 }
 
 // Linhas do recorte (para "Para resolver agora") — mesmo WHERE, com
 // colunas e limite curto.
-async function buscarLinhasVisaoPendencia(nome, contexto, { order, limit = 5, extraWhere = [] } = {}) {
-  const condicoes = condicoesVisaoPendencia(nome, contexto);
-  if (!condicoes) return [];
-  const where = { [Op.and]: [...condicoes, ...extraWhere] };
-  if (contexto.idsOcultos?.length > 0) {
-    where[Op.and].push({ id: { [Op.notIn]: contexto.idsOcultos } });
-  }
-  return Solicitacao.findAll({
+async function buscarLinhasVisaoPendencia(
+  nome,
+  contexto,
+  { order, limit = 5, extraWhere = [], baseWhere = null, filtrarItens = null } = {}
+) {
+  const where = montarWhereVisao(nome, contexto, { baseWhere, extraWhere });
+  if (!where) return [];
+  const linhas = await Solicitacao.findAll({
     where,
-    attributes: ['id', 'codigo', 'descricao', 'valor', 'data_vencimento', 'createdAt'],
+    attributes: [
+      'id', 'codigo', 'descricao', 'valor', 'data_vencimento', 'createdAt',
+      'area_responsavel', 'tipo_solicitacao_id', 'criado_por'
+    ],
     include: [{ association: 'obra', attributes: ['id', 'nome'] }],
     order: order || [['createdAt', 'ASC']],
-    limit
+    ...(typeof filtrarItens === 'function' ? {} : { limit })
   });
+  const filtradas = typeof filtrarItens === 'function' ? await filtrarItens(linhas) : linhas;
+  return filtradas.slice(0, limit);
 }
 
 module.exports = {
   NOMES_VISOES,
+  DIAS_SEM_MOVIMENTACAO_PARA_PARADA,
   idsOcultosDoUsuario,
   condicoesVisaoPendencia,
   contarVisaoPendencia,
