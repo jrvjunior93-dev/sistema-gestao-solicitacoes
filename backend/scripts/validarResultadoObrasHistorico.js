@@ -1,12 +1,13 @@
 const assert = require('node:assert/strict');
-const { Obra, TituloFinanceiro, TituloFinanceiroRateio, ObraCustoHistorico } = require('../src/models');
+const { Obra, TituloFinanceiro, TituloFinanceiroRateio, ObraCustoHistorico, ContratoComercial } = require('../src/models');
 const controller = require('../src/controllers/ResultadoObrasController');
 
 const original = {
   obras: Obra.findAll,
   titulos: TituloFinanceiro.findAll,
   rateios: TituloFinanceiroRateio.findAll,
-  historicos: ObraCustoHistorico.findAll
+  historicos: ObraCustoHistorico.findAll,
+  contratos: ContratoComercial.findAll
 };
 
 async function main() {
@@ -14,6 +15,7 @@ async function main() {
     { id: 1, codigo: '1', nome: 'Obra A', classificacao: 'PRIVADA', vgv: 500 },
     { id: 2, codigo: '2', nome: 'Obra B', classificacao: 'PUBLICA', planilha_geral: 300 }
   ];
+  ContratoComercial.findAll = async () => [];
   TituloFinanceiro.findAll = async (options) => {
     if (!options.group) return []; // Nenhuma parcela de negociação nesta fixture de legado.
     assert.equal(options.where.renegociacao_id, null, 'Agregado direto não pode duplicar parcelas rateadas');
@@ -70,4 +72,5 @@ main().catch((error) => {
   TituloFinanceiro.findAll = original.titulos;
   TituloFinanceiroRateio.findAll = original.rateios;
   ObraCustoHistorico.findAll = original.historicos;
+  ContratoComercial.findAll = original.contratos;
 });

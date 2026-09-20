@@ -23,6 +23,20 @@ function formatPercent(value) {
   return `${Number(value).toFixed(1)}%`;
 }
 
+function classificacaoObra(obra) {
+  return String(obra?.classificacao || '').trim().toUpperCase();
+}
+
+function valorTotalObra(obra) {
+  const classificacao = classificacaoObra(obra);
+  if (obra?.valor_total_resultado != null) return Number(obra.valor_total_resultado || 0);
+  if (classificacao === 'PRIVADA') {
+    return Number(obra?.valor_referencia_resultado ?? obra?.vgv_efetivo ?? obra?.vgv ?? 0);
+  }
+  if (classificacao === 'PUBLICA') return Number(obra?.orcamento || 0);
+  return 0;
+}
+
 /* O consolidado preserva a comparação prevista x realizada do sistema. Os cartões detalhados
    seguem a leitura operacional solicitada: execução em azul, recebimento em verde, pendências em
    âmbar e prejuízo em vermelho, sempre usando os tokens do tema. */
@@ -60,7 +74,7 @@ function ProgressoObra({ rotulo, valor, max, tom }) {
 }
 
 function ObraBloco({ obra }) {
-  const classificacao = String(obra.classificacao || '').trim().toUpperCase();
+  const classificacao = classificacaoObra(obra);
   const isPrivada = classificacao === 'PRIVADA';
   const isPublica = classificacao === 'PUBLICA';
 
@@ -74,9 +88,10 @@ function ObraBloco({ obra }) {
   const totalReceber = obra.receber.total;
   const historicoPago = Number(obra.pagar.historico?.valor || 0);
   const historicoRecebido = Number(obra.receber.historico?.valor || 0);
-  const faltaReceber = Number(obra.falta_receber ?? (
-    valorReferenciaResultado > 0 ? valorReferenciaResultado - recebido : obra.receber.saldo
-  ));
+  const baseTotalObra = valorTotalObra(obra);
+  const faltaReceber = baseTotalObra > 0
+    ? baseTotalObra - recebido
+    : Number(obra.receber.saldo || 0);
   const valorVendido = Number(obra.valor_vendido || 0);
   const faltaVender = obra.falta_vender == null ? null : Number(obra.falta_vender);
   const lucroPrejuizo = Number(obra.lucro_prejuizo ?? (recebido - executado));
@@ -85,7 +100,7 @@ function ObraBloco({ obra }) {
     ? ((executado / valorReferencia) * 100).toFixed(1)
     : null;
 
-  const baseRecebimento = valorReferenciaResultado > 0 ? valorReferenciaResultado : totalReceber;
+  const baseRecebimento = baseTotalObra > 0 ? baseTotalObra : totalReceber;
   const fonteVgv = obra.vgv_origem === 'UNIDADES'
     ? `${obra.vgv_unidades_total} unidades ativas · valor base de venda`
     : obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
@@ -149,7 +164,7 @@ function ObraBloco({ obra }) {
         <MetricaObra
           rotulo="Falta receber"
           valor={formatCurrency(faltaReceber)}
-          apoio={valorReferenciaResultado > 0 ? `${isPrivada ? 'VGV' : 'Planilha geral'} menos recebido` : 'Saldo dos títulos a receber'}
+          apoio={baseTotalObra > 0 ? `${isPrivada ? 'VGV' : 'Orçamento'} menos recebido` : 'Saldo dos títulos a receber'}
           tom="pendente"
         />
         <MetricaObra
@@ -173,7 +188,7 @@ function ObraBloco({ obra }) {
         ) : null}
         {baseRecebimento > 0 ? (
           <ProgressoObra
-            rotulo={`Recebido / ${valorReferenciaResultado > 0 ? (isPrivada ? 'VGV' : 'Planilha geral') : 'Títulos a receber'}`}
+            rotulo={`Recebido / ${baseTotalObra > 0 ? (isPrivada ? 'VGV' : 'Orçamento') : 'Títulos a receber'}`}
             valor={recebido}
             max={baseRecebimento}
             tom="recebido"
@@ -235,8 +250,10 @@ export default function FinanceiroResultadoObras() {
     e aplicado aqui, sobre ela. Nao ha paginacao para o total desmentir.
   */
   const resumo = useMemo(() => obrasFiltradas.reduce((acc, obra) => {
-    const classificacao = String(obra.classificacao || '').trim().toUpperCase();
+    const classificacao = classificacaoObra(obra);
+    const baseTotalObra = valorTotalObra(obra);
     acc.orcamento += obra.orcamento || 0;
+    acc.valorTotalObras += baseTotalObra;
     acc.executado += obra.pagar.executado;
     acc.historicoPago += Number(obra.pagar.historico?.valor || 0);
     acc.totalReceber += obra.receber.total;
@@ -246,22 +263,33 @@ export default function FinanceiroResultadoObras() {
       acc.valorVendido += Number(obra.valor_vendido || 0);
       acc.faltaVender += Number(obra.falta_vender || 0);
     }
-    const valorReferencia = classificacao === 'PRIVADA'
-      ? (obra.vgv_efetivo ?? obra.vgv)
-      : classificacao === 'PUBLICA'
-        ? obra.planilha_geral
-        : null;
-    const valorReferenciaResultado = Number(obra.valor_referencia_resultado ?? valorReferencia ?? 0);
-    acc.faltaReceber += Number(obra.falta_receber ?? (
-      valorReferenciaResultado > 0 ? valorReferenciaResultado - obra.receber.recebido : obra.receber.saldo
-    ));
+    acc.faltaReceber += baseTotalObra > 0
+      ? baseTotalObra - obra.receber.recebido
+      : Number(obra.receber.saldo || 0);
     acc.lucroPrejuizo += Number(obra.lucro_prejuizo ?? (obra.receber.recebido - obra.pagar.executado));
     return acc;
-  }, { orcamento: 0, executado: 0, historicoPago: 0, totalReceber: 0, recebido: 0, historicoRecebido: 0, valorVendido: 0, faltaVender: 0, faltaReceber: 0, lucroPrejuizo: 0 }), [obrasFiltradas]);
+  }, { orcamento: 0, valorTotalObras: 0, executado: 0, historicoPago: 0, totalReceber: 0, recebido: 0, historicoRecebido: 0, valorVendido: 0, faltaVender: 0, faltaReceber: 0, lucroPrejuizo: 0 }), [obrasFiltradas]);
 
   const temObraPrivada = useMemo(() => obrasFiltradas.some(
-    (obra) => String(obra.classificacao || '').trim().toUpperCase() === 'PRIVADA'
+    (obra) => classificacaoObra(obra) === 'PRIVADA'
   ), [obrasFiltradas]);
+  const temObraPublica = useMemo(() => obrasFiltradas.some(
+    (obra) => classificacaoObra(obra) === 'PUBLICA'
+  ), [obrasFiltradas]);
+  const rotuloValorTotal = temObraPrivada && temObraPublica
+    ? 'Valor total das obras'
+    : temObraPrivada
+      ? 'VGV total'
+      : temObraPublica
+        ? 'Orçamento total'
+        : 'Valor total';
+  const apoioValorTotal = temObraPrivada && temObraPublica
+    ? 'VGV das privadas + orçamento das públicas'
+    : temObraPrivada
+      ? 'VGV das obras privadas'
+      : temObraPublica
+        ? 'Orçamento das obras públicas'
+        : undefined;
 
   return (
     <Pagina>
@@ -314,7 +342,11 @@ export default function FinanceiroResultadoObras() {
         cor="var(--module-financeiro)"
       >
         <StatGrid colunas={3}>
-          <StatTile label="Orçamento" valor={<Previsto>{formatCurrency(resumo.orcamento)}</Previsto>} />
+          <StatTile
+            label={rotuloValorTotal}
+            valor={<Previsto>{formatCurrency(resumo.valorTotalObras)}</Previsto>}
+            sub={apoioValorTotal}
+          />
           {temObraPrivada ? (
             <StatTile
               label="Valor vendido"
@@ -336,7 +368,11 @@ export default function FinanceiroResultadoObras() {
           <StatTile label="Total a receber" valor={<Previsto>{formatCurrency(resumo.totalReceber)}</Previsto>} />
           <StatTile label="Recebido" valor={<Realizado>{formatCurrency(resumo.recebido)}</Realizado>}
             sub={resumo.historicoRecebido > 0 ? `inclui ${formatCurrency(resumo.historicoRecebido)} do sistema anterior` : undefined} />
-          <StatTile label="Falta receber" valor={formatCurrency(resumo.faltaReceber)} />
+          <StatTile
+            label="Falta receber"
+            valor={formatCurrency(resumo.faltaReceber)}
+            sub={`${rotuloValorTotal} menos recebido`}
+          />
           <StatTile
             label="Lucro/Prejuízo"
             valor={formatCurrency(resumo.lucroPrejuizo)}

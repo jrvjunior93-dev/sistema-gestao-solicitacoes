@@ -190,8 +190,13 @@ module.exports = {
 
         // Orçamento = valorReferencia - custo esperado = valorReferencia * (1 - margem/100)
         const orcamento = (valorReferencia > 0 && margem > 0) ? valorReferencia * (1 - margem / 100) : null;
-        const faltaReceber = valorReferencia > 0
-          ? valorReferencia - receber.total_valor_baixado
+        const valorTotalResultado = classificacao === 'PRIVADA'
+          ? valorReferencia
+          : classificacao === 'PUBLICA'
+            ? Number(orcamento || 0)
+            : 0;
+        const faltaReceber = valorTotalResultado > 0
+          ? valorTotalResultado - receber.total_valor_baixado
           : receber.total_valor_saldo;
         const lucroPrejuizo = receber.total_valor_baixado - pagar.total_valor_baixado;
         const vendas = vendasPorObra.get(Number(obra.id)) || { valor: 0, quantidade: 0 };
@@ -214,6 +219,7 @@ module.exports = {
           margem_custo_esperada: obra.margem_custo_esperada != null ? Number(obra.margem_custo_esperada) : null,
           orcamento,
           valor_referencia_resultado: valorReferencia || null,
+          valor_total_resultado: valorTotalResultado || null,
           falta_receber: faltaReceber,
           valor_vendido: vendas.valor,
           falta_vender: faltaVender,
