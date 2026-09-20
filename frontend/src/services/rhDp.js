@@ -248,6 +248,13 @@ export async function getRhApuracoes(params = {}) {
   return parseJson(response, 'Erro ao buscar apuracoes RH/DP');
 }
 
+export async function getRhCategoriasFinanceiras() {
+  const response = await fetch(`${API_URL}/rh/apuracoes/categorias-financeiras`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao buscar categorias financeiras da apuracao RH/DP');
+}
+
 export async function getRhApuracao(id) {
   const response = await fetch(`${API_URL}/rh/apuracoes/${id}`, {
     headers: authHeaders()

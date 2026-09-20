@@ -8,11 +8,14 @@ const {
   RhFechamento,
   RhImportacao,
   RhImportacaoLinha,
+  RhSolicitacao,
+  RhSolicitacaoHistorico,
   User,
   sequelize
 } = require('../models');
 const { Op } = require('sequelize');
 const { ValidationError } = require('../middlewares/validation');
+const { codigoDoSetor } = require('../utils/codigoDoSetor');
 
 const APURACAO_ITEM_INCLUDE = [
   {
@@ -669,6 +672,35 @@ async function gerarApuracaoRecorteRh(data, user, transaction) {
   await aplicarRecorrentesNaApuracao(apuracao, transaction);
 
   await recalcularResumoApuracao(apuracao.id, transaction);
+
+  const solicitacoesJornada = await RhSolicitacao.findAll({
+    where: { tipo: 'JORNADA', situacao: 'ABERTA', obra_id: data.obra_id },
+    transaction,
+    lock: transaction.LOCK.UPDATE
+  });
+  const concluidas = solicitacoesJornada.filter((solicitacao) => (
+    String((typeof solicitacao.dados_json === 'string'
+      ? JSON.parse(solicitacao.dados_json)
+      : solicitacao.dados_json)?.competencia || '') === String(data.competencia || '')
+  ));
+  for (const solicitacao of concluidas) {
+    // eslint-disable-next-line no-await-in-loop
+    await solicitacao.update({
+      situacao: 'APROVADA',
+      decidida_por: user?.id || null,
+      decidida_em: new Date()
+    }, { transaction });
+    // eslint-disable-next-line no-await-in-loop
+    await RhSolicitacaoHistorico.create({
+      solicitacao_id: solicitacao.id,
+      usuario_id: user?.id || null,
+      setor: codigoDoSetor(user) || 'DP',
+      acao: 'APURACAO_GERADA',
+      descricao: `Apuracao #${apuracao.id} gerada para ${data.competencia}.`,
+      situacao_anterior: 'ABERTA',
+      situacao_nova: 'APROVADA'
+    }, { transaction });
+  }
 
   return detalharApuracaoPorPk(apuracao.id, transaction);
 }

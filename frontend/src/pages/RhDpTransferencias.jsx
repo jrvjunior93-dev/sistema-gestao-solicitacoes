@@ -14,7 +14,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas }) {
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [parametros, setParametros] = useSearchParams();
   const secao = parametros.get('secao') === 'transferencias' ? 'transferencias' : 'global';
-  const [config, setConfig] = useState({ obras: [], obras_responsavel_ids: [] });
+  const [config, setConfig] = useState({ obras: [], obras_responsavel_ids: [], acesso_global: false });
   const [transferencias, setTransferencias] = useState(paginaVazia);
   const [diretorio, setDiretorio] = useState({ itens: [], total: 0, pagina: 1 });
   const [busca, setBusca] = useState('');
@@ -179,22 +179,24 @@ export default function RhDpTransferencias({ onNotificacoesLidas }) {
     <div className="rh-pessoal-abas rh-transferencias-subabas" role="tablist" aria-label="Consultas de transferências">
       <button type="button" role="tab" aria-selected={secao === 'global'} className={`rh-pessoal-aba${secao === 'global' ? ' rh-pessoal-aba--ativa' : ''}`} onClick={() => trocarSecao('global')}>Lista global de colaboradores</button>
       <button type="button" role="tab" aria-selected={secao === 'transferencias'} className={`rh-pessoal-aba${secao === 'transferencias' ? ' rh-pessoal-aba--ativa' : ''}`} onClick={() => trocarSecao('transferencias')}>
-        Transferências das minhas obras
+        {config.acesso_global ? 'Transferências entre obras' : 'Transferências das minhas obras'}
         {transferencias.nao_lidas > 0 ? <span className="rh-pessoal-aba-contador">{transferencias.nao_lidas}</span> : null}
       </button>
     </div>
 
     {secao === 'transferencias' ? <>
-      <p className="form-hint">Acompanhe na mesma lista as transferências pendentes e as já resolvidas entre suas obras.</p>
-      {!minhas.length && <p className="alert alert-info">Para solicitar ou aprovar, configure o responsável ou substituto vigente em Configurações → Responsáveis por obra.</p>}
+      <p className="form-hint">{config.acesso_global
+        ? 'Consulte as transferências pendentes e resolvidas de todas as obras. A decisão continua com os responsáveis das obras envolvidas.'
+        : 'Acompanhe na mesma lista as transferências pendentes e as já resolvidas entre suas obras.'}</p>
+      {!config.acesso_global && !minhas.length && <p className="alert alert-info">Para solicitar ou aprovar, configure o responsável ou substituto vigente em Configurações → Responsáveis por obra.</p>}
       <section aria-label="Transferências entre obras">
         <div className="app-page-actions">
-          <h3 className="app-bloco-titulo">Transferências das minhas obras</h3>
+          <h3 className="app-bloco-titulo">{config.acesso_global ? 'Transferências entre obras' : 'Transferências das minhas obras'}</h3>
           <button type="button" className="btn btn-outline btn-sm" onClick={() => atualizar(transferencias.pagina)}>Atualizar</button>
         </div>
         <TabelaPadrao storageKey="tabela:rh-transferencias-todas" itens={transferencias.itens} carregando={carregandoTransferencias}
           urgencia={s => s.nao_lida ? 'warning' : null} classeLinha={s => s.nao_lida ? 'rh-solicitacao-nao-lida' : ''}
-          vazio="Nenhuma transferência encontrada para os responsáveis deste usuário."
+          vazio={config.acesso_global ? 'Nenhuma transferência entre obras encontrada.' : 'Nenhuma transferência encontrada para os responsáveis deste usuário.'}
           colunas={colunasTransferencias} acoesLinha={s => <button type="button" className="btn btn-outline btn-sm" onClick={() => abrir(s)}>Abrir</button>} />
         {paginacao(transferencias, atualizar)}
       </section>

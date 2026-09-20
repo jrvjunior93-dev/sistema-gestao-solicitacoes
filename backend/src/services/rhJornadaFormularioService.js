@@ -7,12 +7,15 @@ const {
   RhJornadaEdicao,
   RhColaborador,
   RhColaboradorVinculo,
+  RhSolicitacao,
+  RhSolicitacaoHistorico,
   Obra,
   sequelize
 } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
 const rhVinculoObraService = require('./rhVinculoObraService');
 const { diasVinculados } = require('./rhPessoalDomain');
+const { setorParaHistorico } = require('../utils/codigoDoSetor');
 
 /**
  * JORNADA PELO FORMULARIO, sem planilha (Fase 4 do modulo DP, 26/08).
@@ -383,7 +386,64 @@ async function registrarJornada(dados = {}, contexto = {}) {
       );
     }
 
-    return { importacao, linhas: linhasGravadas };
+    const abertasDaObra = await RhSolicitacao.findAll({
+      where: { tipo: 'JORNADA', obra_id: obraId, situacao: 'ABERTA' },
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    const existente = abertasDaObra.find((pedido) => {
+      const detalhes = typeof pedido.dados_json === 'string'
+        ? JSON.parse(pedido.dados_json)
+        : (pedido.dados_json || {});
+      return String(detalhes.competencia || '') === competencia
+        && String(detalhes.periodo_inicio || '') === periodo.inicio
+        && String(detalhes.periodo_fim || '') === periodo.fim;
+    });
+    const dadosSolicitacao = {
+      importacao_id: importacao.id,
+      competencia,
+      periodicidade: periodo.periodicidade,
+      periodo_inicio: periodo.inicio,
+      periodo_fim: periodo.fim,
+      dias_base: diasBase,
+      total_colaboradores: linhasGravadas.length,
+      origem,
+      observacoes: dados.observacoes || null
+    };
+    let solicitacao;
+    if (existente) {
+      solicitacao = existente;
+      await solicitacao.update({ dados_json: dadosSolicitacao }, { transaction });
+      await RhSolicitacaoHistorico.create({
+        solicitacao_id: solicitacao.id,
+        usuario_id: contexto.usuarioId || null,
+        setor: setorParaHistorico(contexto.setor) || null,
+        acao: 'JORNADA_ATUALIZADA',
+        descricao: `Jornada atualizada para ${competencia}, com ${linhasGravadas.length} colaborador(es).`,
+        situacao_anterior: 'ABERTA',
+        situacao_nova: 'ABERTA'
+      }, { transaction });
+    } else {
+      solicitacao = await RhSolicitacao.create({
+        tipo: 'JORNADA',
+        situacao: 'ABERTA',
+        obra_id: obraId,
+        setor_origem: setorParaHistorico(contexto.setor) || null,
+        dados_json: dadosSolicitacao,
+        justificativa: dados.observacoes || null,
+        criada_por: contexto.usuarioId || null
+      }, { transaction });
+      await RhSolicitacaoHistorico.create({
+        solicitacao_id: solicitacao.id,
+        usuario_id: contexto.usuarioId || null,
+        setor: setorParaHistorico(contexto.setor) || null,
+        acao: 'ABERTURA',
+        descricao: `Jornada enviada para ${competencia}, com ${linhasGravadas.length} colaborador(es).`,
+        situacao_nova: 'ABERTA'
+      }, { transaction });
+    }
+
+    return { importacao, linhas: linhasGravadas, solicitacao };
   });
 }
 

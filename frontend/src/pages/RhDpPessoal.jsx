@@ -324,6 +324,7 @@ export default function RhDpPessoal() {
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [transferenciasNaoLidas, setTransferenciasNaoLidas] = useState(0);
+  const [totalSolicitacoesAbertas, setTotalSolicitacoesAbertas] = useState(0);
   const limparNotificacoesTransferencia = useCallback(() => setTransferenciasNaoLidas(0), []);
 
   /**
@@ -407,6 +408,20 @@ export default function RhDpPessoal() {
     });
   }, [setParametros]);
 
+  const abrirApuracaoDaJornada = useCallback((solicitacao) => {
+    if (!podeVerApuracao) return;
+    setParametros((atuais) => {
+      const proximos = new URLSearchParams(atuais);
+      proximos.set('aba', 'apuracao');
+      proximos.delete('solicitacao');
+      if (solicitacao?.dados_json?.competencia) {
+        proximos.set('competencia', String(solicitacao.dados_json.competencia));
+      }
+      if (solicitacao?.obra_id) proximos.set('obra_id', String(solicitacao.obra_id));
+      return proximos;
+    });
+  }, [podeVerApuracao, setParametros]);
+
   // Normalização da URL: `?aba=` inválido (ou de uma aba que esta pessoa não
   // pode ver) é corrigido SEM empilhar histórico — senão "voltar" ficaria
   // preso repetindo a mesma correção.
@@ -476,6 +491,7 @@ export default function RhDpPessoal() {
     setBusca('');
     setFormulario(null);
     setPedidosDoColaborador({ id: null, lista: [] });
+    setTotalSolicitacoesAbertas(0);
   }, [user?.id]);
 
   const abrirDetalheDaSolicitacao = useCallback((solicitacaoId) => {
@@ -517,13 +533,15 @@ export default function RhDpPessoal() {
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
-      const [lista, listaObras] = await Promise.all([
+      const [lista, listaObras, solicitacoesAbertas] = await Promise.all([
         getRhColaboradores({ obra_id: filtroObra || undefined, q: busca || undefined }),
         obras.length
           ? Promise.resolve(obras)
-          : (usuarioOperacionalDaObra ? getMinhasObras({ escopo: 'OBRAS' }) : getObras())
+          : (usuarioOperacionalDaObra ? getMinhasObras({ escopo: 'OBRAS' }) : getObras()),
+        listarRhSolicitacoes({ situacao: 'ABERTA' })
       ]);
       setColaboradores(Array.isArray(lista) ? lista : []);
+      setTotalSolicitacoesAbertas(Array.isArray(solicitacoesAbertas) ? solicitacoesAbertas.length : 0);
       if (!obras.length) setObras(Array.isArray(listaObras) ? listaObras : []);
     } catch (error) {
       avisar.erro(error.message || 'Nao foi possivel carregar a lista de pessoal.');
@@ -990,7 +1008,7 @@ export default function RhDpPessoal() {
     ali o cabeçalho fica sem número, que é honesto.
   */
   const contagemDaAba = abaAtiva === 'solicitacoes'
-    ? `${pendentes.length} em aberto`
+    ? `${totalSolicitacoesAbertas} em aberto`
     : abaAtiva === 'colaboradores'
       ? `${colaboradores.length} colaborador${colaboradores.length === 1 ? '' : 'es'}`
       : undefined;
@@ -1047,8 +1065,8 @@ export default function RhDpPessoal() {
             onClick={() => setAbaAtiva(aba.id)}
           >
             {aba.rotulo}
-            {aba.id === 'solicitacoes' && pendentes.length
-              ? <span className="rh-pessoal-aba-contador">{pendentes.length}</span>
+            {aba.id === 'solicitacoes' && totalSolicitacoesAbertas
+              ? <span className="rh-pessoal-aba-contador">{totalSolicitacoesAbertas}</span>
               : null}
             {aba.id === 'transferencias' && transferenciasNaoLidas > 0
               ? <span className="rh-pessoal-aba-contador">{transferenciasNaoLidas > 99 ? '99+' : transferenciasNaoLidas}</span>
@@ -1063,6 +1081,8 @@ export default function RhDpPessoal() {
           podeDecidir={podeDecidir}
           podeAprovarSalario={podeAprovarSalario}
           aoMudar={carregar}
+          onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined}
+          aoContarAbertas={setTotalSolicitacoesAbertas}
         />
       ) : null}
 

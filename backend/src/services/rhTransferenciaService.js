@@ -4,7 +4,7 @@ const { Op } = require('sequelize');
 const { sequelize, RhSolicitacao, RhSolicitacaoHistorico, RhColaborador,
   CrResponsavelObra, Obra, Notificacao, NotificacaoDestinatario } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
-const { getUserObraIds, isSuperadmin } = require('./authorizationService');
+const { getRhDpObraScopeIds, getUserObraIds, isSuperadmin, userHasAreaPermission } = require('./authorizationService');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const { ehTransferencia, hojeLocal, dataIso } = require('./rhPessoalDomain');
 const { vinculoAberto, registrarVinculo } = require('./rhVinculoObraService');
@@ -44,14 +44,25 @@ async function obrasResponsavel(user, transaction) {
   return [...new Set((await responsaveis(user.id, transaction)).map(r => Number(r.obra_id)))];
 }
 
+async function podeLerGlobalmente(user) {
+  if (isSuperadmin(user)) return true;
+  const escopoEstritoDaObra = await getRhDpObraScopeIds(user);
+  if (Array.isArray(escopoEstritoDaObra)) return false;
+  return userHasAreaPermission(user, ['rh_dp.solicitacoes.ver_todas']);
+}
+
 async function configuracao(user) {
   const ids = await obrasResponsavel(user);
   const obras = await Obra.findAll({ where: { ativo: true }, attributes: camposObra, order: [['nome', 'ASC']] });
-  return { obras: obras.map(o => o.get({ plain: true })), obras_responsavel_ids: ids };
+  return {
+    obras: obras.map(o => o.get({ plain: true })),
+    obras_responsavel_ids: ids,
+    acesso_global: await podeLerGlobalmente(user)
+  };
 }
 
 async function diretorio(user, filtros = {}) {
-  if (!isSuperadmin(user)) {
+  if (!(await podeLerGlobalmente(user))) {
     const vinculadas = await getUserObraIds(user);
     const responsavelIds = await obrasResponsavel(user);
     if (!vinculadas.length && !responsavelIds.length) {
@@ -105,6 +116,17 @@ async function exigirAcesso(s, user, transaction) {
   return ids;
 }
 
+async function exigirLeitura(s, user, transaction) {
+  if (!s || !ehTransferencia(s)) throw new ValidationError('Transferencia nao encontrada.', 404);
+  if (isSuperadmin(user)) {
+    return [...new Set([Number(s.obra_id), Number(dadosDe(s).obra_destino_id)].filter(Number.isFinite))];
+  }
+  const ids = await obrasResponsavel(user, transaction);
+  if (ids.includes(Number(s.obra_id)) || ids.includes(Number(dadosDe(s).obra_destino_id))) return ids;
+  if (await podeLerGlobalmente(user)) return ids;
+  throw new ValidationError('Acesso restrito aos responsaveis vigentes das obras envolvidas.', 403);
+}
+
 // Projeção explícita: nunca devolver dados_json arbitrário, salário ou documentos
 // do colaborador, inclusive em pedidos legados.
 function resumo(s, ids, usuarioId) {
@@ -142,8 +164,8 @@ function montarEscopoTransferencias(acessoGlobal, ids, grupo = '') {
 }
 
 async function listar(user, filtros = {}) {
-  const acessoGlobal = isSuperadmin(user);
-  const ids = acessoGlobal ? [] : await obrasResponsavel(user);
+  const acessoGlobal = await podeLerGlobalmente(user);
+  const ids = await obrasResponsavel(user);
   const grupo = String(filtros.grupo || 'PENDENTES').trim().toUpperCase();
   if (!['PENDENTES', 'RESOLVIDAS', 'TODAS'].includes(grupo)) {
     throw new ValidationError('Grupo de transferencias invalido.');
@@ -165,7 +187,7 @@ async function listar(user, filtros = {}) {
   });
   const linhas = solicitacoes.filter(ehTransferencia).map((registro) => {
     const s = registro.get({ plain: true });
-    const idsPermitidos = acessoGlobal
+    const idsPermitidos = isSuperadmin(user)
       ? [...new Set([Number(s.obra_id), Number(dadosDe(s).obra_destino_id)].filter(Number.isFinite))]
       : ids;
     return resumo(s, idsPermitidos, user.id);
@@ -343,8 +365,8 @@ async function agir(user, id, acao, texto) {
 }
 
 async function marcarListaLida(user) {
-  const acessoGlobal = isSuperadmin(user);
-  const ids = acessoGlobal ? [] : await obrasResponsavel(user);
+  const acessoGlobal = await podeLerGlobalmente(user);
+  const ids = await obrasResponsavel(user);
   if (!acessoGlobal && !ids.length) return { marcadas: 0 };
 
   const acessiveis = await RhSolicitacao.findAll({
@@ -372,7 +394,7 @@ async function marcarListaLida(user) {
 
 async function detalhe(user, id) {
   const s = await RhSolicitacao.findByPk(id, { include: includes });
-  const ids = await exigirAcesso(s, user);
+  const ids = await exigirLeitura(s, user);
   const eventos = await RhSolicitacaoHistorico.findAll({ where: { solicitacao_id: id }, order: [['id', 'ASC']] });
   const max = eventos.reduce((n, h) => Math.max(n, Number(h.id)), 0);
   await marcarLida(id, user.id, max);
@@ -380,4 +402,4 @@ async function detalhe(user, id) {
 }
 
 module.exports = { configuracao, diretorio, listar, abrir, agir, detalhe, marcarListaLida, exigirAcesso,
-  obrasResponsavel, resolverFluxoTransferencia, montarEscopoTransferencias };
+  exigirLeitura, podeLerGlobalmente, obrasResponsavel, resolverFluxoTransferencia, montarEscopoTransferencias };

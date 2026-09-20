@@ -1,6 +1,6 @@
 import DateInputBR from '../components/DateInputBR';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Avisos,
   BarraFiltros,
@@ -20,13 +20,13 @@ import Alert from '../components/ui/Alert';
 import StatusBadge from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { getObras } from '../services/obras';
-import { getCategoriasFinanceiras } from '../services/financeiro';
 import {
   conferirRhApuracao,
   fecharRhApuracao,
   gerarRhApuracao,
   getRhApuracao,
   getRhApuracoes,
+  getRhCategoriasFinanceiras,
   getRhEmpresasGrupo,
   reabrirRhFechamento,
   atualizarRhApuracaoItem
@@ -177,6 +177,7 @@ const FILTROS_DA_TELA = [
 export default function RhDpApuracao() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [parametros] = useSearchParams();
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const podeEditar = canEditRhDpApuracao(user);
@@ -199,7 +200,11 @@ export default function RhDpApuracao() {
   // R12: os recortes enumeraveis (empresa, obra, vinculo, status) viram
   // MARCACAO — um conjunto por dimensao; competencia e continua e vive na
   // prop `campos` da BarraFiltros (R16b).
-  const [filtros, setFiltros] = useState(filtrosVazios);
+  const [filtros, setFiltros] = useState(() => ({
+    ...filtrosVazios(),
+    competencia: parametros.get('competencia') || '',
+    obra_id: parametros.get('obra_id') ? new Set([parametros.get('obra_id')]) : new Set()
+  }));
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
     ou do estado da tela e cair sobre um filtro escondido; o painel REVELA em
@@ -230,7 +235,10 @@ export default function RhDpApuracao() {
       setFiltros((atual) => ({ ...atual, [id]: atual[id] instanceof Set ? new Set() : '' }));
     }
   });
-  const [form, setForm] = useState(initialForm());
+  const [form, setForm] = useState(() => ({
+    ...initialForm(),
+    competencia: parametros.get('competencia') || ''
+  }));
   const [fechamentoForm, setFechamentoForm] = useState({
     data_fechamento: new Date().toISOString().slice(0, 10),
     data_vencimento: '',
@@ -264,12 +272,12 @@ export default function RhDpApuracao() {
   }, [detalhe]);
 
   useEffect(() => {
-    if (!financeiroHabilitado) {
+    if (!financeiroHabilitado || !podeFechar) {
       setCategoriasFinanceiras([]);
       return;
     }
     carregarCategoriasFinanceiras();
-  }, [financeiroHabilitado]);
+  }, [financeiroHabilitado, podeFechar]);
 
   async function carregarBase() {
     try {
@@ -292,7 +300,7 @@ export default function RhDpApuracao() {
   async function carregarCategoriasFinanceiras() {
     try {
       setCarregandoCategorias(true);
-      const data = await getCategoriasFinanceiras();
+      const data = await getRhCategoriasFinanceiras();
       setCategoriasFinanceiras(Array.isArray(data) ? data.filter((item) => {
         const tipo = String(item?.tipo || '').trim().toUpperCase();
         const hasDreGroup = String(item?.dre_grupo || '').trim();
@@ -416,7 +424,7 @@ export default function RhDpApuracao() {
 
   async function onFecharApuracao(event) {
     event.preventDefault();
-    if (!detalhe?.id || !financeiroHabilitado || !podeEditar) {
+    if (!detalhe?.id || !financeiroHabilitado || !podeFechar) {
       return;
     }
 

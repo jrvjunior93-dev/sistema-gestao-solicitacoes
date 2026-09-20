@@ -4,7 +4,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
     // Nulo na ADMISSAO: o colaborador so passa a existir quando o DP aprova.
     colaborador_id: { type: DataTypes.INTEGER, allowNull: true },
-    // ADMISSAO | DEMISSAO | TROCA_OBRA | EVENTO_RECORRENTE | ALTERACAO_SALARIAL
+    // ADMISSAO | DEMISSAO | MOVIMENTACAO | PAGAMENTO_MAO_DE_OBRA | EVENTO_RECORRENTE | JORNADA
     tipo: { type: DataTypes.STRING(30), allowNull: false },
     /**
      * Fase 10 (27/08). Em MOVIMENTACAO e o tipo do evento (atestado, ferias, transferencia...);

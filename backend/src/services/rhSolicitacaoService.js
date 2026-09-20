@@ -956,11 +956,20 @@ async function transferirSeJaTemColaborador(solicitacao, contexto, transaction) 
   return transferirAnexosParaOColaborador(solicitacao, solicitacao.colaborador_id, contexto, transaction);
 }
 
+function impedirDecisaoManualDaJornada(solicitacao) {
+  if (solicitacao.tipo === 'JORNADA') {
+    throw new ValidationError(
+      'A solicitacao de jornada e concluida automaticamente quando o DP gera a apuracao da competencia.'
+    );
+  }
+}
+
 /** Aprova o pedido e aplica o efeito. Recusa decidir de novo o que ja foi decidido. */
 async function aprovarSolicitacao(id, contexto = {}) {
   return sequelize.transaction(async (transaction) => {
     const solicitacao = await RhSolicitacao.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!solicitacao) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
+    impedirDecisaoManualDaJornada(solicitacao);
 
     if (solicitacao.situacao !== SITUACOES.ABERTA) {
       throw new ValidationError(
@@ -1026,6 +1035,7 @@ async function rejeitarSolicitacao(id, motivo, contexto = {}) {
   return sequelize.transaction(async (transaction) => {
     const solicitacao = await RhSolicitacao.findByPk(id, { transaction });
     if (!solicitacao) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
+    impedirDecisaoManualDaJornada(solicitacao);
 
     if (solicitacao.situacao !== SITUACOES.ABERTA) {
       throw new ValidationError(
@@ -1069,6 +1079,7 @@ async function reenviarSolicitacao(id, payload = {}, contexto = {}) {
   return sequelize.transaction(async (transaction) => {
     const solicitacao = await RhSolicitacao.findByPk(id, { transaction });
     if (!solicitacao) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
+    impedirDecisaoManualDaJornada(solicitacao);
 
     if (solicitacao.situacao !== SITUACOES.REJEITADA) {
       throw new ValidationError('So uma solicitacao devolvida pode ser reenviada.');
@@ -1115,6 +1126,7 @@ async function cancelarSolicitacao(id, motivo, contexto = {}) {
   return sequelize.transaction(async (transaction) => {
     const solicitacao = await RhSolicitacao.findByPk(id, { transaction });
     if (!solicitacao) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
+    impedirDecisaoManualDaJornada(solicitacao);
 
     if (solicitacao.situacao === SITUACOES.APROVADA) {
       throw new ValidationError('Solicitacao aprovada nao pode ser cancelada: ela ja produziu efeito.');

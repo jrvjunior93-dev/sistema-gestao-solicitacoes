@@ -6,8 +6,19 @@ const {
   atualizarItemApuracaoRh
 } = require('../services/rhApuracaoService');
 const { responderErroController } = require('../utils/controllerError');
+const { CategoriaFinanceira } = require('../models');
 
 module.exports = {
+  async categoriasFinanceiras(req, res) {
+    try {
+      const data = await CategoriaFinanceira.findAll({ order: [['nome', 'ASC']] });
+      return res.json(data);
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao listar categorias financeiras da apuracao RH/DP');
+    }
+  },
+
   async index(req, res) {
     try {
       const data = await listarApuracoesRh(req.query || {});

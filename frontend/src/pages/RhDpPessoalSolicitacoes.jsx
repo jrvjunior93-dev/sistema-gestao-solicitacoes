@@ -43,6 +43,7 @@ const ROTULO_TIPO = {
   ADMISSAO: 'Admissao',
   DEMISSAO: 'Demissao',
   MOVIMENTACAO: 'Movimentacao',
+  JORNADA: 'Jornada',
   PAGAMENTO_MAO_DE_OBRA: 'Pagamento de mao de obra',
   // Legado: existe gravado ate `migrarTrocaObraParaMovimentacao.js` rodar em producao.
   TROCA_OBRA: 'Troca de obra',
@@ -115,13 +116,20 @@ const ROTULO_DADO = {
   natureza: 'Natureza',
   valor: 'Valor',
   competencia_inicio: 'Competência inicial',
-  parcelas_total: 'Parcelas'
+  parcelas_total: 'Parcelas',
+  competencia: 'Competência',
+  periodicidade: 'Periodicidade',
+  periodo_inicio: 'Início do período',
+  periodo_fim: 'Fim do período',
+  dias_base: 'Dias base',
+  total_colaboradores: 'Colaboradores informados',
+  origem: 'Origem'
 };
 
 function formatarDado(chave, valor) {
   if (valor === null || valor === undefined || valor === '') return '—';
   if (typeof valor === 'boolean') return valor ? 'Sim' : 'Não';
-  if (/^data_|_em$|competencia_inicio/.test(chave) && /^\d{4}-\d{2}-\d{2}/.test(String(valor))) {
+  if (/^data_|^periodo_|_em$|competencia_inicio/.test(chave) && /^\d{4}-\d{2}-\d{2}/.test(String(valor))) {
     return new Date(`${String(valor).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR');
   }
   if (['valor', 'novo_salario'].includes(chave) && !Number.isNaN(Number(valor))) {
@@ -136,7 +144,7 @@ function dadosOperacionais(solicitacao) {
     .map(([chave, valor]) => ({ chave, rotulo: ROTULO_DADO[chave], valor: formatarDado(chave, valor) }));
 }
 
-export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAprovarSalario, aoMudar }) {
+export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAprovarSalario, aoMudar, onAbrirApuracao, aoContarAbertas }) {
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [parametros, setParametros] = useSearchParams();
@@ -172,12 +180,15 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
         tipo: filtroTipo || undefined
       });
       setSolicitacoes(Array.isArray(lista) ? lista : []);
+      if (filtroSituacao === 'ABERTA' && !filtroTipo) {
+        aoContarAbertas?.(Array.isArray(lista) ? lista.length : 0);
+      }
     } catch (error) {
       avisar.erro(error.message || 'Nao foi possivel carregar as solicitacoes.');
     } finally {
       setCarregando(false);
     }
-  }, [filtroSituacao, filtroTipo, avisar, limpar]);
+  }, [filtroSituacao, filtroTipo, avisar, limpar, aoContarAbertas]);
 
   useEffect(() => { carregar(); }, [carregar]);
   useEffect(() => {
@@ -186,12 +197,15 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
       try {
         const lista = await listarRhSolicitacoes({ situacao: filtroSituacao || undefined, tipo: filtroTipo || undefined });
         setSolicitacoes(Array.isArray(lista) ? lista : []);
+        if (filtroSituacao === 'ABERTA' && !filtroTipo) {
+          aoContarAbertas?.(Array.isArray(lista) ? lista.length : 0);
+        }
       } catch { /* A atualização manual mantém o tratamento visível de erros. */ }
     };
     const timer = setInterval(atualizar, 30000);
     window.addEventListener('focus', atualizar);
     return () => { clearInterval(timer); window.removeEventListener('focus', atualizar); };
-  }, [filtroSituacao, filtroTipo]);
+  }, [filtroSituacao, filtroTipo, aoContarAbertas]);
 
   const contagem = useMemo(() => {
     const porTipo = {};
@@ -569,7 +583,9 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
               tipo: 'identidade',
               noCard: 'titulo',
               /* Na admissao o colaborador ainda nao existe: o nome vive no pedido. */
-              render: (s) => s.colaborador?.nome || s.dados_json?.nome || <span className="opacity-60">a admitir</span>
+              render: (s) => s.tipo === 'JORNADA'
+                ? `${s.dados_json?.total_colaboradores || 0} colaborador(es)`
+                : s.colaborador?.nome || s.dados_json?.nome || <span className="opacity-60">a admitir</span>
             },
             {
               id: 'obra',
@@ -627,7 +643,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
               <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionarDetalhe(s)}>
                 Abrir
               </button>
-              {podeDecidir && s.situacao === 'ABERTA' ? (
+              {podeDecidir && s.situacao === 'ABERTA' && s.tipo !== 'JORNADA' ? (
                 <>
                   {s.tipo !== 'ALTERACAO_SALARIAL' || podeAprovarSalario ? (
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => decidir(s, 'aprovar')}>
@@ -641,17 +657,17 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
                   </button>
                 </>
               ) : null}
-              {podeAbrir && s.situacao === 'RASCUNHO' ? (
+              {podeAbrir && s.situacao === 'RASCUNHO' && s.tipo !== 'JORNADA' ? (
                 <button type="button" className="btn btn-primary btn-sm" onClick={() => enviarAoDp(s)}>
                   Enviar
                 </button>
               ) : null}
-              {podeAbrir && s.situacao === 'REJEITADA' ? (
+              {podeAbrir && s.situacao === 'REJEITADA' && s.tipo !== 'JORNADA' ? (
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => decidir(s, 'reenviar')}>
                   Reenviar
                 </button>
               ) : null}
-              {podeAbrir && ['RASCUNHO', 'ABERTA'].includes(s.situacao) ? (
+              {podeAbrir && s.tipo !== 'JORNADA' && ['RASCUNHO', 'ABERTA'].includes(s.situacao) ? (
                 <button type="button" className="btn btn-outline btn-sm" onClick={() => decidir(s, 'cancelar')}>
                   Cancelar
                 </button>
@@ -691,9 +707,9 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
                   com reticências, texto inteiro no `title`. */}
               <p
                 className="app-bloco-lead"
-                title={`${aberta.colaborador?.nome || aberta.dados_json?.nome || 'Colaborador a admitir'}${aberta.justificativa ? ` — ${aberta.justificativa}` : ''}`}
+                title={`${aberta.tipo === 'JORNADA' ? 'Jornada da equipe da obra' : aberta.colaborador?.nome || aberta.dados_json?.nome || 'Colaborador a admitir'}${aberta.justificativa ? ` — ${aberta.justificativa}` : ''}`}
               >
-                {aberta.colaborador?.nome || aberta.dados_json?.nome || 'Colaborador a admitir'}
+                {aberta.tipo === 'JORNADA' ? 'Jornada da equipe da obra' : aberta.colaborador?.nome || aberta.dados_json?.nome || 'Colaborador a admitir'}
                 {aberta.justificativa ? ` — ${aberta.justificativa}` : ''}
               </p>
             </div>
@@ -702,7 +718,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
 
           <section className="rh-solicitacao-resumo" aria-label="Dados da solicitacao de pessoal">
             <div><span>Situacao</span><strong>{ROTULO_SITUACAO[aberta.situacao] || aberta.situacao}</strong></div>
-            <div><span>Colaborador</span><strong>{aberta.colaborador?.nome || aberta.dados_json?.nome || 'A admitir'}</strong></div>
+            <div><span>Colaborador</span><strong>{aberta.tipo === 'JORNADA' ? 'Equipe da obra' : aberta.colaborador?.nome || aberta.dados_json?.nome || 'A admitir'}</strong></div>
             <div><span>Obra</span><strong>{aberta.obra?.nome || aberta.colaborador?.obra?.nome || '—'}</strong></div>
             <div><span>Tipo</span><strong>{ROTULO_TIPO[aberta.tipo] || aberta.tipo}{aberta.subtipo ? ` · ${String(aberta.subtipo).replaceAll('_', ' ')}` : ''}</strong></div>
             <div><span>Aberta em</span><strong>{aberta.createdAt ? new Date(aberta.createdAt).toLocaleString('pt-BR') : '—'}</strong></div>
@@ -714,6 +730,18 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
               <div className="rh-solicitacao-resumo--largo"><span>Justificativa</span><strong>{aberta.justificativa}</strong></div>
             ) : null}
           </section>
+
+          {aberta.tipo === 'JORNADA' && onAbrirApuracao ? (
+            <div className="app-actionbar">
+              <div>
+                <strong>Próxima etapa</strong>
+                <p className="app-bloco-lead">A jornada já foi registrada. Abra a Apuração para conferir e calcular esta competência.</p>
+              </div>
+              <button type="button" className="btn btn-primary" onClick={() => onAbrirApuracao(aberta)}>
+                Ir para Apuração
+              </button>
+            </div>
+          ) : null}
 
           {conferencia?.exigeConferencia ? (
             <div className="rh-pessoal-conferencia">
