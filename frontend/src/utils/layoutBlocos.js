@@ -22,20 +22,34 @@
 // com o próprio padrão (detalhe: padrão normal; Home: padrão total).
 // Blocos que não constem na configuração entram no FIM, visíveis —
 // um bloco novo no código nunca some por causa de config antiga.
-export function resolverLayoutBlocos(ordemPadrao, { configSetor = null, prefsUsuario = null } = {}) {
-  const idsValidos = new Set(ordemPadrao);
+function unicosEmOrdem(lista) {
+  const vistos = new Set();
+  return (Array.isArray(lista) ? lista : []).filter((id) => {
+    if (vistos.has(id)) return false;
+    vistos.add(id);
+    return true;
+  });
+}
 
-  let ordemBase = ordemPadrao;
+export function resolverLayoutBlocos(ordemPadrao, { configSetor = null, prefsUsuario = null } = {}) {
+  // Preferências antigas ou dados importados podem conter o mesmo bloco
+  // mais de uma vez. A permissão apenas decide se o bloco pode existir;
+  // a ordem nunca pode materializar duas instâncias dele na mesma tela.
+  const ordemPadraoUnica = unicosEmOrdem(ordemPadrao);
+  const idsValidos = new Set(ordemPadraoUnica);
+
+  let ordemBase = ordemPadraoUnica;
   const ocultosSetor = new Set();
 
   if (Array.isArray(configSetor) && configSetor.length > 0) {
     const daConfig = configSetor
       .filter((item) => idsValidos.has(item?.bloco))
       .sort((a, b) => (a.posicao ?? 0) - (b.posicao ?? 0));
-    const listados = new Set(daConfig.map((item) => item.bloco));
+    const ordemConfigurada = unicosEmOrdem(daConfig.map((item) => item.bloco));
+    const listados = new Set(ordemConfigurada);
     ordemBase = [
-      ...daConfig.map((item) => item.bloco),
-      ...ordemPadrao.filter((id) => !listados.has(id))
+      ...ordemConfigurada,
+      ...ordemPadraoUnica.filter((id) => !listados.has(id))
     ];
     for (const item of daConfig) {
       if (item.visivel === false) ocultosSetor.add(item.bloco);
@@ -51,7 +65,7 @@ export function resolverLayoutBlocos(ordemPadrao, { configSetor = null, prefsUsu
   let ocultos = ocultosSetor;
 
   if (prefsUsuario && Array.isArray(prefsUsuario.ordem) && prefsUsuario.ordem.length > 0) {
-    const doUsuario = prefsUsuario.ordem.filter((id) => idsValidos.has(id));
+    const doUsuario = unicosEmOrdem(prefsUsuario.ordem.filter((id) => idsValidos.has(id)));
     const listados = new Set(doUsuario);
     ordem = [...doUsuario, ...ordemBase.filter((id) => !listados.has(id))];
   }
