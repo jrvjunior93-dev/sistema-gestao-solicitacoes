@@ -26,6 +26,7 @@ import {
 import { hasAnyExplicitPermissao, isBusinessAdmin } from '../utils/acessoProduto';
 import { userHasSetorCapability } from '../utils/setor';
 import { formatCurrencyInput, normalizeCurrencyTyping } from '../utils/formatters';
+import { downloadRhImportTemplate } from '../utils/rhImportacaoPlanilha';
 
 /**
  * JORNADA PELO FORMULARIO (Fase 4 do modulo DP, 26/08).
@@ -865,6 +866,15 @@ export default function RhDpJornada({ onAbrirApuracao }) {
         descricao="A obra informa dias trabalhados, faltas, horas extras, acréscimos e descontos. O sistema calcula o pagamento."
         variante={linhas.length ? undefined : 'primario'}
         cor={linhas.length ? undefined : 'var(--c-primary)'}
+        acoes={(
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => downloadRhImportTemplate('JORNADA')}
+          >
+            Baixar modelo da jornada
+          </button>
+        )}
       >
         {/* Obra e requisito operacional para montar a jornada, portanto fica
             sempre visivel como campo. Empresa permanece um recorte opcional. */}

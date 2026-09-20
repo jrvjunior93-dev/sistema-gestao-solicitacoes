@@ -23,9 +23,9 @@ import {
   rejeitarRhSolicitacao,
   validarAnexoRhSolicitacao,
   getRhChecklistDoTipo,
+  getRhSolicitacaoAnexoLink,
   enviarRhSolicitacao
 } from '../services/rhDp';
-import { getLinkSeguroAnexoSolicitacao } from '../services/solicitacoes';
 
 /**
  * A ABA DE SOLICITACOES — acompanhar e decidir (26/08).
@@ -327,7 +327,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
   async function abrirAnexo(anexo) {
     limpar();
     try {
-      const url = await getLinkSeguroAnexoSolicitacao(anexo.arquivo_url);
+      const url = await getRhSolicitacaoAnexoLink(aberta.id, anexo.id);
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       avisar.erro(error.message || 'Nao foi possivel abrir o documento.');

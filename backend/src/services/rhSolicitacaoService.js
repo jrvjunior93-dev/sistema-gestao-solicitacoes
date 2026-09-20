@@ -17,7 +17,7 @@ const {
 const { ValidationError } = require('../middlewares/validation');
 const { setorParaHistorico } = require('../utils/codigoDoSetor');
 const rhVinculoObraService = require('./rhVinculoObraService');
-const { uploadToS3 } = require('./s3');
+const { uploadToS3, getPresignedUrl } = require('./s3');
 const { normalizeOriginalName } = require('../utils/fileName');
 
 /**
@@ -1425,6 +1425,18 @@ async function anexosDoPedido(solicitacaoId) {
   });
 }
 
+async function obterLinkAnexoDoPedido(solicitacaoId, anexoId) {
+  const anexo = await RhSolicitacaoAnexo.findOne({
+    where: { id: anexoId, solicitacao_id: solicitacaoId },
+    attributes: ['id', 'nome_original', 'arquivo_url']
+  });
+  if (!anexo?.arquivo_url) throw new ValidationError('Anexo da solicitacao nao encontrado.', 404);
+  return {
+    nome: anexo.nome_original,
+    url: await getPresignedUrl(anexo.arquivo_url, 300, { strict: true })
+  };
+}
+
 /**
  * O que ainda falta de documento obrigatorio neste pedido.
  *
@@ -1605,6 +1617,7 @@ module.exports = {
   pedidosAbertosPorColaborador,
   detalharSolicitacao,
   anexarNoPedido,
+  obterLinkAnexoDoPedido,
   conferirDocumentacao,
   validarAnexo,
   anexosDoPedido

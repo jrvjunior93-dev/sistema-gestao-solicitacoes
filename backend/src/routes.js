@@ -1964,6 +1964,7 @@ router.get('/rh/colaboradores/:colaboradorId/apontamentos', allowRhDpSolicitacao
 
 // Anexos: a obra manda, o DP ATESTA antes de virar documento do colaborador (26/08).
 router.get('/rh/solicitacoes/:id/anexos', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.listarAnexos);
+router.get('/rh/solicitacoes/:id/anexos/:anexoId/link', allowRhDpSolicitacaoVer, RhSolicitacaoController.obterLinkAnexo);
 router.post('/rh/solicitacoes/:id/anexos/:anexoId/validar', allowRhDpSolicitacaoDecidir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.validar);
 
 // --- Jornada por formulario, pagamento individual e historicos (Fases 4 e 5) ---
@@ -1980,6 +1981,8 @@ router.get('/rh/colaboradores/:id/historico-vinculo', allowRhDpSolicitacaoVer, v
 router.get('/rh/colaboradores/:id/historico-salario', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.historicoDeSalario);
 router.get('/rh/documentos/tipos', allowRhDpDocumentosRead, validateRequest({ query: validateRhDocumentoTipoQuery }), RhDocumentoController.listarTipos);
 router.get('/rh/documentos', allowRhDpDocumentosRead, validateRequest({ query: validateRhDocumentoQuery }), RhDocumentoController.index);
+router.get('/rh/colaboradores/:colaboradorId/dossie', allowRhDpDocumentosRead, validateRequest({ params: validateNumericIdParam('colaboradorId', 'Colaborador RH/DP') }), RhDocumentoController.dossie);
+router.get('/rh/colaboradores/:colaboradorId/dossie/:origem/:arquivoId/link', allowRhDpDocumentosRead, RhDocumentoController.obterLinkDossie);
 router.get('/rh/documentos/:id', allowRhDpDocumentosRead, validateRequest({ params: validateNumericIdParam('id', 'Documento RH/DP') }), RhDocumentoController.show);
 router.get('/rh/documentos/:id/link', allowRhDpDocumentosRead, validateRequest({ params: validateNumericIdParam('id', 'Documento RH/DP') }), RhDocumentoController.obterLink);
 router.post('/rh/documentos', allowRhDpDocumentosWrite, uploadRateLimit, uploadComprovantes.single('file'), validateRequest({ body: validateRhDocumentoCreateBody }), RhDocumentoController.create);
@@ -1997,6 +2000,8 @@ router.patch('/rh/apuracoes/:id/itens/:itemId', allowRhDpApuracaoWrite, critical
 router.post('/rh/apuracoes/:id/conferir', allowRhDpApuracaoWrite, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Apuracao RH/DP') }), RhApuracaoController.conferir);
 router.get('/rh/fechamentos', requireEnabledModule('FINANCEIRO'), allowRhDpObrigacoesRead, validateRequest({ query: validateRhFechamentoQuery }), RhFechamentoController.index);
 router.get('/rh/fechamentos/:id', requireEnabledModule('FINANCEIRO'), allowRhDpObrigacoesRead, validateRequest({ params: validateNumericIdParam('id', 'Fechamento RH/DP') }), RhFechamentoController.show);
+router.get('/rh/fechamentos/:id/comprovantes/:filaId', requireEnabledModule('FINANCEIRO'), allowRhDpObrigacoesRead, RhFechamentoController.obterComprovante);
+router.get('/rh/fechamentos/:id/comprovantes/:filaId/:comprovanteId', requireEnabledModule('FINANCEIRO'), allowRhDpObrigacoesRead, RhFechamentoController.obterComprovante);
 router.post('/rh/fechamentos/:id/reabrir', requireEnabledModule('FINANCEIRO'), allowRhDpFechamentoReopen, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Fechamento RH/DP'), body: validateRhReabrirFechamentoBody }), RhFechamentoController.reabrir);
 router.post('/rh/apuracoes/:id/fechar', requireEnabledModule('FINANCEIRO'), allowRhDpFechamentoExecute, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Apuracao RH/DP'), body: validateRhFecharApuracaoBody }), RhFechamentoController.fecharApuracao);
 

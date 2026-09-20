@@ -21,6 +21,7 @@ import { getObras } from '../services/obras';
 import {
   getRhEmpresasGrupo,
   getRhFechamento,
+  getRhFechamentoComprovanteLink,
   getRhFechamentos,
   reabrirRhFechamento
 } from '../services/rhDp';
@@ -247,6 +248,20 @@ export default function RhDpFechamentos({ comoAba = false }) {
       avisar.erro(error?.message || 'Erro ao carregar detalhe do fechamento RH/DP');
     } finally {
       setCarregandoDetalhe(false);
+    }
+  }
+
+  async function abrirComprovante(item) {
+    try {
+      const url = await getRhFechamentoComprovanteLink(
+        detalhe.id,
+        item.fila_id,
+        item.legado ? null : item.id
+      );
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Nao foi possivel abrir o comprovante de pagamento.');
     }
   }
 
@@ -588,6 +603,30 @@ export default function RhDpFechamentos({ comoAba = false }) {
                     titulo: 'Vencimento',
                     tipo: 'data',
                     render: (item) => formatDate(item.tituloFinanceiro?.data_vencimento)
+                  },
+                  {
+                    id: 'comprovantes',
+                    titulo: 'Comprovantes',
+                    tipo: 'acao',
+                    render: (item) => {
+                      const comprovantes = item.comprovantes_pagamento || [];
+                      if (!comprovantes.length) return <span className="app-note">Pendente</span>;
+                      return (
+                        <div className="flex flex-wrap gap-2">
+                          {comprovantes.map((comprovante, index) => (
+                            <button
+                              key={`${comprovante.fila_id}-${comprovante.id || 'legado'}-${index}`}
+                              type="button"
+                              className="btn btn-outline btn-sm"
+                              onClick={() => abrirComprovante(comprovante)}
+                              title={comprovante.nome || `Comprovante ${index + 1}`}
+                            >
+                              {comprovantes.length === 1 ? 'Abrir comprovante' : `Comprovante ${index + 1}`}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    }
                   }
                 ]}
                 itens={detalhe.titulos || []}

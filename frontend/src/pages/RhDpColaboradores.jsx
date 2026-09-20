@@ -26,6 +26,8 @@ import {
   atualizarRhColaborador,
   getRhColaborador,
   getRhColaboradores,
+  getRhDossieArquivoLink,
+  getRhDossieColaborador,
   getRhDocumentoLink,
   getRhDocumentos,
   getRhDocumentoTipos,
@@ -338,6 +340,7 @@ export default function RhDpColaboradores() {
   const [salvando, setSalvando] = useState(false);
   const [importando, setImportando] = useState(false);
   const [carregandoDocumentos, setCarregandoDocumentos] = useState(false);
+  const [carregandoDossie, setCarregandoDossie] = useState(false);
   const [salvandoDocumento, setSalvandoDocumento] = useState(false);
   const [substituindoDocumentoId, setSubstituindoDocumentoId] = useState(null);
   const [form, setForm] = useState(emptyForm());
@@ -347,6 +350,7 @@ export default function RhDpColaboradores() {
   const [formAberto, setFormAberto] = useState(false);
   const [tiposDocumento, setTiposDocumento] = useState([]);
   const [documentos, setDocumentos] = useState([]);
+  const [arquivosDossie, setArquivosDossie] = useState([]);
   const [resumoDocumentos, setResumoDocumentos] = useState(null);
   // ?q= da busca universal abre a lista já filtrada pelo nome/CPF.
   const [busca, setBusca] = useState(() => new URLSearchParams(window.location.search).get('q') || '');
@@ -446,6 +450,7 @@ export default function RhDpColaboradores() {
     if (!form.id) {
       setTiposDocumento([]);
       setDocumentos([]);
+      setArquivosDossie([]);
       setResumoDocumentos(null);
       return;
     }
@@ -462,6 +467,14 @@ export default function RhDpColaboradores() {
     filtroTipoDocumento,
     filtroValidadeDocumento
   ]);
+
+  useEffect(() => {
+    if (!form.id) return;
+    carregarDossieColaborador(form.id).catch((error) => {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao carregar o dossie do colaborador');
+    });
+  }, [form.id]);
 
   async function carregarBase() {
     try {
@@ -659,6 +672,16 @@ export default function RhDpColaboradores() {
     }
   }
 
+  async function carregarDossieColaborador(colaboradorId) {
+    try {
+      setCarregandoDossie(true);
+      const resposta = await getRhDossieColaborador(colaboradorId);
+      setArquivosDossie(Array.isArray(resposta?.itens) ? resposta.itens : []);
+    } finally {
+      setCarregandoDossie(false);
+    }
+  }
+
   async function abrirDocumento(id) {
     try {
       const url = await getRhDocumentoLink(id);
@@ -668,6 +691,16 @@ export default function RhDpColaboradores() {
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao abrir documento RH/DP');
+    }
+  }
+
+  async function abrirArquivoDossie(item) {
+    try {
+      const url = await getRhDossieArquivoLink(form.id, item);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao abrir arquivo do dossie');
     }
   }
 
@@ -1438,6 +1471,63 @@ export default function RhDpColaboradores() {
                         )}
                       </div>
                     </div>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    <div>
+                      <h3 className="form-section-legenda">Dossiê: solicitações e pagamentos</h3>
+                      <p className="app-note">
+                        Arquivos enviados nas solicitações e comprovantes anexados na Fila de Pagamentos.
+                        Documentos já validados pelo DP permanecem na tabela de arquivos oficiais acima.
+                      </p>
+                    </div>
+                    <TabelaPadrao
+                      colunas={[
+                        {
+                          id: 'origem',
+                          titulo: 'Origem',
+                          tipo: 'badge',
+                          render: (item) => item.origem === 'COMPROVANTE_PAGAMENTO'
+                            ? 'Pagamento'
+                            : `Solicitação #${item.solicitacao_id}`
+                        },
+                        {
+                          id: 'arquivo',
+                          titulo: 'Arquivo',
+                          tipo: 'identidade',
+                          noCard: 'titulo',
+                          render: (item) => (
+                            <CelulaDupla
+                              principal={item.nome || '-'}
+                              sub={item.titulo_descricao || item.categoria || item.solicitacao_tipo || '-'}
+                            />
+                          )
+                        },
+                        {
+                          id: 'situacao',
+                          titulo: 'Situação',
+                          tipo: 'status',
+                          render: (item) => item.situacao || '-'
+                        },
+                        {
+                          id: 'data',
+                          titulo: 'Data',
+                          tipo: 'data',
+                          render: (item) => formatDate(item.data)
+                        }
+                      ]}
+                      itens={arquivosDossie}
+                      storageKey="tabela:rh-dp-colaboradores:dossie"
+                      rotuloRolagem="Dossiê do colaborador"
+                      carregando={carregandoDossie}
+                      vazio="Nenhum arquivo de solicitação ou comprovante de pagamento vinculado."
+                      acoesLinha={(item) => (
+                        <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirArquivoDossie(item)}>
+                          Abrir
+                        </button>
+                      )}
+                      larguraAcoes={120}
+                    />
                   </div>
                 </BlocoConteudo>
               )}

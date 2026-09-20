@@ -6,6 +6,7 @@ const {
   cancelarSolicitacao,
   detalharSolicitacao,
   anexarNoPedido,
+  obterLinkAnexoDoPedido,
   conferirDocumentacao,
   validarAnexo,
   anexosDoPedido,
@@ -286,6 +287,16 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao listar os anexos da solicitacao');
+    }
+  },
+
+  async obterLinkAnexo(req, res) {
+    try {
+      await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
+      return res.json(await obterLinkAnexoDoPedido(req.params.id, req.params.anexoId));
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao gerar link do anexo da solicitacao');
     }
   },
 

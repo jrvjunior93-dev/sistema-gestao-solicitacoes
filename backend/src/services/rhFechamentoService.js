@@ -7,6 +7,8 @@ const {
   Parceiro,
   PaymentBeneficiary,
   MovimentoFinanceiro,
+  PagamentoManualFilaComprovante,
+  PagamentoManualFilaItem,
   RhApuracao,
   RhApuracaoEvento,
   RhColaborador,
@@ -21,6 +23,7 @@ const {
 } = require('../models');
 const { Op } = require('sequelize');
 const { ValidationError } = require('../middlewares/validation');
+const { getPresignedUrl } = require('./s3');
 const { canAccessFinanceiro, getUsuariosAcessoFinanceiro } = require('./authorizationService');
 const { notificacaoEventoAtivo } = require('./notificacaoConfigService');
 const {
@@ -78,6 +81,40 @@ const FECHAMENTO_INCLUDE = [
 
 function roundCurrency(value) {
   return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+}
+
+function normalizarComprovantesDoTitulo(titulo = {}) {
+  const comprovantes = [];
+
+  (titulo.filaPagamentosManuais || []).forEach((fila) => {
+    const hashes = new Set();
+    (fila.comprovantes || []).forEach((comprovante) => {
+      if (comprovante.hash) hashes.add(comprovante.hash);
+      comprovantes.push({
+        id: comprovante.id,
+        fila_id: fila.id,
+        nome: comprovante.nome,
+        banco: comprovante.banco || fila.comprovante_banco || null,
+        tipo: comprovante.tipo || fila.comprovante_tipo || null,
+        vinculado_em: comprovante.vinculado_em || fila.comprovante_vinculado_em || null,
+        legado: false
+      });
+    });
+
+    if (fila.comprovante_url && (!fila.comprovante_hash || !hashes.has(fila.comprovante_hash))) {
+      comprovantes.push({
+        id: null,
+        fila_id: fila.id,
+        nome: fila.comprovante_nome || 'Comprovante de pagamento',
+        banco: fila.comprovante_banco || null,
+        tipo: fila.comprovante_tipo || null,
+        vinculado_em: fila.comprovante_vinculado_em || null,
+        legado: true
+      });
+    }
+  });
+
+  return comprovantes.sort((a, b) => new Date(b.vinculado_em || 0) - new Date(a.vinculado_em || 0));
 }
 
 function appendAuditText(currentValue, line) {
@@ -530,6 +567,31 @@ async function detalharFechamentoRh(id, { transaction = undefined } = {}) {
                   'external_title_id',
                   'updatedAt'
                 ]
+              },
+              {
+                model: PagamentoManualFilaItem,
+                as: 'filaPagamentosManuais',
+                attributes: [
+                  'id',
+                  'status',
+                  'comprovante_nome',
+                  'comprovante_url',
+                  'comprovante_hash',
+                  'comprovante_banco',
+                  'comprovante_tipo',
+                  'comprovante_vinculado_em'
+                ],
+                separate: true,
+                order: [['id', 'DESC']],
+                include: [
+                  {
+                    model: PagamentoManualFilaComprovante,
+                    as: 'comprovantes',
+                    attributes: ['id', 'nome', 'hash', 'banco', 'tipo', 'vinculado_em'],
+                    separate: true,
+                    order: [['vinculado_em', 'DESC'], ['id', 'DESC']]
+                  }
+                ]
               }
             ]
           }
@@ -542,7 +604,56 @@ async function detalharFechamentoRh(id, { transaction = undefined } = {}) {
     throw new ValidationError('Fechamento RH/DP nao encontrado.', 404);
   }
 
-  return fechamento;
+  const plano = fechamento.get({ plain: true });
+  plano.titulos = (plano.titulos || []).map((item) => ({
+    ...item,
+    comprovantes_pagamento: normalizarComprovantesDoTitulo(item.tituloFinanceiro)
+  }));
+  return plano;
+}
+
+async function obterComprovanteFechamentoRh(fechamentoId, filaId, comprovanteId = null) {
+  const fila = await PagamentoManualFilaItem.findOne({
+    where: { id: filaId },
+    attributes: ['id', 'comprovante_nome', 'comprovante_url'],
+    include: [
+      {
+        model: TituloFinanceiro,
+        as: 'titulo',
+        attributes: ['id'],
+        required: true,
+        include: [
+          {
+            model: RhFechamentoTitulo,
+            as: 'fechamentoRh',
+            attributes: ['id', 'fechamento_id'],
+            required: true,
+            where: { fechamento_id: fechamentoId }
+          }
+        ]
+      }
+    ]
+  });
+
+  if (!fila) throw new ValidationError('Comprovante do fechamento nao encontrado.', 404);
+
+  if (comprovanteId) {
+    const comprovante = await PagamentoManualFilaComprovante.findOne({
+      where: { id: comprovanteId, fila_id: fila.id },
+      attributes: ['id', 'nome', 'url']
+    });
+    if (!comprovante?.url) throw new ValidationError('Comprovante do fechamento nao encontrado.', 404);
+    return {
+      nome: comprovante.nome,
+      url: await getPresignedUrl(comprovante.url, 300, { strict: true })
+    };
+  }
+
+  if (!fila.comprovante_url) throw new ValidationError('Comprovante do fechamento nao encontrado.', 404);
+  return {
+    nome: fila.comprovante_nome || 'Comprovante de pagamento',
+    url: await getPresignedUrl(fila.comprovante_url, 300, { strict: true })
+  };
 }
 
 async function obterDestinatariosFinanceiro(transaction) {
@@ -932,5 +1043,6 @@ module.exports = {
   detalharFechamentoRh,
   fecharApuracaoRh,
   listarFechamentosRh,
-  reabrirFechamentoRh
+  reabrirFechamentoRh,
+  obterComprovanteFechamentoRh
 };

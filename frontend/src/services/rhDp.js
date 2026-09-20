@@ -145,6 +145,25 @@ export async function getRhDocumentoLink(id) {
   return data?.url;
 }
 
+export async function getRhDossieColaborador(colaboradorId) {
+  const response = await fetch(`${API_URL}/rh/colaboradores/${colaboradorId}/dossie`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao carregar o dossie do colaborador');
+}
+
+export async function getRhDossieArquivoLink(colaboradorId, item) {
+  const params = new URLSearchParams();
+  if (item.fila_id && !item.legado) params.set('fila_id', item.fila_id);
+  const query = params.toString();
+  const response = await fetch(
+    `${API_URL}/rh/colaboradores/${colaboradorId}/dossie/${item.origem}/${item.arquivo_id}/link${query ? `?${query}` : ''}`,
+    { headers: authHeaders() }
+  );
+  const data = await parseJson(response, 'Erro ao gerar link do arquivo do dossie');
+  return data?.url;
+}
+
 function appendOptionalFormField(formData, key, value) {
   if (value === undefined || value === null || value === '') {
     return;
@@ -304,6 +323,16 @@ export async function getRhFechamento(id) {
   return parseJson(response, 'Erro ao buscar detalhe do fechamento RH/DP');
 }
 
+export async function getRhFechamentoComprovanteLink(fechamentoId, filaId, comprovanteId = null) {
+  const sufixo = comprovanteId ? `/${comprovanteId}` : '';
+  const response = await fetch(
+    `${API_URL}/rh/fechamentos/${fechamentoId}/comprovantes/${filaId}${sufixo}`,
+    { headers: authHeaders() }
+  );
+  const data = await parseJson(response, 'Erro ao gerar link do comprovante de pagamento');
+  return data?.url;
+}
+
 export async function fecharRhApuracao(apuracaoId, data) {
   const response = await fetch(`${API_URL}/rh/apuracoes/${apuracaoId}/fechar`, {
     method: 'POST',
@@ -420,6 +449,14 @@ export async function anexarNaRhSolicitacao(id, data, arquivo = null) {
 export async function listarAnexosRhSolicitacao(id) {
   const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/anexos`, { headers: authHeaders() });
   return parseJson(response, 'Erro ao listar os anexos da solicitacao');
+}
+
+export async function getRhSolicitacaoAnexoLink(solicitacaoId, anexoId) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${solicitacaoId}/anexos/${anexoId}/link`, {
+    headers: authHeaders()
+  });
+  const data = await parseJson(response, 'Erro ao gerar link do anexo da solicitacao');
+  return data?.url;
 }
 
 /** O DP atesta que o documento e valido — ou recusa dizendo por que. */

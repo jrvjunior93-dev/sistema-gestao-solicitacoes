@@ -28,6 +28,7 @@ import {
   getRhImportacoes
 } from '../services/rhDp';
 import { canExecuteRhDpImportacoes } from '../utils/acessoProduto';
+import { downloadRhImportTemplate } from '../utils/rhImportacaoPlanilha';
 
 const TIPOS_IMPORTACAO = [
   { value: 'JORNADA', label: 'Jornada' },
@@ -204,44 +205,6 @@ function getLinhaColaboradorNome(linha) {
     payload.nome,
     payload.Nome
   );
-}
-
-function buildTemplateRows(tipo) {
-  if (tipo === 'JORNADA') {
-    return [
-      ['Matricula', 'CPF', 'Dias_Trabalhados', 'Faltas', 'Horas_Extras', 'Adicionais', 'Descontos_Informados', 'Valor_Informado', 'Observacoes'],
-      ['MAT-001', '12345678909', '22', '0', '8', '250,00', '0,00', '', 'Competencia regular']
-    ];
-  }
-
-  if (tipo === 'EVENTO_VARIAVEL') {
-    return [
-      ['Matricula', 'CPF', 'Codigo_Evento', 'Descricao_Evento', 'Natureza', 'Valor', 'Referencia', 'Observacoes'],
-      ['MAT-001', '12345678909', 'HE50', 'Hora extra 50%', 'CREDITO', '480,00', 'Abril/2026', 'Lote complementar']
-    ];
-  }
-
-  return [
-    ['Matricula', 'CPF', 'Codigo_Evento', 'Descricao_Evento', 'Valor', 'Referencia', 'Observacoes'],
-    ['MAT-001', '12345678909', 'DESC-ADIANT', 'Desconto de adiantamento', '300,00', 'Abril/2026', 'Importado pela contabilidade']
-  ];
-}
-
-function downloadTemplate(tipo) {
-  const rows = buildTemplateRows(tipo);
-  const csv = rows
-    .map((cols) => cols.map((item) => `"${String(item).replace(/"/g, '""')}"`).join(';'))
-    .join('\r\n');
-
-  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8;' });
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `modelo-rh-importacao-${tipo.toLowerCase()}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.URL.revokeObjectURL(url);
 }
 
 /*
@@ -521,7 +484,7 @@ export default function RhDpImportacoes() {
         secundarias={TIPOS_IMPORTACAO.map((item) => ({
           rotulo: `Modelo ${item.label}`,
           title: `Baixar o modelo CSV de ${item.label.toLowerCase()}`,
-          onClick: () => downloadTemplate(item.value)
+          onClick: () => downloadRhImportTemplate(item.value)
         }))}
       />
 
