@@ -93,7 +93,7 @@ const FILTROS_DA_TELA = [
   { id: 'status', rotulo: 'Status' }
 ];
 
-export default function RhDpFechamentos() {
+export default function RhDpFechamentos({ comoAba = false }) {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { avisos, avisar, fechar } = useAvisos();
@@ -233,6 +233,11 @@ export default function RhDpFechamentos() {
   function sincronizarUrl(atuais) {
     const vigentes = paramsAtuais.current;
     const proximos = new URLSearchParams();
+    // Esta consulta vive dentro de Pessoal. Preservar a aba evita que uma
+    // alteração de filtro remova `aba=fechamentos` e devolva o usuário para
+    // a primeira aba da página.
+    const aba = vigentes.get('aba');
+    if (aba) proximos.set('aba', aba);
     if (atuais.competencia) proximos.set('competencia', atuais.competencia);
     DIMENSOES.forEach((dimensao) => {
       Array.from(atuais[dimensao] || []).forEach((valor) => proximos.append(dimensao, valor));
@@ -341,23 +346,25 @@ export default function RhDpFechamentos() {
     }
   }
 
+  const Container = comoAba ? 'section' : Pagina;
+
   return (
-    <Pagina className="rhdp-page">
-      {/* D6/D7: sem prefixo "RH/DP" no titulo e sem os links cruzados de
-          navegacao — o breadcrumb e o menu ja situam o modulo (R11), e
-          /rh-dp/apuracao hoje redireciona para a aba de Apuracao do Pessoal. */}
-      <PageHeader
-        titulo="Fechamentos"
-        contagem={`${resumo.quantidade} fechamento${resumo.quantidade === 1 ? '' : 's'}`}
-        descricao="Competências fechadas, títulos gerados no financeiro central e o detalhe do lote."
-      />
+    <Container
+      className={comoAba ? 'app-pagina rhdp-fechamentos-aba' : 'rhdp-page'}
+      aria-label={comoAba ? 'Fechamentos da apuração' : undefined}
+    >
+      {!comoAba ? (
+        <PageHeader
+          titulo="Fechamentos"
+          contagem={`${resumo.quantidade} fechamento${resumo.quantidade === 1 ? '' : 's'}`}
+          descricao="Competências fechadas, títulos gerados no financeiro central e o detalhe do lote."
+        />
+      ) : null}
 
       <Avisos avisos={avisos} aoFechar={fechar} />
 
-      {/* B3: a contagem de fechamentos subiu para o cabeçalho (C2) e sai
-          daqui — a mesma informação em dois lugares faz o olho conferir se
-          são a mesma coisa. Ficam os dois números que o cabeçalho não diz. */}
-      <StatGrid colunas={2}>
+      <StatGrid colunas={comoAba ? 3 : 2}>
+        {comoAba ? <StatTile label="Fechamentos" valor={resumo.quantidade} /> : null}
         <StatTile label="Títulos gerados" valor={resumo.totalTitulos} />
         <StatTile label="Valor total" valor={formatCurrency(resumo.totalValor)} />
       </StatGrid>
@@ -565,6 +572,6 @@ export default function RhDpFechamentos() {
       ) : null}
 
       {elementoConfirmacao}
-    </Pagina>
+    </Container>
   );
 }

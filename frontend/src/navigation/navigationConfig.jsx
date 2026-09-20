@@ -509,7 +509,7 @@ export const NAV_MODULES = [
           Cadastros.
         Pessoal é a porta do dia a dia; Colaboradores é o cadastro.
       */
-      { id: 'rhdp-pessoal', ordem: 10, label: 'Pessoal', desc: 'Solicitações, colaboradores, pagamento de mão de obra e apuração — o dia a dia do DP.', icon: HiOutlineUserGroup, to: '/rh-dp/pessoal', can: (user) => canViewRhDpColaboradores(user) },
+      { id: 'rhdp-pessoal', ordem: 10, label: 'Pessoal', desc: 'Solicitações, colaboradores, pagamento de mão de obra, apuração e fechamentos — o dia a dia do DP.', icon: HiOutlineUserGroup, to: '/rh-dp/pessoal', can: (user) => canViewRhDpColaboradores(user) },
       { id: 'rhdp-colaboradores', ordem: 20, label: 'Colaboradores', desc: 'Cadastro de colaboradores.', icon: HiOutlineUsers, to: '/rh-dp/colaboradores', can: (user) => canAccessRhDpCadastroColaboradores(user) },
       { id: 'rhdp-importacoes', ordem: 50, label: 'Importações', desc: 'Importações de jornada e eventos.', icon: HiOutlineCloudArrowUp, to: '/rh-dp/importacoes', can: (user) => canExecuteRhDpImportacoes(user) },
       { id: 'rhdp-documentos', ordem: 60, label: 'Documentos', desc: 'Documentos dos colaboradores.', icon: HiOutlineFolderOpen, to: '/rh-dp/documentos', can: (user) => canViewRhDpDocumentos(user) },

@@ -42,7 +42,14 @@ import RhDpPessoalSolicitacoes from './RhDpPessoalSolicitacoes';
 import RhDpTransferencias from './RhDpTransferencias';
 import RhDpJornada from './RhDpJornada';
 import RhDpApuracao from './RhDpApuracao';
-import { canViewRhDpApuracao, hasAnyExplicitPermissao, isBusinessAdmin } from '../utils/acessoProduto';
+import RhDpFechamentos from './RhDpFechamentos';
+import {
+  canViewRhDpApuracao,
+  canViewRhDpObrigacoes,
+  hasAnyExplicitPermissao,
+  hasEnabledModule,
+  isBusinessAdmin
+} from '../utils/acessoProduto';
 import { userHasSetorCapability } from '../utils/setor';
 import { formatCurrencyInput, getCpfCnpjError, getPixDocumentError, maskCpfCnpj, normalizeCurrencyTyping } from '../utils/formatters';
 import DateInputBR from '../components/DateInputBR';
@@ -358,6 +365,7 @@ export default function RhDpPessoal() {
   */
   const [parametros, setParametros] = useSearchParams();
   const podeVerApuracao = canViewRhDpApuracao(user);
+  const podeVerFechamentos = canViewRhDpObrigacoes(user) && hasEnabledModule(user, 'FINANCEIRO');
   /*
     Uma fonte só para rótulo, apoio do cabeçalho e ordem. O `apoio` existe
     porque o cabeçalho é ÚNICO para as quatro abas: o texto fixo antigo
@@ -387,8 +395,13 @@ export default function RhDpPessoal() {
       id: 'apuracao',
       rotulo: 'Apuração',
       apoio: 'Pré-folha por competência a partir das obras importadas, com ajustes auditados.'
+    }] : []),
+    ...(podeVerFechamentos ? [{
+      id: 'fechamentos',
+      rotulo: 'Fechamentos',
+      apoio: 'Competências encerradas e títulos financeiros gerados a partir das apurações.'
     }] : [])
-  ], [podeVerApuracao]);
+  ], [podeVerApuracao, podeVerFechamentos]);
   const abasDisponiveis = useMemo(() => ABAS.map((aba) => aba.id), [ABAS]);
   const abaDaUrl = parametros.get('aba');
   const abaAtiva = abasDisponiveis.includes(abaDaUrl) ? abaDaUrl : 'solicitacoes';
@@ -1276,6 +1289,7 @@ export default function RhDpPessoal() {
         <RhDpJornada onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined} />
       ) : null}
       {abaAtiva === 'apuracao' && podeVerApuracao ? <RhDpApuracao /> : null}
+      {abaAtiva === 'fechamentos' && podeVerFechamentos ? <RhDpFechamentos comoAba /> : null}
 
       {pedidosDoColaborador.id ? (
         <OverlayModal
