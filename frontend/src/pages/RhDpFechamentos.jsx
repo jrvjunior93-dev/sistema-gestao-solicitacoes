@@ -143,6 +143,8 @@ export default function RhDpFechamentos({ comoAba = false }) {
     }
   });
   const detalheCarregado = useRef(null);
+  const detalheRef = useRef(null);
+  const rolarDetalheAposCarregar = useRef(false);
   // A sincronia da URL roda dentro de um timeout: sem esta referência ela
   // leria os parâmetros do render em que foi agendada e podia apagar um
   // fechamento_id escolhido no meio do caminho.
@@ -180,6 +182,24 @@ export default function RhDpFechamentos({ comoAba = false }) {
     detalheCarregado.current = fechamentoId;
     abrirFechamento(fechamentoId);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!detalhe?.id || !rolarDetalheAposCarregar.current) return;
+
+    rolarDetalheAposCarregar.current = false;
+    const frame = requestAnimationFrame(rolarParaDetalhe);
+
+    return () => cancelAnimationFrame(frame);
+  }, [detalhe?.id]);
+
+  function rolarParaDetalhe() {
+    const reduzirMovimento = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    detalheRef.current?.scrollIntoView({
+      behavior: reduzirMovimento ? 'auto' : 'smooth',
+      block: 'start'
+    });
+    detalheRef.current?.focus({ preventScroll: true });
+  }
 
   async function carregarBase() {
     try {
@@ -250,6 +270,14 @@ export default function RhDpFechamentos({ comoAba = false }) {
   }
 
   function selecionarFechamento(item) {
+    rolarDetalheAposCarregar.current = true;
+
+    if (String(detalhe?.id || '') === String(item.id)) {
+      rolarParaDetalhe();
+      rolarDetalheAposCarregar.current = false;
+      return;
+    }
+
     const proximos = new URLSearchParams(paramsAtuais.current);
     proximos.set('fechamento_id', String(item.id));
     setSearchParams(proximos);
@@ -464,30 +492,31 @@ export default function RhDpFechamentos({ comoAba = false }) {
       </BlocoConteudo>
 
       {detalhe ? (
-        <BlocoConteudo
-          variante="secundario"
-          titulo={`Fechamento ${detalhe.apuracao?.competencia || '-'} - ${detalhe.apuracao?.empresaGrupo?.nome || '-'}`}
-          descricao={`Recorte: ${detalhe.apuracao?.obra?.nome || 'todas as obras'} · ${detalhe.apuracao?.tipo_vinculo || 'todos os vinculos'}`}
-          acoes={(
-            <>
-              <StatusBadge status={detalhe.status} kind={familiaStatus(detalhe.status)} />
-              {String(detalhe.status || '').toUpperCase() === 'FECHADO' && podeReabrirFechamento ? (
-                <button
-                  type="button"
-                  className="btn btn-outline btn-perigo-suave btn-sm"
-                  onClick={reabrirFechamentoAtual}
-                  disabled={reabrindo}
-                >
-                  {reabrindo ? 'Processando...' : 'Estornar e reabrir'}
-                </button>
-              ) : null}
-            </>
-          )}
-        >
-          {carregandoDetalhe ? (
-            <p className="app-note">Carregando detalhe do fechamento...</p>
-          ) : (
-            <>
+        <div ref={detalheRef} tabIndex={-1}>
+          <BlocoConteudo
+            variante="secundario"
+            titulo={`Fechamento ${detalhe.apuracao?.competencia || '-'} - ${detalhe.apuracao?.empresaGrupo?.nome || '-'}`}
+            descricao={`Recorte: ${detalhe.apuracao?.obra?.nome || 'todas as obras'} · ${detalhe.apuracao?.tipo_vinculo || 'todos os vinculos'}`}
+            acoes={(
+              <>
+                <StatusBadge status={detalhe.status} kind={familiaStatus(detalhe.status)} />
+                {String(detalhe.status || '').toUpperCase() === 'FECHADO' && podeReabrirFechamento ? (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-perigo-suave btn-sm"
+                    onClick={reabrirFechamentoAtual}
+                    disabled={reabrindo}
+                  >
+                    {reabrindo ? 'Processando...' : 'Estornar e reabrir'}
+                  </button>
+                ) : null}
+              </>
+            )}
+          >
+            {carregandoDetalhe ? (
+              <p className="app-note">Carregando detalhe do fechamento...</p>
+            ) : (
+              <>
               {/* As datas eram um paragrafo solto sob o titulo; viraram
                   ladrilho como o resto do resumo do lote — mesma informacao,
                   em superficie. */}
@@ -566,9 +595,10 @@ export default function RhDpFechamentos({ comoAba = false }) {
                 rotuloRolagem="Títulos do fechamento"
                 vazio="Nenhum título foi vinculado a este fechamento."
               />
-            </>
-          )}
-        </BlocoConteudo>
+              </>
+            )}
+          </BlocoConteudo>
+        </div>
       ) : null}
 
       {elementoConfirmacao}
