@@ -1,4 +1,10 @@
-const { Obra, TituloFinanceiro, TituloFinanceiroRateio, ObraCustoHistorico } = require('../models');
+const {
+  Obra,
+  TituloFinanceiro,
+  TituloFinanceiroRateio,
+  ObraCustoHistorico,
+  ContratoComercial
+} = require('../models');
 const { Op, fn, col, literal } = require('sequelize');
 const { TIPO_CENTRO_CUSTO_OBRA } = require('../constants/centroCusto');
 const { obterVgvEfetivoPorObras } = require('../services/obraVgvService');
@@ -18,6 +24,26 @@ module.exports = {
       }
 
       const vgvPorObra = await obterVgvEfetivoPorObras(obras);
+
+      // Venda e recebimento sao etapas diferentes. O valor vendido vem dos contratos comerciais
+      // efetivos; rascunhos ainda nao representam venda e distratos deixam de compor a carteira.
+      const contratosVendidos = await ContratoComercial.findAll({
+        attributes: [
+          'obra_id',
+          [fn('SUM', col('valor_total')), 'valor_vendido'],
+          [fn('COUNT', col('id')), 'quantidade_contratos']
+        ],
+        where: {
+          obra_id: { [Op.in]: obraIds },
+          status: { [Op.in]: ['ATIVO', 'INADIMPLENTE', 'QUITADO'] }
+        },
+        group: ['obra_id'],
+        raw: true
+      });
+      const vendasPorObra = new Map(contratosVendidos.map((row) => [Number(row.obra_id), {
+        valor: Number(row.valor_vendido || 0),
+        quantidade: Number(row.quantidade_contratos || 0)
+      }]));
 
       // Aggregate titulos por obra_id e tipo
       const agregados = await TituloFinanceiro.findAll({
@@ -168,6 +194,10 @@ module.exports = {
           ? valorReferencia - receber.total_valor_baixado
           : receber.total_valor_saldo;
         const lucroPrejuizo = receber.total_valor_baixado - pagar.total_valor_baixado;
+        const vendas = vendasPorObra.get(Number(obra.id)) || { valor: 0, quantidade: 0 };
+        const faltaVender = valorReferencia > 0
+          ? Math.max(valorReferencia - vendas.valor, 0)
+          : null;
 
         return {
           id: obra.id,
@@ -185,6 +215,9 @@ module.exports = {
           orcamento,
           valor_referencia_resultado: valorReferencia || null,
           falta_receber: faltaReceber,
+          valor_vendido: vendas.valor,
+          falta_vender: faltaVender,
+          quantidade_contratos_venda: vendas.quantidade,
           lucro_prejuizo: lucroPrejuizo,
           pagar: {
             total: pagar.total_valor_original,

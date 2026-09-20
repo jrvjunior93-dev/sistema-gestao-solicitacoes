@@ -12,6 +12,7 @@ import {
   useAvisos
 } from '../components/padrao';
 import { getResultadoObras } from '../services/financeiro';
+import './FinanceiroResultadoObras.css';
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -22,24 +23,9 @@ function formatPercent(value) {
   return `${Number(value).toFixed(1)}%`;
 }
 
-/*
-  M4 / R8 — previsto AZUL x realizado VERMELHO, e a cor e da SERIE.
-
-  Esta tela faz duas comparacoes, e as duas usam a MESMA dupla de cores no
-  cartao da obra, na barra de proporcao e no consolidado do topo:
-    - orcamento (previsto)      x executado/pago (realizado);
-    - total a receber (previsto) x recebido (realizado).
-
-  Antes o "executado" era AZUL — a cor do previsto — e o "recebido" era um
-  verde cru fora de token: duas series pintadas com a cor da terceira. E
-  exatamente o caso que a R8 chama de defeito ("um card azul e a tabela
-  vermelha para o MESMO custo").
-
-  Lucro/prejuizo, falta a receber e custo/referencia sao SALDO DERIVADO:
-  nao pertencem a serie nenhuma e ficam NEUTROS, como a R8 manda. O sinal
-  negativo continua legivel no proprio numero — e assim o vermelho da tela
-  significa uma coisa so: realizado.
-*/
+/* O consolidado preserva a comparação prevista x realizada do sistema. Os cartões detalhados
+   seguem a leitura operacional solicitada: execução em azul, recebimento em verde, pendências em
+   âmbar e prejuízo em vermelho, sempre usando os tokens do tema. */
 function Previsto({ children }) {
   return <span className="texto-previsto">{children}</span>;
 }
@@ -48,11 +34,27 @@ function Realizado({ children }) {
   return <span className="texto-realizado">{children}</span>;
 }
 
-function BarraProporcao({ valor, max, serie }) {
-  const pct = max > 0 ? Math.min(100, Math.max(0, (Number(valor || 0) / max) * 100)) : 0;
+function MetricaObra({ rotulo, valor, apoio, tom = 'neutro' }) {
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--ui-border)]">
-      <div className={`h-full rounded-full ${serie}`} style={{ width: `${pct}%` }} />
+    <div className={`resultado-obra-metrica resultado-obra-metrica--${tom}`}>
+      <span className="resultado-obra-metrica-rotulo">{rotulo}</span>
+      <strong className="resultado-obra-metrica-valor">{valor}</strong>
+      {apoio ? <span className="resultado-obra-metrica-apoio">{apoio}</span> : null}
+    </div>
+  );
+}
+
+function ProgressoObra({ rotulo, valor, max, tom }) {
+  const percentual = max > 0 ? Math.min(100, Math.max(0, (Number(valor || 0) / max) * 100)) : 0;
+  return (
+    <div className="resultado-obra-progresso">
+      <div className="resultado-obra-progresso-legenda">
+        <span>{rotulo}</span>
+        <span className="tabular-nums">{percentual.toFixed(1)}%</span>
+      </div>
+      <div className="resultado-obra-progresso-trilha" role="progressbar" aria-label={rotulo} aria-valuenow={percentual} aria-valuemin="0" aria-valuemax="100">
+        <span className={`resultado-obra-progresso-barra resultado-obra-progresso-barra--${tom}`} style={{ width: `${percentual}%` }} />
+      </div>
     </div>
   );
 }
@@ -75,15 +77,15 @@ function ObraBloco({ obra }) {
   const faltaReceber = Number(obra.falta_receber ?? (
     valorReferenciaResultado > 0 ? valorReferenciaResultado - recebido : obra.receber.saldo
   ));
+  const valorVendido = Number(obra.valor_vendido || 0);
+  const faltaVender = obra.falta_vender == null ? null : Number(obra.falta_vender);
   const lucroPrejuizo = Number(obra.lucro_prejuizo ?? (recebido - executado));
 
   const margemRealizada = executado > 0 && valorReferencia > 0
     ? ((executado / valorReferencia) * 100).toFixed(1)
     : null;
 
-  const pctExecutado = orcamento > 0 ? Math.min(100, (executado / orcamento) * 100) : 0;
   const baseRecebimento = valorReferenciaResultado > 0 ? valorReferenciaResultado : totalReceber;
-  const pctRecebido = baseRecebimento > 0 ? Math.min(100, (recebido / baseRecebimento) * 100) : 0;
   const fonteVgv = obra.vgv_origem === 'UNIDADES'
     ? `${obra.vgv_unidades_total} unidades ativas · valor base de venda`
     : obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
@@ -92,91 +94,89 @@ function ObraBloco({ obra }) {
         ? 'Sem unidades ativas vinculadas; VGV não calculado'
         : undefined;
 
-  const apoio = [
-    obra.cidade || null,
-    obra.margem_custo_esperada != null ? `Margem ${formatPercent(obra.margem_custo_esperada)}` : null
-  ].filter(Boolean).join(' · ');
-
   return (
-    <BlocoConteudo
-      variante="secundario"
-      titulo={obra.nome}
-      contagem={obra.codigo || `Obra ${obra.id}`}
-      descricao={apoio}
-      /* A etiqueta de classificacao continua ETIQUETA — a versao anterior a
-         pintava com paleta crua (violet/sky), que a R25 proibe; agora e a
-         pilula do sistema, com token e icone. `neutral` de proposito: a
-         classificacao nao e boa nem ruim, e o vermelho e o azul desta tela
-         ja pertencem a serie realizado/previsto (M4). */
-      acoes={classificacao ? <StatusBadge status={classificacao} kind="neutral" /> : null}
-    >
-      <StatGrid colunas={2}>
-        {isPrivada ? (
-          <StatTile label="VGV" valor={<Previsto>{formatCurrency(valorReferencia)}</Previsto>} sub={fonteVgv} />
-        ) : null}
-        {isPublica ? (
-          <StatTile label="Planilha geral" valor={<Previsto>{formatCurrency(obra.planilha_geral)}</Previsto>} />
-        ) : null}
-        {orcamento != null ? (
-          <StatTile label="Orçamento" valor={<Previsto>{formatCurrency(orcamento)}</Previsto>} />
-        ) : null}
-        <StatTile
-          label="Executado (pago)"
-          valor={<Realizado>{formatCurrency(executado)}</Realizado>}
-          sub={historicoPago > 0
+    <article className="resultado-obra-card">
+      <header className="resultado-obra-cabecalho">
+        <div className="resultado-obra-identidade">
+          <span className="resultado-obra-codigo">{obra.codigo || `Obra ${obra.id}`}</span>
+          <h2 className="resultado-obra-nome">{obra.nome}</h2>
+        </div>
+        <div className="resultado-obra-classificacao">
+          {classificacao ? <StatusBadge status={classificacao} kind="info" /> : null}
+          {obra.margem_custo_esperada != null ? (
+            <span>Margem {formatPercent(obra.margem_custo_esperada)}</span>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="resultado-obra-metricas">
+        <MetricaObra
+          rotulo={isPrivada ? 'VGV' : isPublica ? 'Planilha geral' : 'Referência'}
+          valor={formatCurrency(valorReferenciaResultado)}
+          apoio={fonteVgv}
+        />
+        <MetricaObra rotulo="Orçamento" valor={orcamento == null ? '—' : formatCurrency(orcamento)} />
+        <MetricaObra
+          rotulo="Valor vendido"
+          valor={formatCurrency(valorVendido)}
+          apoio={`${Number(obra.quantidade_contratos_venda || 0)} contrato(s) vigente(s)`}
+          tom="vendido"
+        />
+        <MetricaObra
+          rotulo="Falta vender"
+          valor={faltaVender == null ? '—' : formatCurrency(faltaVender)}
+          apoio={valorReferenciaResultado > 0 ? `${isPrivada ? 'VGV' : 'Referência'} menos vendido` : undefined}
+          tom="pendente"
+        />
+        <MetricaObra
+          rotulo="Executado (pago)"
+          valor={formatCurrency(executado)}
+          apoio={historicoPago > 0
             ? `inclui ${formatCurrency(historicoPago)} pagos no sistema anterior`
             : totalPagar > 0 ? `de ${formatCurrency(totalPagar)} empenhados` : undefined}
+          tom="executado"
         />
-        <StatTile
-          label="A receber"
-          valor={<Previsto>{formatCurrency(totalReceber)}</Previsto>}
+        <MetricaObra
+          rotulo="Recebido"
+          valor={formatCurrency(recebido)}
+          apoio={historicoRecebido > 0 ? `inclui ${formatCurrency(historicoRecebido)} do sistema anterior` : undefined}
+          tom="recebido"
         />
-        <StatTile
-          label="Recebido"
-          valor={<Realizado>{formatCurrency(recebido)}</Realizado>}
-          sub={historicoRecebido > 0 ? `inclui ${formatCurrency(historicoRecebido)} do sistema anterior` : undefined}
+        <MetricaObra
+          rotulo="Falta receber"
+          valor={formatCurrency(faltaReceber)}
+          apoio={valorReferenciaResultado > 0 ? `${isPrivada ? 'VGV' : 'Planilha geral'} menos recebido` : 'Saldo dos títulos a receber'}
+          tom="pendente"
         />
-        <StatTile label="Falta receber" valor={formatCurrency(faltaReceber)} sub={valorReferenciaResultado > 0 ? `${isPrivada ? 'VGV' : 'Planilha geral'} menos recebido` : 'Saldo dos títulos a receber'} />
-        <StatTile label="Lucro/Prejuízo" valor={formatCurrency(lucroPrejuizo)} sub="Recebido menos executado" />
+        <MetricaObra
+          rotulo="Lucro/Prejuízo"
+          valor={formatCurrency(lucroPrejuizo)}
+          apoio="Recebido menos executado"
+          tom={lucroPrejuizo < 0 ? 'negativo' : 'positivo'}
+        />
         {margemRealizada != null ? (
-          <StatTile
-            label="Custo / Referência"
+          <MetricaObra
+            rotulo="Custo / Referência"
             valor={`${margemRealizada}%`}
-            sub={`meta ${formatPercent(obra.margem_custo_esperada)}`}
+            apoio={`meta ${formatPercent(obra.margem_custo_esperada)}`}
           />
         ) : null}
-      </StatGrid>
+      </div>
 
-      <div className="mt-4 grid gap-3">
+      <footer className="resultado-obra-rodape">
         {orcamento != null ? (
-          <div>
-            <div className="mb-2 flex justify-between text-xs text-[var(--c-muted)]">
-              {/* R8: a legenda carrega a MESMA cor da serie que descreve. */}
-              <span>
-                <span className="texto-realizado">Executado</span>
-                {' / '}
-                <span className="texto-previsto">Orçamento</span>
-              </span>
-              <span className="tabular-nums">{pctExecutado.toFixed(1)}%</span>
-            </div>
-            <BarraProporcao valor={executado} max={orcamento} serie="serie-realizada" />
-          </div>
+          <ProgressoObra rotulo="Executado / Orçamento" valor={executado} max={orcamento} tom="executado" />
         ) : null}
         {baseRecebimento > 0 ? (
-          <div>
-            <div className="mb-2 flex justify-between text-xs text-[var(--c-muted)]">
-              <span>
-                <span className="texto-realizado">Recebido</span>
-                {' / '}
-                <span className="texto-previsto">{valorReferenciaResultado > 0 ? (isPrivada ? 'VGV' : 'Planilha geral') : 'Títulos a receber'}</span>
-              </span>
-              <span className="tabular-nums">{pctRecebido.toFixed(1)}%</span>
-            </div>
-            <BarraProporcao valor={recebido} max={baseRecebimento} serie="serie-realizada" />
-          </div>
+          <ProgressoObra
+            rotulo={`Recebido / ${valorReferenciaResultado > 0 ? (isPrivada ? 'VGV' : 'Planilha geral') : 'Títulos a receber'}`}
+            valor={recebido}
+            max={baseRecebimento}
+            tom="recebido"
+          />
         ) : null}
-      </div>
-    </BlocoConteudo>
+      </footer>
+    </article>
   );
 }
 
@@ -236,6 +236,8 @@ export default function FinanceiroResultadoObras() {
     acc.totalReceber += obra.receber.total;
     acc.recebido += obra.receber.recebido;
     acc.historicoRecebido += Number(obra.receber.historico?.valor || 0);
+    acc.valorVendido += Number(obra.valor_vendido || 0);
+    acc.faltaVender += Number(obra.falta_vender || 0);
     const classificacao = String(obra.classificacao || '').trim().toUpperCase();
     const valorReferencia = classificacao === 'PRIVADA'
       ? (obra.vgv_efetivo ?? obra.vgv)
@@ -248,7 +250,7 @@ export default function FinanceiroResultadoObras() {
     ));
     acc.lucroPrejuizo += Number(obra.lucro_prejuizo ?? (obra.receber.recebido - obra.pagar.executado));
     return acc;
-  }, { orcamento: 0, executado: 0, historicoPago: 0, totalReceber: 0, recebido: 0, historicoRecebido: 0, faltaReceber: 0, lucroPrejuizo: 0 }), [obrasFiltradas]);
+  }, { orcamento: 0, executado: 0, historicoPago: 0, totalReceber: 0, recebido: 0, historicoRecebido: 0, valorVendido: 0, faltaVender: 0, faltaReceber: 0, lucroPrejuizo: 0 }), [obrasFiltradas]);
 
   return (
     <Pagina>
@@ -268,7 +270,7 @@ export default function FinanceiroResultadoObras() {
       <PageHeader
         titulo="Resultado de Obras"
         contagem={loading ? 'Carregando…' : `${obrasFiltradas.length} obra(s)`}
-        descricao="Visão financeira consolidada por obra — orçado, executado e recebimento."
+        descricao="Visão consolidada por obra — vendas, orçamento, execução e recebimento."
       />
 
       <Avisos avisos={avisos} aoFechar={fechar} />
@@ -302,6 +304,8 @@ export default function FinanceiroResultadoObras() {
       >
         <StatGrid colunas={3}>
           <StatTile label="Orçamento" valor={<Previsto>{formatCurrency(resumo.orcamento)}</Previsto>} />
+          <StatTile label="Valor vendido" valor={formatCurrency(resumo.valorVendido)} tom="info" />
+          <StatTile label="Falta vender" valor={formatCurrency(resumo.faltaVender)} tom="warning" />
           <StatTile label="Executado" valor={<Realizado>{formatCurrency(resumo.executado)}</Realizado>}
             sub={resumo.historicoPago > 0 ? `inclui ${formatCurrency(resumo.historicoPago)} do sistema anterior` : undefined} />
           <StatTile label="Total a receber" valor={<Previsto>{formatCurrency(resumo.totalReceber)}</Previsto>} />

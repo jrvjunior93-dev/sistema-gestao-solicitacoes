@@ -1,0 +1,145 @@
+.resultado-obra-card {
+  min-width: 0;
+  overflow: clip;
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--raio-3);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.resultado-obra-cabecalho {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--esp-3);
+  padding: var(--esp-3) var(--esp-4);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.resultado-obra-identidade,
+.resultado-obra-classificacao,
+.resultado-obra-metrica {
+  min-width: 0;
+}
+
+.resultado-obra-codigo,
+.resultado-obra-classificacao > span:last-child,
+.resultado-obra-metrica-rotulo,
+.resultado-obra-metrica-apoio,
+.resultado-obra-progresso-legenda {
+  font-size: var(--fonte-detalhe);
+  line-height: var(--lh-detalhe);
+}
+
+.resultado-obra-codigo {
+  display: block;
+  color: var(--c-muted);
+}
+
+.resultado-obra-nome {
+  margin: var(--esp-1) 0 0;
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  font-weight: 800;
+  color: var(--c-text);
+  text-transform: uppercase;
+}
+
+.resultado-obra-classificacao {
+  display: grid;
+  justify-items: end;
+  gap: var(--esp-1);
+  color: var(--c-muted);
+  text-align: right;
+}
+
+.resultado-obra-metricas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--esp-4) var(--esp-6);
+  padding: var(--esp-4);
+}
+
+.resultado-obra-metrica {
+  display: grid;
+  align-content: start;
+  gap: var(--esp-1);
+}
+
+.resultado-obra-metrica-rotulo {
+  color: var(--texto-apoio-aa);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.resultado-obra-metrica-valor {
+  color: var(--c-text);
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  font-weight: 800;
+  overflow-wrap: break-word;
+}
+
+.resultado-obra-metrica-apoio {
+  color: var(--c-muted);
+  overflow-wrap: break-word;
+}
+
+.resultado-obra-metrica--vendido .resultado-obra-metrica-valor,
+.resultado-obra-metrica--executado .resultado-obra-metrica-valor {
+  color: var(--c-primary);
+}
+
+.resultado-obra-metrica--recebido .resultado-obra-metrica-valor,
+.resultado-obra-metrica--positivo .resultado-obra-metrica-valor {
+  color: var(--c-success);
+}
+
+.resultado-obra-metrica--pendente .resultado-obra-metrica-valor {
+  color: var(--c-warning);
+}
+
+.resultado-obra-metrica--negativo .resultado-obra-metrica-valor {
+  color: var(--c-danger);
+}
+
+.resultado-obra-rodape {
+  display: grid;
+  gap: var(--esp-3);
+  padding: var(--esp-3) var(--esp-4) var(--esp-4);
+  border-top: 1px solid var(--ui-border);
+}
+
+.resultado-obra-progresso {
+  display: grid;
+  gap: var(--esp-2);
+}
+
+.resultado-obra-progresso-legenda {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--esp-3);
+  color: var(--c-text);
+}
+
+.resultado-obra-progresso-trilha {
+  height: var(--esp-1);
+  overflow: clip;
+  border-radius: var(--raio-3);
+  background: var(--ui-border);
+}
+
+.resultado-obra-progresso-barra {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.resultado-obra-progresso-barra--executado {
+  background: var(--c-primary);
+}
+
+.resultado-obra-progresso-barra--recebido {
+  background: var(--c-success);
+}
