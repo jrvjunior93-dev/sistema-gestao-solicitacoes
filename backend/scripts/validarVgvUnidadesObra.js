@@ -65,8 +65,8 @@ async function main() {
   assert.equal(resultado[2].falta_receber, 80000, 'Sem VGV completo, prevalece o saldo dos titulos');
   assert.equal(resultado[3].planilha_geral, 800000);
   assert.equal(resultado[3].orcamento, 560000);
-  assert.equal(resultado[3].valor_total_resultado, 560000);
-  assert.equal(resultado[3].falta_receber, 560000);
+  assert.equal(resultado[3].valor_total_resultado, 800000);
+  assert.equal(resultado[3].falta_receber, 800000);
   console.log('VGV privado: base de venda de unidades ativas, sem soma parcial nem alteracao do cadastro.');
 }
 

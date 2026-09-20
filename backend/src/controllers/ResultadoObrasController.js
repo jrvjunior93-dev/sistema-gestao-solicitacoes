@@ -190,11 +190,12 @@ module.exports = {
 
         // Orçamento = valorReferencia - custo esperado = valorReferencia * (1 - margem/100)
         const orcamento = (valorReferencia > 0 && margem > 0) ? valorReferencia * (1 - margem / 100) : null;
-        const valorTotalResultado = classificacao === 'PRIVADA'
+        // O volume financeiro representa a receita potencial da obra: VGV nas privadas e
+        // valor integral da planilha nas publicas. O orcamento permanece separado como a
+        // referencia de custo, ja descontada a margem esperada.
+        const valorTotalResultado = ['PRIVADA', 'PUBLICA'].includes(classificacao)
           ? valorReferencia
-          : classificacao === 'PUBLICA'
-            ? Number(orcamento || 0)
-            : 0;
+          : 0;
         const faltaReceber = valorTotalResultado > 0
           ? valorTotalResultado - receber.total_valor_baixado
           : receber.total_valor_saldo;

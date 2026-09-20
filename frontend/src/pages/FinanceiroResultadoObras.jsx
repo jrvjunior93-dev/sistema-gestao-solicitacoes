@@ -29,11 +29,14 @@ function classificacaoObra(obra) {
 
 function valorTotalObra(obra) {
   const classificacao = classificacaoObra(obra);
-  if (obra?.valor_total_resultado != null) return Number(obra.valor_total_resultado || 0);
   if (classificacao === 'PRIVADA') {
-    return Number(obra?.valor_referencia_resultado ?? obra?.vgv_efetivo ?? obra?.vgv ?? 0);
+    return Number(obra?.valor_total_resultado ?? obra?.valor_referencia_resultado ?? obra?.vgv_efetivo ?? obra?.vgv ?? 0);
   }
-  if (classificacao === 'PUBLICA') return Number(obra?.orcamento || 0);
+  if (classificacao === 'PUBLICA') {
+    // A planilha integral e a receita potencial da obra publica. Nao usar aqui o
+    // orcamento de custo, que ja desconta a margem esperada.
+    return Number(obra?.valor_referencia_resultado ?? obra?.planilha_geral ?? 0);
+  }
   return 0;
 }
 
@@ -164,7 +167,7 @@ function ObraBloco({ obra }) {
         <MetricaObra
           rotulo="Falta receber"
           valor={formatCurrency(faltaReceber)}
-          apoio={baseTotalObra > 0 ? `${isPrivada ? 'VGV' : 'Orçamento'} menos recebido` : 'Saldo dos títulos a receber'}
+          apoio={baseTotalObra > 0 ? `${isPrivada ? 'VGV' : 'Planilha geral'} menos recebido` : 'Saldo dos títulos a receber'}
           tom="pendente"
         />
         <MetricaObra
@@ -188,7 +191,7 @@ function ObraBloco({ obra }) {
         ) : null}
         {baseRecebimento > 0 ? (
           <ProgressoObra
-            rotulo={`Recebido / ${baseTotalObra > 0 ? (isPrivada ? 'VGV' : 'Orçamento') : 'Títulos a receber'}`}
+            rotulo={`Recebido / ${baseTotalObra > 0 ? (isPrivada ? 'VGV' : 'Planilha geral') : 'Títulos a receber'}`}
             valor={recebido}
             max={baseRecebimento}
             tom="recebido"
@@ -277,18 +280,18 @@ export default function FinanceiroResultadoObras() {
     (obra) => classificacaoObra(obra) === 'PUBLICA'
   ), [obrasFiltradas]);
   const rotuloValorTotal = temObraPrivada && temObraPublica
-    ? 'Valor total das obras'
+    ? 'Volume financeiro total'
     : temObraPrivada
       ? 'VGV total'
       : temObraPublica
-        ? 'Orçamento total'
-        : 'Valor total';
+        ? 'Valor total das planilhas'
+        : 'Volume financeiro total';
   const apoioValorTotal = temObraPrivada && temObraPublica
-    ? 'VGV das privadas + orçamento das públicas'
+    ? 'VGV das privadas + planilhas das públicas'
     : temObraPrivada
       ? 'VGV das obras privadas'
       : temObraPublica
-        ? 'Orçamento das obras públicas'
+        ? 'Valor integral das planilhas públicas'
         : undefined;
 
   return (
@@ -346,6 +349,11 @@ export default function FinanceiroResultadoObras() {
             label={rotuloValorTotal}
             valor={<Previsto>{formatCurrency(resumo.valorTotalObras)}</Previsto>}
             sub={apoioValorTotal}
+          />
+          <StatTile
+            label="Orçamento de custo"
+            valor={<Previsto>{formatCurrency(resumo.orcamento)}</Previsto>}
+            sub="Volume das obras menos a margem esperada"
           />
           {temObraPrivada ? (
             <StatTile
