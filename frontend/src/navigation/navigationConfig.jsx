@@ -31,6 +31,11 @@
 //            abre PRONTO PARA USO (formulários "Novo/Nova", upload):
 //            esses aparecem com selo de ação no painel de atalhos.
 //            `fixavel: false` desabilita a estrela para o destino.
+//   commandItems
+//          - destinos finais que devem aparecer no Ctrl+K e participar
+//            da resolução da rota, mas não viram novos cards no hub do
+//            módulo. Cada item continua obrigado a declarar o MESMO
+//            predicado `can` usado pela rota que protege a página.
 // =====================================================================
 import {
   HiOutlineSquares2X2,
@@ -112,12 +117,14 @@ import {
   canViewProvisionamentos,
   canViewProvisionamentosDashboard,
   canViewFinanceiroRelatorios,
+  canViewFinanceiroRelatorio,
   hasPermissao,
   canViewRhDpColaboradores,
   canAccessRhDpCadastroColaboradores,
   canViewRhDpDocumentos,
   canViewRhDpObrigacoes,
   canViewSolicitacoesRelatorios,
+  canViewSolicitacoesRelatorioOperacional,
   canViewSstArea,
   canViewSstDashboard,
   canAccessCrm,
@@ -311,6 +318,9 @@ export const NAV_MODULES = [
       { id: 'solicitacoes-arquivadas', ordem: 50, label: 'Arquivadas', desc: 'Solicitações que você arquivou.', icon: HiOutlineArchiveBox, to: '/solicitacoes-arquivadas', can: SEMPRE },
       { id: 'prioridades-diretoria', ordem: 30, label: 'Prioridades Diretoria', desc: 'Lotes de prioridade definidos pela diretoria.', icon: HiOutlineStar, to: '/prioridades-diretoria', can: (user) => canAccessPrioridadesDiretoria(user) },
       { id: 'nova-solicitacao', fixavel: 'acao', ordem: 20, label: 'Nova Solicitação', desc: 'Abra uma nova solicitação para um setor.', icon: HiOutlinePlusCircle, to: '/nova-solicitacao', can: (user) => !['SETOR', 'FINANCEIRO'].includes(perfilDe(user)) }
+    ],
+    commandItems: [
+      { id: 'solicitacoes-relatorio-operacional', label: 'Painel Operacional de Solicitações', desc: 'Relatório de volume, funil, gargalos e distribuição das solicitações.', icon: HiOutlineChartBar, to: '/solicitacoes/relatorios/operacional', can: (user) => canViewSolicitacoesRelatorioOperacional(user) }
     ]
   },
   {
@@ -362,6 +372,19 @@ export const NAV_MODULES = [
       { id: 'compras-insumos', ordem: 100, label: 'Gestão de Insumos', desc: 'Catálogo de insumos compráveis.', icon: HiOutlineRectangleGroup, to: '/gestao-insumos', can: (user) => canManageComprasConfiguracoes(user) },
       { id: 'compras-unidades', ordem: 110, label: 'Gestão de Unidades', desc: 'Unidades de medida dos insumos.', icon: HiOutlineScale, to: '/gestao-unidades', can: (user) => canManageComprasConfiguracoes(user) },
       { id: 'compras-categorias', ordem: 120, label: 'Gestão de Categorias', desc: 'Categorias de insumos e serviços.', icon: HiOutlineFolderOpen, to: '/gestao-categorias', can: (user) => canManageComprasConfiguracoes(user) }
+    ],
+    commandItems: [
+      { id: 'compras-relatorio-auditoria', label: 'Auditoria de Compras', desc: 'Relatório administrativo de compras e evidências do processo.', icon: HiOutlineChartBar, to: '/compras/relatorios/auditoria', can: (user) => canViewComprasRelatorios(user) && isBusinessAdmin(user) },
+      { id: 'compras-relatorio-demanda-pedidos', label: 'Demanda e Pedidos', desc: 'Relatório de solicitações e pedidos por status, obra e valor.', icon: HiOutlineChartBar, to: '/compras/relatorios/demanda-pedidos', can: (user) => canViewComprasRelatorios(user) && canViewComprasCotacoes(user) },
+      { id: 'compras-relatorio-evolucao', label: 'Evolução Mensal de Compras', desc: 'Relatório mensal de compras emitidas, pedidos, obras e status.', icon: HiOutlineChartBar, to: '/compras/relatorios/evolucao', can: (user) => canViewComprasRelatorios(user) && canViewComprasCotacoes(user) },
+      { id: 'compras-relatorio-diretas', label: 'Relatório de Compras Diretas', desc: 'Usuários, credores, itens, obras e volume das compras diretas.', icon: HiOutlineChartBar, to: '/compras/relatorios/compras-diretas', can: (user) => canViewComprasRelatorios(user) && canViewComprasCotacoes(user) },
+      { id: 'compras-relatorio-fornecedor', label: 'Compras por Fornecedor', desc: 'Relatório financeiro de pedidos por fornecedor e obra.', icon: HiOutlineChartBar, to: '/compras/relatorios/compras-fornecedor', can: (user) => canViewComprasRelatorios(user) && canViewComprasCotacoes(user) },
+      { id: 'compras-relatorio-categorias-insumos', label: 'Categorias e Insumos', desc: 'Relatório de valores por categoria, insumo e obra.', icon: HiOutlineChartBar, to: '/compras/relatorios/categorias-insumos', can: (user) => canViewComprasRelatorios(user) && canViewComprasCotacoes(user) },
+      { id: 'compras-relatorio-precos-insumos', label: 'Preços por Insumo', desc: 'Relatório de preço médio por insumo e fornecedor.', icon: HiOutlineChartBar, to: '/compras/relatorios/precos-insumos', can: (user) => canViewComprasRelatorios(user) && canViewComprasCotacoes(user) },
+      { id: 'compras-relatorio-economia-cotacoes', label: 'Economia em Cotações', desc: 'Relatório comparativo entre menor preço e vencedor selecionado.', icon: HiOutlineChartBar, to: '/compras/relatorios/economia-cotacoes', can: (user) => canViewComprasRelatorios(user) && canViewComprasCotacoes(user) },
+      { id: 'compras-relatorio-pendencias-cotacoes', label: 'Pendências de Cotações', desc: 'Relatório de respostas e prazos pendentes nas cotações.', icon: HiOutlineChartBar, to: '/compras/relatorios/pendencias-cotacoes', can: (user) => canViewComprasRelatorios(user) && canViewComprasCotacoes(user) },
+      { id: 'compras-relatorio-fornecedores', label: 'Relatório de Fornecedores', desc: 'Ranking de fornecedores por volume, resposta e recorrência.', icon: HiOutlineChartBar, to: '/compras/relatorios/fornecedores', can: (user) => canViewComprasRelatorios(user) && canViewComprasCotacoes(user) },
+      { id: 'compras-relatorio-ciclo', label: 'Ciclo de Compras', desc: 'Relatório do tempo entre solicitação, cotação e pedido.', icon: HiOutlineChartBar, to: '/compras/relatorios/ciclo', can: (user) => canViewComprasRelatorios(user) && canViewComprasCotacoes(user) }
     ]
   },
   {
@@ -410,6 +433,21 @@ export const NAV_MODULES = [
       { id: 'fin-cadastros', ordem: 190, label: 'Cadastros Financeiros', desc: 'Categorias, formas de pagamento e afins.', icon: HiOutlineRectangleGroup, to: '/financeiro/cadastros', can: (user) => canAccessFinanceiro(user) },
       { id: 'fin-upload-comprovantes', fixavel: 'acao', ordem: 140, label: 'Upload Comprovantes', desc: 'Envio de comprovantes de pagamento.', icon: HiOutlineCloudArrowUp, to: '/comprovantes/upload', can: (user) => canAccessFinanceiro(user) },
       { id: 'fin-comprovantes-pendentes', ordem: 150, label: 'Comprovantes Pendentes', desc: 'Comprovantes aguardando conferência.', icon: HiOutlineReceiptRefund, to: '/comprovantes/pendentes', can: (user) => canAccessFinanceiro(user) }
+    ],
+    commandItems: [
+      { id: 'fin-relatorio-fluxo-caixa', label: 'Fluxo de Caixa', desc: 'Relatório financeiro previsto e realizado por período e obra.', icon: HiOutlineChartBar, to: '/financeiro/relatorios', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.visualizar') },
+      { id: 'fin-relatorio-grupo-consolidado', label: 'Grupo Consolidado', desc: 'Relatório executivo consolidado das empresas do grupo.', icon: HiOutlineChartBar, to: '/financeiro/relatorios/grupo-consolidado', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.grupo_consolidado') },
+      { id: 'fin-relatorio-fluxo-consolidado', label: 'Fluxo Consolidado', desc: 'Relatório do fluxo de caixa consolidado entre empresas.', icon: HiOutlineChartBar, to: '/financeiro/relatorios/fluxo-consolidado', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.fluxo_consolidado') },
+      { id: 'fin-relatorio-dre', label: 'DRE', desc: 'Relatório do resultado gerencial por categorias financeiras.', icon: HiOutlineChartBar, to: '/financeiro/relatorios/dre', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.dre') },
+      { id: 'fin-relatorio-diagnostico-dre', label: 'Diagnóstico DRE', desc: 'Relatório de consistências e pendências que impactam a DRE.', icon: HiOutlineChartBar, to: '/financeiro/relatorios/dre/diagnostico', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.diagnostico_dre') },
+      { id: 'fin-relatorio-intercompany', label: 'Entre Empresas', desc: 'Relatório de movimentos e eliminações entre empresas.', icon: HiOutlineChartBar, to: '/financeiro/relatorios/intercompany', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.intercompany') },
+      { id: 'fin-relatorio-endividamento', label: 'Endividamento', desc: 'Relatório de dívidas e compromissos bancários.', icon: HiOutlineChartBar, to: '/financeiro/relatorios/endividamento', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.endividamento') },
+      { id: 'fin-relatorio-movimentacao-contas', label: 'Movimentação de Contas', desc: 'Relatório de entradas, saídas e permutas por conta.', icon: HiOutlineChartBar, to: '/financeiro/relatorios?relatorio=movimentacao-contas', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.movimentacao_contas') },
+      { id: 'fin-relatorio-conciliacao-contas', label: 'Conciliação Bancária', desc: 'Relatório de movimentos conciliados, pendentes e ignorados.', icon: HiOutlineChartBar, to: '/financeiro/relatorios?relatorio=conciliacao-contas', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.conciliacao_contas') },
+      { id: 'fin-relatorio-analitico', label: 'Relatório Analítico de Títulos', desc: 'Extrato analítico dos títulos financeiros.', icon: HiOutlineChartBar, to: '/financeiro/relatorios/analitico', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.analitico') },
+      { id: 'fin-relatorio-financeiro-obras', label: 'Financeiro de Obras', desc: 'Relatório realizado, comprometido e a realizar por obra.', icon: HiOutlineChartBar, to: '/financeiro/relatorios/financeiro-obras', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.financeiro_obras') },
+      { id: 'fin-relatorio-resultado-obras', label: 'Resultado de Obras', desc: 'Relatório de resultado financeiro agregado por obra.', icon: HiOutlineChartBar, to: '/financeiro/relatorios/resultado-obras', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.resultado_obras') },
+      { id: 'fin-relatorio-centros-custo', label: 'Resultado por Centros de Custo', desc: 'Relatório financeiro agrupado por centro de custo.', icon: HiOutlineChartBar, to: '/financeiro/relatorios/centros-custo', can: (user) => canViewFinanceiroRelatorio(user, 'financeiro.relatorios.centros_custo') }
     ]
   },
   {
@@ -438,6 +476,9 @@ export const NAV_MODULES = [
       { id: 'fiscal-divergencias', ordem: 30, label: 'Divergências', desc: 'Divergências entre fiscal e financeiro.', icon: HiOutlineExclamationTriangle, to: '/fiscal/divergencias', can: (user) => canViewFiscalDocuments(user) },
       { id: 'fiscal-exportacao', ordem: 40, label: 'Exportação Contábil', desc: 'Lotes de exportação para a contabilidade.', icon: HiOutlineFolderOpen, to: '/fiscal/exportacao-contabil', can: (user) => canViewFiscalDocuments(user) },
       { id: 'fiscal-logs', ordem: 90, label: 'Logs de Sincronização', desc: 'Execuções das sincronizações fiscais.', icon: HiOutlineClipboardDocumentList, to: '/fiscal/logs', can: (user) => canViewFiscalLogs(user) }
+    ],
+    commandItems: [
+      { id: 'fiscal-relatorio-operacional', label: 'Painel Operacional Fiscal', desc: 'Relatório de documentos, divergências e arquivos fiscais por período.', icon: HiOutlineChartBar, to: '/fiscal/relatorios/operacional', can: (user) => canViewFiscalDocuments(user) }
     ]
   },
   {
@@ -459,6 +500,12 @@ export const NAV_MODULES = [
       { id: 'crm-canais', ordem: 100, label: 'Canais', desc: 'Canais de atendimento conectados.', icon: HiOutlineChatBubbleOvalLeft, to: '/crm/admin/canais', can: (user) => canViewCrmConfiguracoes(user) },
       { id: 'crm-numeros', ordem: 110, label: 'Números', desc: 'Números de WhatsApp do atendimento.', icon: HiOutlinePaperAirplane, to: '/crm/admin/numeros', can: (user) => canViewCrmConfiguracoes(user) },
       { id: 'crm-integracoes', ordem: 120, label: 'Integrações', desc: 'Integrações externas do CRM.', icon: HiOutlineAdjustmentsHorizontal, to: '/crm/admin/integracoes', can: (user) => canViewCrmConfiguracoes(user) }
+    ],
+    commandItems: [
+      { id: 'crm-relatorio-executivo', label: 'Executivo CRM', desc: 'Relatório executivo de conversão, carteira, SLA e distribuição.', icon: HiOutlineChartBar, to: '/crm/relatorios/executivo', can: (user) => canViewCrmDashboard(user) },
+      { id: 'crm-dashboard-gerencial', label: 'Dashboard Gerencial CRM', desc: 'Indicadores gerenciais de carteira e conversão.', icon: HiOutlinePresentationChartLine, to: '/crm/dashboard-gerencial', can: (user) => canViewCrmDashboard(user) },
+      { id: 'crm-dashboard-sla', label: 'Dashboard SLA CRM', desc: 'Tempo de atendimento, atrasos e cumprimento de prazos.', icon: HiOutlinePresentationChartLine, to: '/crm/dashboard-sla', can: (user) => canViewCrmDashboard(user) },
+      { id: 'crm-dashboard-distribuicao', label: 'Dashboard de Distribuição CRM', desc: 'Distribuição de leads e carga por responsável.', icon: HiOutlinePresentationChartLine, to: '/crm/dashboard-distribuicao', can: (user) => canViewCrmDashboard(user) }
     ]
   },
   {
@@ -475,6 +522,9 @@ export const NAV_MODULES = [
       { id: 'comercial-tabelas', ordem: 50, label: 'Tabelas de Preço', desc: 'Tabelas de preço por empreendimento.', icon: HiOutlineTableCells, to: '/comercial/tabelas-preco', can: (user) => canViewComercialEmpreendimentos(user) },
       { id: 'comercial-contratos', ordem: 20, label: 'Contratos de Venda', desc: 'Contratos de venda das unidades.', icon: HiOutlineDocumentCheck, to: '/comercial/contratos', can: (user) => canViewComercialContratos(user) },
       { id: 'comercial-modelos', ordem: 70, label: 'Modelos de Contrato', desc: 'Modelos usados nos contratos de venda.', icon: HiOutlineFolderOpen, to: '/comercial/modelos-contrato', can: (user) => canViewComercialContratos(user) }
+    ],
+    commandItems: [
+      { id: 'comercial-relatorio-operacional', label: 'Painel Comercial Operacional', desc: 'Relatório de contratos, VGV, unidades, estoque e documentos.', icon: HiOutlineChartBar, to: '/comercial/relatorios/operacional', can: (user) => canViewComercialContratos(user) }
     ]
   },
   {
@@ -489,6 +539,9 @@ export const NAV_MODULES = [
       { id: 'prov-lista', ordem: 10, label: 'Provisionamentos', desc: 'Provisões financeiras registradas.', icon: HiOutlineBanknotes, to: '/provisoes-financeiras', can: (user) => canViewProvisionamentos(user) },
       { id: 'prov-nova', fixavel: 'acao', ordem: 20, label: 'Nova Provisão', desc: 'Registre uma nova provisão financeira.', icon: HiOutlinePlusCircle, to: '/provisoes-financeiras/nova', can: (user) => canCreateProvisionamentos(user) },
       { id: 'prov-categorias', ordem: 50, label: 'Categorias Macro', desc: 'Categorias macro das provisões.', icon: HiOutlineFolderOpen, to: '/provisoes-financeiras/categorias', can: (user) => canManageProvisionamentoCategorias(user) }
+    ],
+    commandItems: [
+      { id: 'prov-relatorio-operacional', label: 'Painel Operacional de Provisionamento', desc: 'Relatório de pressão futura, vencidos, prioridades e concentração.', icon: HiOutlineChartBar, to: '/provisoes-financeiras/relatorios/operacional', can: (user) => canViewProvisionamentosDashboard(user) }
     ]
   },
   {
@@ -515,6 +568,9 @@ export const NAV_MODULES = [
       { id: 'rhdp-documentos', ordem: 60, label: 'Documentos', desc: 'Documentos dos colaboradores.', icon: HiOutlineFolderOpen, to: '/rh-dp/documentos', can: (user) => canViewRhDpDocumentos(user) },
       { id: 'rhdp-fechamentos', ordem: 40, label: 'Fechamentos', desc: 'Fechamentos que geram títulos financeiros.', icon: HiOutlineBanknotes, to: '/rh-dp/fechamentos', can: (user) => canViewRhDpObrigacoes(user) && hasEnabledModule(user, 'FINANCEIRO') },
       { id: 'rhdp-relatorios', ordem: 70, label: 'Relatórios', desc: 'Relatórios de RH/DP.', icon: HiOutlineChartBar, to: '/rh-dp/relatorios', can: (user) => canAccessRhDpDashboard(user) }
+    ],
+    commandItems: [
+      { id: 'rhdp-relatorio-operacional', label: 'Painel Operacional RH/DP', desc: 'Relatório de colaboradores, documentos, apurações e fechamentos.', icon: HiOutlineChartBar, to: '/rh-dp/relatorios/operacional', can: (user) => canAccessRhDpDashboard(user) && canViewRhDpColaboradores(user) }
     ]
   },
   {
@@ -523,7 +579,10 @@ export const NAV_MODULES = [
     desc: 'Saúde e segurança do trabalho.',
     icon: HiOutlineShieldCheck,
     gate: (user) => canAccessSst(user),
-    children: SST_SIMPLIFIED_MODE ? sstChildrenSimplified() : sstChildrenFull()
+    children: SST_SIMPLIFIED_MODE ? sstChildrenSimplified() : sstChildrenFull(),
+    commandItems: SST_SIMPLIFIED_MODE ? [] : [
+      { id: 'sst-relatorio-operacional', label: 'Painel Operacional SST', desc: 'Relatório de conformidade, eventos, riscos e prontidão eSocial.', icon: HiOutlineChartBar, to: '/sst/relatorios/operacional', can: (user) => canViewSstDashboard(user) && hasPermissao(user, 'sst.analytics.visualizar') }
+    ]
   },
   {
     id: 'cadastros',
@@ -553,6 +612,9 @@ export const NAV_MODULES = [
       { id: 'contratos-relatorios', ordem: 30, label: 'Relatórios', desc: 'Relatórios operacionais de contratos.', icon: HiOutlineChartBar, to: '/contratos/relatorios', can: SEMPRE },
       { id: 'contratos-gestao', ordem: 10, secaoConfig: 'cadastros', ordemConfig: 80, label: 'Gestão de Contratos', desc: 'Contratos, aditivos e medições.', icon: HiOutlineDocumentCheck, to: '/gestao-contratos', can: SEMPRE },
       { id: 'contratos-novo', fixavel: 'acao', ordem: 20, label: 'Novo Contrato', desc: 'Crie um contrato do fluxo com parcelas.', icon: HiOutlinePlusCircle, to: '/contratos/novo', can: SEMPRE }
+    ],
+    commandItems: [
+      { id: 'contratos-relatorio-operacional', label: 'Painel Operacional de Contratos', desc: 'Relatório de contratos, valores, saldos e pendências cadastrais.', icon: HiOutlineChartBar, to: '/contratos/relatorios/operacional', can: SEMPRE }
     ]
   },
   {
@@ -709,10 +771,34 @@ export function getVisibleModule(user, moduleId) {
   return getVisibleModules(user).find((mod) => mod.id === moduleId) || null;
 }
 
-// Lista plana de destinos visíveis (para a busca global).
+function getVisibleCommandItemsFromModule(mod, user) {
+  return (Array.isArray(mod.commandItems) ? mod.commandItems : [])
+    .filter((item) => !item.can || item.can(user));
+}
+
+function getVisibleRouteItemsFromModule(mod, user) {
+  return [...mod.children, ...getVisibleCommandItemsFromModule(mod, user)];
+}
+
+// Lista plana dos destinos que pertencem aos hubs e aos atalhos.
 export function getVisibleItems(user) {
   return getVisibleModules(user).flatMap((mod) => (
     mod.children.map((child) => ({
+      ...child,
+      label: resolveLabel(child, user),
+      moduleId: mod.id,
+      moduleLabel: mod.label
+    }))
+  ));
+}
+
+// Catálogo completo do Ctrl+K: mantém os cards dos hubs e acrescenta
+// páginas finais (principalmente relatórios) sem inflar visualmente os
+// hubs dos módulos. O filtro ocorre antes da busca, portanto um destino
+// sem permissão nem chega ao componente da paleta.
+export function getVisibleCommandItems(user) {
+  return getVisibleModules(user).flatMap((mod) => (
+    getVisibleRouteItemsFromModule(mod, user).map((child) => ({
       ...child,
       label: resolveLabel(child, user),
       moduleId: mod.id,
@@ -750,7 +836,7 @@ export function getSecoesConfiguracoes(user) {
 // script de verificação de links mortos (scripts/validarNavegacao.mjs).
 export function getAllDestinations() {
   const base = NAV_MODULES.flatMap((mod) => (
-    mod.children.map((child) => ({
+    [...mod.children, ...(Array.isArray(mod.commandItems) ? mod.commandItems : [])].map((child) => ({
       id: child.id,
       moduleId: mod.id,
       label: child.label,
@@ -919,7 +1005,7 @@ function trilhaPorCaminho(user, pathname) {
   const prefixos = [];
   const vizinhos = [];
   for (const mod of getVisibleModules(user)) {
-    for (const item of mod.children) {
+    for (const item of getVisibleRouteItemsFromModule(mod, user)) {
       const caminho = stripHash(item.to);
       if (pathname === caminho || pathname.startsWith(`${caminho}/`)) {
         prefixos.push({ mod, item, caminho });
@@ -953,7 +1039,7 @@ function trilhaPorCaminho(user, pathname) {
 export function findActiveNode(user, pathname, search = '') {
   let best = null;
   for (const mod of getVisibleModules(user)) {
-    for (const item of mod.children) {
+    for (const item of getVisibleRouteItemsFromModule(mod, user)) {
       if (!isPathActive(pathname, item.to, search)) continue;
       const peso = (alvo) => stripHash(alvo).length + (partesDoDestino(alvo).busca ? 1000 : 0);
       if (!best || peso(item.to) > peso(best.item.to)) {

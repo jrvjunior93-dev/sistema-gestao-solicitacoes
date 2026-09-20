@@ -18,6 +18,11 @@ import PainelFiltrosVisiveis from './PainelFiltrosVisiveis';
  * A tela guarda o estado: `ativos` = { dimensaoId: Set(valores) } e trata
  * `aoAlternar(dimensaoId, valor, opcoes)`. Conjunto vazio = sem filtro.
  *
+ * Uma dimensão curta pode declarar `inline: true`: suas opções ficam
+ * expostas na própria faixa, sem o botão que abre menu. É o formato para
+ * dois ou três recortes frequentes cuja abertura só acrescentaria clique
+ * e esconderia escolhas que cabem integralmente na tela.
+ *
  * ## `unico` na dimensão — quando o serviço só aceita UM valor (02/09)
  *
  * Achado na leva do RH/DP: telas mapeiam a dimensão para um parâmetro
@@ -100,7 +105,7 @@ export default function BarraFiltros({
   filtros.forEach((dim) => {
     const selecionados = ativos[dim.id] || new Set();
     (dim.opcoes || []).forEach((opcao) => {
-      if (selecionados.has(String(opcao.valor))) {
+      if (!dim.inline && selecionados.has(String(opcao.valor))) {
         etiquetas.push({
           dimensao: dim.id,
           dimensaoRotulo: dim.rotulo,
@@ -247,14 +252,47 @@ export default function BarraFiltros({
       {(filtros.length > 0 || (painel && !painelPromovido)) && (
         <div className="la-filtros-linha">
           {filtros.length > 0 ? <span className="la-filtros-rotulo">Filtrar:</span> : null}
-          {filtros.map((dim) => (
-            <FiltroRapido
-              key={dim.id}
-              dim={dim}
-              selecionados={ativos[dim.id] || new Set()}
-              onToggle={(valor) => aoAlternar(dim.id, valor, { unico: Boolean(dim.unico) })}
-            />
-          ))}
+          {filtros.map((dim) => {
+            const selecionados = ativos[dim.id] || new Set();
+            if (dim.inline) {
+              return (
+                <div
+                  key={dim.id}
+                  className="app-filtro-opcoes-inline"
+                  role="group"
+                  aria-label={`Filtrar por ${String(dim.rotulo).toLowerCase()}`}
+                >
+                  <span className="app-filtro-opcoes-inline-rotulo">{dim.rotulo}:</span>
+                  {(dim.opcoes || []).map((opcao) => {
+                    const valor = String(opcao.valor);
+                    const ativo = selecionados.has(valor);
+                    return (
+                      <button
+                        key={valor}
+                        type="button"
+                        className={`la-filtro-btn ${ativo ? 'ativo' : ''}`}
+                        aria-pressed={ativo}
+                        onClick={() => aoAlternar(dim.id, valor, { unico: Boolean(dim.unico) })}
+                      >
+                        {opcao.rotulo}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            }
+            return (
+              <FiltroRapido
+                key={dim.id}
+                dim={dim}
+                selecionados={selecionados}
+                onToggle={(valor) => aoAlternar(dim.id, valor, { unico: Boolean(dim.unico) })}
+              />
+            );
+          })}
+          {aoLimpar && filtros.some((dim) => dim.inline && (ativos[dim.id]?.size || 0) > 0) ? (
+            <button type="button" className="la-link" onClick={aoLimpar}>Limpar filtros</button>
+          ) : null}
           {painelPromovido ? null : painel}
         </div>
       )}

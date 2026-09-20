@@ -116,18 +116,22 @@ function ObraBloco({ obra }) {
           apoio={fonteVgv}
         />
         <MetricaObra rotulo="Orçamento" valor={orcamento == null ? '—' : formatCurrency(orcamento)} />
-        <MetricaObra
-          rotulo="Valor vendido"
-          valor={formatCurrency(valorVendido)}
-          apoio={`${Number(obra.quantidade_contratos_venda || 0)} contrato(s) vigente(s)`}
-          tom="vendido"
-        />
-        <MetricaObra
-          rotulo="Falta vender"
-          valor={faltaVender == null ? '—' : formatCurrency(faltaVender)}
-          apoio={valorReferenciaResultado > 0 ? `${isPrivada ? 'VGV' : 'Referência'} menos vendido` : undefined}
-          tom="pendente"
-        />
+        {isPrivada ? (
+          <>
+            <MetricaObra
+              rotulo="Valor vendido"
+              valor={formatCurrency(valorVendido)}
+              apoio={`${Number(obra.quantidade_contratos_venda || 0)} contrato(s) vigente(s)`}
+              tom="vendido"
+            />
+            <MetricaObra
+              rotulo="Falta vender"
+              valor={faltaVender == null ? '—' : formatCurrency(faltaVender)}
+              apoio={valorReferenciaResultado > 0 ? 'VGV menos vendido' : undefined}
+              tom="pendente"
+            />
+          </>
+        ) : null}
         <MetricaObra
           rotulo="Executado (pago)"
           valor={formatCurrency(executado)}
@@ -183,9 +187,10 @@ function ObraBloco({ obra }) {
 const DIMENSAO_CLASSIFICACAO = {
   id: 'classificacao',
   rotulo: 'Classificação',
+  inline: true,
   opcoes: [
     { valor: 'PRIVADA', rotulo: 'Privada' },
-    { valor: 'PUBLICA', rotulo: 'Publica' }
+    { valor: 'PUBLICA', rotulo: 'Pública' }
   ]
 };
 
@@ -230,15 +235,17 @@ export default function FinanceiroResultadoObras() {
     e aplicado aqui, sobre ela. Nao ha paginacao para o total desmentir.
   */
   const resumo = useMemo(() => obrasFiltradas.reduce((acc, obra) => {
+    const classificacao = String(obra.classificacao || '').trim().toUpperCase();
     acc.orcamento += obra.orcamento || 0;
     acc.executado += obra.pagar.executado;
     acc.historicoPago += Number(obra.pagar.historico?.valor || 0);
     acc.totalReceber += obra.receber.total;
     acc.recebido += obra.receber.recebido;
     acc.historicoRecebido += Number(obra.receber.historico?.valor || 0);
-    acc.valorVendido += Number(obra.valor_vendido || 0);
-    acc.faltaVender += Number(obra.falta_vender || 0);
-    const classificacao = String(obra.classificacao || '').trim().toUpperCase();
+    if (classificacao === 'PRIVADA') {
+      acc.valorVendido += Number(obra.valor_vendido || 0);
+      acc.faltaVender += Number(obra.falta_vender || 0);
+    }
     const valorReferencia = classificacao === 'PRIVADA'
       ? (obra.vgv_efetivo ?? obra.vgv)
       : classificacao === 'PUBLICA'
@@ -252,6 +259,10 @@ export default function FinanceiroResultadoObras() {
     return acc;
   }, { orcamento: 0, executado: 0, historicoPago: 0, totalReceber: 0, recebido: 0, historicoRecebido: 0, valorVendido: 0, faltaVender: 0, faltaReceber: 0, lucroPrejuizo: 0 }), [obrasFiltradas]);
 
+  const temObraPrivada = useMemo(() => obrasFiltradas.some(
+    (obra) => String(obra.classificacao || '').trim().toUpperCase() === 'PRIVADA'
+  ), [obrasFiltradas]);
+
   return (
     <Pagina>
       {/*
@@ -261,7 +272,7 @@ export default function FinanceiroResultadoObras() {
         vezes na mesma tela.
 
         R23 — REGIME DECLARADO: **aplica ao marcar**. A tela tem UMA dimensao
-        de recorte (classificacao) e ela e resolvida NO NAVEGADOR, sobre a
+        de filtro (classificacao) e ela e resolvida NO NAVEGADOR, sobre a
         lista ja carregada: marcar nao dispara requisicao nenhuma. Zero de
         3 requisicoes e zero de 2 segundos — nao chega perto do criterio da
         excecao, entao nao ha botao de "atualizar" nem marca em rascunho, e a
@@ -276,11 +287,11 @@ export default function FinanceiroResultadoObras() {
       <Avisos avisos={avisos} aoFechar={fechar} />
 
       {/*
-        R12/F2/F3 — o recorte era um trio de botoes de escolha unica, sem
-        etiqueta e sem estado combinavel. Agora e marcacao com etiqueta
-        removivel: nenhuma marca = todas as obras.
+        As duas classificacoes cabem integralmente na faixa e sao usadas com
+        frequencia. Por isso ficam expostas: nenhuma marca = todas as obras,
+        e cada clique aplica o filtro imediatamente, sem abrir outro painel.
       */}
-      <BlocoConteudo titulo="Recorte" variante="secundario">
+      <BlocoConteudo titulo="Filtro" variante="secundario">
         <BarraFiltros
           filtros={[DIMENSAO_CLASSIFICACAO]}
           ativos={filtrosAtivos}
@@ -297,15 +308,29 @@ export default function FinanceiroResultadoObras() {
         abrem esse numero e por isso sao secundarios.
       */}
       <BlocoConteudo
-        titulo="Consolidado do recorte"
-        descricao="Soma de todas as obras marcadas acima."
+        titulo="Consolidado do filtro"
+        descricao="Soma de todas as obras exibidas pelo filtro acima."
         variante="primario"
         cor="var(--module-financeiro)"
       >
         <StatGrid colunas={3}>
           <StatTile label="Orçamento" valor={<Previsto>{formatCurrency(resumo.orcamento)}</Previsto>} />
-          <StatTile label="Valor vendido" valor={formatCurrency(resumo.valorVendido)} tom="info" />
-          <StatTile label="Falta vender" valor={formatCurrency(resumo.faltaVender)} tom="warning" />
+          {temObraPrivada ? (
+            <StatTile
+              label="Valor vendido"
+              valor={formatCurrency(resumo.valorVendido)}
+              sub="Somente obras privadas"
+              tom="info"
+            />
+          ) : null}
+          {temObraPrivada ? (
+            <StatTile
+              label="Falta vender"
+              valor={formatCurrency(resumo.faltaVender)}
+              sub="Somente obras privadas"
+              tom="warning"
+            />
+          ) : null}
           <StatTile label="Executado" valor={<Realizado>{formatCurrency(resumo.executado)}</Realizado>}
             sub={resumo.historicoPago > 0 ? `inclui ${formatCurrency(resumo.historicoPago)} do sistema anterior` : undefined} />
           <StatTile label="Total a receber" valor={<Previsto>{formatCurrency(resumo.totalReceber)}</Previsto>} />
@@ -323,7 +348,7 @@ export default function FinanceiroResultadoObras() {
       {loading ? (
         <div className="app-empty-card">Carregando resultado de obras...</div>
       ) : obrasFiltradas.length === 0 ? (
-        <div className="app-empty-card">Nenhuma obra encontrada para o recorte marcado.</div>
+        <div className="app-empty-card">Nenhuma obra encontrada para o filtro selecionado.</div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {obrasFiltradas.map((obra) => (

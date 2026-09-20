@@ -405,6 +405,30 @@
   width: 100%;
 }
 
+/* Opções curtas expostas na faixa: mantém o padrão de marcação da
+   BarraFiltros, mas elimina o menu quando todas as escolhas cabem e são
+   usadas com frequência. O grupo quebra como uma unidade no desktop e
+   libera a quebra entre opções em larguras compactas. */
+.app-filtro-opcoes-inline {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--esp-2);
+  min-width: 0;
+}
+
+.app-filtro-opcoes-inline-rotulo {
+  color: var(--texto-apoio-aa);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+
+@media (max-width: 479px) {
+  .app-filtro-opcoes-inline {
+    flex-basis: 100%;
+  }
+}
+
 /* R16 — cada responsabilidade tem UM dono: a cápsula .la-busca é a única
    caixa da busca. O reset do input interno era prefixado por .la-root e só
    valia DENTRO da ListaAvancada; na BarraFiltros (fora dela) o input

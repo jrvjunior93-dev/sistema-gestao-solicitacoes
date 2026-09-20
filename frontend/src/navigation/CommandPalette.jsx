@@ -1,7 +1,7 @@
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
-import { getVisibleItems } from './navigationConfig';
+import { getVisibleCommandItems } from './navigationConfig';
 import { buscarUniversal } from '../services/busca';
 import { HiOutlineMagnifyingGlass, HiOutlineArrowRight } from 'react-icons/hi2';
 
@@ -50,7 +50,7 @@ export default function CommandPalette({ open, onClose, mode = 'navigate', onNav
   const listRef = useRef(null);
   const abortRef = useRef(null);
 
-  const itensTelas = useMemo(() => getVisibleItems(user), [user]);
+  const itensTelas = useMemo(() => getVisibleCommandItems(user), [user]);
 
   const telas = useMemo(() => {
     const q = normalizar(query).trim();
