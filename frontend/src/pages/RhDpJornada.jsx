@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import OverlayModal from '../components/ui/OverlayModal';
 import {
   Avisos,
   BarraFiltros,
@@ -19,6 +20,8 @@ import {
   getEdicoesJornadaPendentesRh,
   getRhEmpresasGrupo,
   anexarNaRhSolicitacao,
+  baixarModeloJornadaRh,
+  importarJornadaPlanilhaRh,
   listarRhSolicitacoes,
   registrarJornadaRh,
   solicitarEdicaoJornadaRh
@@ -26,7 +29,6 @@ import {
 import { hasAnyExplicitPermissao, isBusinessAdmin } from '../utils/acessoProduto';
 import { userHasSetorCapability } from '../utils/setor';
 import { formatCurrencyInput, normalizeCurrencyTyping } from '../utils/formatters';
-import { downloadRhImportTemplate } from '../utils/rhImportacaoPlanilha';
 
 /**
  * JORNADA PELO FORMULARIO (Fase 4 do modulo DP, 26/08).
@@ -239,6 +241,11 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   const [carregandoEnviadas, setCarregandoEnviadas] = useState(false);
   const [jornadaEnviada, setJornadaEnviada] = useState(null);
   const [anexandoFichas, setAnexandoFichas] = useState(false);
+  const [baixandoModelo, setBaixandoModelo] = useState(false);
+  const [modalImportacaoAberto, setModalImportacaoAberto] = useState(false);
+  const [planilhaImportacao, setPlanilhaImportacao] = useState(null);
+  const [fichasImportacao, setFichasImportacao] = useState([]);
+  const [importandoPlanilha, setImportandoPlanilha] = useState(false);
   const inputFichasRef = useRef(null);
 
   const secaoDaUrl = parametros.get('jornada_secao');
@@ -651,6 +658,90 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     }
   }
 
+  function dadosDoPeriodo() {
+    return {
+      competencia,
+      periodicidade,
+      periodo_inicio: periodoInicio,
+      periodo_fim: periodoFim,
+      obra_id: Number(obra),
+      empresa_grupo_id: empresa ? Number(empresa) : undefined,
+      dias_base: Number(diasBase)
+    };
+  }
+
+  async function baixarModeloDaJornada() {
+    if (!obra) {
+      avisar.erro('Selecione a obra antes de baixar o modelo da jornada.');
+      return;
+    }
+    setBaixandoModelo(true);
+    limpar();
+    try {
+      const { blob, filename } = await baixarModeloJornadaRh(dadosDoPeriodo());
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      avisar.sucesso('Modelo gerado com os colaboradores ativos da obra selecionada.');
+    } catch (error) {
+      avisar.erro(error.message || 'Não foi possível baixar o modelo da jornada.');
+    } finally {
+      setBaixandoModelo(false);
+    }
+  }
+
+  function fecharModalImportacao() {
+    if (importandoPlanilha) return;
+    setModalImportacaoAberto(false);
+    setPlanilhaImportacao(null);
+    setFichasImportacao([]);
+  }
+
+  async function importarPlanilhaDaJornada(evento) {
+    evento.preventDefault();
+    if (!obra) {
+      avisar.erro('Selecione a obra antes de importar a jornada.');
+      return;
+    }
+    if (!planilhaImportacao) {
+      avisar.erro('Selecione a planilha preenchida da jornada.');
+      return;
+    }
+
+    setImportandoPlanilha(true);
+    limpar();
+    try {
+      const resultado = await importarJornadaPlanilhaRh({
+        dados: dadosDoPeriodo(),
+        planilha: planilhaImportacao,
+        fichas: fichasImportacao
+      });
+      setJornadaEnviada(resultado?.solicitacao || null);
+      setModalImportacaoAberto(false);
+      setPlanilhaImportacao(null);
+      setFichasImportacao([]);
+      await carregar();
+      const quantidade = resultado?.importacao?.quantidade_registros || resultado?.linhas?.length || 0;
+      const anexadas = Number(resultado?.fichas_anexadas || 0);
+      avisar.sucesso(
+        `Jornada importada para ${quantidade} colaborador(es).`
+        + (anexadas ? ` ${anexadas} ficha(s) de ponto anexada(s).` : '')
+      );
+      if (resultado?.fichas_com_erro?.length) {
+        avisar.erro(`A jornada foi enviada, mas algumas fichas não foram anexadas: ${resultado.fichas_com_erro.join(' | ')}`);
+      }
+    } catch (error) {
+      avisar.erro(error.message || 'Não foi possível importar a jornada.');
+    } finally {
+      setImportandoPlanilha(false);
+    }
+  }
+
   const abasJornada = (
     <div className="rh-pessoal-abas rh-jornada-subabas" role="tablist" aria-label="Operações de jornada">
       <button
@@ -867,13 +958,26 @@ export default function RhDpJornada({ onAbrirApuracao }) {
         variante={linhas.length ? undefined : 'primario'}
         cor={linhas.length ? undefined : 'var(--c-primary)'}
         acoes={(
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={() => downloadRhImportTemplate('JORNADA')}
-          >
-            Baixar modelo da jornada
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              disabled={!obra || baixandoModelo}
+              onClick={baixarModeloDaJornada}
+            >
+              {baixandoModelo ? 'Gerando modelo...' : 'Baixar modelo da jornada'}
+            </button>
+            {podeEnviar ? (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={!obra}
+                onClick={() => setModalImportacaoAberto(true)}
+              >
+                Importar jornada
+              </button>
+            ) : null}
+          </div>
         )}
       >
         {/* Obra e requisito operacional para montar a jornada, portanto fica
@@ -1238,6 +1342,73 @@ export default function RhDpJornada({ onAbrirApuracao }) {
           </div>
         </form>
       ) : null}
+
+      <OverlayModal
+        aberto={modalImportacaoAberto}
+        largura="720px"
+        rotulo="Importar jornada e fichas de ponto"
+        onFechar={fecharModalImportacao}
+        fecharComEscape={!importandoPlanilha}
+      >
+        <div data-modal="cabecalho" className="modal-header">
+          <div>
+            <h2 className="modal-title">Importar jornada</h2>
+            <p className="app-bloco-lead">Envie a planilha preenchida e, se desejar, as fichas de ponto assinadas.</p>
+          </div>
+          <button type="button" className="btn btn-outline btn-sm" onClick={fecharModalImportacao} disabled={importandoPlanilha}>
+            Fechar
+          </button>
+        </div>
+
+        <form id="form-importar-jornada" className="p-4 space-y-4" onSubmit={importarPlanilhaDaJornada}>
+          <section className="card p-4 space-y-3" aria-labelledby="titulo-planilha-jornada">
+            <div>
+              <h3 id="titulo-planilha-jornada" className="font-semibold">1. Planilha da jornada</h3>
+              <p className="app-bloco-lead">Obrigatória. Use o modelo da obra selecionada e preencha somente os colaboradores que serão enviados.</p>
+            </div>
+            <label className="form-label" htmlFor="arquivo-planilha-jornada">Arquivo Excel ou CSV *</label>
+            <input
+              id="arquivo-planilha-jornada"
+              className="form-control"
+              type="file"
+              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+              required
+              disabled={importandoPlanilha}
+              onChange={(evento) => setPlanilhaImportacao(evento.target.files?.[0] || null)}
+            />
+            {planilhaImportacao ? <span className="app-bloco-lead">Selecionado: {planilhaImportacao.name}</span> : null}
+          </section>
+
+          <section className="card p-4 space-y-3" aria-labelledby="titulo-fichas-ponto">
+            <div>
+              <h3 id="titulo-fichas-ponto" className="font-semibold">2. Fichas de ponto</h3>
+              <p className="app-bloco-lead">Opcional neste momento. Você pode selecionar vários arquivos.</p>
+            </div>
+            <label className="form-label" htmlFor="arquivos-fichas-ponto">Arquivos das fichas</label>
+            <input
+              id="arquivos-fichas-ponto"
+              className="form-control"
+              type="file"
+              multiple
+              accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,application/pdf,image/*"
+              disabled={importandoPlanilha}
+              onChange={(evento) => setFichasImportacao(Array.from(evento.target.files || []))}
+            />
+            {fichasImportacao.length ? (
+              <span className="app-bloco-lead">{fichasImportacao.length} ficha(s) selecionada(s).</span>
+            ) : null}
+          </section>
+        </form>
+
+        <div data-modal="rodape" className="modal-footer">
+          <button type="button" className="btn btn-outline" onClick={fecharModalImportacao} disabled={importandoPlanilha}>
+            Cancelar
+          </button>
+          <button type="submit" form="form-importar-jornada" className="btn btn-primary" disabled={importandoPlanilha || !planilhaImportacao}>
+            {importandoPlanilha ? 'Importando...' : 'Importar e enviar'}
+          </button>
+        </div>
+      </OverlayModal>
 
       {elementoConfirmacao}
     </div>

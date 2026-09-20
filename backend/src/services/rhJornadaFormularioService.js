@@ -36,7 +36,7 @@ const { setorParaHistorico } = require('../utils/codigoDoSetor');
  * codigo separado, seria a terceira versao da mesma conta.
  */
 
-const ORIGENS = new Set(['FORMULARIO', 'INDIVIDUAL']);
+const ORIGENS = new Set(['FORMULARIO', 'INDIVIDUAL', 'PLANILHA']);
 const PERIODICIDADES = new Set(['SEMANAL', 'QUINZENAL', 'MENSAL']);
 
 function competenciaValida(valor) {
@@ -299,7 +299,9 @@ async function registrarJornada(dados = {}, contexto = {}) {
         obra_id: obraId,
         tipo_vinculo: dados.tipo_vinculo || null,
         status: 'CONFIRMADA',
-        nome_arquivo: origem === 'INDIVIDUAL' ? 'Pagamento individual' : 'Formulario de jornada',
+        nome_arquivo: origem === 'INDIVIDUAL'
+          ? 'Pagamento individual'
+          : (origem === 'PLANILHA' ? (dados.nome_arquivo || 'Planilha de jornada') : 'Formulario de jornada'),
         total_linhas: linhas.length,
         total_validas: linhas.length,
         total_erros: 0,
@@ -538,6 +540,8 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
     colaborador_id: Number(vinculo.colaborador_id),
     nome: vinculo.colaborador.nome,
     matricula: vinculo.colaborador.matricula,
+    cpf: vinculo.colaborador.cpf,
+    status: vinculo.colaborador.status,
     tipo_vinculo: vinculo.colaborador.tipo_vinculo,
     salario_base: vinculo.colaborador.salario_base,
     jornada_informada: porColaborador.get(Number(vinculo.colaborador_id))?.linha?.payload_json || null,

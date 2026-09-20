@@ -14,6 +14,8 @@ const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const { RhColaborador } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
 const { getRhDpObraScopeIds, userHasAreaPermission } = require('../services/authorizationService');
+const { gerarModeloJornada, importarJornadaPlanilha } = require('../services/rhJornadaPlanilhaService');
+const { anexarNoPedido } = require('../services/rhSolicitacaoService');
 
 /**
  * Jornada por formulario, eventos recorrentes e os historicos (Fase 4/5 do modulo DP, 26/08).
@@ -46,6 +48,48 @@ async function exigirColaboradorNoEscopoDoUsuario(req, colaboradorId) {
 }
 
 module.exports = {
+  async modelo(req, res) {
+    try {
+      await exigirObraNoEscopoDoUsuario(req, req.query.obra_id);
+      const buffer = await gerarModeloJornada(req.query || {});
+      const competencia = String(req.query.competencia || '').replace(/[^0-9-]/g, '');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="modelo-jornada-${competencia || 'periodo'}.xlsx"`);
+      return res.send(buffer);
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao gerar o modelo da jornada');
+    }
+  },
+
+  async importar(req, res) {
+    try {
+      await exigirObraNoEscopoDoUsuario(req, req.body?.obra_id);
+      const contexto = contextoDe(req);
+      contexto.podeDecidir = await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.decidir']);
+      const resultado = await importarJornadaPlanilha(req.body || {}, req.files?.planilha?.[0], contexto);
+      const fichas = Array.isArray(req.files?.fichas) ? req.files.fichas : [];
+      const erros = [];
+      let anexadas = 0;
+      for (const ficha of fichas) {
+        try {
+          await anexarNoPedido(resultado.solicitacao.id, {}, contexto, ficha);
+          anexadas += 1;
+        } catch (error) {
+          erros.push(`${ficha.originalname}: ${error.message}`);
+        }
+      }
+      return res.status(201).json({
+        ...resultado,
+        fichas_anexadas: anexadas,
+        fichas_com_erro: erros
+      });
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao importar a jornada');
+    }
+  },
+
   /** A lista que o formulario abre: quem estava na obra NAQUELA competencia, pelo vinculo. */
   async colaboradoresDaCompetencia(req, res) {
     try {

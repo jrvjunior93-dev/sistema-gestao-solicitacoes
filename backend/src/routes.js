@@ -1968,6 +1968,8 @@ router.get('/rh/solicitacoes/:id/anexos/:anexoId/link', allowRhDpSolicitacaoVer,
 router.post('/rh/solicitacoes/:id/anexos/:anexoId/validar', allowRhDpSolicitacaoDecidir, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.validar);
 
 // --- Jornada por formulario, pagamento individual e historicos (Fases 4 e 5) ---
+router.get('/rh/jornada/modelo', allowRhDpSolicitacaoVer, RhJornadaController.modelo);
+router.post('/rh/jornada/importar', allowRhDpSolicitacaoAbrir, uploadRateLimit, criticalRateLimit, uploadComprovantes.fields([{ name: 'planilha', maxCount: 1 }, { name: 'fichas', maxCount: 20 }]), RhJornadaController.importar);
 router.get('/rh/jornada/colaboradores', allowRhDpSolicitacaoVer, RhJornadaController.colaboradoresDaCompetencia);
 router.get('/rh/jornada/edicoes/pendentes', allowRhDpSolicitacaoDecidir, RhJornadaController.listarEdicoesPendentes);
 router.post('/rh/jornada', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.registrar);

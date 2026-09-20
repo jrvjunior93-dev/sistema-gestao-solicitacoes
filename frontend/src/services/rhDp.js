@@ -486,6 +486,34 @@ export async function registrarJornadaRh(data) {
   return parseJson(response, 'Erro ao registrar a jornada');
 }
 
+export async function baixarModeloJornadaRh(params = {}) {
+  const query = buildQuery(params);
+  const response = await fetch(`${API_URL}/rh/jornada/modelo${query ? `?${query}` : ''}`, {
+    headers: authHeaders()
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(mensagemDeErro(text, 'Erro ao baixar o modelo da jornada', response.status));
+  }
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || 'modelo-jornada.xlsx';
+  return { blob: await response.blob(), filename };
+}
+
+export async function importarJornadaPlanilhaRh({ dados, planilha, fichas = [] }) {
+  const formData = new FormData();
+  Object.entries(dados || {}).forEach(([chave, valor]) => appendOptionalFormField(formData, chave, valor));
+  formData.append('planilha', planilha);
+  fichas.forEach((arquivo) => formData.append('fichas', arquivo));
+
+  const response = await fetch(`${API_URL}/rh/jornada/importar`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData
+  });
+  return parseJson(response, 'Erro ao importar a jornada');
+}
+
 export async function solicitarEdicaoJornadaRh(data) {
   const response = await fetch(`${API_URL}/rh/jornada/edicoes/solicitar`, {
     method: 'POST',
