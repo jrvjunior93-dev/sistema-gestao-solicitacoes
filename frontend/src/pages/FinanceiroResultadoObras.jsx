@@ -257,6 +257,7 @@ export default function FinanceiroResultadoObras() {
     const baseTotalObra = valorTotalObra(obra);
     acc.orcamento += obra.orcamento || 0;
     acc.valorTotalObras += baseTotalObra;
+    if (baseTotalObra <= 0) acc.obrasSemValorBase += 1;
     acc.executado += obra.pagar.executado;
     acc.historicoPago += Number(obra.pagar.historico?.valor || 0);
     acc.totalReceber += obra.receber.total;
@@ -266,12 +267,9 @@ export default function FinanceiroResultadoObras() {
       acc.valorVendido += Number(obra.valor_vendido || 0);
       acc.faltaVender += Number(obra.falta_vender || 0);
     }
-    acc.faltaReceber += baseTotalObra > 0
-      ? baseTotalObra - obra.receber.recebido
-      : Number(obra.receber.saldo || 0);
     acc.lucroPrejuizo += Number(obra.lucro_prejuizo ?? (obra.receber.recebido - obra.pagar.executado));
     return acc;
-  }, { orcamento: 0, valorTotalObras: 0, executado: 0, historicoPago: 0, totalReceber: 0, recebido: 0, historicoRecebido: 0, valorVendido: 0, faltaVender: 0, faltaReceber: 0, lucroPrejuizo: 0 }), [obrasFiltradas]);
+  }, { orcamento: 0, valorTotalObras: 0, obrasSemValorBase: 0, executado: 0, historicoPago: 0, totalReceber: 0, recebido: 0, historicoRecebido: 0, valorVendido: 0, faltaVender: 0, lucroPrejuizo: 0 }), [obrasFiltradas]);
 
   const temObraPrivada = useMemo(() => obrasFiltradas.some(
     (obra) => classificacaoObra(obra) === 'PRIVADA'
@@ -286,13 +284,23 @@ export default function FinanceiroResultadoObras() {
       : temObraPublica
         ? 'Valor total das planilhas'
         : 'Volume financeiro total';
-  const apoioValorTotal = temObraPrivada && temObraPublica
+  const apoioValorTotalBase = temObraPrivada && temObraPublica
     ? 'VGV das privadas + planilhas das públicas'
     : temObraPrivada
       ? 'VGV das obras privadas'
       : temObraPublica
         ? 'Valor integral das planilhas públicas'
         : undefined;
+  const tipoValorBaseAusente = temObraPrivada && temObraPublica
+    ? 'VGV ou planilha'
+    : temObraPrivada
+      ? 'VGV'
+      : 'valor de planilha';
+  const avisoValorBaseAusente = resumo.obrasSemValorBase > 0
+    ? `${resumo.obrasSemValorBase} obra(s) sem ${tipoValorBaseAusente} não compõe(m) o volume`
+    : '';
+  const apoioValorTotal = [apoioValorTotalBase, avisoValorBaseAusente].filter(Boolean).join(' · ');
+  const faltaReceberConsolidado = Math.max(resumo.valorTotalObras - resumo.recebido, 0);
 
   return (
     <Pagina>
@@ -378,7 +386,7 @@ export default function FinanceiroResultadoObras() {
             sub={resumo.historicoRecebido > 0 ? `inclui ${formatCurrency(resumo.historicoRecebido)} do sistema anterior` : undefined} />
           <StatTile
             label="Falta receber"
-            valor={formatCurrency(resumo.faltaReceber)}
+            valor={formatCurrency(faltaReceberConsolidado)}
             sub={`${rotuloValorTotal} menos recebido`}
           />
           <StatTile
