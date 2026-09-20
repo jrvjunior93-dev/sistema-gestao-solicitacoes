@@ -13,6 +13,12 @@ const {
 } = require('../models');
 const { canAccessFinanceiro } = require('./authorizationService');
 const { registrarEventoSeguranca } = require('./securityLogService');
+const {
+  obterCaixaDiarioConfig,
+  usuarioEstaSujeitoAoBloqueio,
+  usuarioPodeAprovarDivergencia,
+  usuarioPodeOperarCaixa
+} = require('./caixaDiarioConfigService');
 
 function createHttpError(statusCode, message) {
   const error = new Error(message);
@@ -50,6 +56,16 @@ async function assertFinanceAccess(req) {
   });
 
   throw createHttpError(403, 'Acesso negado para o modulo financeiro');
+}
+
+async function assertCaixaOperator(req) {
+  if (await usuarioPodeOperarCaixa(req.user)) return;
+  throw createHttpError(403, 'Somente os responsaveis definidos pelo superadmin podem operar a conciliacao e o controle diario de contas.');
+}
+
+async function assertDivergenceApprover(req) {
+  if (await usuarioPodeAprovarDivergencia(req.user)) return;
+  throw createHttpError(403, 'Somente os aprovadores definidos pelo superadmin podem decidir divergencias de caixa.');
 }
 
 function parsePositiveInteger(value, fieldName) {
@@ -107,6 +123,16 @@ function includeSessao() {
     {
       model: User,
       as: 'fechadoPor',
+      attributes: ['id', 'nome', 'email']
+    },
+    {
+      model: User,
+      as: 'divergenciaSolicitadaPor',
+      attributes: ['id', 'nome', 'email']
+    },
+    {
+      model: User,
+      as: 'divergenciaDecididaPor',
       attributes: ['id', 'nome', 'email']
     }
   ];
@@ -170,6 +196,7 @@ async function obterResumoConciliacaoDia(contaBancariaId, dataReferencia) {
 
 async function confirmarConciliacaoDiaCaixa(req, payload = {}) {
   await assertFinanceAccess(req);
+  await assertCaixaOperator(req);
   const conta = await carregarConta(payload.conta_bancaria_id);
   const dataReferencia = parseDate(payload.data_referencia, 'Data de referencia', addDays(today(), -1));
   const resumo = await obterResumoConciliacaoDia(conta.id, dataReferencia);
@@ -230,6 +257,8 @@ function obterNaturezaMovimento(movimento) {
   if (tipoMovimento === 'CAIXA_ENTRADA_MANUAL') return 'ENTRADA';
   if (tipoMovimento === 'CAIXA_SAIDA_MANUAL') return 'SAIDA';
   if (tipoMovimento === 'RENDIMENTO_BANCARIO') return 'ENTRADA';
+  if (tipoMovimento === 'CAIXA_AJUSTE_DIVERGENCIA_ENTRADA') return 'ENTRADA';
+  if (tipoMovimento === 'CAIXA_AJUSTE_DIVERGENCIA_SAIDA') return 'SAIDA';
   if (String(movimento?.titulo?.tipo || '').toUpperCase() === 'RECEBER') return 'ENTRADA';
   return 'SAIDA';
 }
@@ -432,7 +461,7 @@ async function listarSessoesCaixa(req, filters = {}) {
   }
   if (filters.status) {
     const status = String(filters.status || '').trim().toUpperCase();
-    if (!['ABERTO', 'FECHADO', 'TODOS'].includes(status)) {
+    if (!['ABERTO', 'AGUARDANDO_APROVACAO', 'FECHADO', 'TODOS'].includes(status)) {
       throw createHttpError(400, 'Status do caixa invalido.');
     }
     if (status !== 'TODOS') where.status = status;
@@ -446,7 +475,7 @@ async function listarSessoesCaixa(req, filters = {}) {
   });
 
   return Promise.all(sessoes.map(async (sessao) => {
-    if (sessao.status === 'ABERTO') {
+    if (['ABERTO', 'AGUARDANDO_APROVACAO'].includes(sessao.status)) {
       const resumo = await calcularResumoSessao(sessao);
       sessao.setDataValue('resumo_atual', resumo);
     }
@@ -454,8 +483,102 @@ async function listarSessoesCaixa(req, filters = {}) {
   }));
 }
 
+async function obterPainelDiarioCaixas(req, dataReferencia = today()) {
+  await assertFinanceAccess(req);
+  const data = parseDate(dataReferencia, 'Data de referencia', today());
+  const dataConciliacao = addDays(data, -1);
+  const contas = await ContaBancaria.findAll({
+    where: {
+      ativo: { [Op.ne]: false },
+      [Op.or]: [
+        { exige_abertura_fechamento: true },
+        { tipo_operacional: 'CAIXA_INTERNO' }
+      ]
+    },
+    include: [{ model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'codigo', 'nome', 'razao_social'] }],
+    order: [['empresa_id', 'ASC'], ['nome', 'ASC']]
+  });
+  const contaIds = contas.map((conta) => Number(conta.id));
+  const sessoes = contaIds.length > 0
+    ? await CaixaFinanceiroSessao.findAll({
+        where: {
+          conta_bancaria_id: { [Op.in]: contaIds },
+          [Op.or]: [
+            { status: { [Op.in]: ['ABERTO', 'AGUARDANDO_APROVACAO'] } },
+            { status: 'FECHADO', data_fechamento: data }
+          ]
+        },
+        include: includeSessao(),
+        order: [['data_abertura', 'DESC'], ['id', 'DESC']]
+      })
+    : [];
+  const confirmacoes = contaIds.length > 0
+    ? await CaixaConciliacaoConfirmacao.findAll({
+        where: { conta_bancaria_id: { [Op.in]: contaIds }, data_referencia: dataConciliacao }
+      })
+    : [];
+  const sessaoPorConta = new Map();
+  sessoes.forEach((sessao) => {
+    const key = Number(sessao.conta_bancaria_id);
+    const atual = sessaoPorConta.get(key);
+    const sessaoAtiva = ['ABERTO', 'AGUARDANDO_APROVACAO'].includes(sessao.status);
+    const atualAtiva = atual && ['ABERTO', 'AGUARDANDO_APROVACAO'].includes(atual.status);
+    if (!atual || (sessaoAtiva && !atualAtiva)) sessaoPorConta.set(key, sessao);
+  });
+  const confirmacaoPorConta = new Map(confirmacoes.map((item) => [Number(item.conta_bancaria_id), item]));
+
+  const itens = await Promise.all(contas.map(async (conta) => {
+    const sessao = sessaoPorConta.get(Number(conta.id)) || null;
+    const resumo = sessao ? await calcularResumoSessao(sessao) : null;
+    const caixaFisico = contaEhCaixaFisico(conta);
+    const resumoOfx = caixaFisico ? null : await obterResumoConciliacaoDia(conta.id, dataConciliacao);
+    const confirmacao = confirmacaoPorConta.get(Number(conta.id)) || null;
+    let situacao = 'PENDENTE_ABERTURA';
+    if (sessao?.status === 'AGUARDANDO_APROVACAO') situacao = 'DIVERGENCIA_PENDENTE';
+    else if (sessao?.status === 'ABERTO' && String(sessao.data_abertura) === data) situacao = 'PRONTO';
+    else if (sessao?.status === 'ABERTO') situacao = 'ABERTO_ATRASADO';
+    else if (sessao?.status === 'FECHADO') situacao = 'FECHADO_DIA';
+
+    return {
+      conta: conta.get({ plain: true }),
+      sessao: sessao ? { ...sessao.get({ plain: true }), resumo_atual: resumo } : null,
+      situacao,
+      data_referencia: data,
+      data_conciliacao: dataConciliacao,
+      conciliacao_confirmada: caixaFisico || Boolean(confirmacao),
+      conciliacao: resumoOfx,
+      saldo_atual: Number(resumo?.saldo_sistema ?? sessao?.saldo_sistema ?? conta.saldo_inicial ?? 0)
+    };
+  }));
+
+  const config = await obterCaixaDiarioConfig();
+  const prontas = itens.filter((item) => item.situacao === 'PRONTO').length;
+  const fechadas = itens.filter((item) => item.situacao === 'FECHADO_DIA').length;
+  return {
+    data_referencia: data,
+    data_conciliacao: dataConciliacao,
+    configuracao: {
+      bloqueio_ativo: config.bloqueio_ativo,
+      usuario_sujeito_bloqueio: await usuarioEstaSujeitoAoBloqueio(req.user),
+      pode_operar: await usuarioPodeOperarCaixa(req.user),
+      pode_aprovar_divergencia: await usuarioPodeAprovarDivergencia(req.user)
+    },
+    resumo: {
+      total_contas: itens.length,
+      contas_prontas: prontas,
+      contas_fechadas: fechadas,
+      contas_pendentes: itens.filter((item) => !['PRONTO', 'FECHADO_DIA'].includes(item.situacao)).length,
+      operacao_liberada: itens.length > 0 && prontas === itens.length,
+      divergencias_pendentes: itens.filter((item) => item.situacao === 'DIVERGENCIA_PENDENTE').length,
+      saldo_consolidado: roundCurrency(itens.reduce((total, item) => total + Number(item.saldo_atual || 0), 0))
+    },
+    contas: itens
+  };
+}
+
 async function abrirSessaoCaixa(req, payload = {}) {
   await assertFinanceAccess(req);
+  await assertCaixaOperator(req);
   const dataAbertura = parseDate(payload.data_abertura, 'Data de abertura', today());
   const dataConciliacaoObrigatoria = addDays(dataAbertura, -1);
   let contaAudit = null;
@@ -469,7 +592,7 @@ async function abrirSessaoCaixa(req, payload = {}) {
     contaAudit = conta;
 
     const aberto = await CaixaFinanceiroSessao.findOne({
-      where: { conta_bancaria_id: conta.id, status: 'ABERTO' },
+      where: { conta_bancaria_id: conta.id, status: { [Op.in]: ['ABERTO', 'AGUARDANDO_APROVACAO'] } },
       transaction,
       lock: transaction.LOCK.UPDATE
     });
@@ -537,6 +660,7 @@ async function abrirSessaoCaixa(req, payload = {}) {
 
 async function fecharSessaoCaixa(req, sessaoId, payload = {}) {
   await assertFinanceAccess(req);
+  await assertCaixaOperator(req);
   const id = parsePositiveInteger(sessaoId, 'Caixa');
   let fechamentoAudit = null;
 
@@ -571,17 +695,24 @@ async function fecharSessaoCaixa(req, sessaoId, payload = {}) {
       throw createHttpError(400, 'Informe uma justificativa com pelo menos 10 caracteres para fechar o caixa com divergencia.');
     }
 
+    const fechamentoComDivergencia = Math.abs(diferenca) > 0.009;
     await sessao.update({
       data_fechamento: dataFechamento,
-      status: 'FECHADO',
+      status: fechamentoComDivergencia ? 'AGUARDANDO_APROVACAO' : 'FECHADO',
       total_entradas: resumo.total_entradas,
       total_saidas: resumo.total_saidas,
       saldo_sistema: resumo.saldo_sistema,
       saldo_informado: saldoInformado,
       diferenca,
       observacoes_fechamento: observacoes || null,
-      fechado_por: req.user?.id || null,
-      fechado_em: new Date()
+      fechado_por: fechamentoComDivergencia ? null : (req.user?.id || null),
+      fechado_em: fechamentoComDivergencia ? null : new Date(),
+      divergencia_status: fechamentoComDivergencia ? 'PENDENTE' : null,
+      divergencia_solicitada_por: fechamentoComDivergencia ? (req.user?.id || null) : null,
+      divergencia_solicitada_em: fechamentoComDivergencia ? new Date() : null,
+      divergencia_decidida_por: null,
+      divergencia_decidida_em: null,
+      divergencia_decisao_observacao: null
     }, { transaction });
     fechamentoAudit = {
       conta_bancaria_id: sessao.conta_bancaria_id,
@@ -595,11 +726,15 @@ async function fecharSessaoCaixa(req, sessaoId, payload = {}) {
   await registrarEventoSeguranca({
     req,
     usuarioId: req.user?.id || null,
-    tipoEvento: 'FINANCIAL_CASH_SESSION_CLOSED',
+    tipoEvento: Math.abs(Number(fechamentoAudit?.diferenca || 0)) > 0.009
+      ? 'FINANCIAL_CASH_DIVERGENCE_REQUESTED'
+      : 'FINANCIAL_CASH_SESSION_CLOSED',
     recursoTipo: 'CAIXA_FINANCEIRO',
     recursoId: id,
     status: 'SUCCESS',
-    descricao: 'Sessao de caixa fechada',
+    descricao: Math.abs(Number(fechamentoAudit?.diferenca || 0)) > 0.009
+      ? 'Fechamento de caixa enviado para aprovacao de divergencia'
+      : 'Sessao de caixa fechada',
     metadata: {
       ...fechamentoAudit
     }
@@ -631,6 +766,7 @@ async function carregarSessaoParaMovimento(sessaoId, transaction) {
 
 async function registrarMovimentoCaixa(req, sessaoId, payload = {}) {
   await assertFinanceAccess(req);
+  await assertCaixaOperator(req);
   const natureza = String(payload.natureza || '').trim().toUpperCase();
   if (!['ENTRADA', 'SAIDA'].includes(natureza)) {
     throw createHttpError(400, 'Natureza do movimento invalida.');
@@ -729,6 +865,7 @@ async function registrarMovimentoCaixa(req, sessaoId, payload = {}) {
 
 async function estornarMovimentoCaixa(req, sessaoId, movimentoId, payload = {}) {
   await assertFinanceAccess(req);
+  await assertCaixaOperator(req);
   const idMovimento = parsePositiveInteger(movimentoId, 'Movimento');
   const motivo = String(payload.motivo || '').trim();
   if (motivo.length < 10) {
@@ -847,13 +984,122 @@ async function obterResumoSessaoCaixa(req, sessaoId) {
   return montarDetalheSessaoCaixa(sessaoId);
 }
 
+async function decidirDivergenciaCaixa(req, sessaoId, payload = {}) {
+  await assertFinanceAccess(req);
+  await assertDivergenceApprover(req);
+  const id = parsePositiveInteger(sessaoId, 'Caixa');
+  const decisao = String(payload.decisao || '').trim().toUpperCase();
+  const observacao = String(payload.observacao || '').trim();
+  if (!['APROVAR', 'REJEITAR'].includes(decisao)) {
+    throw createHttpError(400, 'Decisao de divergencia invalida.');
+  }
+  if (observacao.length < 10) {
+    throw createHttpError(400, 'Informe uma observacao com pelo menos 10 caracteres para a decisao.');
+  }
+  let audit = null;
+
+  await sequelize.transaction(async (transaction) => {
+    const sessao = await CaixaFinanceiroSessao.findByPk(id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!sessao) throw createHttpError(404, 'Caixa nao encontrado.');
+    if (sessao.status !== 'AGUARDANDO_APROVACAO' || sessao.divergencia_status !== 'PENDENTE') {
+      throw createHttpError(409, 'Esta divergencia ja foi decidida ou nao esta pendente.');
+    }
+    if (Number(sessao.divergencia_solicitada_por) === Number(req.user?.id)) {
+      throw createHttpError(403, 'Quem informou a divergencia nao pode aprovar ou rejeitar a propria solicitacao.');
+    }
+
+    const diferencaOriginal = roundCurrency(sessao.diferenca || 0);
+    if (decisao === 'REJEITAR') {
+      await sessao.update({
+        status: 'ABERTO',
+        data_fechamento: null,
+        saldo_informado: null,
+        diferenca: null,
+        fechado_por: null,
+        fechado_em: null,
+        divergencia_status: 'REJEITADA',
+        divergencia_decidida_por: req.user?.id || null,
+        divergencia_decidida_em: new Date(),
+        divergencia_decisao_observacao: observacao
+      }, { transaction });
+    } else {
+      const valorAjuste = Math.abs(diferencaOriginal);
+      if (valorAjuste > 0.009) {
+        const entrada = diferencaOriginal > 0;
+        await MovimentoFinanceiro.create({
+          titulo_financeiro_id: null,
+          conta_bancaria_id: sessao.conta_bancaria_id,
+          empresa_id: sessao.empresa_id || null,
+          caixa_sessao_id: sessao.id,
+          tipo_movimento: entrada
+            ? 'CAIXA_AJUSTE_DIVERGENCIA_ENTRADA'
+            : 'CAIXA_AJUSTE_DIVERGENCIA_SAIDA',
+          status: 'ATIVO',
+          valor: valorAjuste,
+          juros: 0,
+          multa: 0,
+          desconto: 0,
+          valor_quitacao: valorAjuste,
+          data_movimento: sessao.data_fechamento || today(),
+          documento_referencia: `AJUSTE-CAIXA-${sessao.id}`,
+          observacoes: `Ajuste de divergencia aprovado: ${observacao}`,
+          criado_por: req.user?.id || null
+        }, { transaction });
+      }
+      const resumoAjustado = await calcularResumoSessao(sessao, { transaction });
+      await sessao.update({
+        status: 'FECHADO',
+        total_entradas: resumoAjustado.total_entradas,
+        total_saidas: resumoAjustado.total_saidas,
+        saldo_sistema: resumoAjustado.saldo_sistema,
+        fechado_por: sessao.divergencia_solicitada_por || null,
+        fechado_em: new Date(),
+        divergencia_status: 'APROVADA',
+        divergencia_decidida_por: req.user?.id || null,
+        divergencia_decidida_em: new Date(),
+        divergencia_decisao_observacao: observacao
+      }, { transaction });
+    }
+    audit = {
+      decisao,
+      observacao,
+      conta_bancaria_id: sessao.conta_bancaria_id,
+      empresa_id: sessao.empresa_id || null,
+      diferenca: diferencaOriginal,
+      solicitada_por: sessao.divergencia_solicitada_por || null
+    };
+  });
+
+  await registrarEventoSeguranca({
+    req,
+    usuarioId: req.user?.id || null,
+    tipoEvento: decisao === 'APROVAR'
+      ? 'FINANCIAL_CASH_DIVERGENCE_APPROVED'
+      : 'FINANCIAL_CASH_DIVERGENCE_REJECTED',
+    recursoTipo: 'CAIXA_FINANCEIRO',
+    recursoId: id,
+    status: 'SUCCESS',
+    descricao: decisao === 'APROVAR'
+      ? 'Divergencia de caixa aprovada e saldo ajustado'
+      : 'Divergencia de caixa rejeitada e sessao reaberta',
+    metadata: audit
+  });
+
+  return montarDetalheSessaoCaixa(id);
+}
+
 module.exports = {
   obterNaturezaMovimento,
   abrirSessaoCaixa,
   confirmarConciliacaoDiaCaixa,
+  decidirDivergenciaCaixa,
   estornarMovimentoCaixa,
   fecharSessaoCaixa,
   listarSessoesCaixa,
+  obterPainelDiarioCaixas,
   obterResumoSessaoCaixa,
   registrarMovimentoCaixa
 };

@@ -4052,6 +4052,16 @@ db.CaixaFinanceiroSessao.belongsTo(db.User, {
   as: 'fechadoPor'
 });
 
+db.CaixaFinanceiroSessao.belongsTo(db.User, {
+  foreignKey: 'divergencia_solicitada_por',
+  as: 'divergenciaSolicitadaPor'
+});
+
+db.CaixaFinanceiroSessao.belongsTo(db.User, {
+  foreignKey: 'divergencia_decidida_por',
+  as: 'divergenciaDecididaPor'
+});
+
 db.CaixaFinanceiroSessao.hasMany(db.MovimentoFinanceiro, {
   foreignKey: 'caixa_sessao_id',
   as: 'movimentos'

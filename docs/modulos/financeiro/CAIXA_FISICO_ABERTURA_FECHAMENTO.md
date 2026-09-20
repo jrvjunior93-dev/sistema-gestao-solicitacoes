@@ -9,14 +9,31 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 ## Regras operacionais
 
 - somente contas com tipo operacional `CAIXA_INTERNO` usam este fluxo;
-- abertura, entrada, saida, estorno e fechamento exigem as permissoes financeiras
-  correspondentes;
+- abertura, entrada, saida, estorno e fechamento exigem acesso financeiro e, depois
+  da primeira configuracao, vinculacao como responsavel pelo controle diario;
 - entradas e saidas manuais exigem valor positivo, descricao e natureza validos;
 - o estorno exige justificativa e so pode atingir lancamentos manuais ativos;
 - cada inclusao e estorno atualiza o resumo da sessao na mesma transacao;
 - o fechamento nao aceita data retroativa ao dia atual nem ao movimento mais recente;
-- divergencias entre saldo contado e saldo calculado ficam registradas com justificativa;
+- divergencias entre saldo contado e saldo calculado congelam a sessao e exigem
+  decisao de outro usuario configurado como aprovador;
+- a aprovacao gera um movimento de ajuste auditavel e fecha a sessao; a rejeicao
+  reabre a sessao para correcao;
 - a trilha de auditoria preserva usuario, data, valor, documento e motivo.
+
+## Controle diario consolidado
+
+- a configuracao `FINANCEIRO_CAIXA_DIARIO_CONFIG` nasce com o bloqueio desligado;
+- somente o superadmin ativa ou desativa a flag e escolhe responsaveis e aprovadores;
+- os responsaveis escolhidos operam a rotina e sao os usuarios sujeitos ao bloqueio;
+- com a flag ativa, novas mutacoes financeiras desses usuarios ficam bloqueadas ate
+  todas as contas controladas possuirem sessao aberta na data operacional;
+- consultas, conciliacao OFX e o proprio controle diario continuam disponiveis para
+  permitir a regularizacao;
+- fechar as contas ao fim do dia volta a bloquear novas mutacoes ate a abertura do
+  proximo dia, sem impedir consulta ao sistema;
+- o superadmin nao sofre o bloqueio automatico, mas toda alteracao da configuracao
+  e registrada na auditoria.
 
 ## Matriz de smoke test
 
@@ -29,7 +46,11 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 | Estornar movimento manual | Movimento original fica estornado e o resumo e recalculado |
 | Tentar estornar movimento nao manual | Operacao bloqueada |
 | Fechar sem divergencia | Saldo contado e calculado fecham a sessao |
-| Fechar com divergencia | Justificativa obrigatoria e divergencia auditada |
+| Fechar com divergencia | Sessao congelada e enviada para aprovacao |
+| Aprovar divergencia por outro usuario | Ajuste auditavel criado e sessao fechada |
+| Rejeitar divergencia | Sessao reaberta para correcao |
+| Ativar flag sem responsavel | Configuracao recusada |
+| Responsavel com contas pendentes | Mutacoes financeiras bloqueadas; consultas e conciliacao liberadas |
 | Informar data retroativa | Operacao bloqueada no frontend e no backend |
 | Acessar sem permissao | Rota e acoes permanecem bloqueadas |
 

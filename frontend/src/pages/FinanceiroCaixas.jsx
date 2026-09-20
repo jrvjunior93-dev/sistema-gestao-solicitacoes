@@ -8,10 +8,12 @@ import {
 import {
   abrirCaixaFinanceiro,
   confirmarConciliacaoDiaCaixa,
+  decidirDivergenciaCaixaFinanceiro,
   estornarMovimentoCaixaFinanceiro,
   fecharCaixaFinanceiro,
   getCaixaFinanceiro,
   getCaixasFinanceiros,
+  getPainelDiarioCaixas,
   getContasBancarias,
   registrarMovimentoCaixaFinanceiro
 } from '../services/financeiro';
@@ -70,11 +72,29 @@ function empresaLabel(conta) {
   return conta?.empresa?.nome || conta?.empresa?.razao_social || 'Empresa não informada';
 }
 
+function situacaoPainelLabel(situacao) {
+  return {
+    PRONTO: 'Pronta',
+    PENDENTE_ABERTURA: 'Pendente de abertura',
+    ABERTO_ATRASADO: 'Abertura anterior',
+    DIVERGENCIA_PENDENTE: 'Divergencia pendente',
+    FECHADO_DIA: 'Fechada no dia'
+  }[situacao] || situacao || '-';
+}
+
+function situacaoPainelClass(situacao) {
+  if (situacao === 'PRONTO') return 'badge badge-success';
+  if (situacao === 'FECHADO_DIA') return 'badge badge-muted';
+  if (situacao === 'DIVERGENCIA_PENDENTE') return 'badge badge-danger';
+  return 'badge badge-warning';
+}
+
 /* R25 — o par claro/escuro do status vinha de dez classes de paleta crua
    (`bg-emerald-50 dark:bg-emerald-950/30`...). O sistema já tem o par
    pronto no `badge-*`, que aponta para os tokens --sem-* e passa pelo piso
    de contraste do ThemeContext (R24). */
 function statusClass(status) {
+  if (String(status || '').toUpperCase() === 'AGUARDANDO_APROVACAO') return 'badge badge-warning';
   return String(status || '').toUpperCase() === 'ABERTO'
     ? 'badge badge-success'
     : 'badge badge-muted';
@@ -88,6 +108,9 @@ export default function FinanceiroCaixas() {
   const [sessaoDetalhe, setSessaoDetalhe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [painel, setPainel] = useState(null);
+  const [dataPainel, setDataPainel] = useState(today());
+  const [decisaoDivergencia, setDecisaoDivergencia] = useState({ sessao: null, decisao: 'APROVAR', observacao: '' });
   /*
     R19 — as duas faixas de tom próprio (`.app-alert-error` e
     `.app-alert-success`, DUAS classes que nunca existiram no CSS do
@@ -159,13 +182,13 @@ export default function FinanceiroCaixas() {
 
       const lista = Array.isArray(data) ? data : [];
       setSessoes(lista);
-      const aberta = lista.find((sessao) => sessao.status === 'ABERTO');
-      if (!aberta) {
+      const ativa = lista.find((sessao) => ['ABERTO', 'AGUARDANDO_APROVACAO'].includes(sessao.status));
+      if (!ativa) {
         setSessaoDetalhe(null);
         return null;
       }
 
-      const detalhe = await getCaixaFinanceiro(aberta.id);
+      const detalhe = await getCaixaFinanceiro(ativa.id);
       if (carregamentoId !== carregamentoIdRef.current) return null;
 
       setSessaoDetalhe(detalhe);
@@ -186,7 +209,7 @@ export default function FinanceiroCaixas() {
   const aplicarSessaoAtualizada = useCallback((detalhe) => {
     if (!detalhe?.id) return false;
 
-    setSessaoDetalhe(detalhe.status === 'ABERTO' ? detalhe : null);
+    setSessaoDetalhe(['ABERTO', 'AGUARDANDO_APROVACAO'].includes(detalhe.status) ? detalhe : null);
     setSessoes((atuais) => {
       const existe = atuais.some((sessao) => Number(sessao.id) === Number(detalhe.id));
       if (!existe) return [detalhe, ...atuais];
@@ -219,7 +242,19 @@ export default function FinanceiroCaixas() {
     return () => { carregamentoIdRef.current += 1; };
   }, [carregarControleCaixa, contaSelecionadaId]);
 
+  const carregarPainel = useCallback(async () => {
+    const data = await getPainelDiarioCaixas(dataPainel);
+    setPainel(data);
+    return data;
+  }, [dataPainel]);
+
+  useEffect(() => {
+    carregarPainel().catch((error) => avisar.erro(error?.message || 'Erro ao carregar o painel diario.'));
+  }, [carregarPainel]);
+
   const sessaoAberta = useMemo(() => sessoes.find((sessao) => sessao.status === 'ABERTO') || null, [sessoes]);
+  const sessaoPendente = useMemo(() => sessoes.find((sessao) => sessao.status === 'AGUARDANDO_APROVACAO') || null, [sessoes]);
+  const sessaoAtiva = sessaoAberta || sessaoPendente;
   const sessoesFechadas = useMemo(() => sessoes.filter((sessao) => sessao.status === 'FECHADO'), [sessoes]);
   const resumo = sessaoDetalhe?.resumo_atual || sessaoAberta?.resumo_atual || {};
   const movimentos = Array.isArray(sessaoDetalhe?.movimentos_detalhados) ? sessaoDetalhe.movimentos_detalhados : [];
@@ -238,6 +273,7 @@ export default function FinanceiroCaixas() {
   const saldoInformado = parseCurrencyInput(fecharForm.saldo_informado);
   const diferencaFechamento = Number.isFinite(saldoInformado) ? saldoInformado - saldoSistema : 0;
   const caixaFisico = contaEhCaixaFisico(contaSelecionada);
+  const podeOperar = painel?.configuracao?.pode_operar !== false;
 
   useEffect(() => {
     setFecharForm((current) => (
@@ -253,11 +289,28 @@ export default function FinanceiroCaixas() {
       limparAvisos();
       const resultado = await acao();
       if (!resultado?.estadoAplicado) await carregarControleCaixa();
+      await carregarPainel();
     } catch (err) {
       avisar.erro(err?.message || mensagemErro);
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleDecidirDivergencia(event) {
+    event.preventDefault();
+    await executar(async () => {
+      const detalhe = await decidirDivergenciaCaixaFinanceiro(decisaoDivergencia.sessao.id, {
+        decisao: decisaoDivergencia.decisao,
+        observacao: decisaoDivergencia.observacao
+      });
+      aplicarSessaoAtualizada(detalhe);
+      avisar.sucesso(detalhe.status === 'FECHADO'
+        ? 'Divergencia aprovada e caixa fechado.'
+        : 'Divergencia rejeitada e caixa reaberto para correcao.');
+      setDecisaoDivergencia({ sessao: null, decisao: 'APROVAR', observacao: '' });
+      return { estadoAplicado: true };
+    }, 'Erro ao decidir a divergencia.');
   }
 
   async function handleAbrir(event) {
@@ -307,11 +360,15 @@ export default function FinanceiroCaixas() {
       return;
     }
     await executar(async () => {
-      await fecharCaixaFinanceiro(sessaoAberta.id, {
+      const detalhe = await fecharCaixaFinanceiro(sessaoAberta.id, {
         ...fecharForm,
         saldo_informado: parseCurrencyInput(fecharForm.saldo_informado)
       });
-      avisar.sucesso('Caixa fechado e conferência registrada com sucesso.');
+      const estadoAplicado = aplicarSessaoAtualizada(detalhe);
+      avisar.sucesso(detalhe.status === 'AGUARDANDO_APROVACAO'
+        ? 'Divergencia enviada para aprovacao. O caixa ficou bloqueado para novos movimentos.'
+        : 'Caixa fechado e conferencia registrada com sucesso.');
+      return { estadoAplicado };
     }, 'Erro ao fechar o caixa.');
   }
 
@@ -369,6 +426,70 @@ export default function FinanceiroCaixas() {
       <Avisos avisos={avisos} aoFechar={fecharAviso} />
 
       <BlocoConteudo
+        titulo="Visao consolidada do dia"
+        variante="primario"
+        cor="var(--module-financeiro)"
+        descricao="Acompanhe todas as contas controladas antes de entrar no detalhe operacional."
+        acoes={(
+          <label className="sol-filter-field min-w-44">
+            <span className="sol-filter-label">Data operacional</span>
+            <DateInputBR className="input w-full" value={dataPainel} onChange={(event) => setDataPainel(event.target.value)} />
+          </label>
+        )}
+      >
+        {painel ? (
+          <>
+            <StatGrid colunas={4}>
+              <StatTile label="Contas controladas" valor={painel.resumo?.total_contas || 0} />
+              <StatTile label="Prontas" valor={painel.resumo?.contas_prontas || 0} sub={`${painel.resumo?.contas_fechadas || 0} fechada(s) no dia`} tom="success" />
+              <StatTile label="Pendentes" valor={painel.resumo?.contas_pendentes || 0} tom={(painel.resumo?.contas_pendentes || 0) > 0 ? 'warning' : 'success'} />
+              <StatTile label="Saldo consolidado" valor={formatCurrency(painel.resumo?.saldo_consolidado)} />
+            </StatGrid>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+              <span className={painel.configuracao?.bloqueio_ativo ? 'badge badge-warning' : 'badge badge-muted'}>
+                Bloqueio {painel.configuracao?.bloqueio_ativo ? 'ativo' : 'desativado'}
+              </span>
+              {painel.configuracao?.usuario_sujeito_bloqueio ? (
+                <span className="text-[var(--c-muted)]">Seu usuario esta sujeito a esta regra.</span>
+              ) : null}
+            </div>
+
+            <div className="mt-4">
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'conta',
+                    titulo: 'Conta',
+                    tipo: 'identidade',
+                    noCard: 'titulo',
+                    render: (item) => <div><strong className="block">{item.conta?.nome || `Conta ${item.conta?.id}`}</strong><span className="text-xs text-[var(--c-muted)]">{empresaLabel(item.conta)}</span></div>
+                  },
+                  { id: 'tipo', titulo: 'Tipo', tipo: 'texto', render: (item) => contaEhCaixaFisico(item.conta) ? 'Caixa fisico' : (item.conta?.banco || 'Conta bancaria') },
+                  { id: 'conciliacao', titulo: 'Conferencia anterior', tipo: 'status', render: (item) => contaEhCaixaFisico(item.conta) ? '-' : <span className={item.conciliacao_confirmada ? 'badge badge-success' : 'badge badge-warning'}>{item.conciliacao_confirmada ? 'Confirmada' : `${item.conciliacao?.total_pendentes || 0} pendencia(s)`}</span> },
+                  { id: 'situacao', titulo: 'Situacao do dia', tipo: 'status', render: (item) => <span className={situacaoPainelClass(item.situacao)}>{situacaoPainelLabel(item.situacao)}</span> },
+                  { id: 'saldo', titulo: 'Saldo atual', tipo: 'valor', render: (item) => <strong>{formatCurrency(item.saldo_atual)}</strong> }
+                ]}
+                itens={painel.contas || []}
+                getId={(item) => item.conta?.id}
+                storageKey="tabela:financeiro-caixas:painel-diario"
+                vazio="Nenhuma conta configurada para controle diario."
+                larguraAcoes={220}
+                acoesLinha={(item) => (
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button type="button" className="btn btn-outline btn-sm" onClick={() => setContaSelecionadaId(String(item.conta?.id || ''))}>Abrir detalhe</button>
+                    {item.situacao === 'DIVERGENCIA_PENDENTE' && painel.configuracao?.pode_aprovar_divergencia ? (
+                      <button type="button" className="btn btn-primary btn-sm" onClick={() => setDecisaoDivergencia({ sessao: item.sessao, decisao: 'APROVAR', observacao: '' })}>Decidir</button>
+                    ) : null}
+                  </div>
+                )}
+              />
+            </div>
+          </>
+        ) : <p className="text-sm text-[var(--c-muted)]">Carregando a situacao das contas...</p>}
+      </BlocoConteudo>
+
+      <BlocoConteudo
         titulo="Caixa em operação"
         variante="secundario"
         descricao="Escolha a empresa para estreitar a lista e o caixa que será operado."
@@ -396,11 +517,11 @@ export default function FinanceiroCaixas() {
             </select>
           </label>
           <div className="flex min-h-11 min-w-0 items-center gap-2 rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] px-3 py-2 text-sm md:col-span-4">
-            {sessaoAberta
+            {sessaoAtiva
               ? <HiOutlineLockOpen className="h-4 w-4 shrink-0 text-[var(--sem-success)]" aria-hidden="true" />
               : <HiOutlineLockClosed className="h-4 w-4 shrink-0 text-[var(--c-muted)]" aria-hidden="true" />}
             <div className="min-w-0">
-              <strong className="block truncate text-[var(--c-text)]">{sessaoAberta ? 'Caixa aberto' : 'Caixa fechado'}</strong>
+              <strong className="block truncate text-[var(--c-text)]">{sessaoPendente ? 'Aguardando aprovacao' : (sessaoAberta ? 'Caixa aberto' : 'Caixa fechado')}</strong>
               <span className="block truncate text-xs text-[var(--c-muted)]">{contaSelecionada ? empresaLabel(contaSelecionada) : 'Selecione uma conta'}</span>
             </div>
           </div>
@@ -424,7 +545,7 @@ export default function FinanceiroCaixas() {
         </BlocoConteudo>
       ) : null}
 
-      {contaSelecionada && !sessaoAberta && !loading ? (
+      {contaSelecionada && !sessaoAtiva && !loading && podeOperar ? (
         <BlocoConteudo
           titulo="Abrir caixa"
           variante="primario"
@@ -439,6 +560,37 @@ export default function FinanceiroCaixas() {
                 "Confirmar OFX" a secundária em contorno. */}
             <div className="flex flex-wrap justify-end gap-2 sm:col-span-2 xl:col-span-2">{!caixaFisico ? <button type="button" className="btn btn-outline" onClick={handleConfirmarOfx} disabled={saving}>Confirmar OFX</button> : null}<button type="submit" className="btn btn-primary" disabled={saving}>Abrir caixa</button></div>
           </form>
+        </BlocoConteudo>
+      ) : null}
+
+      {contaSelecionada && !sessaoAtiva && !loading && !podeOperar ? (
+        <BlocoConteudo titulo="Conta sem sessao aberta" variante="primario">
+          <p className="text-sm text-[var(--c-muted)]">
+            Voce pode consultar o painel, mas somente os responsaveis definidos pelo superadmin podem confirmar a conciliacao e abrir ou fechar contas.
+          </p>
+        </BlocoConteudo>
+      ) : null}
+
+      {sessaoPendente && !loading ? (
+        <BlocoConteudo
+          titulo="Divergencia aguardando aprovacao"
+          variante="primario"
+          cor="var(--sem-warning)"
+          descricao="O caixa permanece congelado ate outro aprovador decidir. Quem informou a divergencia nao pode aprovar a propria solicitacao."
+          acoes={<span className={statusClass('AGUARDANDO_APROVACAO')}>AGUARDANDO APROVACAO</span>}
+        >
+          <StatGrid colunas={4}>
+            <StatTile label="Saldo do sistema" valor={formatCurrency(sessaoPendente.saldo_sistema)} />
+            <StatTile label="Saldo informado" valor={formatCurrency(sessaoPendente.saldo_informado)} />
+            <StatTile label="Diferenca" valor={formatCurrency(sessaoPendente.diferenca)} tom="warning" />
+            <StatTile label="Solicitado por" valor={sessaoPendente.divergenciaSolicitadaPor?.nome || '-'} />
+          </StatGrid>
+          <p className="mt-3 text-sm text-[var(--c-muted)]">Justificativa: {sessaoPendente.observacoes_fechamento || '-'}</p>
+          {painel?.configuracao?.pode_aprovar_divergencia ? (
+            <div className="mt-3 flex justify-end">
+              <button type="button" className="btn btn-primary" onClick={() => setDecisaoDivergencia({ sessao: sessaoPendente, decisao: 'APROVAR', observacao: '' })}>Decidir divergencia</button>
+            </div>
+          ) : null}
         </BlocoConteudo>
       ) : null}
 
@@ -463,7 +615,7 @@ export default function FinanceiroCaixas() {
           </StatGrid>
         </BlocoConteudo>
 
-        {caixaFisico ? (
+        {caixaFisico && podeOperar ? (
           <BlocoConteudo
             titulo="Registrar entrada ou saída"
             descricao="Use para dinheiro físico ainda não registrado por outro fluxo financeiro."
@@ -548,7 +700,7 @@ export default function FinanceiroCaixas() {
           />
         </BlocoConteudo>
 
-        <BlocoConteudo
+        {podeOperar ? <BlocoConteudo
           titulo="Conferir e fechar caixa"
           descricao={`${caixaFisico ? 'Conte o dinheiro físico e informe o saldo encontrado.' : 'Confira o saldo operacional e informe o valor apurado.'} Divergências ficam registradas com justificativa.`}
         >
@@ -571,7 +723,7 @@ export default function FinanceiroCaixas() {
               </button>
             </div>
           </form>
-        </BlocoConteudo>
+        </BlocoConteudo> : null}
       </> : null}
 
       {contaSelecionada ? (
@@ -635,6 +787,40 @@ export default function FinanceiroCaixas() {
         do overlay à mão com `bg-slate-950/55`, e o texto passou a declarar
         que a operação não se desfaz.
       */}
+      {decisaoDivergencia.sessao ? (
+        <OverlayModal
+          rotulo="Decidir divergencia de caixa"
+          largura="var(--modal-max-w-md, 640px)"
+          onFechar={() => setDecisaoDivergencia({ sessao: null, decisao: 'APROVAR', observacao: '' })}
+        >
+          <form className="flex min-h-0 flex-col" onSubmit={handleDecidirDivergencia}>
+            <div className="border-b border-[var(--c-border)] p-4">
+              <h2 className="app-confirmacao-titulo">Decidir divergencia</h2>
+              <p className="mt-1 text-sm text-[var(--c-muted)]">
+                Ao aprovar, o sistema cria um ajuste auditavel de {formatCurrency(Math.abs(Number(decisaoDivergencia.sessao.diferenca || 0)))} e fecha o caixa. Ao rejeitar, o caixa volta para correcao.
+              </p>
+            </div>
+            <div className="space-y-4 p-4">
+              <label className="sol-filter-field">
+                <span className="sol-filter-label">Decisao *</span>
+                <select className="input w-full" value={decisaoDivergencia.decisao} onChange={(event) => setDecisaoDivergencia((atual) => ({ ...atual, decisao: event.target.value }))}>
+                  <option value="APROVAR">Aprovar ajuste e fechar</option>
+                  <option value="REJEITAR">Rejeitar e reabrir para correcao</option>
+                </select>
+              </label>
+              <label className="sol-filter-field">
+                <span className="sol-filter-label">Observacao da decisao *</span>
+                <textarea className="input min-h-24 w-full" minLength={10} maxLength={4000} required value={decisaoDivergencia.observacao} onChange={(event) => setDecisaoDivergencia((atual) => ({ ...atual, observacao: event.target.value }))} placeholder="Registre a analise com pelo menos 10 caracteres" />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-[var(--c-border)] p-4">
+              <button type="button" className="btn btn-outline" onClick={() => setDecisaoDivergencia({ sessao: null, decisao: 'APROVAR', observacao: '' })}>Cancelar</button>
+              <button type="submit" className={decisaoDivergencia.decisao === 'REJEITAR' ? 'btn btn-outline btn-perigo-suave' : 'btn btn-primary'} disabled={saving}>Confirmar decisao</button>
+            </div>
+          </form>
+        </OverlayModal>
+      ) : null}
+
       {estorno.movimento ? (
         <OverlayModal
           rotulo="Estornar movimento"

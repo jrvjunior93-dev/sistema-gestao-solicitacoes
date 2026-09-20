@@ -1,9 +1,11 @@
 const {
   abrirSessaoCaixa,
   confirmarConciliacaoDiaCaixa,
+  decidirDivergenciaCaixa,
   estornarMovimentoCaixa,
   fecharSessaoCaixa,
   listarSessoesCaixa,
+  obterPainelDiarioCaixas,
   obterResumoSessaoCaixa,
   registrarMovimentoCaixa
 } = require('../services/caixaFinanceiroService');
@@ -25,6 +27,15 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao buscar caixa financeiro');
+    }
+  },
+
+  async painelDiario(req, res) {
+    try {
+      return res.json(await obterPainelDiarioCaixas(req, req.query?.data_referencia));
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao montar o painel diario de contas');
     }
   },
 
@@ -72,6 +83,15 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao fechar caixa financeiro');
+    }
+  },
+
+  async decidirDivergencia(req, res) {
+    try {
+      return res.json(await decidirDivergenciaCaixa(req, req.params.id, req.body || {}));
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao decidir divergencia do caixa');
     }
   }
 };

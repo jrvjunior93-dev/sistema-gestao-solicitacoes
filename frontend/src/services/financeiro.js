@@ -723,6 +723,15 @@ export async function getCaixasFinanceiros(params = {}) {
   return parseJson(response, 'Erro ao buscar caixas financeiros');
 }
 
+export async function getPainelDiarioCaixas(dataReferencia) {
+  const query = dataReferencia ? `?data_referencia=${encodeURIComponent(dataReferencia)}` : '';
+  const response = await fetch(`${API_URL}/financeiro/caixas-painel-diario${query}`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  });
+  return parseJson(response, 'Erro ao carregar o painel diario de contas');
+}
+
 export async function getCaixaFinanceiro(id) {
   const response = await fetch(`${API_URL}/financeiro/caixas/${id}`, {
     headers: authHeaders(),
@@ -759,6 +768,15 @@ export async function fecharCaixaFinanceiro(id, data) {
   });
 
   return parseJson(response, 'Erro ao fechar caixa financeiro');
+}
+
+export async function decidirDivergenciaCaixaFinanceiro(id, data) {
+  const response = await fetch(`${API_URL}/financeiro/caixas/${id}/decidir-divergencia`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao decidir divergencia do caixa');
 }
 
 export async function registrarMovimentoCaixaFinanceiro(id, data) {

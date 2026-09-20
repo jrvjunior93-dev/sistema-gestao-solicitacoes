@@ -70,6 +70,11 @@ const {
   salvarConfigAutomacaoDestinoNovaSolicitacao
 } = require('../services/novaSolicitacaoAutomacaoDestinoConfig');
 const {
+  obterCaixaDiarioConfig,
+  salvarCaixaDiarioConfig
+} = require('../services/caixaDiarioConfigService');
+const { registrarEventoSeguranca } = require('../services/securityLogService');
+const {
   obterSlaSolicitacoesPorSetor,
   salvarSlaSolicitacoesPorSetor
 } = require('../services/solicitacaoSlaConfig');
@@ -1379,6 +1384,38 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao salvar configuracao de acesso ao financeiro por usuario' });
+    }
+  },
+
+  async getCaixaDiarioConfig(req, res) {
+    try {
+      return res.json(await obterCaixaDiarioConfig({ useCache: false }));
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao buscar configuracao do controle diario de contas.' });
+    }
+  },
+
+  async updateCaixaDiarioConfig(req, res) {
+    try {
+      const anterior = await obterCaixaDiarioConfig({ useCache: false });
+      const config = await salvarCaixaDiarioConfig(req.body || {});
+      await registrarEventoSeguranca({
+        req,
+        usuarioId: req.user?.id || null,
+        tipoEvento: 'FINANCIAL_DAILY_CASH_CONFIG_UPDATED',
+        recursoTipo: 'CONFIGURACAO_SISTEMA',
+        recursoId: 'FINANCEIRO_CAIXA_DIARIO_CONFIG',
+        status: 'SUCCESS',
+        descricao: 'Configuracao do controle diario de contas atualizada',
+        metadata: { anterior, atual: config }
+      });
+      return res.json({ ok: true, ...config });
+    } catch (error) {
+      console.error(error);
+      return res.status(error?.statusCode || 500).json({
+        error: error?.message || 'Erro ao salvar configuracao do controle diario de contas.'
+      });
     }
   },
 

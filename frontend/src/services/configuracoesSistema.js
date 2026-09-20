@@ -417,6 +417,31 @@ export async function salvarUsuariosAcessoFinanceiro(data) {
   return res.json();
 }
 
+export async function getControleDiarioContasConfig() {
+  const res = await fetch(`${API_URL}/configuracoes/controle-diario-contas`, {
+    headers: authHeaders(),
+    cache: 'no-store'
+  });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    throw new Error(payload?.error || 'Erro ao buscar configuracao do controle diario de contas');
+  }
+  return res.json();
+}
+
+export async function salvarControleDiarioContasConfig(data) {
+  const res = await fetch(`${API_URL}/configuracoes/controle-diario-contas`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    const payload = await res.json().catch(() => null);
+    throw new Error(payload?.error || 'Erro ao salvar configuracao do controle diario de contas');
+  }
+  return res.json();
+}
+
 export async function getUsuariosAcessoPrioridadeDiretoria() {
   const res = await fetch(`${API_URL}/configuracoes/usuarios-acesso-prioridade-diretoria`, {
     headers: authHeaders()

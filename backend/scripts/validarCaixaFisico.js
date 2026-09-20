@@ -63,7 +63,10 @@ function validateBackendContracts() {
     'Informe uma justificativa com pelo menos 10 caracteres',
     'Somente lancamentos manuais podem ser estornados',
     'FINANCIAL_CASH_MOVEMENT_CREATED',
-    'FINANCIAL_CASH_MOVEMENT_REVERSED'
+    'FINANCIAL_CASH_MOVEMENT_REVERSED',
+    'FINANCIAL_CASH_DIVERGENCE_REQUESTED',
+    'FINANCIAL_CASH_DIVERGENCE_APPROVED',
+    'Quem informou a divergencia nao pode aprovar ou rejeitar a propria solicitacao'
   ].forEach((contract) => assert(service.includes(contract), `Regra do caixa fisico ausente: ${contract}`));
 
   assert(service.includes('if (!contaEhCaixaFisico(conta))'), 'Caixa fisico deve ignorar a trava de conciliacao OFX na abertura.');
@@ -82,6 +85,8 @@ function validateBackendContracts() {
   assert(sessionHelper.includes(".trim().toLowerCase() === 'true'"), 'Flag textual do controle diario deve aceitar somente true explicito.');
   assert(routes.includes("'/financeiro/caixas/:id/movimentos'"), 'Rota de movimento manual ausente.');
   assert(routes.includes("'/financeiro/caixas/:id/movimentos/:movimentoId/estornar'"), 'Rota de estorno manual ausente.');
+  assert(routes.includes("'/financeiro/caixas/:id/decidir-divergencia'"), 'Rota de decisao da divergencia ausente.');
+  assert(routes.includes("'/financeiro/caixas-painel-diario'"), 'Rota do painel diario consolidado ausente.');
   assert(routes.includes('criticalRateLimit'), 'Rotas criticas do caixa devem manter rate limit.');
   assert(controller.includes('registrarMovimentoCaixa'), 'Controller de movimento manual ausente.');
   assert(controller.includes('estornarMovimentoCaixa'), 'Controller de estorno manual ausente.');
@@ -115,7 +120,9 @@ function validateFrontendContracts() {
     'Registrar entrada ou saída',
     'Livro do caixa',
     'Conferir e fechar caixa',
-    'Divergências ficam registradas com justificativa'
+    'Divergências ficam registradas com justificativa',
+    'Visao consolidada do dia',
+    'Decidir divergencia'
   ].forEach((contract) => assert(page.includes(contract), `Contrato de interface ausente: ${contract}`));
 
   assert(
