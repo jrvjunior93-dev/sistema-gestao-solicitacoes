@@ -81,8 +81,34 @@ export default function ModalPortal({ children, onClose, closeOnEscape = true })
 
   if (typeof document === 'undefined') return null;
 
+  /*
+   * PORTAL NAO PODE ACIONAR O CARD QUE O ABRIU (21/09).
+   *
+   * O portal muda o DOM para `document.body`, mas o React preserva a arvore
+   * logica: um clique dentro do modal ainda sobe ate os componentes que o
+   * renderizaram. Quando o disparador mora num `BlocoConteudo` cujo card
+   * inteiro abre/recolhe, clicar numa area vazia do modal chegava ao card,
+   * recolhia o bloco e desmontava o modal. Para o usuario, parecia que o
+   * modal aceitava clique fora mesmo sem ter essa regra.
+   *
+   * A fronteira do portal interrompe somente a propagacao para a tela que
+   * esta por baixo. Os controles internos continuam recebendo normalmente
+   * `pointerdown`, `mousedown` e `click`; modais que implementam uma acao
+   * explicita no proprio fundo tambem continuam podendo executa-la antes de
+   * o evento chegar aqui.
+   */
+  const isolarEventoDaTela = (event) => event.stopPropagation();
+
   return createPortal(
-    <div className="app-modal-portal">{children}</div>,
+    <div
+      className="app-modal-portal"
+      data-modal-portal
+      onPointerDown={isolarEventoDaTela}
+      onMouseDown={isolarEventoDaTela}
+      onClick={isolarEventoDaTela}
+    >
+      {children}
+    </div>,
     document.body
   );
 }

@@ -87,7 +87,7 @@ export default function PedidoResumo({ pedido, user, onUpdated }) {
       ...(pedido.observacoes ? [['Observações', <span className="whitespace-pre-wrap">{pedido.observacoes}</span>]] : [])
     ]} />
     {canViewPedidoCompraFinanceiro(user) && <AcaoIconeCompra rotulo="Criar / gerenciar títulos deste pedido" icone={HiBanknotes} disabled={carregando} onClick={abrirFinanceiro} />}
-    {aberto && <OverlayModal rotulo={`Títulos do pedido #${pedido.id}`} largura="1000px"
+    {aberto && <OverlayModal rotulo={`Títulos do pedido #${pedido.id}`} largura="1000px" fecharComEscape={false}
       onFechar={carregando || processando ? undefined : () => setAberto(false)}>
       <div data-modal="cabecalho" className="flex items-center justify-between gap-3 border-b border-[var(--c-border)] p-4">
         <h2 className="font-semibold">Títulos do pedido #{pedido.id}</h2>
