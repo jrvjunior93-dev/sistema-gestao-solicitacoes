@@ -1216,7 +1216,11 @@ function validateCompraPedidoReabrirBody(body = {}) {
 }
 
 function validateCompraPedidoPrevisoesBody(body = {}) {
-  ensureAllowedKeys(body, ['categoria_financeira_id', 'descricao', 'parcelas', 'comprovacao'], 'Previsoes financeiras do pedido');
+  ensureAllowedKeys(body, [
+    'categoria_financeira_id', 'descricao', 'parcelas', 'comprovacao',
+    'forma_pagamento_id', 'favorecido_pagamento_id', 'chave_pix', 'dados_pagamento',
+    'boletos', 'fretes'
+  ], 'Previsoes financeiras do pedido');
   if (!Array.isArray(body.parcelas) || body.parcelas.length === 0) {
     throw new ValidationError('Informe ao menos uma parcela da previsao.');
   }
@@ -1226,20 +1230,65 @@ function validateCompraPedidoPrevisoesBody(body = {}) {
   const comprovacao = body.comprovacao == null
     ? null
     : validateCompraPedidoDocumentoFinanceiroBody(body.comprovacao);
-  return {
-    categoria_financeira_id: parseInteger(body.categoria_financeira_id, 'Categoria financeira', { required: true }),
-    descricao: parseOptionalText(body.descricao, 'Descricao', 255),
-    comprovacao,
-    parcelas: body.parcelas.map((parcela, index) => {
-      ensureAllowedKeys(parcela || {}, ['valor', 'data_vencimento'], `Parcela ${index + 1}`);
+  const validarBoletos = (boletos, contexto) => {
+    if (boletos == null) return [];
+    if (!Array.isArray(boletos) || boletos.length > 120) {
+      throw new ValidationError(`${contexto} deve possuir no maximo 120 arquivos.`);
+    }
+    return boletos.map((boleto, index) => {
+      ensureAllowedKeys(boleto || {}, ['arquivo_url', 'arquivo_nome'], `${contexto} ${index + 1}`);
       return {
-        valor: parseDecimal(parcela?.valor, `Valor da parcela ${index + 1}`, {
+        arquivo_url: parseOptionalText(boleto?.arquivo_url, `URL de ${contexto.toLowerCase()} ${index + 1}`, 2000, { required: true }),
+        arquivo_nome: parseOptionalText(boleto?.arquivo_nome, `Nome de ${contexto.toLowerCase()} ${index + 1}`, 255, { required: true })
+      };
+    });
+  };
+  const validarParcelas = (parcelas, contexto) => {
+    if (!Array.isArray(parcelas) || parcelas.length === 0) {
+      throw new ValidationError(`Informe ao menos uma parcela de ${contexto}.`);
+    }
+    if (parcelas.length > 120) throw new ValidationError(`${contexto} nao pode possuir mais de 120 parcelas.`);
+    return parcelas.map((parcela, index) => {
+      ensureAllowedKeys(parcela || {}, ['valor', 'data_vencimento'], `Parcela ${index + 1} de ${contexto}`);
+      return {
+        valor: parseDecimal(parcela?.valor, `Valor da parcela ${index + 1} de ${contexto}`, {
           required: true,
           min: 0.01,
           scale: 2,
           brazilianFormat: true
         }),
-        data_vencimento: parseDateOnly(parcela?.data_vencimento, `Vencimento da parcela ${index + 1}`, { required: true })
+        data_vencimento: parseDateOnly(parcela?.data_vencimento, `Vencimento da parcela ${index + 1} de ${contexto}`, { required: true })
+      };
+    });
+  };
+  const fretes = body.fretes == null ? [] : body.fretes;
+  if (!Array.isArray(fretes) || fretes.length > 50) {
+    throw new ValidationError('A configuracao nao pode possuir mais de 50 fretes.');
+  }
+  return {
+    categoria_financeira_id: parseInteger(body.categoria_financeira_id, 'Categoria financeira', { required: true }),
+    descricao: parseOptionalText(body.descricao, 'Descricao', 255),
+    forma_pagamento_id: parseInteger(body.forma_pagamento_id, 'Forma de pagamento', { required: true }),
+    favorecido_pagamento_id: parseInteger(body.favorecido_pagamento_id, 'Favorecido', { required: true }),
+    chave_pix: parseOptionalText(body.chave_pix, 'Chave PIX', 255),
+    dados_pagamento: parseOptionalText(body.dados_pagamento, 'Dados para pagamento', 2000),
+    boletos: validarBoletos(body.boletos, 'Boletos da compra'),
+    comprovacao,
+    parcelas: validarParcelas(body.parcelas, 'a compra'),
+    fretes: fretes.map((frete, freteIndex) => {
+      ensureAllowedKeys(frete || {}, [
+        'frete_id', 'descricao', 'forma_pagamento_id', 'favorecido_pagamento_id',
+        'chave_pix', 'dados_pagamento', 'boletos', 'parcelas'
+      ], `Frete ${freteIndex + 1}`);
+      return {
+        frete_id: parseInteger(frete?.frete_id, `Frete ${freteIndex + 1}`, { required: true }),
+        descricao: parseOptionalText(frete?.descricao, `Descricao do frete ${freteIndex + 1}`, 255),
+        forma_pagamento_id: parseInteger(frete?.forma_pagamento_id, `Forma de pagamento do frete ${freteIndex + 1}`, { required: true }),
+        favorecido_pagamento_id: parseInteger(frete?.favorecido_pagamento_id, `Favorecido do frete ${freteIndex + 1}`, { required: true }),
+        chave_pix: parseOptionalText(frete?.chave_pix, `Chave PIX do frete ${freteIndex + 1}`, 255),
+        dados_pagamento: parseOptionalText(frete?.dados_pagamento, `Dados para pagamento do frete ${freteIndex + 1}`, 2000),
+        boletos: validarBoletos(frete?.boletos, `Boletos do frete ${freteIndex + 1}`),
+        parcelas: validarParcelas(frete?.parcelas, `o frete ${freteIndex + 1}`)
       };
     })
   };

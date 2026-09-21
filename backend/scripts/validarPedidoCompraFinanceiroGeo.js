@@ -83,25 +83,54 @@ assert(configCategorias.includes('categoria_padrao_id'), 'A configuracao precisa
 assert(fila.includes('encaminharSolicitacaoParaFinanceiroAoEnfileirar'), 'Somente a entrada na fila deve assumir a solicitacao no Financeiro.');
 assert(statusSolicitacao.includes('devolverAoSetorObraAposBaixa'), 'A baixa precisa devolver a solicitacao para Obra.');
 assert(!medicao.includes("solicitacao.update({ area_responsavel: SETOR_FINANCEIRO }"), 'A aprovacao da medicao nao pode antecipar o envio ao Financeiro.');
-assert(component.includes('Adicionar parcela'), 'A tela precisa permitir adicionar parcelas na criacao dos titulos.');
+assert(component.includes('Quantidade de parcelas'), 'A tela precisa permitir definir a quantidade de parcelas na criacao dos titulos.');
+assert(component.includes('gerarParcelas'), 'A tela precisa distribuir automaticamente valores e vencimentos das parcelas.');
+assert(component.includes('Pagamento do frete'), 'Frete de terceiro precisa receber configuracao e titulo separados.');
+assert(component.includes('Favorecido'), 'Compra e frete precisam identificar quem recebera o pagamento.');
+assert(component.includes('Chave PIX'), 'Pagamento PIX precisa solicitar a chave negociada.');
+assert(component.includes('Boletos'), 'Pagamento por boleto precisa aceitar mais de um arquivo.');
 assert(component.includes('Editar parcelas'), 'A tela precisa permitir editar previsoes ainda nao liberadas.');
 assert(component.includes('Forma de comprovação da compra'), 'A tela precisa identificar a evidencia opcional pelo objetivo da compra.');
 assert(!component.includes('Registrar confirmação'), 'A comprovacao nao pode ter uma acao separada da criacao dos titulos.');
 assert(component.indexOf('Forma de comprovação da compra') < component.lastIndexOf("'Criar títulos'"), 'Criar titulos precisa ser a acao final depois da comprovacao opcional.');
 assert(service.includes('payload?.comprovacao'), 'A mesma transacao dos titulos precisa aceitar a comprovacao opcional.');
-assert(validatorsSource.includes("'parcelas', 'comprovacao'"), 'O contrato da criacao precisa aceitar a comprovacao opcional.');
+assert(validatorsSource.includes("'boletos', 'fretes'"), 'O contrato da criacao precisa aceitar boletos e fretes separados.');
 assert(!service.includes('antes de liberar o pagamento'), 'A comprovacao da compra nao pode bloquear a liberacao dos titulos.');
 
 const payloadSemComprovacao = validateCompraPedidoPrevisoesBody({
   categoria_financeira_id: 1,
+  forma_pagamento_id: 2,
+  favorecido_pagamento_id: 3,
   parcelas: [{ valor: 100, data_vencimento: '2026-09-21' }]
 });
 assert.strictEqual(payloadSemComprovacao.comprovacao, null, 'Criar titulos sem comprovacao precisa continuar valido.');
 const payloadComComprovacao = validateCompraPedidoPrevisoesBody({
   categoria_financeira_id: 1,
+  forma_pagamento_id: 2,
+  favorecido_pagamento_id: 3,
   parcelas: [{ valor: 100, data_vencimento: '2026-09-21' }],
   comprovacao: { tipo: 'NOTA_FISCAL', numero_documento: 'NF-123' }
 });
 assert.strictEqual(payloadComComprovacao.comprovacao.numero_documento, 'NF-123', 'A comprovacao opcional precisa viajar no mesmo payload dos titulos.');
+
+const payloadComFrete = validateCompraPedidoPrevisoesBody({
+  categoria_financeira_id: 1,
+  forma_pagamento_id: 2,
+  favorecido_pagamento_id: 3,
+  chave_pix: 'compras@empresa.com.br',
+  parcelas: [
+    { valor: 50, data_vencimento: '2026-09-21' },
+    { valor: 50, data_vencimento: '2026-10-21' }
+  ],
+  fretes: [{
+    frete_id: 8,
+    forma_pagamento_id: 4,
+    favorecido_pagamento_id: 9,
+    boletos: [{ arquivo_url: 'https://arquivos/boleto.pdf', arquivo_nome: 'boleto.pdf' }],
+    parcelas: [{ valor: 25, data_vencimento: '2026-09-25' }]
+  }]
+});
+assert.strictEqual(payloadComFrete.fretes[0].frete_id, 8, 'O frete precisa viajar identificado no mesmo payload atomico.');
+assert.strictEqual(payloadComFrete.fretes[0].boletos.length, 1, 'Os boletos do frete precisam ser preservados pelo contrato HTTP.');
 
 console.log('Fluxo Compras -> GEO autoriza -> fila Financeiro -> baixa Obra validado com sucesso.');

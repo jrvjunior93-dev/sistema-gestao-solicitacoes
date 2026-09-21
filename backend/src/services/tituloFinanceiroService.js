@@ -3069,6 +3069,17 @@ async function criarTituloManual(req, payload = {}, options = {}) {
       ? parceiro
       : await validarParceiro(parceiroPagamentoId);
     validarCompatibilidadeParceiroTitulo(parceiroPagamento, tipo);
+    const favorecidoPagamentoId = Number(pagamentoPayload.favorecido_pagamento_id || 0);
+    const favorecidoPagamento = favorecidoPagamentoId > 0
+      ? await Parceiro.findOne({
+          where: { id: favorecidoPagamentoId, ativo: true },
+          attributes: ['id', 'nome', 'cpf_cnpj'],
+          transaction: externalTransaction || undefined
+        })
+      : null;
+    if (favorecidoPagamentoId > 0 && !favorecidoPagamento) {
+      throw createHttpError(400, `Favorecido invalido no pagamento ${pagamentoIndex + 1}.`);
+    }
     const categoriaPagamento = pagamentoPayload.categoria_financeira_id
       ? await validarCategoriaFinanceira(pagamentoPayload.categoria_financeira_id, tipo)
       : categoriaPadrao;
@@ -3118,6 +3129,7 @@ async function criarTituloManual(req, payload = {}, options = {}) {
 
     pagamentos.push({
       parceiro: parceiroPagamento,
+      favorecidoPagamento,
       categoria: categoriaPagamento,
       formaPagamento,
       intercompanyFields,
@@ -3188,6 +3200,7 @@ async function criarTituloManual(req, payload = {}, options = {}) {
           empresa_id: empresaTituloId,
           ...pagamento.intercompanyFields,
           parceiro_id: pagamento.parceiro.id,
+          favorecido_pagamento_id: pagamento.favorecidoPagamento?.id || null,
           categoria_financeira_id: pagamento.categoria?.id || categoriaPadrao?.id || null,
           forma_pagamento_id: pagamento.formaPagamento?.id || null,
           cartao_id: pagamento.payload.cartao_id || null,

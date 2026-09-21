@@ -1011,6 +1011,7 @@ const allowCompraSolicitacoesUpload = allowPaymentAction(
     || await canManageCompraSolicitacoes(user)
     || await canManageComprasPedidos(user)
     || await canAnexarDocumentoPedidoCompraFinanceiro(user)
+    || await canGerarPrevisaoPedidoCompraFinanceiro(user)
   ),
   'Acesso negado para enviar anexos de compras'
 );

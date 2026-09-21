@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const {
+  Anexo,
   FormaPagamentoFinanceira,
   FornecedorCompra,
   Historico,
@@ -8,6 +9,7 @@ const {
   PedidoCompraFrete,
   PedidoCompraReabertura,
   PedidoCompraTitulo,
+  Parceiro,
   Setor,
   SolicitacaoCompra,
   SolicitacaoCompraAlocacao,
@@ -265,7 +267,7 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
     obterConfiguracaoCategoriasTituloPedido({ transaction }),
     FormaPagamentoFinanceira.findAll({
       where: { ativo: true, exige_cartao: false },
-      attributes: ['id', 'nome', 'codigo', 'tipo', 'permite_parcelamento', 'exige_cartao'],
+      attributes: ['id', 'nome', 'codigo', 'tipo', 'permite_parcelamento', 'gera_boleto', 'exige_cartao'],
       order: [['nome', 'ASC']],
       transaction
     })
@@ -278,7 +280,9 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
       categorias: categoriasConfig.categorias,
       categoria_padrao_id: categoriasConfig.categoria_padrao_id,
       categorias_configuradas: categoriasConfig.configurada,
-      formas_pagamento: formasPagamento.map((item) => item.toJSON())
+      formas_pagamento: formasPagamento
+        .filter((item) => ![item.codigo, item.nome].some((value) => normalize(value) === 'FOPAG'))
+        .map((item) => item.toJSON())
     }
   };
 }
@@ -515,6 +519,117 @@ function normalizarParcelas(parcelas, valorPedido) {
   return normalizadas;
 }
 
+function tipoOperacionalFormaPagamento(forma) {
+  const texto = [forma?.codigo, forma?.tipo, forma?.nome]
+    .filter(Boolean)
+    .join(' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  if (forma?.gera_boleto === true || texto.includes('BOLETO')) return 'BOLETO';
+  if (texto.includes('PIX')) return 'PIX';
+  return 'OUTRA';
+}
+
+async function validarPagamentoNegociado(payload = {}, contexto, transaction) {
+  const forma = await FormaPagamentoFinanceira.findOne({
+    where: { id: Number(payload.forma_pagamento_id), ativo: true, exige_cartao: false },
+    transaction
+  });
+  if (!forma) throw httpError(400, `Selecione uma forma de pagamento ativa para ${contexto}.`);
+  if ([forma.codigo, forma.nome].some((value) => normalize(value) === 'FOPAG')) {
+    throw httpError(400, `A forma FOPAG nao pode ser usada em ${contexto}.`);
+  }
+
+  const favorecidoId = Number(payload.favorecido_pagamento_id || 0);
+  const favorecido = favorecidoId > 0
+    ? await Parceiro.findOne({
+        where: { id: favorecidoId, ativo: true },
+        attributes: ['id', 'nome', 'cpf_cnpj'],
+        transaction
+      })
+    : null;
+  if (!favorecido) throw httpError(400, `Selecione o favorecido de ${contexto}.`);
+
+  const tipo = tipoOperacionalFormaPagamento(forma);
+  const chavePix = String(payload.chave_pix || '').trim();
+  const dadosPagamento = String(payload.dados_pagamento || '').trim();
+  const boletos = Array.isArray(payload.boletos) ? payload.boletos : [];
+  if (tipo === 'PIX' && !chavePix) throw httpError(400, `Informe a chave PIX de ${contexto}.`);
+  if (tipo === 'BOLETO' && !boletos.length) throw httpError(400, `Anexe ao menos um boleto de ${contexto}.`);
+  if (tipo === 'OUTRA' && !dadosPagamento) throw httpError(400, `Informe os dados para pagamento de ${contexto}.`);
+
+  const observacoes = tipo === 'PIX'
+    ? `Favorecido: ${favorecido.nome}. Chave PIX: ${chavePix}`
+    : tipo === 'BOLETO'
+      ? `Favorecido: ${favorecido.nome}. ${boletos.length} boleto(s) anexado(s) ao pedido.`
+      : `Favorecido: ${favorecido.nome}. Dados para pagamento: ${dadosPagamento}`;
+  return { forma, favorecido, tipo, chavePix, dadosPagamento, boletos, observacoes };
+}
+
+async function registrarBoletosPedido({ pedido, boletos, tipo, usuarioId, idempotencyKey, transaction }) {
+  if (!boletos.length) return [];
+  const solicitacaoId = Number(pedido.solicitacao?.solicitacao_principal_id || 0) || null;
+  const registros = [];
+  for (const [index, boleto] of boletos.entries()) {
+    const arquivoUrl = String(boleto?.arquivo_url || '').trim();
+    const arquivoNome = String(boleto?.arquivo_nome || `boleto-${index + 1}`).trim();
+    if (!arquivoUrl) continue;
+    const chaveDocumento = `PEDIDO:${pedido.id}:${idempotencyKey}:${tipo}:${index + 1}`;
+    const [documento] = await PedidoCompraDocumentoFinanceiro.findOrCreate({
+      where: { idempotency_key: chaveDocumento },
+      defaults: {
+        pedido_compra_id: pedido.id,
+        tipo,
+        arquivo_url: arquivoUrl,
+        arquivo_nome: arquivoNome,
+        observacoes: tipo === 'BOLETO_FRETE' ? 'Boleto do frete pago a terceiro.' : 'Boleto da compra.',
+        idempotency_key: chaveDocumento,
+        criado_por: usuarioId
+      },
+      transaction
+    });
+    registros.push(documento);
+    if (solicitacaoId) {
+      await Anexo.findOrCreate({
+        where: {
+          solicitacao_id: solicitacaoId,
+          caminho_arquivo: arquivoUrl,
+          nome_original: arquivoNome,
+          deleted_at: null
+        },
+        defaults: {
+          solicitacao_id: solicitacaoId,
+          tipo,
+          nome_original: arquivoNome,
+          caminho_arquivo: arquivoUrl,
+          area_origem: 'COMPRAS',
+          uploaded_by: usuarioId
+        },
+        transaction
+      });
+    }
+  }
+  return registros;
+}
+
+async function vincularTitulosAoPedido({ pedido, titulos, parcelas, chave, origem, usuarioId, transaction }) {
+  for (const [index, titulo] of titulos.entries()) {
+    await PedidoCompraTitulo.create({
+      pedido_compra_id: pedido.id,
+      titulo_financeiro_id: titulo.id,
+      numero_parcela: parcelas.length > 1 ? index + 1 : null,
+      total_parcelas: parcelas.length > 1 ? parcelas.length : null,
+      valor: titulo.valor_original,
+      data_vencimento: titulo.data_vencimento,
+      status_liberacao: 'LIBERADO',
+      origem,
+      idempotency_key: `${chave}:${index + 1}`,
+      criado_por: usuarioId || null
+    }, { transaction });
+  }
+}
+
 async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, transaction }) {
   const pedido = await PedidoCompra.findByPk(Number(pedidoId), {
     include: [
@@ -554,12 +669,34 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
     payload?.categoria_financeira_id,
     { transaction }
   );
+  const pagamentoCompra = await validarPagamentoNegociado(payload, 'a compra', transaction);
+
+  const fretesPendentes = await PedidoCompraFrete.findAll({
+    where: {
+      pedido_compra_id: pedido.id,
+      tipo: 'TERCEIRO',
+      status_financeiro: 'PENDENTE_TITULO',
+      titulo_financeiro_id: null
+    },
+    transaction,
+    lock: transaction?.LOCK?.UPDATE
+  });
+  const fretesPayload = Array.isArray(payload?.fretes) ? payload.fretes : [];
+  const fretesPorId = new Map(fretesPayload.map((item) => [Number(item.frete_id), item]));
+  if (fretesPendentes.some((frete) => !fretesPorId.has(Number(frete.id)))) {
+    throw httpError(400, 'Configure o pagamento de todos os fretes de terceiro pendentes deste pedido.');
+  }
+  if (fretesPayload.some((item) => !fretesPendentes.some((frete) => Number(frete.id) === Number(item.frete_id)))) {
+    throw httpError(400, 'Um dos fretes informados nao pertence ao pedido ou ja possui titulo.');
+  }
 
   const resultado = await criarTituloManual(req, {
     solicitacao_id: Number(pedido.solicitacao?.solicitacao_principal_id || 0) || null,
     obra_id: pedido.obra_id,
     parceiro_id: pedido.fornecedor.parceiro_id,
     categoria_financeira_id: categoriaId,
+    forma_pagamento_id: pagamentoCompra.forma.id,
+    favorecido_pagamento_id: pagamentoCompra.favorecido.id,
     tipo: 'PAGAR',
     // Compras cria o titulo ja operacional. A autorizacao do pagamento acontece depois,
     // quando o GEO seleciona o titulo no Contas a Pagar e o envia para a fila.
@@ -571,31 +708,96 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
     competencia_data: hoje(),
     data_vencimento: parcelas[0].data_vencimento,
     quantidade_parcelas: parcelas.length,
-    parcelas
+    parcelas,
+    observacoes: pagamentoCompra.observacoes
   }, {
     transaction,
     origemTitulo: 'PEDIDO_COMPRA',
     pularAcessoFinanceiro: true,
     registrarSeguranca: false,
     retornarTitulosCriados: true,
-    permitirFormaPagamentoPendente: true
+    permitirFormaPagamentoPendente: false
   });
-  const titulosCriados = [...new Map((resultado.titulos || [])
+  const titulosCompra = [...new Map((resultado.titulos || [])
     .map((titulo) => [Number(titulo.id), titulo])).values()];
-  for (const [index, titulo] of titulosCriados.entries()) {
-    await PedidoCompraTitulo.create({
-      pedido_compra_id: pedido.id,
-      titulo_financeiro_id: titulo.id,
-      numero_parcela: parcelas.length > 1 ? index + 1 : null,
-      total_parcelas: parcelas.length > 1 ? parcelas.length : null,
-      valor: titulo.valor_original,
-      data_vencimento: titulo.data_vencimento,
-      status_liberacao: 'LIBERADO',
-      origem: 'NOVO_FLUXO',
-      idempotency_key: `PEDIDO:${pedido.id}:${chave}:${index + 1}`,
-      criado_por: req.user?.id || null
-    }, { transaction });
+  await vincularTitulosAoPedido({
+    pedido,
+    titulos: titulosCompra,
+    parcelas,
+    chave: `PEDIDO:${pedido.id}:${chave}`,
+    origem: 'NOVO_FLUXO',
+    usuarioId: req.user?.id,
+    transaction
+  });
+  await registrarBoletosPedido({
+    pedido,
+    boletos: pagamentoCompra.boletos,
+    tipo: 'BOLETO_COMPRA',
+    usuarioId: req.user?.id,
+    idempotencyKey: chave,
+    transaction
+  });
+
+  const titulosFrete = [];
+  for (const frete of fretesPendentes) {
+    const configuracao = fretesPorId.get(Number(frete.id));
+    if (!frete.parceiro_id) {
+      throw httpError(409, `O frete #${frete.id} precisa ter um credor vinculado a parceiro.`);
+    }
+    const parcelasFrete = normalizarParcelas(configuracao?.parcelas, Number(frete.valor_total));
+    const pagamentoFrete = await validarPagamentoNegociado(
+      configuracao,
+      `o frete #${frete.id}`,
+      transaction
+    );
+    const resultadoFrete = await criarTituloManual(req, {
+      solicitacao_id: Number(pedido.solicitacao?.solicitacao_principal_id || 0) || null,
+      obra_id: pedido.obra_id,
+      parceiro_id: frete.parceiro_id,
+      favorecido_pagamento_id: pagamentoFrete.favorecido.id,
+      categoria_financeira_id: categoriaId,
+      forma_pagamento_id: pagamentoFrete.forma.id,
+      tipo: 'PAGAR',
+      status: 'ABERTO',
+      valor: Number(frete.valor_total),
+      descricao: String(configuracao?.descricao || `Frete ${buildPedidoCodigo(pedido.id)}`).trim(),
+      numero_documento: `${buildPedidoCodigo(pedido.id)}-FRETE-${frete.id}`,
+      data_emissao: hoje(),
+      competencia_data: hoje(),
+      data_vencimento: parcelasFrete[0].data_vencimento,
+      quantidade_parcelas: parcelasFrete.length,
+      parcelas: parcelasFrete,
+      observacoes: pagamentoFrete.observacoes,
+      origem_frete_id: frete.id
+    }, {
+      transaction,
+      origemTitulo: 'PEDIDO_COMPRA_FRETE',
+      pularAcessoFinanceiro: true,
+      registrarSeguranca: false,
+      retornarTitulosCriados: true
+    });
+    const criadosFrete = [...new Map((resultadoFrete.titulos || [])
+      .map((titulo) => [Number(titulo.id), titulo])).values()];
+    await vincularTitulosAoPedido({
+      pedido,
+      titulos: criadosFrete,
+      parcelas: parcelasFrete,
+      chave: `PEDIDO:${pedido.id}:${chave}:FRETE:${frete.id}`,
+      origem: 'FRETE_TERCEIRO',
+      usuarioId: req.user?.id,
+      transaction
+    });
+    await registrarBoletosPedido({
+      pedido,
+      boletos: pagamentoFrete.boletos,
+      tipo: 'BOLETO_FRETE',
+      usuarioId: req.user?.id,
+      idempotencyKey: `${chave}:FRETE:${frete.id}`,
+      transaction
+    });
+    titulosFrete.push(...criadosFrete);
   }
+  const titulosCriados = [...titulosCompra, ...titulosFrete];
   const comprovacao = payload?.comprovacao
     ? await registrarDocumentoFinanceiro({
       pedidoId: pedido.id,
@@ -618,6 +820,7 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
     metadata: {
       titulos_ids: titulosCriados.map((titulo) => titulo.id),
       valor_total: valorPedido,
+      fretes_titulos_ids: titulosFrete.map((titulo) => titulo.id),
       comprovacao_id: comprovacao?.id || null
     },
     transaction
