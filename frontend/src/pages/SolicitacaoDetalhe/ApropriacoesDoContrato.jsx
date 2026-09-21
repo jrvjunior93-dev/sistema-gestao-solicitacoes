@@ -104,6 +104,9 @@ export default function ApropriacoesDoContrato({ contrato, podeEditar, onMudou }
     <BlocoConteudo
       titulo="Apropriações do contrato"
       descricao="Rateio aplicado a todas as parcelas. E daqui que sai a divisão de cada título na aprovação."
+      recolhivel
+      recolhidoPadrao
+      alternarAoClicar
       acoes={podeEditar ? (
         <button type="button" className="btn btn-outline btn-sm" onClick={abrir} data-testid="editar-apropriacoes-contrato">
           Editar apropriações

@@ -499,6 +499,20 @@
   box-shadow: none;
 }
 
+/* No detalhe da solicitação, o espaço livre do card também abre/recolhe.
+   Controles internos preservam seus cursores e suas próprias ações. */
+.app-bloco--alternar-ao-clicar {
+  cursor: pointer;
+}
+
+.app-bloco--alternar-ao-clicar :is(a, button, input, select, textarea, label, summary, [role="button"], [role="link"]) {
+  cursor: revert;
+}
+
+.app-bloco--alternar-ao-clicar :is(a, button, label, summary, [role="button"], [role="link"]) {
+  cursor: pointer;
+}
+
 /*
   O BLOCO É DONO DA PRÓPRIA SUPERFÍCIE (06/09, M3) — e não era.
 

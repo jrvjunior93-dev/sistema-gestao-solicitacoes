@@ -110,6 +110,9 @@ export default function PrevisoesContrato({
       contagem={contagem}
       descricao={apoio}
       data-testid="previsoes-contrato"
+      recolhivel
+      recolhidoPadrao
+      alternarAoClicar
     >
       <TabelaPadrao
         colunas={[

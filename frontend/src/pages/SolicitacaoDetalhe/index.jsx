@@ -92,8 +92,11 @@ import {
     3. ladrilhos de situação — status, setor, prazo, última atualização;
     4. dados do registro — o bloco principal, em largura total;
     5. blocos de trabalho — contrato, financeiro, apropriações;
-    6. histórico, conversa e auditoria — registros, POR ÚLTIMO. Histórico e conversa
-       nascem ABERTOS (decisão do cliente, 07/09); só a auditoria nasce recolhida.
+    6. histórico, conversa e auditoria — registros, POR ÚLTIMO.
+
+  Todos os cards nascem recolhidos (decisão do cliente, 21/09) e o espaço
+  livre do próprio card abre ou fecha o conteúdo. Botões, links e campos
+  continuam executando somente a ação deles.
 
   Reorganização é PURA: mesma rota, mesmos handlers, mesmas chamadas de
   serviço. Nenhum campo, botão ou bloco saiu — o que mudou foi ordem, peso
@@ -278,25 +281,6 @@ function mapearItemManualCompraDireta(item) {
     especificacao_original: item?.especificacao || ''
   };
 }
-
-/*
-  IR POR ÚLTIMO E NASCER RECOLHIDO ERAM A MESMA LISTA — E NÃO SÃO A MESMA
-  COISA (decisão do cliente, 07/09).
-
-  Os três desciam para o fim E nasciam recolhidos, pela mesma constante.
-  Descer para o fim continua certo: são registro, não decisão. Nascer
-  recolhido, não — histórico e conversa são JUSTAMENTE o que a pessoa vem
-  ler nesta tela, e o custo era maior do que um clique: o recolhimento
-  acontecia em DUAS camadas (esta, do arranjo, e o `recolhidoPadrao` do
-  próprio bloco), então abrir o histórico pedia dois cliques.
-
-  A auditoria fica: ela é registro de pendência, ato raro e de administração.
-
-  Quem já declarou `recolhidos` (usuário ou setor) não é tocado — o `Set`
-  abaixo só entra quando ninguém declarou nada, e a escolha de quem fechou o
-  bloco continua gravada onde sempre esteve.
-*/
-const BLOCOS_QUE_NASCEM_RECOLHIDOS = ['auditoria'];
 
 export default function SolicitacaoDetalhe() {
   const { id } = useParams();
@@ -1365,7 +1349,6 @@ export default function SolicitacaoDetalhe() {
   const {
     ordem: ordemResolvida,
     ocultos: blocosOcultos,
-    recolhidos: recolhidosResolvidos,
     larguras: largurasBlocos,
     historicoOrdem
   } = resolverLayoutDetalhe({ prefsUsuario: prefsLayoutUsuario });
@@ -1374,10 +1357,14 @@ export default function SolicitacaoDetalhe() {
   // individual, quando existir, continua prevalecendo sobre ela.
   const ordemBlocos = ordemResolvida;
 
-  const usuarioDeclarouRecolhidos = Array.isArray(prefsLayoutUsuario?.recolhidos);
-  const blocosRecolhidos = usuarioDeclarouRecolhidos
-    ? recolhidosResolvidos
-    : new Set([...recolhidosResolvidos, ...BLOCOS_QUE_NASCEM_RECOLHIDOS]);
+  /*
+    Um único dono do abrir/recolher: o próprio `BlocoConteudo`. O arranjo
+    personalizável continua cuidando de ordem, largura e visibilidade, mas
+    não esconde o card por uma segunda camada. Isso também neutraliza
+    preferências antigas de `recolhidos`, que exigiriam dois cliques para
+    chegar ao conteúdo depois do novo padrão fechado.
+  */
+  const blocosRecolhidos = new Set();
 
   const temCamadaUsuario = (novo) => Boolean(
     novo && (
@@ -1393,7 +1380,7 @@ export default function SolicitacaoDetalhe() {
   // Sempre grava a camada completa — mudar uma coisa não perde as outras.
   const camadaAtual = () => ({
     ordem: prefsLayoutUsuario?.ordem?.length ? ordemBlocos : [],
-    recolhidos: Array.from(blocosRecolhidos),
+    recolhidos: [],
     removidos: Array.from(blocosOcultos),
     larguras: { ...(prefsLayoutUsuario?.larguras || {}) },
     historico_ordem: historicoOrdem
@@ -1432,6 +1419,9 @@ export default function SolicitacaoDetalhe() {
         titulo="Apropriações da solicitação"
         variante="secundario"
         descricao="Confira a distribuição atual e ajuste a apropriação com motivo e auditoria."
+        recolhivel
+        recolhidoPadrao
+        alternarAoClicar
         acoes={(
           <button type="button" className="btn btn-outline btn-sm" onClick={abrirModalApropriacoes}>
             Editar apropriações
@@ -1475,6 +1465,9 @@ export default function SolicitacaoDetalhe() {
         titulo="Itens da compra direta"
         variante="secundario"
         descricao={`${montarItensCompraDireta().length} item(ns) cadastrado(s) nesta compra direta.`}
+        recolhivel
+        recolhidoPadrao
+        alternarAoClicar
         acoes={podeGerenciarItensCompra ? (
           <button
             type="button"
@@ -1591,6 +1584,9 @@ export default function SolicitacaoDetalhe() {
         titulo="Aprovação por diretoria"
         variante="secundario"
         descricao={`Ao aprovar, a solicitação segue para ${solicitacao.setor_destino_aprovacao || solicitacao.setor_destino_pos_aprovacao || 'a area responsavel'}.`}
+        recolhivel
+        recolhidoPadrao
+        alternarAoClicar
         acoes={(
           <button type="button" className="btn btn-primary btn-sm" onClick={aprovarDiretoria}>
             Aprovar e enviar
@@ -1652,6 +1648,9 @@ export default function SolicitacaoDetalhe() {
           titulo="Auditoria de prazo e documentos"
           variante="secundario"
           descricao="Registre solicitações enviadas fora do prazo ou sem nota/boleto para medir regularizacao por usuário."
+          recolhivel
+          recolhidoPadrao
+          alternarAoClicar
           acoes={(
             <button type="button" className="btn btn-outline btn-sm" onClick={() => setAuditoriaAberta(false)}>
               Recolher auditoria
@@ -1827,7 +1826,7 @@ export default function SolicitacaoDetalhe() {
           Os três ladrilhos vinham do cabeçalho antigo (Status, Setor,
           Data Resposta/Pagamento) e da linha de breadcrumb ("Atualizado
           em"), que era texto solto sobre o canvas — B5. */}
-      <BlocoConteudo titulo="Resumo da solicitação" variante="secundario" recolhivel>
+      <BlocoConteudo titulo="Resumo da solicitação" variante="secundario" recolhivel recolhidoPadrao alternarAoClicar>
       <StatGrid colunas={4}>
         <StatTile
           label="Status"
@@ -1898,6 +1897,7 @@ export default function SolicitacaoDetalhe() {
             aoMudarArranjo={persistirArranjoBlocos}
             aoRestaurar={restaurarPadraoGlobal}
             larguraPadrao="total"
+            permiteRecolher={false}
             personalizando={false}
             classes={{
               arranjo: 'sol-detail-arranjo',
@@ -1920,6 +1920,7 @@ export default function SolicitacaoDetalhe() {
           aoMudarArranjo={persistirArranjoBlocos}
           aoRestaurar={restaurarPadraoGlobal}
           larguraPadrao="total"
+          permiteRecolher={false}
           rotuloRestaurar="Restaurar padrão global"
           /* O modo é ligado pelo botão "Personalizar layout" da faixa (ação
              SOBRE ESTA TELA — R11/C6), então ele é controlado daqui e a

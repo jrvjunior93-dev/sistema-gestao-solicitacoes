@@ -28,10 +28,9 @@ import { Avisos, BlocoConteudo, useAvisos } from '../../components/padrao';
  *
  * ## O que a rodada de 05/09 mudou (reorganizacao pura — nenhum campo, botao ou endpoint saiu)
  *
- * - **Regra de organizacao do cliente**: conversa e historico ficam POR ULTIMO. Ficavam tambem
- *   RECOLHIDOS por padrao; nao ficam mais (decisao do cliente, 07/09) — o bloco NASCE ABERTO.
- *   `recolhivel` continua: quem quiser fechar fecha, e a escolha e gravada como sempre foi
- *   (`recolhidos` da preferencia `detalhe-solicitacao`, no banco, valendo em qualquer aparelho).
+ * - **Regra de organizacao do cliente**: conversa e historico ficam POR ULTIMO. A partir de
+ *   21/09 todos os cards do detalhe nascem RECOLHIDOS e o card inteiro alterna o conteudo;
+ *   controles internos preservam a propria acao.
  * - **R19**: os tres `alert()` (limite de tamanho, sucesso do envio, erro do envio) viraram
  *   `Avisos`/`useAvisos`, dentro da propria pagina e com tom semantico.
  * - **R25**: `bg-blue-50`, `bg-blue-100`, `bg-blue-900`, `bg-blue-950`, `bg-gray-900`,
@@ -40,10 +39,8 @@ import { Avisos, BlocoConteudo, useAvisos } from '../../components/padrao';
  * - **R18**: a lista de usuarios para mencionar rola com `overflow-y: auto` (nunca `hidden`, que
  *   criaria scrollport e mataria qualquer sticky da pagina em silencio).
  *
- * O `id` e o `data-testid` ficam no BLOCO, nao no corpo. O motivo era o bloco nascer recolhido —
- * ancora/seletor que so existe depois de a pessoa abrir seria uma porta que funciona metade do
- * tempo. Ele nasce aberto agora, mas continua PODENDO ser recolhido, entao o motivo continua de pe
- * e os dois ficam onde estao.
+ * O `id` e o `data-testid` ficam no BLOCO, nao no corpo: a ancora e o seletor
+ * continuam existindo mesmo quando o conteudo esta recolhido.
  */
 export default function Conversa({ solicitacaoId, onSucesso, podeInteragir = true, podeAnexar = podeInteragir, motivoBloqueio = '' }) {
   const [texto, setTexto] = useState('');
@@ -200,6 +197,8 @@ export default function Conversa({ solicitacaoId, onSucesso, podeInteragir = tru
       <BlocoConteudo
         titulo="Conversa"
         recolhivel
+        recolhidoPadrao
+        alternarAoClicar
         data-testid="comentarios-somente-leitura"
       >
         <div>
@@ -218,6 +217,8 @@ export default function Conversa({ solicitacaoId, onSucesso, podeInteragir = tru
         ? 'Comente ou anexe arquivos à solicitação.'
         : 'Comentários são livres para quem pode visualizar. Para anexar ou executar outras ações, solicite o retorno ao seu setor.'}
       recolhivel
+      recolhidoPadrao
+      alternarAoClicar
       id="sol-detail-conversa"
       data-testid="card-comentario"
     >

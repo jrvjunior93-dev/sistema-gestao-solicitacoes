@@ -512,7 +512,7 @@ export default function BlocosPersonalizaveis({
           className={classeFaixa}
           titulo="Personalizar blocos"
           variante="secundario"
-          descricao={'Arraste para reordenar; largura, recolher e "×" em cada bloco. '
+          descricao={`Arraste para reordenar; largura${permiteRecolher ? ', recolher' : ''} e "×" em cada bloco. `
             + 'Salvo automaticamente. No celular valem a ordem e os blocos mantidos — '
             + 'largura e arrasto são do desktop.'}
         >

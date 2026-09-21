@@ -2478,6 +2478,9 @@ export default function FinanceiroCard({
       <BlocoConteudo
         titulo="Financeiro"
         variante="secundario"
+        recolhivel
+        recolhidoPadrao
+        alternarAoClicar
         descricao={podeExecutarAcoesFinanceiras
           ? 'Gere contas a pagar ou receber sem sair do fluxo da solicitacao.'
           : 'Acompanhe titulos, parcelas, medicoes e pagamentos desta solicitacao.'}

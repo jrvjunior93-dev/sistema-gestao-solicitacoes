@@ -62,6 +62,8 @@ export default function RecargaCartaoDetalhe({ solicitacaoId, podeInteragir = tr
       descricao={`${recarga.cartao?.nome || 'Cartão'} · final ${recarga.cartao?.ultimos_quatro || '----'}`}
       acoes={<StatusBadge status={recarga.status_ciclo || '-'} />}
       recolhivel
+      recolhidoPadrao
+      alternarAoClicar
     >
       <CamposComVazios
         campos={[

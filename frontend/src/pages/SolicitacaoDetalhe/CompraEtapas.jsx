@@ -421,7 +421,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
       <div className="px-4"><Avisos avisos={avisos} aoFechar={fechar} /><Comentarios lista={listaComentarios(comentando)} /></div>
       <div data-modal="rodape" className="border-t border-[var(--c-border)] p-4">{formularioComentario()}</div>
     </OverlayModal>}
-    <BlocoConteudo titulo="Itens da solicitação" contagem={`${dados.itens.length} item(ns) · ${pendentes.length} pendente(s)`} recolhivel
+    <BlocoConteudo titulo="Itens da solicitação" contagem={`${dados.itens.length} item(ns) · ${pendentes.length} pendente(s)`} recolhivel recolhidoPadrao alternarAoClicar
       acoes={onGerenciarItens ? <AcaoIconeCompra rotulo="Gerenciar todos os itens" icone={HiAdjustmentsHorizontal} onClick={() => onGerenciarItens()} /> : null}>
       <div className="space-y-2">
         {podeDecidir && pendentes.length > 0 && <div className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-border)] px-3 py-2 text-sm">
@@ -439,7 +439,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
         {dados.itens.length ? dados.itens.map((item) => linhaItem(item, 'ITEM')) : <p className="text-sm text-[var(--c-muted)]">Nenhum item cadastrado nesta solicitação.</p>}
       </div>
     </BlocoConteudo>
-    <BlocoConteudo titulo="Itens aprovados" contagem={`${aprovados.length} item(ns)`} recolhivel>
+    <BlocoConteudo titulo="Itens aprovados" contagem={`${aprovados.length} item(ns)`} recolhivel recolhidoPadrao alternarAoClicar>
       <div className="space-y-2">
         {aprovados.length > 0 && <div
           className="hidden grid-cols-[minmax(0,1fr)_9rem_9rem_auto] gap-2 px-3 text-xs font-semibold uppercase tracking-wide text-[var(--c-muted)] md:grid"
@@ -457,7 +457,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
         <div className="mt-3 flex justify-end"><button type="button" className="btn btn-primary btn-sm" disabled={!!processando}
           onClick={encaminharAprovados}>Encaminhar aprovados para Compras</button></div>}
     </BlocoConteudo>
-    {naoAprovados.length > 0 && <BlocoConteudo titulo="Itens não aprovados" contagem={`${naoAprovados.length} item(ns)`} recolhivel recolhidoPadrao
+    {naoAprovados.length > 0 && <BlocoConteudo titulo="Itens não aprovados" contagem={`${naoAprovados.length} item(ns)`} recolhivel recolhidoPadrao alternarAoClicar
       controles={<span />}
       acoes={compraEncaminhada && podeCriarNovaSolicitacao ? <button type="button" className="btn btn-outline btn-sm"
         onClick={() => navigate(`/solicitacoes-compra/nova?obra_id=${dados.obra_id}&reaproveitar_solicitacao=${solicitacaoId}`)}>
@@ -470,7 +470,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
       </div>}
       {!compraEncaminhada && <p className="mt-3 text-xs text-[var(--c-muted)]">Após encaminhar os itens aprovados para Compras, será possível criar outra solicitação com estes itens.</p>}
     </BlocoConteudo>}
-    <BlocoConteudo titulo="Cotação" contagem={`${itensEmCotacao.length} item(ns)`} recolhivel recolhidoPadrao>
+    <BlocoConteudo titulo="Cotação" contagem={`${itensEmCotacao.length} item(ns)`} recolhivel recolhidoPadrao alternarAoClicar>
       <div>
         <p className="mb-2 text-xs font-semibold text-[var(--c-muted)]">Itens enviados para fornecedores</p>
         {itensEmCotacao.length ? <div className="divide-y divide-[var(--c-border)] rounded-md border border-[var(--c-border)]">
@@ -492,7 +492,7 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
         </fieldset>
       </div>}
     </BlocoConteudo>
-    <BlocoConteudo titulo="Pedidos de compra" contagem={`${dados.pedidos.length} pedido(s)`} recolhivel recolhidoPadrao>
+    <BlocoConteudo titulo="Pedidos de compra" contagem={`${dados.pedidos.length} pedido(s)`} recolhivel recolhidoPadrao alternarAoClicar>
       {dados.pedidos.length ? <div className="space-y-2">{dados.pedidos.map((pedido) => <details key={pedido.id}
         className="rounded-md border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
         <summary className="cursor-pointer text-sm font-semibold">Pedido #{pedido.id} · {pedido.status}</summary>

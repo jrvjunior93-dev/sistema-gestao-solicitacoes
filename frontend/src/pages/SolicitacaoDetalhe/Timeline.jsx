@@ -8,12 +8,9 @@ import { Avisos, BlocoConteudo, useAvisos, useConfirmacao } from '../../componen
  *
  * O que a rodada de 05/09 mudou (reorganizacao pura: nenhum evento, campo ou botao saiu):
  *
- * - **Regra de organizacao do cliente**: historico e registro vem POR ULTIMO. Vinham tambem
- *   RECOLHIDOS por padrao; nao vem mais (decisao do cliente, 07/09): o bloco NASCE ABERTO. O
- *   `recolhivel` continua — quem quiser fechar fecha, e a escolha e gravada como sempre foi
- *   (`recolhidos` da preferencia `detalhe-solicitacao`, no banco, valendo em qualquer aparelho).
- *   O motivo de nascer aberto: o historico e o que a pessoa vem ler, e um bloco recolhido cobrava
- *   DOIS cliques por causa do recolhimento em duas camadas (o do arranjo e o proprio deste bloco).
+ * - **Regra de organizacao do cliente**: historico e registro vem POR ULTIMO. A partir de
+ *   21/09 todos os cards do detalhe nascem RECOLHIDOS. O proprio card e o unico dono desse
+ *   estado; o arranjo externo nao cria uma segunda camada de recolhimento.
  *
  * - **A ORDEM E ESCOLHA, NAO TEXTO** (07/09). O apoio do bloco dizia "Mais recentes primeiro." /
  *   "Ordem cronologica...": um INDICADOR no lugar da COISA. O seletor existia, mas morava na barra
@@ -289,6 +286,8 @@ export default function Timeline({
       titulo="Histórico"
       contagem={`${totalVisiveis} evento(s)`}
       recolhivel
+      recolhidoPadrao
+      alternarAoClicar
       controles={typeof aoMudarOrdem === 'function' ? (
         <label className="sol-detail-historico-ordem">
           Ordem:

@@ -119,7 +119,8 @@ export default function AditivosDoContrato({ contrato, onMudou }) {
   }
 
   return (
-    <BlocoConteudo titulo="Termos aditivos" contagem={`${aditivos.length} aditivo(s)`}>
+    <BlocoConteudo titulo="Termos aditivos" contagem={`${aditivos.length} aditivo(s)`}
+      recolhivel recolhidoPadrao alternarAoClicar>
       <div data-testid="aditivos-do-contrato">
         {erro && <div className="app-alert app-alert--error">{erro}</div>}
 

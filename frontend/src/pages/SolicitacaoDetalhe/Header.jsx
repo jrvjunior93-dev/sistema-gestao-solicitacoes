@@ -337,6 +337,8 @@ export default function Header({
         variante="primario"
         cor="var(--module-solicitacoes)"
         recolhivel
+        recolhidoPadrao
+        alternarAoClicar
       >
         <Avisos avisos={avisos} aoFechar={fechar} />
         <CamposComVazios colunas={4} campos={campos} />
@@ -388,6 +390,7 @@ export default function Header({
           descricao="Troca o contrato a que esta solicitação se refere."
           recolhivel
           recolhidoPadrao
+          alternarAoClicar
         >
           <FormSecao colunas={2}>
             <CampoForm label="Contrato da obra">

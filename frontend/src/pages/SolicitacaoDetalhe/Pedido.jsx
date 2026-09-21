@@ -79,6 +79,9 @@ export default function Pedido({ solicitacaoId, numeroPedido, onSucesso }) {
       <BlocoConteudo
         titulo="Número do pedido"
         descricao="Vínculo da solicitação com o pedido de compra."
+        recolhivel
+        recolhidoPadrao
+        alternarAoClicar
         acoes={(
           <button
             onClick={salvar}

@@ -98,6 +98,32 @@ export function useControlesDoBloco() {
   return useContext(ContextoControlesDoBloco);
 }
 
+/*
+  Alguns fluxos operacionais usam o card inteiro como alvo para abrir e
+  recolher. Elementos que já têm uma ação própria ficam fora desse gesto:
+  um clique em botão, link, campo ou controle nunca pode fechar o card como
+  efeito colateral. O atributo de escape cobre componentes específicos que
+  precisem declarar a mesma proteção sem assumir um papel ARIA artificial.
+*/
+const SELETOR_INTERATIVO_DO_BLOCO = [
+  'a',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  'label',
+  'summary',
+  'details',
+  'iframe',
+  'audio',
+  'video',
+  '[role="button"]',
+  '[role="link"]',
+  '[role="menuitem"]',
+  '[contenteditable="true"]',
+  '[data-bloco-nao-alternar]'
+].join(',');
+
 export default function BlocoConteudo({
   titulo,
   contagem,
@@ -110,9 +136,11 @@ export default function BlocoConteudo({
   recolhidoPadrao = false,
   recolhido,
   aoAlternarRecolhido,
+  alternarAoClicar = false,
   chavePreferencia,
   className = '',
   children,
+  onClick,
   ...props
 }) {
   /*
@@ -216,11 +244,27 @@ export default function BlocoConteudo({
     if (aoAlternarRecolhido) aoAlternarRecolhido(proximo);
   };
 
+  const aoClicarNoBloco = (evento) => {
+    if (typeof onClick === 'function') onClick(evento);
+    if (!recolhivel || !alternarAoClicar || evento.defaultPrevented) return;
+    if (evento.button !== 0) return;
+    if (!(evento.target instanceof Element)) return;
+    if (evento.target.closest(SELETOR_INTERATIVO_DO_BLOCO)) return;
+
+    // Arrastar para copiar um dado não deve ser interpretado como intenção
+    // de recolher o card no fim da seleção.
+    const selecao = window.getSelection?.();
+    if (selecao && !selecao.isCollapsed) return;
+
+    alternarRecolhido();
+  };
+
   const classes = [
     'app-bloco',
     variante === 'primario' && 'app-bloco--primario',
     variante === 'secundario' && 'app-bloco--secundario',
     estaRecolhido && 'app-bloco--recolhido',
+    recolhivel && alternarAoClicar && 'app-bloco--alternar-ao-clicar',
     !titulo && 'app-bloco--sem-titulo',
     className
   ].filter(Boolean).join(' ');
@@ -312,6 +356,7 @@ export default function BlocoConteudo({
       <section
         className={classes}
         style={cor ? { '--bloco-cor': cor } : undefined}
+        onClick={aoClicarNoBloco}
         {...props}
       >
         {titulo ? (

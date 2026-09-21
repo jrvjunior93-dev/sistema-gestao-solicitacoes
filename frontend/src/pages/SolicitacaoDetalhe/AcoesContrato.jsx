@@ -553,6 +553,9 @@ export default function AcoesContrato({ contrato, onMudou }) {
       contagem={`Valor ${moeda(valorComAditivos)}`}
       descricao={info.ajuda}
       data-testid="acoes-contrato"
+      recolhivel
+      recolhidoPadrao
+      alternarAoClicar
     >
       <div className="space-y-3">
         <Avisos avisos={avisos} aoFechar={fechar} />
