@@ -2752,13 +2752,13 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
               Baixar selecionados
               {selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}
             </button>
-            {canCreateBaixaComposta && baixaMassaTipoSelecionado === 'PAGAR' ? (
+            {canCreateBaixaComposta ? (
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
                 onClick={() => setModalBaixaCompostaOpen(true)}
                 disabled={selectedTitulosBaixaveis.length === 0 || savingBaixaMassa}
-                title="Combinar mais de uma conta, forma ou cheque no mesmo pagamento"
+                title={`Combinar mais de uma conta, forma ou cheque no mesmo ${baixaMassaTipoSelecionado === 'RECEBER' ? 'recebimento' : 'pagamento'}`}
               >
                 Baixa com múltiplas fontes
                 {selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}

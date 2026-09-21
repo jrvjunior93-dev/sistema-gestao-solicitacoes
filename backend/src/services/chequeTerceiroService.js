@@ -504,10 +504,16 @@ async function validarBaixaComposta(payload, transaction, { lock = false } = {})
     ...(lock ? { lock: transaction.LOCK.UPDATE } : {})
   });
   if (titulos.length !== tituloIds.length) throw httpError(404, 'Um ou mais titulos nao foram encontrados.');
-  if (titulos.some((titulo) => String(titulo.tipo).toUpperCase() !== 'PAGAR')) throw httpError(400, 'A baixa composta esta disponivel somente para contas a pagar.');
+  const tiposTitulo = [...new Set(titulos.map((titulo) => String(titulo.tipo || '').toUpperCase()))];
+  if (tiposTitulo.length !== 1 || !['PAGAR', 'RECEBER'].includes(tiposTitulo[0])) {
+    throw httpError(400, 'Selecione somente titulos do mesmo tipo: contas a pagar ou contas a receber.');
+  }
+  const tipoTitulo = tiposTitulo[0];
   if (titulos.some((titulo) => !['ABERTO', 'PARCIAL'].includes(String(titulo.status).toUpperCase()))) throw httpError(409, 'Todos os titulos precisam estar abertos ou parciais.');
   const parceiroId = Number(titulos[0].parceiro_id);
-  if (titulos.some((titulo) => Number(titulo.parceiro_id) !== parceiroId)) throw httpError(400, 'Selecione somente titulos do mesmo credor.');
+  if (titulos.some((titulo) => Number(titulo.parceiro_id) !== parceiroId)) {
+    throw httpError(400, `Selecione somente titulos do mesmo ${tipoTitulo === 'PAGAR' ? 'credor' : 'cliente'}.`);
+  }
   const empresaReferencia = await empresaAtiva(titulos[0].empresa_id, transaction);
   const empresasTituloIds = [...new Set(titulos.map((titulo) => Number(titulo.empresa_id)).filter(Boolean))];
   for (const empresaTituloId of empresasTituloIds) await empresaAtiva(empresaTituloId, transaction);
@@ -538,7 +544,13 @@ async function validarBaixaComposta(payload, transaction, { lock = false } = {})
     const tipo = resolverTipoOperacionalFormaPagamento(forma);
     if (!tipo) throw httpError(400, `Forma de pagamento sem tipo operacional na operacao ${item.ordem}.`);
     const chequeTerceiro = Boolean(item.cheque_terceiro_id);
-    const exigeConta = !['PERMUTA', 'BENS', 'OUTROS'].includes(tipo) && !(tipo === 'CHEQUE' && chequeTerceiro);
+    const chequeRecebido = tipoTitulo === 'RECEBER' && tipo === 'CHEQUE';
+    if (chequeRecebido && chequeTerceiro) {
+      throw httpError(400, `A operacao ${item.ordem} deve informar os dados do cheque recebido, e nao consumir um cheque da carteira.`);
+    }
+    const exigeConta = !['PERMUTA', 'BENS', 'OUTROS'].includes(tipo)
+      && !chequeRecebido
+      && !(tipo === 'CHEQUE' && chequeTerceiro);
     const conta = item.conta_bancaria_id ? contaMap.get(item.conta_bancaria_id) : null;
     if (exigeConta && !conta) throw httpError(400, `Informe a conta financeira na operacao ${item.ordem}.`);
     if (tipo === 'DINHEIRO') {
@@ -620,6 +632,7 @@ async function validarBaixaComposta(payload, transaction, { lock = false } = {})
   return {
     empresaReferencia,
     parceiro_id: parceiroId,
+    tipo_titulo: tipoTitulo,
     data_movimento: dataMovimento,
     componentes: componentesValidados,
     alocacoes,
@@ -664,7 +677,7 @@ async function confirmarBaixaComposta(req, payload, idempotencyKey) {
     const grupo = await BaixaFinanceiraGrupo.create({
       codigo: codigoGrupo(),
       idempotency_key: idempotencyKey,
-      tipo: 'PAGAMENTO',
+      tipo: validacao.tipo_titulo === 'PAGAR' ? 'PAGAMENTO' : 'RECEBIMENTO',
       empresa_id: validacao.empresaReferencia.id,
       parceiro_id: validacao.parceiro_id,
       data_movimento: validacao.data_movimento,
@@ -704,9 +717,11 @@ async function confirmarBaixaComposta(req, payload, idempotencyKey) {
       }, { transaction });
       const alocacoes = validacao.alocacoes.filter((alocacao) => alocacao.componente_index === componentIndex);
       let primeiroMovimentoId = null;
-      for (const alocacao of alocacoes) {
+      for (let alocacaoIndex = 0; alocacaoIndex < alocacoes.length; alocacaoIndex += 1) {
+        const alocacao = alocacoes[alocacaoIndex];
         const tituloAlocado = validacao.titulos.find((titulo) => Number(titulo.id) === Number(alocacao.titulo_financeiro_id));
         const intercompany = Number(tituloAlocado?.empresa_id) !== Number(item.empresa_id);
+        const chequeRecebidoComposto = validacao.tipo_titulo === 'RECEBER' && item.tipo === 'CHEQUE';
         const resultado = await baixarTitulo(req, alocacao.titulo_financeiro_id, {
           empresa_id: item.empresa_id,
           conta_bancaria_id: item.conta_bancaria_id,
@@ -734,7 +749,13 @@ async function confirmarBaixaComposta(req, payload, idempotencyKey) {
           intercompany_group_id: intercompany ? `IC-${grupo.codigo}-${item.ordem}` : null,
           baixa_grupo_id: grupo.id,
           baixa_componente_id: componente.id
-        }, { transaction, skipSecurityEvent: true, skipTituloIntercompanyUpdate: true });
+        }, {
+          transaction,
+          skipSecurityEvent: true,
+          skipTituloIntercompanyUpdate: true,
+          skipChequeTerceiroRecebido: chequeRecebidoComposto && alocacaoIndex > 0,
+          chequeRecebidoValor: chequeRecebidoComposto ? item.valor : undefined
+        });
         primeiroMovimentoId ||= resultado.movimento_financeiro_id;
         await BaixaFinanceiraAlocacao.create({
           baixa_grupo_id: grupo.id,
@@ -773,8 +794,15 @@ async function confirmarBaixaComposta(req, payload, idempotencyKey) {
       recursoTipo: 'BAIXA_FINANCEIRA_GRUPO',
       recursoId: grupo.id,
       status: 'SUCCESS',
-      descricao: 'Baixa composta confirmada',
-      metadata: { codigo: grupo.codigo, valor: validacao.valor_principal, titulos: validacao.titulos.map((item) => item.id) }
+      descricao: validacao.tipo_titulo === 'PAGAR'
+        ? 'Pagamento com multiplas fontes confirmado'
+        : 'Recebimento com multiplas fontes confirmado',
+      metadata: {
+        codigo: grupo.codigo,
+        tipo_titulo: validacao.tipo_titulo,
+        valor: validacao.valor_principal,
+        titulos: validacao.titulos.map((item) => item.id)
+      }
     });
     return obterBaixaComposta(grupo.id);
   } catch (error) {
@@ -880,6 +908,39 @@ async function estornarBaixaComposta(req, id, payload = {}) {
         status_anterior: 'UTILIZADO',
         status_novo: 'EM_CARTEIRA',
         empresa_destino_id: cheque.empresa_id,
+        baixa_grupo_id: grupo.id,
+        valor: cheque.valor,
+        data_evento: hoje(),
+        observacoes: motivoEstorno,
+        criado_por: req.user?.id || null
+      }, transaction);
+    }
+    const chequesRecebidos = await ChequeTerceiro.findAll({
+      where: {
+        [Op.or]: [
+          { movimento_entrada_id: { [Op.in]: movimentoIds } },
+          { movimento_financeiro_id: { [Op.in]: movimentoIds } }
+        ]
+      },
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    for (const cheque of chequesRecebidos) {
+      const statusAnterior = String(cheque.status || '').toUpperCase();
+      if (statusAnterior !== 'EM_CARTEIRA') {
+        throw httpError(409, 'Um cheque recebido nesta baixa possui movimentacao posterior. Reverta primeiro a utilizacao ou o deposito.');
+      }
+      await cheque.update({
+        status: 'CANCELADO',
+        atualizado_por: req.user?.id || null
+      }, { transaction });
+      await registrarEventoCheque(cheque, {
+        tipo_evento: 'ESTORNO_ENTRADA',
+        status_anterior: statusAnterior,
+        status_novo: 'CANCELADO',
+        empresa_origem_id: cheque.empresa_id || null,
+        titulo_financeiro_id: cheque.titulo_financeiro_id || null,
+        movimento_financeiro_id: cheque.movimento_entrada_id || cheque.movimento_financeiro_id || null,
         baixa_grupo_id: grupo.id,
         valor: cheque.valor,
         data_evento: hoje(),

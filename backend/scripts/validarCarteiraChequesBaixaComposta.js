@@ -38,8 +38,8 @@ function validateSecurityAndTransactions() {
     'idempotency-key',
     'sequelize.transaction()',
     'lock: transaction.LOCK.UPDATE',
-    'Mesmo credor',
-    'Selecione somente titulos do mesmo credor',
+    'Selecione somente titulos do mesmo tipo: contas a pagar ou contas a receber',
+    "tipoTitulo === 'PAGAR' ? 'credor' : 'cliente'",
     'Informe a empresa da fonte',
     'natureza_intercompany_baixa',
     'O mesmo cheque nao pode ser usado em mais de uma operacao',
@@ -60,7 +60,12 @@ function validateSecurityAndTransactions() {
   assert(service.includes("tipo === 'DINHEIRO'"), 'Baixa composta deve reconhecer a fonte em dinheiro.');
   assert(service.includes('em dinheiro deve usar um caixa fisico com controle de abertura e fechamento'), 'Dinheiro deve exigir conta de caixa fisico.');
   assert(service.includes('obterSessaoAbertaParaConta'), 'Dinheiro deve validar a sessao aberta do caixa.');
+  assert(service.includes("tipo: validacao.tipo_titulo === 'PAGAR' ? 'PAGAMENTO' : 'RECEBIMENTO'"), 'Grupo composto deve registrar pagamento ou recebimento.');
+  assert(service.includes('chequeRecebidoComposto'), 'Cheque recebido composto deve ser cadastrado uma unica vez por fonte.');
+  assert(service.includes("status: 'CANCELADO'"), 'Estorno composto deve cancelar o cheque recebido ainda em carteira.');
   assert(titleService.includes('buildChequeMovimentoFields'), 'Baixa simples deve persistir os dados do cheque no movimento.');
+  assert(titleService.includes('skipChequeTerceiroRecebido'), 'Rateio de cheque recebido nao pode duplicar o cheque por titulo.');
+  assert(titleService.includes('chequeRecebidoValor'), 'Cheque recebido deve guardar o valor integral da fonte composta.');
 }
 
 function validateRoutesAndPermissions() {
@@ -98,6 +103,7 @@ function validateFrontend() {
   const titleDetail = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/FinanceiroTituloDetalhe.jsx'), 'utf8');
   assert(titles.includes('BaixaCompostaModal'));
   assert(titles.includes('Baixa com múltiplas fontes'));
+  assert(titles.includes('{canCreateBaixaComposta ? ('), 'Contas a receber tambem devem expor a baixa com multiplas fontes.');
   assert(modal.includes('crypto.randomUUID()'));
   assert(modal.includes('overflow-y-auto'), 'Modal composto deve permitir rolagem.');
   assert(modal.includes('finance-operation-modal--wide'), 'Modal composto deve usar a superficie financeira opaca.');
@@ -109,6 +115,10 @@ function validateFrontend() {
   assert(modal.includes('Natureza entre empresas'), 'Rateio entre empresas deve exigir classificacao operacional.');
   assert(modal.includes('empresasDisponiveis'), 'Modal deve listar todas as empresas permitidas como fonte.');
   assert(modal.includes('Cheque de terceiro em carteira'), 'Modal deve identificar claramente os cheques cadastrados em carteira.');
+  assert(modal.includes('orderedTitles'), 'Rateio composto deve ordenar os titulos antes de distribuir as fontes.');
+  assert(modal.includes('redistributeComponents'), 'Alterar uma fonte deve recalcular a distribuicao do mais antigo ao mais novo.');
+  assert(modal.includes("titleType === 'RECEBER'"), 'Modal deve adaptar o fluxo para contas a receber.');
+  assert(modal.includes('Dados do cheque recebido'), 'Recebimento composto deve coletar os dados do cheque recebido.');
   assert(modal.includes('Selecione um cheque cadastrado'), 'Opcao vazia do cheque nao pode sugerir uma origem ambigua.');
   assert(modal.includes('ChequePagamentoFields'), 'Baixa composta deve coletar os dados do cheque proprio em cada fonte.');
   assert(modal.includes('validateCashSources'), 'Baixa composta deve validar as fontes em dinheiro antes do envio.');
