@@ -217,7 +217,7 @@ export default function FinanceiroBaixasCompostas() {
       <PageHeader
         titulo="Baixas com múltiplas fontes"
         contagem={`${items.length} baixa(s)`}
-        descricao="Financeiro · Rastreabilidade — pagamentos combinados, suas fontes, alocações e estornos."
+        descricao="Financeiro · Rastreabilidade — pagamentos e recebimentos combinados, suas fontes, alocações e estornos."
         acaoPrincipal={{
           rotulo: loading ? 'Atualizando...' : 'Atualizar',
           onClick: load,
@@ -261,8 +261,9 @@ export default function FinanceiroBaixasCompostas() {
             { id: 'codigo', titulo: 'Código', tipo: 'codigo', render: (item) => <strong>{item.codigo}</strong> },
             { id: 'data', titulo: 'Data', tipo: 'data', render: (item) => dateBr(item.data_movimento) },
             { id: 'empresa', titulo: 'Empresa', tipo: 'texto', render: (item) => item.empresa?.nome },
-            // R17: o credor NOMEIA a baixa composta.
-            { id: 'credor', titulo: 'Credor', tipo: 'identidade', noCard: 'titulo', render: (item) => item.parceiro?.nome },
+            { id: 'tipo', titulo: 'Operação', tipo: 'texto', render: (item) => item.tipo === 'RECEBIMENTO' ? 'Recebimento' : 'Pagamento' },
+            // R17: a contraparte NOMEIA a baixa composta.
+            { id: 'parceiro', titulo: 'Cliente / Credor', tipo: 'identidade', noCard: 'titulo', render: (item) => item.parceiro?.nome },
             { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (item) => item.valor_quitacao == null ? '-' : money(item.valor_quitacao) },
             // R25: o status vira StatusBadge (token + ícone), não pastilha de paleta crua.
             { id: 'status', titulo: 'Status', tipo: 'status', render: (item) => <StatusBadge status={item.status} /> }

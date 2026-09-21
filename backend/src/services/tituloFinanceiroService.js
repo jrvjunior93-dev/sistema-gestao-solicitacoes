@@ -3872,15 +3872,17 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
     if (isChequeFormaRecebimento(formaMovimento)) {
       const tipoTitulo = getTituloTipo(titulo);
       if (tipoTitulo === 'RECEBER') {
-        await registrarChequeTerceiroRecebido({
-          req,
-          titulo,
-          movimento,
-          payload,
-          valor: valorBaixa,
-          dataMovimento: payload.data_movimento,
-          transaction
-        });
+        if (options.skipChequeTerceiroRecebido !== true) {
+          await registrarChequeTerceiroRecebido({
+            req,
+            titulo,
+            movimento,
+            payload,
+            valor: options.chequeRecebidoValor ?? valorBaixa,
+            dataMovimento: payload.data_movimento,
+            transaction
+          });
+        }
       } else if (tipoTitulo === 'PAGAR' && payload.usar_cheque_terceiro) {
         await consumirChequeTerceiroPagamento({
           req,
