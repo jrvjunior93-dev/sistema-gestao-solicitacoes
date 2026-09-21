@@ -61,6 +61,25 @@
   --campo-filtro-numero-max: 280px;
 }
 
+/*
+  CABECALHO FIXO SEM REALIMENTACAO DA ROLAGEM (21/09).
+
+  O PageHeader ocupa espaco no fluxo e diminui ao entrar no estado compacto.
+  Com a ancoragem automatica do navegador ativa, essa diferenca de altura
+  altera o scrollY para manter um elemento do corpo no mesmo ponto visual.
+  Perto do limiar, a compensacao pode atravessar a banda de compactacao e
+  fazer a faixa alternar repetidamente entre os dois tamanhos — o "tremor"
+  percebido no Cadastro de Pessoas.
+
+  A pagina padrao e a fronteira correta: exclui apenas o conteudo operacional
+  desta tela da escolha de ancora, sem mudar a topbar, as abas do workspace
+  ou a rolagem de outras superficies. A faixa continua sticky e compacta;
+  apenas deixa de mover a propria posicao de rolagem quando muda de altura.
+*/
+.app-pagina {
+  overflow-anchor: none;
+}
+
 /* R2 — alvo de clique: imposto na classe; sair disso exige burlar o sistema. */
 .btn {
   min-height: var(--alvo-clique);

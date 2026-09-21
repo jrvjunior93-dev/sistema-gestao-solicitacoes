@@ -547,27 +547,32 @@ export default function Parceiros() {
                 </CampoForm>
               </FormSecao>
 
-              <FormSecao legenda="Vínculos da pessoa" colunas={2}>
-                <div className="form-campo--linha flex flex-wrap gap-4 text-sm text-[var(--c-text)]">
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={parceiroForm.cliente} onChange={atualizarCampo('cliente')} />
-                    Cliente
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={parceiroForm.fornecedor} onChange={atualizarCampo('fornecedor')} />
-                    Credor / Fornecedor
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={parceiroForm.corretor} onChange={atualizarCampo('corretor')} />
-                    Corretor
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" checked={parceiroForm.ativo} onChange={atualizarCampo('ativo')} />
-                    Ativo
-                  </label>
+              <FormSecao legenda="Uso da pessoa no sistema" colunas={2}>
+                <div className="form-campo--linha">
+                  <span className="form-label">Papéis operacionais</span>
+                  <p className="app-note mb-2">Definem em quais fluxos esta pessoa pode ser selecionada.</p>
+                  <div className="flex flex-wrap gap-4 text-sm text-[var(--c-text)]">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={parceiroForm.cliente} onChange={atualizarCampo('cliente')} />
+                      Cliente
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={parceiroForm.fornecedor} onChange={atualizarCampo('fornecedor')} />
+                      Credor / Fornecedor
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={parceiroForm.corretor} onChange={atualizarCampo('corretor')} />
+                      Corretor
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={parceiroForm.ativo} onChange={atualizarCampo('ativo')} />
+                      Cadastro ativo
+                    </label>
+                  </div>
                 </div>
                 <div className="form-campo--linha">
-                  <span className="form-label">Categorias</span>
+                  <span className="form-label">Classificações adicionais</span>
+                  <p className="app-note mb-2">Agrupamentos personalizados para buscas e filtros. Não substituem os papéis operacionais.</p>
                   {categorias.length === 0 ? (
                     <div className="text-sm text-[var(--c-muted)]">Nenhuma categoria de parceiro cadastrada.</div>
                   ) : (
