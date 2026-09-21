@@ -753,18 +753,6 @@ export async function reparcelarPrevisoesPedidoCompra(id, data) {
   return handleJsonResponse(response, 'Erro ao alterar as parcelas das previsoes do pedido');
 }
 
-export async function registrarDocumentoFinanceiroPedidoCompra(id, data) {
-  const response = await fetch(`${API_URL}/compras/pedidos/${id}/financeiro/documentos`, {
-    method: 'POST',
-    headers: authHeaders({
-      'Content-Type': 'application/json',
-      'Idempotency-Key': pedidoFinanceiroIdempotencyKey('documento', id)
-    }),
-    body: JSON.stringify(data)
-  });
-  return handleJsonResponse(response, 'Erro ao registrar o documento financeiro do pedido');
-}
-
 export async function liberarTitulosPedidoCompra(id, data) {
   const response = await fetch(`${API_URL}/compras/pedidos/${id}/financeiro/liberar`, {
     method: 'PATCH',

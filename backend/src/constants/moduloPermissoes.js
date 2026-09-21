@@ -219,7 +219,7 @@ const MODULO_PERMISSION_GROUPS = [
         label: 'Titulos Financeiros dos Pedidos',
         permissoes: [
           { key: 'compras.pedidos.financeiro.visualizar', label: 'Visualizar titulos do pedido', descricao: 'Ver titulos, documentos e pedidos de reabertura vinculados ao pedido.' },
-          { key: 'compras.pedidos.financeiro.anexar_documentos', label: 'Anexar documentos', descricao: 'Registrar nota fiscal, comprovante de compra ou outra confirmacao do fornecedor.' },
+          { key: 'compras.pedidos.financeiro.anexar_documentos', label: 'Anexar comprovação da compra', descricao: 'Incluir nota fiscal, comprovante de compra ou outra evidência ao criar os títulos do pedido.' },
           { key: 'compras.pedidos.financeiro.gerar_previsao', label: 'Gerar titulos', descricao: 'Permitir que Compras crie os titulos a pagar de um pedido fechado com o fornecedor.' },
           { key: 'compras.pedidos.financeiro.liberar_pagamento', label: 'Regularizar previsoes legadas', descricao: 'Converter previsoes antigas em titulos abertos quando necessario.' },
           { key: 'compras.pedidos.financeiro.aprovar_reabertura', label: 'Decidir reabertura', descricao: 'Aprovar ou rejeitar a reabertura solicitada por Compras quando houver titulo vinculado.' }

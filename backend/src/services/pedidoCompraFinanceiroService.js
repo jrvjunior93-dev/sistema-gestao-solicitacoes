@@ -596,6 +596,15 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
       criado_por: req.user?.id || null
     }, { transaction });
   }
+  const comprovacao = payload?.comprovacao
+    ? await registrarDocumentoFinanceiro({
+      pedidoId: pedido.id,
+      payload: payload.comprovacao,
+      usuarioId: req.user?.id,
+      idempotencyKey: `${chave}:comprovacao`,
+      transaction
+    })
+    : null;
   await pedido.update({
     status_financeiro: STATUS_FLUXO.LIBERADO_FINANCEIRO,
     financeiro_atualizado_em: new Date()
@@ -606,7 +615,11 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
     usuarioId: req.user?.id,
     acao: 'PEDIDO_COMPRA_TITULOS_CRIADOS_COMPRAS',
     descricao: `${titulosCriados.length} titulo(s) financeiro(s) criado(s) por Compras para ${buildPedidoCodigo(pedido.id)}.`,
-    metadata: { titulos_ids: titulosCriados.map((titulo) => titulo.id), valor_total: valorPedido },
+    metadata: {
+      titulos_ids: titulosCriados.map((titulo) => titulo.id),
+      valor_total: valorPedido,
+      comprovacao_id: comprovacao?.id || null
+    },
     transaction
   });
   return obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhes: true });
@@ -713,7 +726,7 @@ async function registrarDocumentoFinanceiro({ pedidoId, payload, usuarioId, idem
     throw httpError(409, 'O pedido legado precisa ser revisado pelo GEO antes de receber documentos financeiros.');
   }
   if (!STATUS_PEDIDO_FECHADO.has(normalize(pedido.status))) {
-    throw httpError(409, 'O pedido precisa estar fechado com o fornecedor para receber a confirmacao financeira.');
+    throw httpError(409, 'O pedido precisa estar fechado com o fornecedor para receber a comprovacao da compra.');
   }
   const chave = String(idempotencyKey || '').trim();
   if (!chave) throw httpError(400, 'Chave de idempotencia obrigatoria.');
@@ -728,14 +741,15 @@ async function registrarDocumentoFinanceiro({ pedidoId, payload, usuarioId, idem
     throw httpError(400, 'Tipo de comprovacao invalido.');
   }
   const arquivoUrl = String(payload?.arquivo_url || '').trim() || null;
+  const numeroDocumento = String(payload?.numero_documento || '').trim() || null;
   const observacoes = String(payload?.observacoes || '').trim() || null;
-  if (!arquivoUrl && !observacoes) {
-    throw httpError(400, 'Anexe um documento ou descreva a confirmacao recebida do fornecedor.');
+  if (!arquivoUrl && !numeroDocumento && !observacoes) {
+    throw httpError(400, 'Informe o numero, anexe um arquivo ou descreva a comprovacao da compra.');
   }
   return PedidoCompraDocumentoFinanceiro.create({
     pedido_compra_id: pedido.id,
     tipo,
-    numero_documento: String(payload?.numero_documento || '').trim() || null,
+    numero_documento: numeroDocumento,
     arquivo_url: arquivoUrl,
     arquivo_nome: String(payload?.arquivo_nome || '').trim() || null,
     observacoes,
@@ -751,13 +765,6 @@ async function liberarTitulosPedido({ pedidoId, tituloIds, formaPagamentoId, usu
     lock: transaction?.LOCK?.UPDATE
   });
   if (!pedido) throw httpError(404, 'Pedido de compra nao encontrado.');
-  const documentos = await PedidoCompraDocumentoFinanceiro.count({
-    where: { pedido_compra_id: pedido.id },
-    transaction
-  });
-  if (!documentos) {
-    throw httpError(409, 'Registre a nota fiscal, o comprovante de compra ou outra confirmacao antes de liberar o pagamento.');
-  }
   const forma = await FormaPagamentoFinanceira.findOne({
     where: { id: Number(formaPagamentoId), ativo: true, exige_cartao: false },
     transaction

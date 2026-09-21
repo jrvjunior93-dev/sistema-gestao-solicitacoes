@@ -1034,6 +1034,15 @@ const allowComprasPedidosFinanceiroDocumento = allowPaymentAction(
   canAnexarDocumentoPedidoCompraFinanceiro,
   'Acesso negado para anexar documentos financeiros do pedido'
 );
+const allowComprasPedidosFinanceiroComprovacaoOpcional = permit({
+  resource: 'COMPRAS_PEDIDOS_FINANCEIRO_DOCUMENTO',
+  custom: async (req) => {
+    if (!req.body?.comprovacao) return true;
+    return (await canAnexarDocumentoPedidoCompraFinanceiro(req.user))
+      ? true
+      : 'Acesso negado para anexar a comprovacao da compra';
+  }
+});
 const allowComprasPedidosFinanceiroLiberar = allowPaymentAction(
   'COMPRAS_PEDIDOS_FINANCEIRO_LIBERAR',
   canLiberarPedidoCompraFinanceiro,
@@ -2336,8 +2345,8 @@ router.post('/compras/pedidos/:id/itens', allowComprasPedidosEditarItens, critic
 router.patch('/compras/pedidos/:id/status', allowComprasPedidosAlterarStatus, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoStatusBody }), requirePedidoCompraAccess, PedidoCompraController.updateStatus);
 router.patch('/compras/pedidos/:id/reabrir-cotacao', allowComprasPedidosReabrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoReabrirBody }), requirePedidoCompraAccess, PedidoCompraController.reabrirCotacao);
 router.post('/compras/pedidos/:id/financeiro/adotar-legado', allowComprasPedidosFinanceiroPrevisao, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra') }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.adotarLegado);
-router.post('/compras/pedidos/:id/financeiro/previsoes', allowComprasPedidosFinanceiroPrevisao, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoPrevisoesBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.criarPrevisoes);
-router.post('/compras/pedidos/:id/financeiro/previsoes/reparcelar', allowComprasPedidosFinanceiroPrevisao, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoPrevisoesBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.reparcelarPrevisoes);
+router.post('/compras/pedidos/:id/financeiro/previsoes', allowComprasPedidosFinanceiroPrevisao, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoPrevisoesBody }), allowComprasPedidosFinanceiroComprovacaoOpcional, requirePedidoCompraAccess, PedidoCompraFinanceiroController.criarPrevisoes);
+router.post('/compras/pedidos/:id/financeiro/previsoes/reparcelar', allowComprasPedidosFinanceiroPrevisao, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoPrevisoesBody }), allowComprasPedidosFinanceiroComprovacaoOpcional, requirePedidoCompraAccess, PedidoCompraFinanceiroController.reparcelarPrevisoes);
 router.post('/compras/pedidos/:id/financeiro/documentos', allowComprasPedidosFinanceiroDocumento, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoDocumentoFinanceiroBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.registrarDocumento);
 router.patch('/compras/pedidos/:id/financeiro/liberar', allowComprasPedidosFinanceiroLiberar, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoLiberarTitulosBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.liberarTitulos);
 router.post('/compras/pedidos/:id/reaberturas', allowComprasPedidosReabrir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Pedido de compra'), body: validateCompraPedidoReabrirBody }), requirePedidoCompraAccess, PedidoCompraFinanceiroController.solicitarReabertura);

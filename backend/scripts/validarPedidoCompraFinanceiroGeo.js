@@ -5,6 +5,9 @@ const {
   STATUS_FLUXO,
   derivarStatusFinanceiro
 } = require('../src/services/pedidoCompraFinanceiroService');
+const {
+  validateCompraPedidoPrevisoesBody
+} = require('../src/validators/operationalValidators');
 
 function titulo(status) {
   return { titulo: { id: Math.random(), status } };
@@ -63,6 +66,10 @@ const configCategorias = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'services', 'pedidoCompraTituloConfigService.js'),
   'utf8'
 );
+const validatorsSource = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'validators', 'operationalValidators.js'),
+  'utf8'
+);
 assert(!/\b(?:bulkInsert|bulkUpdate|INSERT\s+INTO|UPDATE\s+pedido_compras)\b/i.test(migration), 'A migration nao pode escrever dados funcionais.');
 assert(migration.includes("createTable('pedido_compra_titulos'"), 'A migration precisa criar o vinculo explicito entre pedido e titulo.');
 assert(migration.includes("createTable('pedido_compra_reaberturas'"), 'A migration precisa preservar as decisoes de reabertura.');
@@ -78,5 +85,23 @@ assert(statusSolicitacao.includes('devolverAoSetorObraAposBaixa'), 'A baixa prec
 assert(!medicao.includes("solicitacao.update({ area_responsavel: SETOR_FINANCEIRO }"), 'A aprovacao da medicao nao pode antecipar o envio ao Financeiro.');
 assert(component.includes('Adicionar parcela'), 'A tela precisa permitir adicionar parcelas na criacao dos titulos.');
 assert(component.includes('Editar parcelas'), 'A tela precisa permitir editar previsoes ainda nao liberadas.');
+assert(component.includes('Forma de comprovação da compra'), 'A tela precisa identificar a evidencia opcional pelo objetivo da compra.');
+assert(!component.includes('Registrar confirmação'), 'A comprovacao nao pode ter uma acao separada da criacao dos titulos.');
+assert(component.indexOf('Forma de comprovação da compra') < component.lastIndexOf("'Criar títulos'"), 'Criar titulos precisa ser a acao final depois da comprovacao opcional.');
+assert(service.includes('payload?.comprovacao'), 'A mesma transacao dos titulos precisa aceitar a comprovacao opcional.');
+assert(validatorsSource.includes("'parcelas', 'comprovacao'"), 'O contrato da criacao precisa aceitar a comprovacao opcional.');
+assert(!service.includes('antes de liberar o pagamento'), 'A comprovacao da compra nao pode bloquear a liberacao dos titulos.');
+
+const payloadSemComprovacao = validateCompraPedidoPrevisoesBody({
+  categoria_financeira_id: 1,
+  parcelas: [{ valor: 100, data_vencimento: '2026-09-21' }]
+});
+assert.strictEqual(payloadSemComprovacao.comprovacao, null, 'Criar titulos sem comprovacao precisa continuar valido.');
+const payloadComComprovacao = validateCompraPedidoPrevisoesBody({
+  categoria_financeira_id: 1,
+  parcelas: [{ valor: 100, data_vencimento: '2026-09-21' }],
+  comprovacao: { tipo: 'NOTA_FISCAL', numero_documento: 'NF-123' }
+});
+assert.strictEqual(payloadComComprovacao.comprovacao.numero_documento, 'NF-123', 'A comprovacao opcional precisa viajar no mesmo payload dos titulos.');
 
 console.log('Fluxo Compras -> GEO autoriza -> fila Financeiro -> baixa Obra validado com sucesso.');

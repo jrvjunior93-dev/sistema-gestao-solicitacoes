@@ -8,7 +8,6 @@ import {
   decidirReaberturaPedidoCompra,
   obterUrlAssinadaCompra,
   reparcelarPrevisoesPedidoCompra,
-  registrarDocumentoFinanceiroPedidoCompra,
   uploadAnexoTemporarioCompra
 } from '../../../services/compras';
 import {
@@ -32,6 +31,12 @@ const STATUS_LABEL = {
   CORRECAO_SOLICITADA: 'Reabertura solicitada',
   NAO_GERA_TITULO: 'Não gera título',
   CANCELADO: 'Cancelado'
+};
+
+const TIPO_COMPROVACAO_LABEL = {
+  NOTA_FISCAL: 'Nota fiscal',
+  COMPROVANTE_COMPRA: 'Comprovante de compra',
+  OUTRA_CONFIRMACAO: 'Outra comprovação'
 };
 
 function moeda(value) {
@@ -68,6 +73,7 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
   const totalPedido = Number(pedido?.valor_total_fornecedor ?? pedido?.valor_total ?? 0);
   const [processando, setProcessando] = useState('');
   const processandoRef = useRef(false);
+  const arquivoInputRef = useRef(null);
   const [categoriaId, setCategoriaId] = useState('');
   const [descricao, setDescricao] = useState('');
   const [parcelas, setParcelas] = useState([{ valor: valorInput(totalPedido), data_vencimento: amanhaOuHoje() }]);
@@ -203,29 +209,29 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
         await reparcelarPrevisoesPedidoCompra(pedido.id, payload);
         setEditandoParcelas(false);
       } else {
-        await criarPrevisoesPedidoCompra(pedido.id, payload);
+        const numeroDocumento = documento.numero_documento.trim();
+        const observacoes = documento.observacoes.trim();
+        const temComprovacao = Boolean(arquivo || numeroDocumento || observacoes);
+        const upload = arquivo ? await uploadAnexoTemporarioCompra(arquivo) : null;
+        await criarPrevisoesPedidoCompra(pedido.id, {
+          ...payload,
+          comprovacao: temComprovacao ? {
+            ...documento,
+            numero_documento: numeroDocumento || undefined,
+            observacoes: observacoes || undefined,
+            arquivo_url: upload?.arquivo_url,
+            arquivo_nome: upload?.arquivo_nome_original
+          } : undefined
+        });
+        setArquivo(null);
+        setDocumento({ tipo: 'NOTA_FISCAL', numero_documento: '', observacoes: '' });
+        if (arquivoInputRef.current) arquivoInputRef.current.value = '';
       }
     }, reparcelando
       ? 'Parcelas das previsões atualizadas para este pedido.'
-      : 'Títulos financeiros criados para este pedido.');
-  }
-
-  async function salvarDocumento() {
-    if (!arquivo && !documento.observacoes.trim()) {
-      return avisar.alerta('Anexe um documento ou descreva a confirmação recebida do fornecedor.');
-    }
-    return executar('documento', async () => {
-      const upload = arquivo ? await uploadAnexoTemporarioCompra(arquivo) : null;
-      await registrarDocumentoFinanceiroPedidoCompra(pedido.id, {
-        ...documento,
-        numero_documento: documento.numero_documento.trim() || undefined,
-        observacoes: documento.observacoes.trim() || undefined,
-        arquivo_url: upload?.arquivo_url,
-        arquivo_nome: upload?.arquivo_nome_original
-      });
-      setArquivo(null);
-      setDocumento({ tipo: 'NOTA_FISCAL', numero_documento: '', observacoes: '' });
-    }, 'Documento financeiro registrado no pedido.');
+      : (arquivo || documento.numero_documento.trim() || documento.observacoes.trim()
+        ? 'Títulos financeiros e comprovação da compra registrados para este pedido.'
+        : 'Títulos financeiros criados para este pedido.'));
   }
 
   async function abrirDocumento(documentoFinanceiro) {
@@ -329,16 +335,36 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
             <span className={`font-semibold ${Math.abs(somaParcelas - totalPedido) < 0.01 ? 'text-[var(--sem-success)]' : 'text-[var(--sem-danger)]'}`}>
               Informado: {moeda(somaParcelas)} · Diferença: {moeda(totalPedido - somaParcelas)}
             </span>
-            <div className="flex flex-wrap gap-2">
-              {editandoParcelas ? (
-                <button type="button" className="btn btn-outline" disabled={Boolean(processando)} onClick={cancelarEdicaoParcelas}>Cancelar edição</button>
-              ) : null}
-              <button type="button" className="btn btn-primary" disabled={Boolean(processando) || !pedido?.fornecedor?.parceiro_id} onClick={salvarPrevisoes}>
-                {processando === 'previsoes'
-                  ? 'Salvando...'
-                  : (editandoParcelas ? 'Salvar novo parcelamento' : 'Criar títulos')}
-              </button>
+          </div>
+
+          {!editandoParcelas && podeAnexar ? (
+            <div className="mt-4 border-t border-[var(--c-border)] pt-4">
+              <h3 className="font-semibold text-[var(--c-text)]">Forma de comprovação da compra</h3>
+              <p className="mt-1 text-sm text-[var(--c-muted)]">
+                Opcional. Se houver, informe a nota fiscal, o comprovante de compra ou outra evidência recebida.
+              </p>
+              <div className="mt-3">
+                <FormSecao colunas={3}>
+                  <CampoForm label="Tipo de comprovante"><select className="input w-full" value={documento.tipo} onChange={(event) => setDocumento((atual) => ({ ...atual, tipo: event.target.value }))}><option value="NOTA_FISCAL">Nota fiscal</option><option value="COMPROVANTE_COMPRA">Comprovante de compra</option><option value="OUTRA_CONFIRMACAO">Outra comprovação</option></select></CampoForm>
+                  <CampoForm label="Número do documento"><input className="input w-full" value={documento.numero_documento} onChange={(event) => setDocumento((atual) => ({ ...atual, numero_documento: event.target.value }))} /></CampoForm>
+                  <CampoForm label="Arquivo"><input ref={arquivoInputRef} className="input w-full" type="file" onChange={(event) => setArquivo(event.target.files?.[0] || null)} /></CampoForm>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <CampoForm label="Observações"><textarea className="input min-h-20 w-full" value={documento.observacoes} onChange={(event) => setDocumento((atual) => ({ ...atual, observacoes: event.target.value }))} /></CampoForm>
+                  </div>
+                </FormSecao>
+              </div>
             </div>
+          ) : null}
+
+          <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-[var(--c-border)] pt-4">
+            {editandoParcelas ? (
+              <button type="button" className="btn btn-outline" disabled={Boolean(processando)} onClick={cancelarEdicaoParcelas}>Cancelar edição</button>
+            ) : null}
+            <button type="button" className="btn btn-primary" disabled={Boolean(processando) || !pedido?.fornecedor?.parceiro_id} onClick={salvarPrevisoes}>
+              {processando === 'previsoes'
+                ? (editandoParcelas ? 'Salvando...' : 'Criando títulos...')
+                : (editandoParcelas ? 'Salvar novo parcelamento' : 'Criar títulos')}
+            </button>
           </div>
         </div>
       ) : null}
@@ -374,32 +400,17 @@ export default function PedidoCompraFinanceiro({ pedido, user, avisar, onAtualiz
         </div>
       ) : null}
 
-      {(podeAnexar || (financeiro.documentos || []).length) ? (
+      {(financeiro.documentos || []).length ? (
         <div className="mt-4 border-t border-[var(--c-border)] pt-4">
-          <h3 className="font-semibold text-[var(--c-text)]">Confirmação do fornecedor</h3>
-          {podeAnexar ? (
-            <div className="mt-3">
-              <FormSecao colunas={3}>
-                <CampoForm label="Tipo" obrigatorio><select className="input w-full" value={documento.tipo} onChange={(event) => setDocumento((atual) => ({ ...atual, tipo: event.target.value }))}><option value="NOTA_FISCAL">Nota fiscal</option><option value="COMPROVANTE_COMPRA">Comprovante de compra</option><option value="OUTRA_CONFIRMACAO">Outra confirmação</option></select></CampoForm>
-                <CampoForm label="Número do documento"><input className="input w-full" value={documento.numero_documento} onChange={(event) => setDocumento((atual) => ({ ...atual, numero_documento: event.target.value }))} /></CampoForm>
-                <CampoForm label="Arquivo"><input className="input w-full" type="file" onChange={(event) => setArquivo(event.target.files?.[0] || null)} /></CampoForm>
-                <div style={{ gridColumn: '1 / -1' }}>
-                  <CampoForm label="Observações"><textarea className="input min-h-20 w-full" value={documento.observacoes} onChange={(event) => setDocumento((atual) => ({ ...atual, observacoes: event.target.value }))} /></CampoForm>
-                </div>
-                <div className="flex justify-end" style={{ gridColumn: '1 / -1' }}><button type="button" className="btn btn-outline" disabled={Boolean(processando)} onClick={salvarDocumento}>{processando === 'documento' ? 'Enviando...' : 'Registrar confirmação'}</button></div>
-              </FormSecao>
-            </div>
-          ) : null}
-          {(financeiro.documentos || []).length ? (
-            <div className="mt-3 grid gap-2">
-              {financeiro.documentos.map((item) => (
-                <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--c-border)] p-3 text-sm">
-                  <span><strong>{String(item.tipo || '').replace(/_/g, ' ')}</strong>{item.numero_documento ? ` · ${item.numero_documento}` : ''}{item.criadoPor?.nome ? ` · ${item.criadoPor.nome}` : ''}</span>
-                  {item.arquivo_url ? <button type="button" className="btn btn-outline" onClick={() => abrirDocumento(item)}>Abrir arquivo</button> : null}
-                </div>
-              ))}
-            </div>
-          ) : null}
+          <h3 className="font-semibold text-[var(--c-text)]">Comprovações da compra</h3>
+          <div className="mt-3 grid gap-2">
+            {financeiro.documentos.map((item) => (
+              <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--c-border)] p-3 text-sm">
+                <span><strong>{TIPO_COMPROVACAO_LABEL[item.tipo] || String(item.tipo || '').replace(/_/g, ' ')}</strong>{item.numero_documento ? ` · ${item.numero_documento}` : ''}{item.criadoPor?.nome ? ` · ${item.criadoPor.nome}` : ''}</span>
+                {item.arquivo_url ? <button type="button" className="btn btn-outline" onClick={() => abrirDocumento(item)}>Abrir arquivo</button> : null}
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
 

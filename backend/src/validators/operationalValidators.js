@@ -1216,16 +1216,20 @@ function validateCompraPedidoReabrirBody(body = {}) {
 }
 
 function validateCompraPedidoPrevisoesBody(body = {}) {
-  ensureAllowedKeys(body, ['categoria_financeira_id', 'descricao', 'parcelas'], 'Previsoes financeiras do pedido');
+  ensureAllowedKeys(body, ['categoria_financeira_id', 'descricao', 'parcelas', 'comprovacao'], 'Previsoes financeiras do pedido');
   if (!Array.isArray(body.parcelas) || body.parcelas.length === 0) {
     throw new ValidationError('Informe ao menos uma parcela da previsao.');
   }
   if (body.parcelas.length > 120) {
     throw new ValidationError('A previsao nao pode possuir mais de 120 parcelas.');
   }
+  const comprovacao = body.comprovacao == null
+    ? null
+    : validateCompraPedidoDocumentoFinanceiroBody(body.comprovacao);
   return {
     categoria_financeira_id: parseInteger(body.categoria_financeira_id, 'Categoria financeira', { required: true }),
     descricao: parseOptionalText(body.descricao, 'Descricao', 255),
+    comprovacao,
     parcelas: body.parcelas.map((parcela, index) => {
       ensureAllowedKeys(parcela || {}, ['valor', 'data_vencimento'], `Parcela ${index + 1}`);
       return {
@@ -1253,12 +1257,13 @@ function validateCompraPedidoDocumentoFinanceiroBody(body = {}) {
   }
   const arquivoUrl = parseOptionalText(body.arquivo_url, 'URL do arquivo', 2000);
   const observacoes = parseOptionalText(body.observacoes, 'Observacoes', 2000);
-  if (!arquivoUrl && !observacoes) {
-    throw new ValidationError('Anexe um documento ou descreva a confirmacao do fornecedor.');
+  const numeroDocumento = parseOptionalText(body.numero_documento, 'Numero do documento', 120);
+  if (!arquivoUrl && !observacoes && !numeroDocumento) {
+    throw new ValidationError('Informe o numero, anexe um arquivo ou descreva a comprovacao da compra.');
   }
   return {
     tipo,
-    numero_documento: parseOptionalText(body.numero_documento, 'Numero do documento', 120),
+    numero_documento: numeroDocumento,
     arquivo_url: arquivoUrl,
     arquivo_nome: parseOptionalText(body.arquivo_nome, 'Nome do arquivo', 255),
     observacoes
