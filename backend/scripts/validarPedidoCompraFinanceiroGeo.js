@@ -79,6 +79,8 @@ assert(service.includes("normalize(item.titulo?.status) !== 'PREVISAO'"), 'O bac
 assert(routes.includes("/compras/pedidos/:id/financeiro/previsoes/reparcelar"), 'A rota protegida de reparticionamento precisa estar registrada.');
 assert(service.includes("status: 'ABERTO'"), 'Compras precisa criar o titulo ja aberto para a autorizacao posterior no Contas a Pagar.');
 assert(service.includes('validarCategoriaTituloPedido'), 'A categoria escolhida por Compras precisa respeitar a configuracao administrativa.');
+assert(service.includes('listarFormasDosFluxos'), 'O pedido precisa usar as mesmas formas habilitadas para a Nova Solicitacao.');
+assert(service.includes('formasPagamentoConfig.formas'), 'O modal precisa receber somente a curadoria de formas dos fluxos.');
 assert(configCategorias.includes('categoria_padrao_id'), 'A configuracao precisa definir a categoria padrao do titulo do pedido.');
 assert(fila.includes('encaminharSolicitacaoParaFinanceiroAoEnfileirar'), 'Somente a entrada na fila deve assumir a solicitacao no Financeiro.');
 assert(statusSolicitacao.includes('devolverAoSetorObraAposBaixa'), 'A baixa precisa devolver a solicitacao para Obra.');

@@ -66,10 +66,11 @@ function normalizarIds(bruto) {
   return [...new Set(lista.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n > 0))];
 }
 
-async function obterIdsLiberados() {
+async function obterIdsLiberados({ transaction } = {}) {
   const registro = await ConfiguracaoSistema.findOne({
     where: { chave: CHAVE },
-    order: [['id', 'DESC']]
+    order: [['id', 'DESC']],
+    transaction
   });
   if (!registro) return [];
 
@@ -87,13 +88,17 @@ async function obterIdsLiberados() {
  *
  * Forma desativada no cadastro nao aparece nem se estiver liberada — o cadastro manda.
  */
-async function listarFormasDosFluxos() {
+async function listarFormasDosFluxos({ transaction } = {}) {
   const [liberados, formas] = await Promise.all([
-    obterIdsLiberados(),
+    obterIdsLiberados({ transaction }),
     FormaPagamentoFinanceira.findAll({
       where: { ativo: true },
-      attributes: ['id', 'nome', 'codigo', 'tipo', 'gera_boleto'],
-      order: [['nome', 'ASC']]
+      attributes: [
+        'id', 'nome', 'codigo', 'tipo', 'gera_boleto',
+        'permite_parcelamento', 'exige_cartao'
+      ],
+      order: [['nome', 'ASC']],
+      transaction
     })
   ]);
 
@@ -107,7 +112,9 @@ async function listarFormasDosFluxos() {
       nome: f.nome,
       codigo: f.codigo,
       tipo: f.tipo,
-      gera_boleto: Boolean(f.gera_boleto)
+      gera_boleto: Boolean(f.gera_boleto),
+      permite_parcelamento: f.permite_parcelamento !== false,
+      exige_cartao: Boolean(f.exige_cartao)
     })),
     liberados,
     // `todas: true` diz a tela de configuracao que nada foi escolhido ainda — diferente de

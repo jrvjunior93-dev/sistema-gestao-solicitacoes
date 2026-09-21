@@ -22,6 +22,7 @@ const {
   obterConfiguracaoCategoriasTituloPedido,
   validarCategoriaTituloPedido
 } = require('./pedidoCompraTituloConfigService');
+const { listarFormasDosFluxos } = require('./formasPagamentoMedicaoService');
 
 const STATUS_FLUXO = Object.freeze({
   AGUARDANDO_GEO: 'AGUARDANDO_GEO',
@@ -257,7 +258,7 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
   };
   if (!incluirDetalhes) return resumo;
 
-  const [documentos, categoriasConfig, formasPagamento] = await Promise.all([
+  const [documentos, categoriasConfig, formasPagamentoConfig] = await Promise.all([
     PedidoCompraDocumentoFinanceiro.findAll({
       where: { pedido_compra_id: Number(pedido.id) },
       include: [{ model: User, as: 'criadoPor', attributes: ['id', 'nome'] }],
@@ -265,12 +266,7 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
       transaction
     }),
     obterConfiguracaoCategoriasTituloPedido({ transaction }),
-    FormaPagamentoFinanceira.findAll({
-      where: { ativo: true, exige_cartao: false },
-      attributes: ['id', 'nome', 'codigo', 'tipo', 'permite_parcelamento', 'gera_boleto', 'exige_cartao'],
-      order: [['nome', 'ASC']],
-      transaction
-    })
+    listarFormasDosFluxos({ transaction })
   ]);
   return {
     ...resumo,
@@ -280,9 +276,9 @@ async function obterResumoFinanceiroPedido(pedido, { transaction, incluirDetalhe
       categorias: categoriasConfig.categorias,
       categoria_padrao_id: categoriasConfig.categoria_padrao_id,
       categorias_configuradas: categoriasConfig.configurada,
-      formas_pagamento: formasPagamento
-        .filter((item) => ![item.codigo, item.nome].some((value) => normalize(value) === 'FOPAG'))
-        .map((item) => item.toJSON())
+      // A mesma curadoria administrativa usada na Nova Solicitacao. Assim,
+      // habilitar ou desabilitar uma forma muda os dois fluxos juntos.
+      formas_pagamento: formasPagamentoConfig.formas
     }
   };
 }
@@ -531,14 +527,12 @@ function tipoOperacionalFormaPagamento(forma) {
   return 'OUTRA';
 }
 
-async function validarPagamentoNegociado(payload = {}, contexto, transaction) {
-  const forma = await FormaPagamentoFinanceira.findOne({
-    where: { id: Number(payload.forma_pagamento_id), ativo: true, exige_cartao: false },
-    transaction
-  });
-  if (!forma) throw httpError(400, `Selecione uma forma de pagamento ativa para ${contexto}.`);
-  if ([forma.codigo, forma.nome].some((value) => normalize(value) === 'FOPAG')) {
-    throw httpError(400, `A forma FOPAG nao pode ser usada em ${contexto}.`);
+async function validarPagamentoNegociado(payload = {}, contexto, formasPermitidas, transaction) {
+  const forma = (formasPermitidas || []).find(
+    (item) => Number(item.id) === Number(payload.forma_pagamento_id)
+  );
+  if (!forma) {
+    throw httpError(400, `Selecione uma forma de pagamento ativa e habilitada para ${contexto}.`);
   }
 
   const favorecidoId = Number(payload.favorecido_pagamento_id || 0);
@@ -669,7 +663,14 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
     payload?.categoria_financeira_id,
     { transaction }
   );
-  const pagamentoCompra = await validarPagamentoNegociado(payload, 'a compra', transaction);
+  const formasPagamentoConfig = await listarFormasDosFluxos({ transaction });
+  const formasPagamentoPermitidas = formasPagamentoConfig.formas;
+  const pagamentoCompra = await validarPagamentoNegociado(
+    payload,
+    'a compra',
+    formasPagamentoPermitidas,
+    transaction
+  );
 
   const fretesPendentes = await PedidoCompraFrete.findAll({
     where: {
@@ -748,6 +749,7 @@ async function criarPrevisoesPedido({ req, pedidoId, payload, idempotencyKey, tr
     const pagamentoFrete = await validarPagamentoNegociado(
       configuracao,
       `o frete #${frete.id}`,
+      formasPagamentoPermitidas,
       transaction
     );
     const resultadoFrete = await criarTituloManual(req, {
