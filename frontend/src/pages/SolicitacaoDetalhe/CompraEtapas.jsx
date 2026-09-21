@@ -422,7 +422,6 @@ export default function CompraEtapas({ solicitacaoId, user, itensRevisao, podeDe
       <div data-modal="rodape" className="border-t border-[var(--c-border)] p-4">{formularioComentario()}</div>
     </OverlayModal>}
     <BlocoConteudo titulo="Itens da solicitação" contagem={`${dados.itens.length} item(ns) · ${pendentes.length} pendente(s)`} recolhivel
-      controles={<span />}
       acoes={onGerenciarItens ? <AcaoIconeCompra rotulo="Gerenciar todos os itens" icone={HiAdjustmentsHorizontal} onClick={() => onGerenciarItens()} /> : null}>
       <div className="space-y-2">
         {podeDecidir && pendentes.length > 0 && <div className="flex flex-wrap items-center gap-2 rounded-md border border-[var(--c-border)] px-3 py-2 text-sm">
