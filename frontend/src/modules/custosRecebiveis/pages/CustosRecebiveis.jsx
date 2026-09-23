@@ -21,6 +21,7 @@ import {
   useConfirmacao
 } from '../../../components/padrao';
 import { useAuth } from '../../../contexts/AuthContext';
+import { userHasSetorCapability } from '../../../utils/setor';
 import CrComparativoView from '../components/CrComparativoView';
 import CrConfiguracoesView from '../components/CrConfiguracoesView';
 import CrDashboardView from '../components/CrDashboardView';
@@ -44,6 +45,7 @@ import {
   obterPlanoMicroObra,
   publicarPlanoMicro,
   listarMinhasObrigacoesCustosRecebiveis,
+  solicitarReaberturaObraCompetencia,
   validarPlanoMicro
 } from '../services/custosRecebiveis';
 import {
@@ -99,6 +101,8 @@ export default function CustosRecebiveis() {
     && hasExplicitCustosRecebiveisPermission(user, CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_VIEW)
     && !hasAdministrativeCapability
   );
+  const isObraUser = userHasSetorCapability(user, 'eh_setor_obra');
+  const obraExperience = isObraUser || operationalExperience;
 
   const availableTabs = useMemo(
     () => CUSTOS_RECEBIVEIS_TABS.filter((tab) => (
@@ -108,9 +112,9 @@ export default function CustosRecebiveis() {
   );
   const visibleTabs = useMemo(() => {
     const tabs = availableTabs.filter((tab) => (
-      !tab.hidden || (operationalExperience && tab.id === 'obras')
+      !tab.hidden || (obraExperience && tab.id === 'obras')
     ));
-    if (!operationalExperience) return tabs;
+    if (!obraExperience) return tabs;
     const operationalOrder = new Map([
       ['obras', 0],
       ['planejamento', 1],
@@ -120,8 +124,8 @@ export default function CustosRecebiveis() {
     return [...tabs].sort((left, right) => (
       (operationalOrder.get(left.id) ?? 99) - (operationalOrder.get(right.id) ?? 99)
     ));
-  }, [availableTabs, operationalExperience]);
-  const defaultTab = operationalExperience && availableTabs.some((tab) => tab.id === 'obras')
+  }, [availableTabs, obraExperience]);
+  const defaultTab = obraExperience && availableTabs.some((tab) => tab.id === 'obras')
     ? 'obras'
     : visibleTabs[0]?.id || availableTabs[0]?.id || 'obras';
   const requestedTab = searchParams.get('aba') || defaultTab;
@@ -256,14 +260,14 @@ export default function CustosRecebiveis() {
     try {
       setObrasLoading(true);
       setObrasError('');
-      const response = await listarCustosRecebiveisObras();
+      const response = await listarCustosRecebiveisObras({ competencia });
       setObras(Array.isArray(response?.items) ? response.items : []);
     } catch (error) {
       setObrasError(error.message || 'Erro ao carregar obras.');
     } finally {
       setObrasLoading(false);
     }
-  }, [canViewObras]);
+  }, [canViewObras, competencia]);
 
   const loadPlan = useCallback(async (obraId = selectedObraId, planId = selectedPlanId) => {
     if (!Number.isInteger(Number(obraId)) || Number(obraId) <= 0) {
@@ -356,7 +360,10 @@ export default function CustosRecebiveis() {
     updateQuery({
       obra: value || null,
       plano: null,
-      sub: value ? 'estrutura' : null
+      sub: null,
+      detalhe: null,
+      painel: null,
+      bloqueio: null
     });
   }
 
@@ -481,6 +488,43 @@ export default function CustosRecebiveis() {
       detalhe: null,
       painel: null
     });
+  }
+
+  function handleEditPlanning(obraId, targetCompetencia) {
+    updateQuery({
+      aba: 'planejamento',
+      obra: obraId,
+      competencia: targetCompetencia || competencia,
+      plano: null,
+      detalhe: '1',
+      painel: 'planning',
+      bloqueio: null
+    });
+  }
+
+  async function handleRequestReopening(obraId, targetCompetencia, motivo) {
+    try {
+      setFeedback(null);
+      const result = await solicitarReaberturaObraCompetencia(
+        obraId,
+        targetCompetencia || competencia,
+        motivo
+      );
+      setFeedback({
+        tone: 'success',
+        message: result?.idempotente
+          ? 'Já existe uma solicitação de reabertura aguardando decisão.'
+          : 'Solicitação de reabertura enviada para decisão.'
+      });
+      await Promise.all([loadObras(), loadObligationSummary()]);
+      return result;
+    } catch (error) {
+      setFeedback({
+        tone: 'error',
+        message: error.message || 'Não foi possível solicitar a reabertura.'
+      });
+      throw error;
+    }
   }
 
   function handleOpenDashboardArea(item) {
@@ -689,7 +733,7 @@ export default function CustosRecebiveis() {
             periodo_fim: end
           })}
         />
-      ) : activeTab !== 'obras' && !(activeTab === 'planejamento' && selectedObra) ? (
+      ) : activeTab !== 'obras' ? (
       /*
         R12: estes DOIS selects continuam legítimos — não são filtro de
         lista, são o SELETOR DE CONTEXTO (qual obra e qual competência as
@@ -747,7 +791,13 @@ export default function CustosRecebiveis() {
             error={obrasError}
             onReload={loadObras}
             onOpen={handleOpenObra}
-            showAdministrationLink={!operationalExperience && canViewStructure}
+            cardMode={isObraUser}
+            competencia={competencia}
+            canEditPlanning={planningPermissions.costs || planningPermissions.receipts}
+            canRequestReopen={planningPermissions.reopenRequest}
+            onEditPlanning={handleEditPlanning}
+            onRequestReopen={handleRequestReopening}
+            showAdministrationLink={!obraExperience && canViewStructure}
           />
           {!operationalExperience && Number.isInteger(selectedObraId) && selectedObraId > 0 ? (
             <div id="cr-workspace-anchor">

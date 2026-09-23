@@ -19,7 +19,9 @@ const {
   resolveExplicitCustosRecebiveisPermissions
 } = require('../policies/permissionPolicy');
 const {
-  resolverEscopoObras
+  resolverEscopoObras,
+  usuarioEhSetorObra,
+  usuarioPodeAcessarObra
 } = require('../policies/obraScopePolicy');
 const db = require('../../../models');
 
@@ -151,6 +153,41 @@ async function validateObraScope() {
   assert.deepStrictEqual(globalScope, { todas: true, obraIds: null });
   assert.strictEqual(queries, 0, 'Escopo global explicito nao deve consultar vinculos');
 
+  const obraUserScope = await resolverEscopoObras(
+    { id: 22, perfil: 'USUARIO', setor: { codigo: 'OBRA', eh_setor_obra: true } },
+    {
+      isSuperadmin: () => false,
+      hasExplicitPermission: async () => true,
+      UsuarioObra: fakeUsuarioObra
+    }
+  );
+  assert.deepStrictEqual(
+    obraUserScope,
+    { todas: false, obraIds: [9, 12] },
+    'Usuario do setor OBRA deve permanecer limitado aos vinculos, mesmo com permissao global'
+  );
+  assert.strictEqual(usuarioEhSetorObra({ setor: { nome: 'Obra' } }), true);
+  assert.strictEqual(queries, 1, 'Usuario de obra deve consultar os vinculos autorizados');
+  assert.strictEqual(await usuarioPodeAcessarObra(
+    { id: 22, perfil: 'USUARIO', setor: { codigo: 'OBRA' } },
+    9,
+    {
+      isSuperadmin: () => false,
+      hasExplicitPermission: async () => true,
+      UsuarioObra: fakeUsuarioObra
+    }
+  ), true, 'Usuario da obra deve acessar obra vinculada');
+  assert.strictEqual(await usuarioPodeAcessarObra(
+    { id: 22, perfil: 'USUARIO', setor: { codigo: 'OBRA' } },
+    99,
+    {
+      isSuperadmin: () => false,
+      hasExplicitPermission: async () => true,
+      UsuarioObra: fakeUsuarioObra
+    }
+  ), false, 'Usuario da obra nao pode acessar obra fora dos vinculos');
+  assert.strictEqual(queries, 3, 'A validacao direta deve consultar os vinculos autorizados');
+
   const linkedScope = await resolverEscopoObras(
     { id: 3, perfil: 'USUARIO', setor: { codigo: 'FINANCEIRO' } },
     {
@@ -160,7 +197,7 @@ async function validateObraScope() {
     }
   );
   assert.deepStrictEqual(linkedScope, { todas: false, obraIds: [9, 12] });
-  assert.strictEqual(queries, 1, 'Escopo restrito deve consultar apenas usuarios_obras');
+  assert.strictEqual(queries, 4, 'Escopo restrito deve consultar apenas usuarios_obras');
 }
 
 async function validateMigrationLifecycle() {

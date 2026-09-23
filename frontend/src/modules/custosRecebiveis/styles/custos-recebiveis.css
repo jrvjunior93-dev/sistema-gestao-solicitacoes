@@ -3185,6 +3185,74 @@
   white-space: nowrap;
 }
 
+.cr-work-card-grid {
+  padding-top: 2px;
+}
+
+.cr-work-card .cr-period-card__metric dd {
+  white-space: normal;
+}
+
+.cr-work-card__footer {
+  align-items: flex-end;
+}
+
+.cr-work-card__footer .cr-period-card__actions {
+  max-width: 70%;
+}
+
+.cr-reopening-modal__header,
+.cr-reopening-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-color: var(--cr-border);
+}
+
+.cr-reopening-modal__header {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--cr-border);
+}
+
+.cr-reopening-modal__header h2,
+.cr-reopening-modal__header p {
+  margin: 0;
+}
+
+.cr-reopening-modal__header h2 {
+  color: var(--cr-text);
+  font-size: var(--fonte-corpo);
+  font-weight: 800;
+}
+
+.cr-reopening-modal__header p,
+.cr-reopening-modal__body > p {
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+}
+
+.cr-reopening-modal__header p {
+  margin-top: 3px;
+}
+
+.cr-reopening-modal__body {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.cr-reopening-modal__body > p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.cr-reopening-modal__footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--cr-border);
+}
+
 .cr-period-card {
   container-type: inline-size;
   display: grid;
@@ -3508,6 +3576,11 @@
 
   .cr-period-card__actions {
     align-self: flex-end;
+  }
+
+  .cr-work-card__footer .cr-period-card__actions {
+    width: 100%;
+    max-width: none;
   }
 
   .cr-new-month-bar .cr-field,

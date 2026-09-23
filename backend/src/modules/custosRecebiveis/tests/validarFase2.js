@@ -252,7 +252,13 @@ function validateFrontendContracts() {
   assert(page.includes('<CrExecutiveFilters'));
   assert(page.includes('<CrPlanejamentoMensalView'));
   assert(page.includes('<CrComparativoView'));
-  assert(page.includes("activeTab === 'planejamento' && selectedObra"));
+  assert(page.includes("activeTab !== 'obras'"));
+  assert(page.includes('cardMode={isObraUser}'));
+  assert(page.includes('onEditPlanning={handleEditPlanning}'));
+  assert(page.includes('onRequestReopen={handleRequestReopening}'));
+  assert(worksView.includes('Editar planejamento'));
+  assert(worksView.includes('Solicitar reabertura'));
+  assert(worksView.includes('cr-period-card cr-work-card'));
   assert(planning.includes('PUBLIC_STEPS'));
   assert(planning.includes('PRIVATE_STEPS'));
   assert(planning.includes("label: 'Custos planejados'"));
@@ -325,7 +331,7 @@ function validateFrontendContracts() {
   assert(worksView.includes('obra.contrato'));
   assert(worksView.includes('obra.valor_orcado'));
   assert(worksView.includes('obra.responsavel'));
-  assert(worksView.includes('Abrir planejamento'));
+  assert(worksView.includes('Editar planejamento'));
   assert(!worksView.includes('<th>Contrato</th>'));
   assert(!worksView.includes('<dt>Contrato</dt>'));
   assert(!worksView.includes('Remover'));
@@ -336,7 +342,7 @@ function validateFrontendContracts() {
   assert(page.includes('canOpenPlanning={canOpenPlanning}'));
   assert(page.includes('onOpenArea={handleOpenDashboardArea}'));
   assert(comparison.includes('COMPARATIVO_ESTADO_LABELS'));
-  assert(planning.includes("renderPlanningSheetActions('custos'"));
+  assert(planning.includes("'custos',\n              permissions.costs"));
   assert(planning.includes("renderPlanningSheetActions('medicao-prevista'"));
   assert(planning.includes("renderPlanningSheetActions('medicao-aprovada'"));
   assert(planningImport.includes('Confirmar importação'));

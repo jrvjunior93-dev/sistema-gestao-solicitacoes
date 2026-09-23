@@ -22,6 +22,7 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_ROWS = 10000;
 const DIVERGENCE_TOLERANCE_PCT = 5;
 const BUSINESS_ERROR_NAME = 'CustosRecebiveisBusinessError';
+const VALID_COMPETENCIA = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 function createBusinessError(statusCode, code, message, details = null) {
   const error = new Error(message);
@@ -81,6 +82,44 @@ function normalizeReason(value) {
 
 function normalizeSearch(value) {
   return normalizeText(value, 120);
+}
+
+function competenciaReferencia(value, now = new Date()) {
+  const informed = String(value || '').trim();
+  if (informed) {
+    if (!VALID_COMPETENCIA.test(informed)) {
+      throw createBusinessError(
+        400,
+        'CR_COMPETENCIA_INVALIDA',
+        'Competencia invalida. Use AAAA-MM.'
+      );
+    }
+    return informed;
+  }
+  const parts = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit'
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  return `${year}-${month}`;
+}
+
+function prazoCompetenciaReferencia(competencia) {
+  const [year, month] = competencia.split('-').map(Number);
+  const deadline = new Date(year, month, 0, 18, 0, 0, 0);
+  const holidays = new Set(String(process.env.CR_FERIADOS || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(item)));
+  const dateKey = () => (
+    `${deadline.getFullYear()}-${String(deadline.getMonth() + 1).padStart(2, '0')}-${String(deadline.getDate()).padStart(2, '0')}`
+  );
+  while (deadline.getDay() === 0 || deadline.getDay() === 6 || holidays.has(dateKey())) {
+    deadline.setDate(deadline.getDate() - 1);
+  }
+  return deadline;
 }
 
 function assertSpreadsheetFile(file) {
@@ -253,7 +292,7 @@ async function listarObrasNoEscopo(user, query = {}, overrides = {}) {
   const obraIds = obras.map((obra) => Number(obra.id));
   if (!obraIds.length) return { items: [], total: 0 };
 
-  const currentCompetencia = new Date().toISOString().slice(0, 7);
+  const selectedCompetencia = competenciaReferencia(query.competencia);
   const [plans, responsaveis, competencias, contratos] = await Promise.all([
     dependencies.CrPlanoObra.findAll({
       where: { obra_id: { [Op.in]: obraIds } },
@@ -276,7 +315,7 @@ async function listarObrasNoEscopo(user, query = {}, overrides = {}) {
     dependencies.CrCompetencia.findAll({
       where: {
         obra_id: { [Op.in]: obraIds },
-        competencia: currentCompetencia
+        competencia: selectedCompetencia
       }
     }),
     dependencies.Contrato.findAll({
@@ -339,6 +378,7 @@ async function listarObrasNoEscopo(user, query = {}, overrides = {}) {
     const latestPlan = planByObra.get(serialized.id) || null;
     const publishedPlan = publishedPlanByObra.get(serialized.id) || null;
     const contractSummary = contratosByObra.get(serialized.id) || null;
+    const competenciaContexto = competenciaByObra.get(serialized.id) || null;
     return {
       ...serialized,
       responsavel: responsavelByObra.get(serialized.id) || null,
@@ -362,7 +402,10 @@ async function listarObrasNoEscopo(user, query = {}, overrides = {}) {
       situacao_orcamento: publishedPlan
         ? 'ORCAMENTO_PUBLICADO'
         : (latestPlan ? 'RASCUNHO' : 'PENDENTE'),
-      competencia_atual: competenciaByObra.get(serialized.id) || null
+      competencia_atual: competenciaContexto,
+      competencia_referencia: selectedCompetencia,
+      reabertura_permitida: competenciaContexto?.estado === 'FINALIZADA'
+        || prazoCompetenciaReferencia(selectedCompetencia) <= new Date()
     };
   });
 

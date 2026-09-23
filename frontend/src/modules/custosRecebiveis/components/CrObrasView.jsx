@@ -3,9 +3,15 @@ import { Link } from 'react-router-dom';
 import {
   HiOutlineArrowTopRightOnSquare,
   HiOutlineBuildingOffice2,
-  HiOutlineMagnifyingGlass
+  HiOutlineEye,
+  HiOutlineLockOpen,
+  HiOutlineMagnifyingGlass,
+  HiOutlinePencilSquare,
+  HiOutlineXMark
 } from 'react-icons/hi2';
 import { TabelaPadrao, CelulaDupla } from '../../../components/padrao';
+import OverlayModal from '../../../components/ui/OverlayModal';
+import { COMPETENCIA_ESTADO_LABELS } from '../constants/custosRecebiveis';
 import CrStatusPill from './CrStatusPill';
 
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -33,17 +39,127 @@ function BudgetStatus({ obra }) {
   return <CrStatusPill status={value.status} label={value.label} />;
 }
 
+function monthLabel(value) {
+  if (!/^\d{4}-\d{2}$/.test(String(value || ''))) return 'Competência não informada';
+  const [year, month] = String(value).split('-').map(Number);
+  return new Intl.DateTimeFormat('pt-BR', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC'
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function WorkMetric({ label, value }) {
+  return (
+    <div className="cr-period-card__metric">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function WorkCard({
+  obra,
+  competencia,
+  canEditPlanning,
+  canRequestReopen,
+  onOpen,
+  onEditPlanning,
+  onOpenReopening
+}) {
+  const month = obra.competencia_atual?.competencia
+    || obra.competencia_referencia
+    || competencia;
+  const state = obra.competencia_atual?.estado || 'NAO_INICIADA';
+  const budget = BUDGET_STATUS[obra.situacao_orcamento] || BUDGET_STATUS.PENDENTE;
+  const reopeningAllowed = obra.reabertura_permitida === true;
+
+  return (
+    <article className="cr-period-card cr-work-card">
+      <header className="cr-period-card__header">
+        <div>
+          <span>{obra.codigo || `OBRA ${obra.id}`} · {obra.cidade || 'Cidade não informada'}</span>
+          <h3 title={obra.nome}>{obra.nome}</h3>
+        </div>
+        <CrStatusPill
+          status={state}
+          label={COMPETENCIA_ESTADO_LABELS[state] || state}
+        />
+      </header>
+
+      <dl className="cr-period-card__metrics">
+        <WorkMetric label="Valor contratado" value={currency.format(obra.contrato?.valor_total || 0)} />
+        <WorkMetric label="Orçamento da obra" value={currency.format(obra.valor_orcado || 0)} />
+        <WorkMetric label="Responsável" value={obra.responsavel?.nome || 'Não definido'} />
+        <WorkMetric label="Competência" value={monthLabel(month)} />
+      </dl>
+
+      <footer className="cr-period-card__footer cr-work-card__footer">
+        <div className="cr-period-card__signals">
+          <ClassificationPill value={obra.classificacao} />
+          <span>{budget.label}</span>
+        </div>
+        <div className="cr-period-card__actions">
+          <button
+            type="button"
+            className="cr-icon-button"
+            onClick={() => onOpen(obra.id)}
+            aria-label={`Ver competências de ${obra.nome}`}
+            title="Ver competências"
+          >
+            <HiOutlineEye aria-hidden="true" />
+          </button>
+          {canEditPlanning ? (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => onEditPlanning(obra.id, month)}
+            >
+              <HiOutlinePencilSquare className="h-4 w-4" />
+              Editar planejamento
+            </button>
+          ) : null}
+          {canRequestReopen ? (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => onOpenReopening(obra, month)}
+              disabled={!reopeningAllowed}
+              title={reopeningAllowed
+                ? 'Solicitar reabertura desta competência'
+                : 'Disponível quando a competência estiver finalizada ou vencida'}
+            >
+              <HiOutlineLockOpen className="h-4 w-4" />
+              Solicitar reabertura
+            </button>
+          ) : null}
+        </div>
+      </footer>
+    </article>
+  );
+}
+
 export default function CrObrasView({
   obras,
   loading,
   error,
   onReload,
   onOpen,
+  cardMode = false,
+  competencia = '',
+  canEditPlanning = false,
+  canRequestReopen = false,
+  onEditPlanning,
+  onRequestReopen,
   showAdministrationLink = false
 }) {
   const [busca, setBusca] = useState('');
   const [classificacao, setClassificacao] = useState('');
   const [situacao, setSituacao] = useState('');
+  const [reopeningTarget, setReopeningTarget] = useState(null);
+  const [reopeningReason, setReopeningReason] = useState('');
+  const [reopeningError, setReopeningError] = useState('');
+  const [reopeningSaving, setReopeningSaving] = useState(false);
 
   const filtered = useMemo(() => {
     const query = String(busca || '').trim().toLocaleLowerCase('pt-BR');
@@ -64,6 +180,38 @@ export default function CrObrasView({
       return matchesSearch && matchesClassification && matchesStatus;
     });
   }, [busca, classificacao, obras, situacao]);
+
+  function openReopening(obra, targetCompetencia) {
+    setReopeningTarget({ obra, competencia: targetCompetencia });
+    setReopeningReason('');
+    setReopeningError('');
+  }
+
+  function closeReopening() {
+    if (reopeningSaving) return;
+    setReopeningTarget(null);
+    setReopeningReason('');
+    setReopeningError('');
+  }
+
+  async function submitReopening() {
+    if (!reopeningTarget || reopeningReason.trim().length < 10 || reopeningSaving) return;
+    try {
+      setReopeningSaving(true);
+      setReopeningError('');
+      await onRequestReopen(
+        reopeningTarget.obra.id,
+        reopeningTarget.competencia,
+        reopeningReason.trim()
+      );
+      setReopeningTarget(null);
+      setReopeningReason('');
+    } catch (requestError) {
+      setReopeningError(requestError.message || 'Não foi possível solicitar a reabertura.');
+    } finally {
+      setReopeningSaving(false);
+    }
+  }
 
   return (
     <section className="cr-section cr-works-access">
@@ -127,6 +275,24 @@ export default function CrObrasView({
           <strong>Nenhuma obra encontrada</strong>
           <span>Ajuste os filtros ou solicite o vínculo da obra ao administrador.</span>
         </div>
+      ) : cardMode ? (
+        <>
+          <div className="cr-portfolio-planning__grid cr-work-card-grid">
+            {filtered.map((obra) => (
+              <WorkCard
+                key={obra.id}
+                obra={obra}
+                competencia={competencia}
+                canEditPlanning={canEditPlanning}
+                canRequestReopen={canRequestReopen}
+                onOpen={onOpen}
+                onEditPlanning={onEditPlanning}
+                onOpenReopening={openReopening}
+              />
+            ))}
+          </div>
+          <div className="cr-result-count">{filtered.length} obra(s) exibida(s)</div>
+        </>
       ) : (
         <>
           <TabelaPadrao
@@ -189,6 +355,69 @@ export default function CrObrasView({
           <div className="cr-result-count">{filtered.length} obra(s) exibida(s)</div>
         </>
       )}
+
+      <OverlayModal
+        aberto={Boolean(reopeningTarget)}
+        rotulo="Solicitar reabertura de competência"
+        largura="var(--modal-max-w-sm, 520px)"
+        onFechar={closeReopening}
+        fecharComEscape={!reopeningSaving}
+      >
+        <header data-modal="cabecalho" className="cr-reopening-modal__header">
+          <div>
+            <h2>Solicitar reabertura</h2>
+            <p>
+              {reopeningTarget?.obra?.nome} · {monthLabel(reopeningTarget?.competencia)}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="cr-icon-button"
+            onClick={closeReopening}
+            disabled={reopeningSaving}
+            aria-label="Fechar"
+          >
+            <HiOutlineXMark aria-hidden="true" />
+          </button>
+        </header>
+        <div className="cr-reopening-modal__body">
+          <p>
+            A solicitação será enviada para decisão e ficará registrada na auditoria da competência.
+          </p>
+          <label className="cr-field">
+            <span>Motivo da reabertura</span>
+            <textarea
+              value={reopeningReason}
+              onChange={(event) => setReopeningReason(event.target.value)}
+              placeholder="Explique qual informação precisa ser corrigida."
+              rows={4}
+              autoFocus
+            />
+            <small>Mínimo de 10 caracteres.</small>
+          </label>
+          {reopeningError ? (
+            <div className="cr-feedback" data-tone="error">{reopeningError}</div>
+          ) : null}
+        </div>
+        <footer data-modal="rodape" className="cr-reopening-modal__footer">
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={closeReopening}
+            disabled={reopeningSaving}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={submitReopening}
+            disabled={reopeningReason.trim().length < 10 || reopeningSaving}
+          >
+            {reopeningSaving ? 'Enviando...' : 'Enviar solicitação'}
+          </button>
+        </footer>
+      </OverlayModal>
     </section>
   );
 }
