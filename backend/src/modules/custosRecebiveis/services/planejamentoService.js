@@ -614,7 +614,7 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
           competencia_id: { [Op.in]: ids },
           situacao: { [Op.in]: ['SOLICITADA', 'APROVADA'] }
         }
-      )
+      })
     ])
     : [[], new Map(), new Map(), []];
   const measurementByCompetency = new Map();
