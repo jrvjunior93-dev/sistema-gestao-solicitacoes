@@ -5,7 +5,8 @@ const {
   FONTE_APROPRIACAO_TITULO,
   FONTE_SEM_APROPRIACAO,
   distribuirPorApropriacao,
-  selecionarFonteApropriacao
+  selecionarFonteApropriacao,
+  somarOrcamentoAnalitico
 } = require('../src/services/obraGestaoApropriacaoService');
 
 function total(distribuicoes) {
@@ -102,6 +103,30 @@ function total(distribuicoes) {
   const distribuicoes = distribuirPorApropriacao({ valor: 25.45, titulo: { obra_id: 3 } });
   assert.strictEqual(distribuicoes[0].apropriacao_id, null);
   assert.strictEqual(total(distribuicoes), 25.45);
+}
+
+{
+  const totalAnalitico = somarOrcamentoAnalitico([
+    { codigo: '01', valor_orcado: 1323110.21, somadora: true },
+    { codigo: '02', valor_orcado: 1267488.23, somadora: 1 },
+    { codigo: '03', valor_orcado: 2899401.56, somadora: true },
+    { codigo: '01.001', valor_orcado: 1323110.21, somadora: false },
+    { codigo: '02.001', valor_orcado: 1267488.23, somadora: 0 },
+    { codigo: '03.001', valor_orcado: 2899401.56, somadora: false }
+  ]);
+
+  assert.strictEqual(totalAnalitico, 5490000);
+}
+
+{
+  const totalAnalitico = somarOrcamentoAnalitico([
+    { codigo: '1', valor_orcado: 27000000, somadora: true },
+    { codigo: '1.1', valor_orcado: 51305889.63, somadora: true },
+    { codigo: '1.1.1', valor_orcado: 12000000, somadora: false },
+    { codigo: '1.1.2', valor_orcado: 15000000, somadora: false }
+  ]);
+
+  assert.strictEqual(totalAnalitico, 27000000);
 }
 
 console.log('Validacao do rateio de apropriacoes na gestao de obras concluida com sucesso.');
