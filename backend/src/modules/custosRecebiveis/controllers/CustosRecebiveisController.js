@@ -20,6 +20,7 @@ const {
   obterPlanejamento,
   listarCompetencias,
   pesquisarItensPlano,
+  resumirObrasCompetencia,
   salvarCustos,
   salvarRecebiveis,
   solicitarReabertura,
@@ -84,7 +85,24 @@ class CustosRecebiveisController {
 
   static async obras(req, res) {
     try {
-      return res.json(await listarObrasNoEscopo(req.user, req.query));
+      const result = await listarObrasNoEscopo(req.user, req.query);
+      const compact = ['1', 'true'].includes(String(req.query.compacto || '').toLowerCase());
+      if (compact) return res.json(result);
+
+      const competencia = result.items?.[0]?.competencia_referencia || req.query.competencia;
+      const summaries = result.items?.length && competencia
+        ? await resumirObrasCompetencia(req.user, result.items, competencia)
+        : [];
+      const summaryByWork = new Map(
+        summaries.map((item) => [Number(item.obra?.id), item])
+      );
+      return res.json({
+        ...result,
+        items: (result.items || []).map((obra) => ({
+          ...obra,
+          resumo_competencia: summaryByWork.get(Number(obra.id)) || null
+        }))
+      });
     } catch (error) {
       return respondError(res, error, 'Erro ao listar obras de Custos e Recebiveis');
     }

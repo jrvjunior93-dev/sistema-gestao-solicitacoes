@@ -27,6 +27,10 @@ export default function ApropriacaoAutocomplete({
   portalZIndex,
   className = '',
   inputClassName = 'input w-full',
+  onSearch,
+  loading = false,
+  loadingText = 'Consultando...',
+  ariaLabel,
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
@@ -138,7 +142,9 @@ export default function ApropriacaoAutocomplete({
   }
 
   function handleInputChange(e) {
-    setQuery(e.target.value);
+    const nextQuery = e.target.value;
+    setQuery(nextQuery);
+    onSearch?.(nextQuery);
     if (value) onChange('');
     setOpen(true);
   }
@@ -170,13 +176,17 @@ export default function ApropriacaoAutocomplete({
         className={inputClassName}
         value={query}
         onChange={handleInputChange}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          setOpen(true);
+          onSearch?.(query);
+        }}
         onKeyDown={handleKeyDown}
         placeholder={disabled ? disabledPlaceholder : placeholder}
         disabled={disabled}
         required={required && !value}
         autoComplete="off"
         role="combobox"
+        aria-label={ariaLabel}
         aria-expanded={open}
         aria-autocomplete="list"
       />
@@ -187,7 +197,11 @@ export default function ApropriacaoAutocomplete({
           className="max-h-60 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl"
           style={{ ...caixa.estilo, zIndex: zIndexPainel }}
         >
-          {filteredOptions.length ? (
+          {loading ? (
+            <div className="px-3 py-2 text-sm text-[var(--c-muted)]" role="status">
+              {loadingText}
+            </div>
+          ) : filteredOptions.length ? (
             filteredOptions.map((option, i) => (
               <button
                 key={option.id}

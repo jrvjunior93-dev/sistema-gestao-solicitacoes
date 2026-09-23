@@ -1,6 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineCalendarDays, HiOutlineChevronDown } from 'react-icons/hi2';
+import ObraAutocomplete from '../../../components/ui/ObraAutocomplete';
 import { useFecharAoSair } from '../../../hooks/useFecharAoSair';
+import { listarCustosRecebiveisObras } from '../services/custosRecebiveis';
 
 const monthFormatter = new Intl.DateTimeFormat('pt-BR', {
   month: 'long',
@@ -82,13 +84,46 @@ export default function CrExecutiveFilters({
   */
   const competenciasRef = useRef(null);
   const [competenciasAberto, setCompetenciasAberto] = useState(false);
+  const [obraSearch, setObraSearch] = useState('');
+  const [obraOptions, setObraOptions] = useState(obras);
+  const [obraSearchLoading, setObraSearchLoading] = useState(false);
   useFecharAoSair(competenciasRef, competenciasAberto, () => setCompetenciasAberto(false));
+
+  useEffect(() => {
+    setObraOptions(obras);
+  }, [obras]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        setObraSearchLoading(true);
+        const response = await listarCustosRecebiveisObras({
+          q: obraSearch,
+          compacto: 1
+        }, { signal: controller.signal });
+        setObraOptions(Array.isArray(response?.items) ? response.items : []);
+      } catch (error) {
+        if (error?.name !== 'AbortError') setObraOptions([]);
+      } finally {
+        if (!controller.signal.aborted) setObraSearchLoading(false);
+      }
+    }, 180);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [obraSearch]);
 
   const selectedMonths = [...new Set(competencias.filter(normalizeMonth))].sort().reverse();
   const monthOptions = availableMonths(competenciaReferencia, selectedMonths);
   const filteredWorks = obras.filter((obra) => (
     !classificacao || String(obra.classificacao || '').toUpperCase() === classificacao
   ));
+  const filteredWorkOptions = useMemo(() => obraOptions.filter((obra) => (
+    !classificacao || String(obra.classificacao || '').toUpperCase() === classificacao
+  )), [classificacao, obraOptions]);
   const selectedWork = obras.find((obra) => Number(obra.id) === Number(obraId)) || null;
   const competenceLabel = selectedMonths.length === 1
     ? monthLabel(selectedMonths[0])
@@ -126,17 +161,21 @@ export default function CrExecutiveFilters({
 
   return (
     <section className="cr-context-bar cr-context-bar--executive" aria-label="Filtros do dashboard">
-      <label className="cr-field">
-        <span>{operational ? 'Obra' : 'Escopo executivo'}</span>
-        <select value={obraId || ''} onChange={(event) => onObraChange(event.target.value)}>
-          <option value="">{operational ? 'Todas as minhas obras' : 'Todas as obras do seu escopo'}</option>
-          {filteredWorks.map((obra) => (
-            <option key={obra.id} value={obra.id}>
-              {obra.codigo || obra.id} · {obra.nome}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="cr-field">
+        <span>{operational ? 'Obra' : 'Filtros'}</span>
+        <ObraAutocomplete
+          value={obraId || ''}
+          options={filteredWorkOptions}
+          onChange={onObraChange}
+          onSearch={setObraSearch}
+          loading={obraSearchLoading}
+          placeholder={operational
+            ? 'Pesquisar nas minhas obras...'
+            : 'Pesquisar obra por código ou nome...'}
+          emptyText="Nenhuma obra encontrada no seu escopo"
+          ariaLabel="Pesquisar obra"
+        />
+      </div>
 
       <label className="cr-field">
         <span>Classificação</span>

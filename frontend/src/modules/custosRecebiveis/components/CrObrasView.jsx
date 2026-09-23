@@ -48,9 +48,9 @@ function monthLabel(value) {
   }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
-function WorkMetric({ label, value }) {
+function WorkMetric({ label, value, tone = 'neutral' }) {
   return (
-    <div className="cr-period-card__metric">
+    <div className="cr-period-card__metric" data-tone={tone}>
       <dt>{label}</dt>
       <dd>{value}</dd>
     </div>
@@ -72,6 +72,17 @@ function WorkCard({
   const state = obra.competencia_atual?.estado || 'NAO_INICIADA';
   const budget = BUDGET_STATUS[obra.situacao_orcamento] || BUDGET_STATUS.PENDENTE;
   const reopeningAllowed = obra.reabertura_permitida === true;
+  const summary = obra.resumo_competencia || {};
+  const isPublic = String(obra.classificacao || '').toUpperCase() === 'PUBLICA';
+  const plannedCost = Number(summary.custo_planejado || 0);
+  const realizedCost = Number(summary.custo_realizado || 0);
+  const expectedReceivable = Number(summary.recebivel_previsto || 0);
+  const recognizedReceivable = Number(summary.recebivel_reconhecido || 0);
+  const receivedRevenue = Number(summary.receita_recebida || 0);
+  const costDelta = realizedCost - plannedCost;
+  const balance = Math.max(0, recognizedReceivable - receivedRevenue);
+  const hasApprovedMeasurement = !isPublic || summary.medicao_aprovada != null;
+  const glosa = Number(summary.glosa || 0);
 
   return (
     <article className="cr-period-card cr-work-card">
@@ -86,19 +97,81 @@ function WorkCard({
         />
       </header>
 
-      <dl className="cr-period-card__metrics">
+      <dl className="cr-period-card__metrics cr-work-card__context">
         <WorkMetric label="Valor contratado" value={currency.format(obra.contrato?.valor_total || 0)} />
         <WorkMetric label="Orçamento da obra" value={currency.format(obra.valor_orcado || 0)} />
         <WorkMetric label="Responsável" value={obra.responsavel?.nome || 'Não definido'} />
         <WorkMetric label="Competência" value={monthLabel(month)} />
       </dl>
 
+      <div className="cr-work-card__month-label">Resumo da competência atual</div>
+      <dl className="cr-period-card__metrics cr-work-card__month-metrics">
+        <WorkMetric label="Custo planejado" value={currency.format(plannedCost)} />
+        <WorkMetric
+          label={isPublic ? 'Medição prevista' : 'Recebível previsto'}
+          value={currency.format(expectedReceivable)}
+        />
+        <WorkMetric label="Custo realizado" value={currency.format(realizedCost)} tone="positive" />
+        <WorkMetric
+          label={isPublic ? 'Medição aprovada' : 'Receita recebida'}
+          value={isPublic && !hasApprovedMeasurement
+            ? 'Aguardando'
+            : currency.format(isPublic ? recognizedReceivable : receivedRevenue)}
+          tone={isPublic && !hasApprovedMeasurement
+            ? 'warning'
+            : (isPublic ? 'context' : 'positive')}
+        />
+        <WorkMetric
+          label="Desvio de custo"
+          value={currency.format(costDelta)}
+          tone={costDelta > 0 ? 'negative' : (costDelta < 0 ? 'context' : 'neutral')}
+        />
+        <WorkMetric
+          label={isPublic ? 'Receita recebida' : 'Saldo a receber'}
+          value={currency.format(isPublic ? receivedRevenue : balance)}
+          tone={isPublic ? 'positive' : (balance > 0 ? 'warning' : 'neutral')}
+        />
+      </dl>
+
       <footer className="cr-period-card__footer cr-work-card__footer">
         <div className="cr-period-card__signals">
+          {isPublic && glosa > 0 ? (
+            <span data-tone="negative">Glosa {currency.format(glosa)}</span>
+          ) : null}
+          {isPublic && hasApprovedMeasurement ? (
+            <span data-tone={balance > 0 ? 'warning' : 'neutral'}>
+              Saldo a receber {currency.format(balance)}
+            </span>
+          ) : null}
           <ClassificationPill value={obra.classificacao} />
           <span>{budget.label}</span>
         </div>
         <div className="cr-period-card__actions">
+          {canEditPlanning ? (
+            <button
+              type="button"
+              className="cr-icon-button"
+              onClick={() => onEditPlanning(obra.id, month)}
+              aria-label={`Editar planejamento de ${obra.nome}`}
+              title="Editar planejamento"
+            >
+              <HiOutlinePencilSquare aria-hidden="true" />
+            </button>
+          ) : null}
+          {canRequestReopen ? (
+            <button
+              type="button"
+              className="cr-icon-button"
+              onClick={() => onOpenReopening(obra, month)}
+              disabled={!reopeningAllowed}
+              aria-label={`Solicitar reabertura de ${obra.nome}`}
+              title={reopeningAllowed
+                ? 'Solicitar reabertura desta competência'
+                : 'Disponível quando a competência estiver finalizada ou vencida'}
+            >
+              <HiOutlineLockOpen aria-hidden="true" />
+            </button>
+          ) : null}
           <button
             type="button"
             className="cr-icon-button"
@@ -108,30 +181,6 @@ function WorkCard({
           >
             <HiOutlineEye aria-hidden="true" />
           </button>
-          {canEditPlanning ? (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => onEditPlanning(obra.id, month)}
-            >
-              <HiOutlinePencilSquare className="h-4 w-4" />
-              Editar planejamento
-            </button>
-          ) : null}
-          {canRequestReopen ? (
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => onOpenReopening(obra, month)}
-              disabled={!reopeningAllowed}
-              title={reopeningAllowed
-                ? 'Solicitar reabertura desta competência'
-                : 'Disponível quando a competência estiver finalizada ou vencida'}
-            >
-              <HiOutlineLockOpen className="h-4 w-4" />
-              Solicitar reabertura
-            </button>
-          ) : null}
         </div>
       </footer>
     </article>

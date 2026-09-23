@@ -3193,12 +3193,31 @@
   white-space: normal;
 }
 
+.cr-work-card__context {
+  background: color-mix(in srgb, var(--cr-muted) 3%, var(--cr-surface));
+}
+
+.cr-work-card__month-label {
+  padding: 0.45rem 0.7rem;
+  border-top: 1px solid var(--cr-border);
+  color: var(--cr-muted);
+  background: color-mix(in srgb, var(--cr-primary) 3%, var(--cr-surface));
+  font-size: var(--fonte-detalhe);
+  font-weight: 800;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.cr-work-card__month-metrics {
+  background: color-mix(in srgb, var(--cr-primary) 2%, var(--cr-surface));
+}
+
 .cr-work-card__footer {
   align-items: flex-end;
 }
 
 .cr-work-card__footer .cr-period-card__actions {
-  max-width: 70%;
+  max-width: none;
 }
 
 .cr-reopening-modal__header,

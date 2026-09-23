@@ -21,7 +21,7 @@ async function parseResponse(response, fallbackMessage) {
   return payload;
 }
 
-export async function listarCustosRecebiveisObras(params = {}) {
+export async function listarCustosRecebiveisObras(params = {}, options = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== null && value !== undefined && String(value).trim() !== '') {
@@ -30,7 +30,8 @@ export async function listarCustosRecebiveisObras(params = {}) {
   });
   const suffix = query.toString() ? `?${query.toString()}` : '';
   const response = await fetch(`${API_URL}/custos-recebiveis/obras${suffix}`, {
-    headers: authHeaders()
+    headers: authHeaders(),
+    signal: options.signal
   });
   return parseResponse(response, 'Erro ao listar obras de Custos e Recebíveis');
 }

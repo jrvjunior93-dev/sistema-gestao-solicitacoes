@@ -135,6 +135,7 @@ export default function CustosRecebiveis() {
   const selectedObraId = Number(searchParams.get('obra'));
   const selectedPlanId = Number(searchParams.get('plano'));
   const competencia = searchParams.get('competencia') || currentMonth();
+  const obrasCompetencia = currentMonth();
   const dashboardObraId = Number(searchParams.get('obra_decisao'));
   const dashboardClassificacao = ['PUBLICA', 'PRIVADA'].includes(
     String(searchParams.get('classificacao_decisao') || '').toUpperCase()
@@ -260,14 +261,14 @@ export default function CustosRecebiveis() {
     try {
       setObrasLoading(true);
       setObrasError('');
-      const response = await listarCustosRecebiveisObras({ competencia });
+      const response = await listarCustosRecebiveisObras({ competencia: obrasCompetencia });
       setObras(Array.isArray(response?.items) ? response.items : []);
     } catch (error) {
       setObrasError(error.message || 'Erro ao carregar obras.');
     } finally {
       setObrasLoading(false);
     }
-  }, [canViewObras, competencia]);
+  }, [canViewObras, obrasCompetencia]);
 
   const loadPlan = useCallback(async (obraId = selectedObraId, planId = selectedPlanId) => {
     if (!Number.isInteger(Number(obraId)) || Number(obraId) <= 0) {
@@ -792,7 +793,7 @@ export default function CustosRecebiveis() {
             onReload={loadObras}
             onOpen={handleOpenObra}
             cardMode={isObraUser}
-            competencia={competencia}
+            competencia={obrasCompetencia}
             canEditPlanning={planningPermissions.costs || planningPermissions.receipts}
             canRequestReopen={planningPermissions.reopenRequest}
             onEditPlanning={handleEditPlanning}

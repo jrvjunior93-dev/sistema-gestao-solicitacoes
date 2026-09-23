@@ -292,6 +292,12 @@ async function listarObrasNoEscopo(user, query = {}, overrides = {}) {
   const obraIds = obras.map((obra) => Number(obra.id));
   if (!obraIds.length) return { items: [], total: 0 };
 
+  const compact = ['1', 'true'].includes(String(query.compacto || '').toLowerCase());
+  if (compact) {
+    const items = obras.map(serializeObra);
+    return { items, total: items.length };
+  }
+
   const selectedCompetencia = competenciaReferencia(query.competencia);
   const [plans, responsaveis, competencias, contratos] = await Promise.all([
     dependencies.CrPlanoObra.findAll({

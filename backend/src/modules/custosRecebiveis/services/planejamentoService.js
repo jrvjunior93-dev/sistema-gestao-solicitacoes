@@ -2231,6 +2231,23 @@ async function buildDashboardRows(obras, competencias, deps) {
   return rows;
 }
 
+async function resumirObrasCompetencia(user, obrasValue, competenciaValue, overrides = {}) {
+  const deps = dependencies(overrides);
+  const competenciaCode = normalizeCompetencia(competenciaValue);
+  const obras = Array.isArray(obrasValue) ? obrasValue : [];
+  if (!obras.length) return [];
+
+  const scope = await deps.resolverEscopoObras(user);
+  const scopedIds = new Set((scope.obraIds || []).map(Number));
+  const outsideScope = !scope.todas && obras.some((obra) => !scopedIds.has(Number(obra.id)));
+  if (outsideScope) {
+    throw createBusinessError(403, 'CR_OBRA_FORA_ESCOPO', 'Acesso negado para esta obra.');
+  }
+
+  const rows = await buildDashboardRows(obras, [competenciaCode], deps);
+  return summarizeDashboardWorkRows(rows);
+}
+
 function buildDashboardAlerts(currentRows, overdueObligations = []) {
   const alerts = [];
   const push = (row, type, tone, title, description, destination, priority = 50) => {
@@ -2715,6 +2732,7 @@ module.exports = {
   obterPlanejamento,
   listarCompetencias,
   pesquisarItensPlano,
+  resumirObrasCompetencia,
   resolverObraIdPorCompetencia,
   resolverObraIdPorReabertura,
   salvarCustos,
