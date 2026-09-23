@@ -17,7 +17,11 @@ const {
   Contrato,
   ContratoAnexo
 } = require('../models');
-const { distribuirPorApropriacao } = require('./obraGestaoApropriacaoService');
+const {
+  apropriacaoEhSomadora,
+  distribuirPorApropriacao,
+  somarOrcamentoAnalitico
+} = require('./obraGestaoApropriacaoService');
 const { obterVgvEfetivoPorObras } = require('./obraVgvService');
 
 const STATUS_TITULO_ABERTO = new Set(['ABERTO', 'PARCIAL']);
@@ -46,6 +50,7 @@ function createBucketFromApropriacao(apropriacao) {
     codigo: String(apropriacao.codigo || '').trim() || `APR-${apropriacao.id}`,
     descricao: String(apropriacao.descricao || '').trim() || 'Sem descricao',
     valor_orcado: roundCurrency(apropriacao.valor_orcado),
+    somadora: apropriacaoEhSomadora(apropriacao),
     pedidos: 0,
     a_pagar: 0,
     pago: 0
@@ -58,6 +63,7 @@ function createFallbackBucket() {
     codigo: 'SEM_APROPRIACAO',
     descricao: 'Sem apropriacao vinculada',
     valor_orcado: 0,
+    somadora: false,
     pedidos: 0,
     a_pagar: 0,
     pago: 0
@@ -423,9 +429,7 @@ async function carregarComprovantesObraSeguro({ obraId, solicitacaoIds }) {
 }
 
 function buildKpis({ buckets, custosExecutados, pedidos }) {
-  const investimentoTotal = roundCurrency(
-    buckets.reduce((total, bucket) => total + asNumber(bucket.valor_orcado), 0)
-  );
+  const investimentoTotal = somarOrcamentoAnalitico(buckets);
   const custoExecutado = roundCurrency(
     custosExecutados.reduce((total, item) => total + asNumber(item.total), 0)
   );
@@ -634,6 +638,7 @@ async function obterGestaoObra(obraId) {
         codigo: item.codigo,
         descricao: item.descricao || '',
         valor_orcado: roundCurrency(item.valor_orcado),
+        somadora: apropriacaoEhSomadora(item),
         ativo: Boolean(item.ativo)
       })),
       total_orcado: kpis.investimento_total
@@ -754,9 +759,7 @@ async function listarObrasGestao() {
     const titulosObra = titulosByObra.get(Number(obra.id)) || [];
     const titulosPagarObra = titulosObra.filter((titulo) => String(titulo.tipo || '').toUpperCase() === TIPO_TITULO_PAGAR);
     const titulosReceberObra = titulosObra.filter((titulo) => String(titulo.tipo || '').toUpperCase() === TIPO_TITULO_RECEBER);
-    const orcado = roundCurrency(
-      apropriacoesObra.reduce((total, item) => total + asNumber(item.valor_orcado), 0)
-    );
+    const orcado = somarOrcamentoAnalitico(apropriacoesObra);
     const executado = roundCurrency(
       titulosPagarObra.reduce((total, titulo) => total + sumMovimentosAtivos(titulo), 0)
       + asNumber(custosHistoricosPagarByObra.get(Number(obra.id)))

@@ -13,6 +13,18 @@ function roundCurrency(value) {
   return Number(asNumber(value).toFixed(2));
 }
 
+function apropriacaoEhSomadora(apropriacao) {
+  return apropriacao?.somadora === true || Number(apropriacao?.somadora) === 1;
+}
+
+function somarOrcamentoAnalitico(apropriacoes = []) {
+  return roundCurrency(
+    (Array.isArray(apropriacoes) ? apropriacoes : [])
+      .filter((apropriacao) => !apropriacaoEhSomadora(apropriacao))
+      .reduce((total, apropriacao) => total + asNumber(apropriacao?.valor_orcado), 0)
+  );
+}
+
 function pesoRateio(item) {
   const valor = asNumber(item?.valor_rateio);
   if (valor > 0) return valor;
@@ -126,7 +138,9 @@ module.exports = {
   FONTE_APROPRIACAO_TITULO,
   FONTE_APROPRIACAO_SOLICITACAO,
   FONTE_SEM_APROPRIACAO,
+  apropriacaoEhSomadora,
   distribuirPorApropriacao,
   normalizarRateios,
-  selecionarFonteApropriacao
+  selecionarFonteApropriacao,
+  somarOrcamentoAnalitico
 };

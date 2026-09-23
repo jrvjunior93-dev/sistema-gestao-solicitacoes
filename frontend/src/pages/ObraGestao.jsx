@@ -53,6 +53,12 @@ function normalizeMoneyInput(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function somarOrcamentoAnalitico(itens = []) {
+  return (Array.isArray(itens) ? itens : [])
+    .filter((item) => item?.somadora !== true && Number(item?.somadora) !== 1)
+    .reduce((total, item) => total + normalizeMoneyInput(item.valor_orcado), 0);
+}
+
 function percent(value) {
   return `${Number(value || 0).toFixed(1)}%`;
 }
@@ -120,6 +126,7 @@ export default function ObraGestao() {
           id: item.id,
           codigo: item.codigo || '',
           descricao: item.descricao || '',
+          somadora: Boolean(item.somadora),
           valor_orcado: String(Number(item.valor_orcado || 0).toFixed(2)).replace('.', ',')
         }))
         : []
@@ -463,7 +470,7 @@ export default function ObraGestao() {
                       </td>
                       <td className="px-4 py-3 text-right text-xl font-bold" style={{ color: 'var(--c-text)' }}>
                         {formatCurrency(
-                          orcamentoDraft.reduce((total, item) => total + normalizeMoneyInput(item.valor_orcado), 0)
+                          somarOrcamentoAnalitico(orcamentoDraft)
                         )}
                       </td>
                       {isSuperadmin ? <td className="px-4 py-3" /> : null}
