@@ -95,7 +95,11 @@ async function carregarConta(contaId, { transaction = null } = {}) {
   return conta;
 }
 
-async function montarPayloadTransferencia(req, payload = {}, { transaction = null } = {}) {
+async function montarPayloadTransferencia(
+  req,
+  payload = {},
+  { transaction = null, permitirDataAnteriorSemVinculo = false } = {}
+) {
   const [origem, destino] = await Promise.all([
     carregarConta(payload.conta_origem_id, { transaction }),
     carregarConta(payload.conta_destino_id, { transaction })
@@ -107,8 +111,9 @@ async function montarPayloadTransferencia(req, payload = {}, { transaction = nul
 
   const dataTransferencia = parseDate(payload.data_transferencia, 'Data da transferencia');
   const valor = parseMoney(payload.valor, 'Valor da transferencia');
-  const sessaoOrigem = await obterSessaoAbertaParaConta(origem, dataTransferencia, { transaction });
-  const sessaoDestino = await obterSessaoAbertaParaConta(destino, dataTransferencia, { transaction });
+  const opcoesSessao = { transaction, permitirDataAnteriorSemVinculo };
+  const sessaoOrigem = await obterSessaoAbertaParaConta(origem, dataTransferencia, opcoesSessao);
+  const sessaoDestino = await obterSessaoAbertaParaConta(destino, dataTransferencia, opcoesSessao);
   const empresaOrigemId = parsePositiveInteger(origem.empresa_id, 'Empresa da conta de origem');
   const empresaDestinoId = parsePositiveInteger(destino.empresa_id, 'Empresa da conta de destino');
   const empresasDiferentes = empresaOrigemId !== empresaDestinoId;
@@ -161,13 +166,20 @@ async function montarPayloadTransferencia(req, payload = {}, { transaction = nul
   };
 }
 
-async function criarTransferenciaFinanceira(req, payload = {}, { transaction: externalTransaction = null } = {}) {
+async function criarTransferenciaFinanceira(
+  req,
+  payload = {},
+  { transaction: externalTransaction = null, permitirDataAnteriorSemVinculo = false } = {}
+) {
   await assertFinanceAccess(req);
   const ownTransaction = !externalTransaction;
   const transaction = externalTransaction || await sequelize.transaction();
 
   try {
-    const data = await montarPayloadTransferencia(req, payload, { transaction });
+    const data = await montarPayloadTransferencia(req, payload, {
+      transaction,
+      permitirDataAnteriorSemVinculo
+    });
     const transferencia = await TransferenciaFinanceira.create({
       ...data,
       conciliacao_origem_id: payload.conciliacao_origem_id || null,

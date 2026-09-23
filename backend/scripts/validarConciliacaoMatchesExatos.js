@@ -26,6 +26,19 @@ const {
 const {
   ALL_PERMISSION_KEYS
 } = require('../src/constants/moduloPermissoes');
+const {
+  sessaoAbrangeDataMovimento
+} = require('../src/services/financeiroCaixaSessionHelper');
+
+assert.strictEqual(
+  sessaoAbrangeDataMovimento({ data_abertura: '2026-07-24' }, '2026-07-24'),
+  true
+);
+assert.strictEqual(
+  sessaoAbrangeDataMovimento({ data_abertura: '2026-09-23' }, '2026-07-24'),
+  false,
+  'Uma sessao atual nao deve absorver uma transferencia OFX anterior a sua abertura.'
+);
 
 assert.strictEqual(hasSameConciliacaoDate('2026-07-06', '2026-07-06'), true);
 assert.strictEqual(hasSameConciliacaoDate('2026-07-06', '2026-07-10'), false);
@@ -104,6 +117,14 @@ assert.strictEqual(isExactConciliacaoMatch({
 
 const serviceSource = fs.readFileSync(
   path.resolve(__dirname, '../src/services/conciliacaoBancariaService.js'),
+  'utf8'
+);
+const transferServiceSource = fs.readFileSync(
+  path.resolve(__dirname, '../src/services/transferenciaFinanceiraService.js'),
+  'utf8'
+);
+const cashSessionHelperSource = fs.readFileSync(
+  path.resolve(__dirname, '../src/services/financeiroCaixaSessionHelper.js'),
   'utf8'
 );
 const routesSource = fs.readFileSync(path.resolve(__dirname, '../src/routes.js'), 'utf8');
@@ -226,8 +247,16 @@ const transferConfirmationSource = serviceSource.match(
 assert(
   transferConfirmationSource.includes('contrapartesExatas.length === 1')
     && transferConfirmationSource.includes('conciliacao_origem_id: isSaidaDaContaAtual')
-    && transferConfirmationSource.includes('await conciliacaoContraparte.update'),
+    && transferConfirmationSource.includes('await conciliacaoContraparte.update')
+    && transferConfirmationSource.includes('permitirDataAnteriorSemVinculo: true'),
   'Somente uma contraparte OFX exata deve ser vinculada atomicamente a transferencia.'
+);
+assert(
+  transferServiceSource.includes('permitirDataAnteriorSemVinculo = false')
+    && transferServiceSource.includes('const opcoesSessao = { transaction, permitirDataAnteriorSemVinculo }')
+    && cashSessionHelperSource.includes('if (permitirDataAnteriorSemVinculo)')
+    && cashSessionHelperSource.includes('return null;'),
+  'Conciliacao retroativa deve exigir caixa aberto sem vincular a transferencia antiga a sessao atual.'
 );
 assert(
   reconciliationPageSource.includes('contaOrigemTransferencia')

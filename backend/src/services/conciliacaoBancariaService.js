@@ -2238,7 +2238,10 @@ async function confirmarConciliacaoTransferencia(req, conciliacaoId, payload = {
     const { transferencia, afterCommit } = await criarTransferenciaFinanceira(
       req,
       payloadTransferencia,
-      { transaction }
+      {
+        transaction,
+        permitirDataAnteriorSemVinculo: true
+      }
     );
 
     await conciliacao.update({

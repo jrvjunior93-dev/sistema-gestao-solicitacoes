@@ -19,6 +19,10 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
   decisao de outro usuario configurado como aprovador;
 - a aprovacao gera um movimento de ajuste auditavel e fecha a sessao; a rejeicao
   reabre a sessao para correcao;
+- a conciliacao de transferencia de um OFX historico continua exigindo que o caixa
+  contraparte esteja aberto; quando a data bancaria for anterior a abertura atual,
+  a transferencia fica registrada sem vinculo com essa sessao, evitando descontar
+  novamente do saldo operacional que ja foi conferido na abertura;
 - a trilha de auditoria preserva usuario, data, valor, documento e motivo.
 
 ## Controle diario consolidado
@@ -52,6 +56,7 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 | Ativar flag sem responsavel | Configuracao recusada |
 | Responsavel com contas pendentes | Mutacoes financeiras bloqueadas; consultas e conciliacao liberadas |
 | Informar data retroativa | Operacao bloqueada no frontend e no backend |
+| Conciliar transferencia OFX anterior a abertura atual | Transferencia historica registrada sem alterar o saldo da sessao atual |
 | Acessar sem permissao | Rota e acoes permanecem bloqueadas |
 
 ## Verificacao automatizada
