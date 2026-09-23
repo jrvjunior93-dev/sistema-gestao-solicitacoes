@@ -592,7 +592,7 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
     order: [['competencia', 'DESC'], ['id', 'DESC']]
   });
   const ids = rows.map((item) => Number(item.id));
-  const [measurements, costsByMonth, receivedByMonth] = ids.length
+  const [measurements, costsByMonth, receivedByMonth, reopenings] = ids.length
     ? await Promise.all([
       deps.CrMedicaoConsolidada.findAll({
         where: { competencia_id: { [Op.in]: ids } }
@@ -608,9 +608,15 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
         rows.map((item) => item.competencia),
         'RECEBER',
         deps
+      ),
+      deps.CrReabertura.findAll({
+        where: {
+          competencia_id: { [Op.in]: ids },
+          situacao: { [Op.in]: ['SOLICITADA', 'APROVADA'] }
+        }
       )
     ])
-    : [[], new Map(), new Map()];
+    : [[], new Map(), new Map(), []];
   const measurementByCompetency = new Map();
   const competenciesWithMeasurement = new Set();
   measurements.forEach((item) => measurementByCompetency.set(
@@ -619,18 +625,41 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
       + number(item.valor_medido))
   ));
   measurements.forEach((item) => competenciesWithMeasurement.add(Number(item.competencia_id)));
+  const now = new Date();
+  const reopeningStateByCompetency = new Map();
+  reopenings.forEach((reopeningValue) => {
+    const reopening = plain(reopeningValue);
+    const competenciaId = Number(reopening.competencia_id);
+    if (reopening.situacao === 'SOLICITADA') {
+      reopeningStateByCompetency.set(competenciaId, 'SOLICITADA');
+      return;
+    }
+    if (
+      !reopeningStateByCompetency.has(competenciaId)
+      && reopening.situacao === 'APROVADA'
+      && reopening.expira_em
+      && new Date(reopening.expira_em) > now
+    ) {
+      reopeningStateByCompetency.set(competenciaId, 'APROVADA');
+    }
+  });
   const items = rows.map((rowValue) => {
     const row = plain(rowValue);
     const presented = money(row.total_receita_prevista);
     const approved = money(measurementByCompetency.get(Number(row.id)));
     const hasApprovedMeasurement = competenciesWithMeasurement.has(Number(row.id));
+    const reopeningState = reopeningStateByCompetency.get(Number(row.id)) || null;
     return {
       ...serializeCompetencia(row),
       medicao_apresentada: presented,
       medicao_aprovada: hasApprovedMeasurement ? approved : null,
       glosa: hasApprovedMeasurement ? money(Math.max(0, presented - approved)) : null,
       custo_realizado: money(costsByMonth.get(row.competencia)),
-      receita_recebida: money(receivedByMonth.get(row.competencia))
+      receita_recebida: money(receivedByMonth.get(row.competencia)),
+      reabertura_situacao: reopeningState,
+      reabertura_permitida: !reopeningState && (
+        row.estado === 'FINALIZADA' || prazoCompetencia(row.competencia) <= now
+      )
     };
   });
   const atual = competenciaAtual();
@@ -2549,7 +2578,13 @@ async function solicitarReabertura(user, competenciaIdValue, payload = {}, overr
       );
     }
     const existing = await deps.CrReabertura.findOne({
-      where: { competencia_id: competenciaId, situacao: 'SOLICITADA' },
+      where: {
+        competencia_id: competenciaId,
+        [Op.or]: [
+          { situacao: 'SOLICITADA' },
+          { situacao: 'APROVADA', expira_em: { [Op.gt]: new Date() } }
+        ]
+      },
       transaction,
       lock: transaction.LOCK.UPDATE
     });

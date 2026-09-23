@@ -1,6 +1,8 @@
 import {
   HiOutlineClipboardDocumentCheck,
-  HiOutlineEye
+  HiOutlineEye,
+  HiOutlineLockOpen,
+  HiOutlinePencilSquare
 } from 'react-icons/hi2';
 import { COMPETENCIA_ESTADO_LABELS } from '../constants/custosRecebiveis';
 
@@ -31,7 +33,11 @@ export default function CrMonthlySummaryCard({
   medicaoAprovadaInformada = true,
   glosa = 0,
   onOpen,
+  onEditPlanning,
   onOpenApproved,
+  onRequestReopening,
+  reopeningDisabled = false,
+  reopeningActionLabel = 'Solicitar reabertura',
   approvedActionLabel,
   actionLabel = 'Ver detalhes'
 }) {
@@ -111,6 +117,17 @@ export default function CrMonthlySummaryCard({
           <span>{isPublic ? 'Obra pública' : 'Obra privada'}</span>
         </div>
         <div className="cr-period-card__actions">
+          {onEditPlanning ? (
+            <button
+              type="button"
+              className="cr-icon-button"
+              onClick={onEditPlanning}
+              aria-label={`Editar planejamento de ${title}`}
+              title="Editar planejamento"
+            >
+              <HiOutlinePencilSquare aria-hidden="true" />
+            </button>
+          ) : null}
           {onOpenApproved ? (
             <button
               type="button"
@@ -120,6 +137,18 @@ export default function CrMonthlySummaryCard({
               title={approvedLabel}
             >
               <HiOutlineClipboardDocumentCheck aria-hidden="true" />
+            </button>
+          ) : null}
+          {onRequestReopening ? (
+            <button
+              type="button"
+              className="cr-icon-button"
+              onClick={onRequestReopening}
+              disabled={reopeningDisabled}
+              aria-label={`${reopeningActionLabel} de ${title}`}
+              title={reopeningActionLabel}
+            >
+              <HiOutlineLockOpen aria-hidden="true" />
             </button>
           ) : null}
           {onOpen ? (

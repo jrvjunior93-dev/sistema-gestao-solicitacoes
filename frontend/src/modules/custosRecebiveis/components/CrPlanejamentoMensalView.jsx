@@ -12,6 +12,7 @@ import {
 import CrMonthlySummaryCard from './CrMonthlySummaryCard';
 import CrMonthlyDetailView from './CrMonthlyDetailView';
 import CrPlanejamentoView from './CrPlanejamentoView';
+import CrReopeningRequestModal from './CrReopeningRequestModal';
 
 function monthLabel(value) {
   if (!/^\d{4}-\d{2}$/.test(String(value || ''))) return value || '-';
@@ -33,6 +34,7 @@ export default function CrPlanejamentoMensalView({
   obligationsServerTime = null,
   permissions,
   onChanged,
+  onRequestReopen,
   onNavigateDetail
 }) {
   const [data, setData] = useState(null);
@@ -45,6 +47,7 @@ export default function CrPlanejamentoMensalView({
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [reopeningTarget, setReopeningTarget] = useState(null);
 
   const load = useCallback(async () => {
     if (!obra?.id) {
@@ -319,6 +322,9 @@ export default function CrPlanejamentoMensalView({
               medicaoAprovadaInformada={!isPublic || item.medicao_aprovada != null}
               glosa={item.glosa}
               actionLabel="Ver detalhes"
+              onEditPlanning={(permissions.costs || permissions.receipts) ? () => {
+                openDetail(item.competencia, 'planning');
+              } : null}
               onOpen={() => {
                 openDetail(item.competencia, 'details');
               }}
@@ -328,10 +334,27 @@ export default function CrPlanejamentoMensalView({
               approvedActionLabel={!permissions.measurement
                 ? 'Ver aprovação'
                 : (item.medicao_aprovada != null ? 'Revisar aprovação' : 'Registrar aprovação')}
+              onRequestReopening={permissions.reopenRequest ? () => {
+                setReopeningTarget({ obra, competencia: item.competencia });
+              } : null}
+              reopeningDisabled={!item.reabertura_permitida}
+              reopeningActionLabel={item.reabertura_situacao === 'SOLICITADA'
+                ? 'Reabertura aguardando decisão'
+                : (item.reabertura_situacao === 'APROVADA'
+                  ? 'Competência já reaberta para edição'
+                  : (item.reabertura_permitida
+                    ? 'Solicitar reabertura'
+                    : 'Disponível quando a competência estiver finalizada ou vencida'))}
             />
           ))}
         </div>
       ) : null}
+
+      <CrReopeningRequestModal
+        target={reopeningTarget}
+        onClose={() => setReopeningTarget(null)}
+        onSubmit={onRequestReopen}
+      />
     </section>
   );
 }

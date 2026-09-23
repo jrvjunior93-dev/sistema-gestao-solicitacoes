@@ -3433,6 +3433,14 @@
   color: var(--cr-primary);
 }
 
+.cr-icon-button:disabled {
+  transform: none;
+  border-color: var(--cr-border);
+  background: color-mix(in srgb, var(--cr-muted) 5%, var(--cr-surface));
+  color: color-mix(in srgb, var(--cr-muted) 62%, transparent);
+  cursor: not-allowed;
+}
+
 .cr-icon-button:focus-visible {
   outline: 2px solid var(--cr-primary);
   outline-offset: 2px;

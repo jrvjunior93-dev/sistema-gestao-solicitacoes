@@ -845,6 +845,7 @@ export default function CustosRecebiveis() {
           obligationsServerTime={obligationData?.server_time || null}
           permissions={planningPermissions}
           onChanged={handlePlanningChanged}
+          onRequestReopen={handleRequestReopening}
           onNavigateDetail={(competenciaValue, area) => updateQuery({
             competencia: competenciaValue || competencia,
             detalhe: competenciaValue ? '1' : null,

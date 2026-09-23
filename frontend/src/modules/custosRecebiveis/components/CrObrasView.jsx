@@ -6,12 +6,11 @@ import {
   HiOutlineEye,
   HiOutlineLockOpen,
   HiOutlineMagnifyingGlass,
-  HiOutlinePencilSquare,
-  HiOutlineXMark
+  HiOutlinePencilSquare
 } from 'react-icons/hi2';
 import { TabelaPadrao, CelulaDupla } from '../../../components/padrao';
-import OverlayModal from '../../../components/ui/OverlayModal';
 import { COMPETENCIA_ESTADO_LABELS } from '../constants/custosRecebiveis';
+import CrReopeningRequestModal from './CrReopeningRequestModal';
 import CrStatusPill from './CrStatusPill';
 
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -157,9 +156,6 @@ export default function CrObrasView({
   const [classificacao, setClassificacao] = useState('');
   const [situacao, setSituacao] = useState('');
   const [reopeningTarget, setReopeningTarget] = useState(null);
-  const [reopeningReason, setReopeningReason] = useState('');
-  const [reopeningError, setReopeningError] = useState('');
-  const [reopeningSaving, setReopeningSaving] = useState(false);
 
   const filtered = useMemo(() => {
     const query = String(busca || '').trim().toLocaleLowerCase('pt-BR');
@@ -183,34 +179,6 @@ export default function CrObrasView({
 
   function openReopening(obra, targetCompetencia) {
     setReopeningTarget({ obra, competencia: targetCompetencia });
-    setReopeningReason('');
-    setReopeningError('');
-  }
-
-  function closeReopening() {
-    if (reopeningSaving) return;
-    setReopeningTarget(null);
-    setReopeningReason('');
-    setReopeningError('');
-  }
-
-  async function submitReopening() {
-    if (!reopeningTarget || reopeningReason.trim().length < 10 || reopeningSaving) return;
-    try {
-      setReopeningSaving(true);
-      setReopeningError('');
-      await onRequestReopen(
-        reopeningTarget.obra.id,
-        reopeningTarget.competencia,
-        reopeningReason.trim()
-      );
-      setReopeningTarget(null);
-      setReopeningReason('');
-    } catch (requestError) {
-      setReopeningError(requestError.message || 'Não foi possível solicitar a reabertura.');
-    } finally {
-      setReopeningSaving(false);
-    }
   }
 
   return (
@@ -356,68 +324,11 @@ export default function CrObrasView({
         </>
       )}
 
-      <OverlayModal
-        aberto={Boolean(reopeningTarget)}
-        rotulo="Solicitar reabertura de competência"
-        largura="var(--modal-max-w-sm, 520px)"
-        onFechar={closeReopening}
-        fecharComEscape={!reopeningSaving}
-      >
-        <header data-modal="cabecalho" className="cr-reopening-modal__header">
-          <div>
-            <h2>Solicitar reabertura</h2>
-            <p>
-              {reopeningTarget?.obra?.nome} · {monthLabel(reopeningTarget?.competencia)}
-            </p>
-          </div>
-          <button
-            type="button"
-            className="cr-icon-button"
-            onClick={closeReopening}
-            disabled={reopeningSaving}
-            aria-label="Fechar"
-          >
-            <HiOutlineXMark aria-hidden="true" />
-          </button>
-        </header>
-        <div className="cr-reopening-modal__body">
-          <p>
-            A solicitação será enviada para decisão e ficará registrada na auditoria da competência.
-          </p>
-          <label className="cr-field">
-            <span>Motivo da reabertura</span>
-            <textarea
-              value={reopeningReason}
-              onChange={(event) => setReopeningReason(event.target.value)}
-              placeholder="Explique qual informação precisa ser corrigida."
-              rows={4}
-              autoFocus
-            />
-            <small>Mínimo de 10 caracteres.</small>
-          </label>
-          {reopeningError ? (
-            <div className="cr-feedback" data-tone="error">{reopeningError}</div>
-          ) : null}
-        </div>
-        <footer data-modal="rodape" className="cr-reopening-modal__footer">
-          <button
-            type="button"
-            className="btn btn-outline"
-            onClick={closeReopening}
-            disabled={reopeningSaving}
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={submitReopening}
-            disabled={reopeningReason.trim().length < 10 || reopeningSaving}
-          >
-            {reopeningSaving ? 'Enviando...' : 'Enviar solicitação'}
-          </button>
-        </footer>
-      </OverlayModal>
+      <CrReopeningRequestModal
+        target={reopeningTarget}
+        onClose={() => setReopeningTarget(null)}
+        onSubmit={onRequestReopen}
+      />
     </section>
   );
 }
