@@ -21,6 +21,7 @@ const {
 } = require('./authorizationService');
 const { criarTituloManual } = require('./tituloFinanceiroService');
 const { registrarEventoSeguranca } = require('./securityLogService');
+const { selecionarApropriacoesOperacionaisPorObra } = require('./apropriacaoSelecaoService');
 
 const TEMPLATE_VERSION = '1.4';
 const MAX_TITULOS = 500;
@@ -521,8 +522,8 @@ async function getReferenceData(user) {
     FormaPagamentoFinanceira.findAll({ where: { ativo: true }, order: [['ordem', 'ASC'], ['nome', 'ASC']] }),
     obraIds.length
       ? Apropriacao.findAll({
-          where: { obra_id: { [Op.in]: obraIds }, ativo: true, somadora: false },
-          order: [['obra_id', 'ASC'], ['codigo', 'ASC']]
+          where: { obra_id: { [Op.in]: obraIds }, ativo: true },
+          order: [['obra_id', 'ASC'], ['ordem_planilha', 'ASC'], ['id', 'ASC']]
         })
       : []
   ]);
@@ -537,7 +538,7 @@ async function getReferenceData(user) {
     credores: credores.filter((credor) => normalizeCpfCnpj(credor.cpf_cnpj)),
     categorias,
     formasPagamento: formasPermitidas,
-    apropriacoes
+    apropriacoes: selecionarApropriacoesOperacionaisPorObra(apropriacoes)
   };
 }
 

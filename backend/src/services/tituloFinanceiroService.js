@@ -37,6 +37,7 @@ const {
   canDeleteTitulosFinanceiros,
   getFinanceiroObraScopeIds
 } = require('./authorizationService');
+const { apropriacaoPodeReceberLancamento } = require('./apropriacaoSelecaoService');
 const {
   obterOuCriarFaturaCartao,
   vincularTituloAFatura
@@ -1524,8 +1525,8 @@ async function validarApropriacaoTitulo(apropriacaoId, obraId) {
   if (!apropriacao || apropriacao.ativo === false) {
     throw createHttpError(400, 'Apropriacao informada nao foi encontrada.');
   }
-  if (apropriacao.somadora === true) {
-    throw createHttpError(400, 'Selecione uma apropriacao analitica. Apropriacoes somadoras nao podem receber lancamentos.');
+  if (!apropriacaoPodeReceberLancamento(apropriacao)) {
+    throw createHttpError(400, 'Selecione uma apropriacao habilitada para os formularios.');
   }
 
   if (Number(apropriacao.obra_id) !== Number(obraId)) {

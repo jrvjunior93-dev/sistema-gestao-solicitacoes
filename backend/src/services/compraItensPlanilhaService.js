@@ -1,4 +1,5 @@
 const SOLICITACAO_COMPRA_IMPORT_MAX_ITEMS = 300;
+const { apropriacaoPodeReceberLancamento } = require('./apropriacaoSelecaoService');
 const SOLICITACAO_COMPRA_IMPORT_HEADERS = [
   'Insumo codigo',
   'Descricao',
@@ -125,7 +126,7 @@ function montarItensSolicitacaoImportados({
   const insumosPorNome = buildMap(insumos, (insumo) => [insumo.nome]);
   const unidadesMap = buildMap(unidades, (unidade) => [unidade.sigla, unidade.nome]);
   const apropriacoesMap = buildMap(
-    apropriacoes.filter((apropriacao) => apropriacao.somadora !== true),
+    apropriacoes.filter(apropriacaoPodeReceberLancamento),
     (apropriacao) => [apropriacao.codigo]
   );
   const dataPadrao = parseDateOnly(necessarioParaPadrao);
@@ -202,7 +203,7 @@ function montarItensSolicitacaoImportados({
       ? apropriacoesMap.get(normalizeText(codigoApropriacao))
       : null;
     if (codigoApropriacao && !apropriacao) {
-      erros.push(`Linha ${linha}: apropriacao ${codigoApropriacao} nao localizada entre as apropriacoes analiticas da obra.`);
+      erros.push(`Linha ${linha}: apropriacao ${codigoApropriacao} nao localizada entre as apropriacoes habilitadas da obra.`);
       return;
     }
 
@@ -258,7 +259,7 @@ function montarPlanilhasModeloSolicitacaoCompra({ obra, insumos = [], unidades =
     ['Unidade', 'Condicional', 'Obrigatoria para item manual. Para insumo cadastrado, pode ficar vazia para usar a unidade do cadastro.'],
     ['Quantidade', 'Sim', 'Numero maior que zero. Aceita virgula ou ponto decimal.'],
     ['Especificacao', 'Nao', 'Detalhes tecnicos necessarios para a cotacao e compra.'],
-    ['Apropriacao codigo', 'Nao na importacao', 'Codigo analitico da obra. Se vazio, aproprie o item na tela antes de revisar.'],
+    ['Apropriacao codigo', 'Nao na importacao', 'Codigo habilitado para formularios na obra. Se vazio, aproprie o item na tela antes de revisar.'],
     ['Necessario para', 'Condicional', 'Use DD/MM/AAAA ou AAAA-MM-DD. Se vazio, sera usada a data geral preenchida na tela.'],
     ['Link produto', 'Nao', 'Endereco iniciado por http:// ou https://. Anexos devem ser incluidos depois da importacao.'],
     ['Limite', '-', `A importacao aceita no maximo ${SOLICITACAO_COMPRA_IMPORT_MAX_ITEMS} itens por arquivo.`],
@@ -280,7 +281,7 @@ function montarPlanilhasModeloSolicitacaoCompra({ obra, insumos = [], unidades =
   const apropriacoesRows = [
     ['Codigo', 'Descricao'],
     ...apropriacoes
-      .filter((apropriacao) => apropriacao.somadora !== true)
+      .filter(apropriacaoPodeReceberLancamento)
       .map((apropriacao) => [apropriacao.codigo || '', apropriacao.descricao || ''])
   ];
 

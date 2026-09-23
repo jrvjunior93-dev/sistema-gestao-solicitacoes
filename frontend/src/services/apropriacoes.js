@@ -22,6 +22,23 @@ export async function listarApropriacoes(params = {}) {
   return handleJsonResponse(response, 'Erro ao buscar apropriacoes');
 }
 
+export async function obterConfiguracaoMacrosApropriacao(obraId) {
+  const response = await fetch(
+    `${API_URL}/apropriacoes/macros-configuracao?obra_id=${encodeURIComponent(obraId)}`,
+    { headers: authHeaders() }
+  );
+  return handleJsonResponse(response, 'Erro ao carregar etapas macro');
+}
+
+export async function salvarConfiguracaoMacrosApropriacao(obraId, apropriacaoIds) {
+  const response = await fetch(`${API_URL}/apropriacoes/macros-configuracao`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ obra_id: Number(obraId), apropriacao_ids: apropriacaoIds })
+  });
+  return handleJsonResponse(response, 'Erro ao salvar etapas macro');
+}
+
 export async function baixarModeloApropriacoes() {
   const response = await fetch(`${API_URL}/apropriacoes/modelo-xlsx`, {
     headers: authHeaders()

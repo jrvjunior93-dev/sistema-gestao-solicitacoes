@@ -30,6 +30,7 @@ const {
 } = require('../services/authorizationService');
 const { userHasSetorCapability } = require('../services/setorCapabilityService');
 const { registrarEventoSeguranca } = require('../services/securityLogService');
+const { apropriacaoPodeReceberLancamento } = require('../services/apropriacaoSelecaoService');
 const { normalizeOriginalName } = require('../utils/fileName');
 const CHAVE_SETORES_CRIACAO_TODAS_OBRAS = 'SETORES_CRIACAO_TODAS_OBRAS';
 
@@ -400,7 +401,7 @@ async function validarApropriacoesContrato(obraId, lista = []) {
       id: { [Op.in]: ids },
       obra_id: Number(obraId)
     },
-    attributes: ['id', 'obra_id', 'ativo', 'somadora']
+    attributes: ['id', 'obra_id', 'ativo', 'somadora', 'macro_formulario']
   });
   const registrosMap = new Map(registros.map(item => [Number(item.id), item]));
 
@@ -416,8 +417,8 @@ async function validarApropriacoesContrato(obraId, lista = []) {
       error.statusCode = 400;
       throw error;
     }
-    if (registro.somadora === true) {
-      const error = new Error('Uma ou mais apropriacoes do contrato sao somadoras. Selecione apenas apropriacoes analiticas.');
+    if (!apropriacaoPodeReceberLancamento(registro)) {
+      const error = new Error('Uma ou mais apropriacoes do contrato nao estao habilitadas para os formularios.');
       error.statusCode = 400;
       throw error;
     }
@@ -934,7 +935,7 @@ module.exports = {
       });
 
       const apropriacoes = await Apropriacao.findAll({
-        attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora']
+        attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario']
       });
       const apropriacaoMap = new Map();
       apropriacoes.forEach((apropriacao) => {
@@ -1023,10 +1024,10 @@ module.exports = {
           });
           continue;
         }
-        if (apropriacaoRegistro?.somadora === true) {
+        if (!apropriacaoPodeReceberLancamento(apropriacaoRegistro)) {
           resultado.erros.push({
             linha: linhaPlanilha,
-            error: `Apropriacao "${apropriacaoCodigo}" e somadora. Use uma apropriacao analitica.`
+            error: `Apropriacao "${apropriacaoCodigo}" nao esta habilitada para os formularios.`
           });
           continue;
         }
@@ -1163,7 +1164,7 @@ module.exports = {
 
       const [obras, apropriacoes, contratos] = await Promise.all([
         Obra.findAll({ attributes: ['id', 'codigo', 'nome'] }),
-        Apropriacao.findAll({ attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora'] }),
+        Apropriacao.findAll({ attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario'] }),
         Contrato.findAll({ attributes: ['id', 'obra_id', 'codigo'] })
       ]);
 
@@ -1249,10 +1250,10 @@ module.exports = {
           });
           continue;
         }
-        if (apropriacao.somadora === true) {
+        if (!apropriacaoPodeReceberLancamento(apropriacao)) {
           resultado.erros.push({
             linha: linhaPlanilha,
-            error: `Apropriacao "${apropriacaoCodigo}" e somadora. Use uma apropriacao analitica.`
+            error: `Apropriacao "${apropriacaoCodigo}" nao esta habilitada para os formularios.`
           });
           continue;
         }

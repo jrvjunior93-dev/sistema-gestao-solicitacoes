@@ -14,6 +14,14 @@ const unidadeUn = { id: 2, sigla: 'un', nome: 'Unidade' };
 const insumo = { id: 10, codigo: 'INS-001', nome: 'Cimento CP II', unidade: unidadeKg };
 const apropriacao = { id: 20, codigo: '00.001', descricao: 'Administracao local', obra_id: 7, somadora: false };
 const apropriacaoSomadora = { id: 21, codigo: '00', descricao: 'Total', obra_id: 7, somadora: true };
+const apropriacaoMacro = {
+  id: 22,
+  codigo: '01',
+  descricao: 'Servicos preliminares',
+  obra_id: 7,
+  somadora: true,
+  macro_formulario: true
+};
 
 function validarConversaoERegras() {
   const rows = normalizeImportedRows([
@@ -73,7 +81,18 @@ function validarErrosBloqueantes() {
     unidades: [unidadeUn],
     apropriacoes: [apropriacaoSomadora]
   });
-  assert(apropriacaoInvalida.erros.some((erro) => erro.includes('apropriacoes analiticas')));
+  assert(apropriacaoInvalida.erros.some((erro) => erro.includes('apropriacoes habilitadas')));
+
+  const apropriacaoMacroValida = montarItensSolicitacaoImportados({
+    rows: normalizeImportedRows([
+      { Descricao: 'Manual macro', Unidade: 'un', Quantidade: 1, 'Apropriacao codigo': '01' }
+    ]),
+    insumos: [],
+    unidades: [unidadeUn],
+    apropriacoes: [apropriacaoMacro]
+  });
+  assert.deepStrictEqual(apropriacaoMacroValida.erros, []);
+  assert.strictEqual(apropriacaoMacroValida.itens[0].apropriacoes[0].apropriacao_id, 22);
 
   const dataInvalida = montarItensSolicitacaoImportados({
     rows: normalizeImportedRows([

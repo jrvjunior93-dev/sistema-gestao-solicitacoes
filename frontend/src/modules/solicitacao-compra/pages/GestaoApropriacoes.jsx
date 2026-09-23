@@ -7,8 +7,12 @@ import {
   criarApropriacao,
   deletarApropriacao,
   importarApropriacoesXlsx,
-  listarApropriacoes
+  listarApropriacoes,
+  obterConfiguracaoMacrosApropriacao,
+  salvarConfiguracaoMacrosApropriacao
 } from '../../../services/apropriacoes';
+
+const OBRAS_COM_CONFIGURACAO_MACRO = new Set(['109', '110']);
 
 function parseLinhaApropriacao(linha) {
   const partes = String(linha || '')
@@ -41,7 +45,17 @@ export default function GestaoApropriacoes() {
   const [arquivoXlsx, setArquivoXlsx] = useState(null);
   const [importandoXlsx, setImportandoXlsx] = useState(false);
   const [selecionados, setSelecionados] = useState([]);
+  const [configuracaoMacros, setConfiguracaoMacros] = useState(null);
+  const [exibirConfiguracaoMacros, setExibirConfiguracaoMacros] = useState(false);
+  const [carregandoMacros, setCarregandoMacros] = useState(false);
+  const [salvandoMacros, setSalvandoMacros] = useState(false);
+  const [macrosSelecionadas, setMacrosSelecionadas] = useState(() => new Set());
   const isSuperadmin = String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN';
+  const obraAtual = useMemo(
+    () => obras.find((obra) => String(obra.id) === String(obraSelecionada)) || null,
+    [obras, obraSelecionada]
+  );
+  const podeConfigurarMacros = OBRAS_COM_CONFIGURACAO_MACRO.has(String(obraAtual?.codigo || '').trim());
 
   useEffect(() => {
     (async () => {
@@ -74,9 +88,66 @@ export default function GestaoApropriacoes() {
     }
   }
 
+  async function carregarConfiguracaoMacros(obraId, abrir = false) {
+    const obra = obras.find((item) => String(item.id) === String(obraId));
+    if (!OBRAS_COM_CONFIGURACAO_MACRO.has(String(obra?.codigo || '').trim())) return;
+
+    try {
+      setCarregandoMacros(true);
+      const data = await obterConfiguracaoMacrosApropriacao(obraId);
+      const atuais = Array.isArray(data?.apropriacao_ids) ? data.apropriacao_ids : [];
+      const sugeridas = Array.isArray(data?.sugestao_ids) ? data.sugestao_ids : [];
+      setConfiguracaoMacros(data);
+      setMacrosSelecionadas(new Set((data?.configurada ? atuais : sugeridas).map(Number)));
+      if (abrir) setExibirConfiguracaoMacros(true);
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Erro ao carregar etapas macro');
+    } finally {
+      setCarregandoMacros(false);
+    }
+  }
+
+  function alternarMacro(id) {
+    setMacrosSelecionadas((atual) => {
+      const proximo = new Set(atual);
+      const numero = Number(id);
+      if (proximo.has(numero)) proximo.delete(numero);
+      else proximo.add(numero);
+      return proximo;
+    });
+  }
+
+  async function salvarMacros() {
+    const ids = [...macrosSelecionadas];
+    if (!ids.length) {
+      alert('Selecione ao menos uma etapa macro.');
+      return;
+    }
+
+    try {
+      setSalvandoMacros(true);
+      await salvarConfiguracaoMacrosApropriacao(obraSelecionada, ids);
+      await Promise.all([
+        carregarConfiguracaoMacros(obraSelecionada, false),
+        carregarApropriacoes(obraSelecionada)
+      ]);
+      alert(`${ids.length} etapa(s) macro confirmada(s) para os formularios.`);
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Erro ao salvar etapas macro');
+    } finally {
+      setSalvandoMacros(false);
+    }
+  }
+
   useEffect(() => {
     setSelecionados([]);
+    setConfiguracaoMacros(null);
+    setMacrosSelecionadas(new Set());
+    setExibirConfiguracaoMacros(false);
     carregarApropriacoes();
+    if (obraSelecionada) carregarConfiguracaoMacros(obraSelecionada, false);
   }, [obraSelecionada]);
 
   const todosSelecionados = useMemo(
@@ -234,6 +305,9 @@ export default function GestaoApropriacoes() {
       const resultado = await importarApropriacoesXlsx(arquivoXlsx, obraSelecionada || null);
       setArquivoXlsx(null);
       await carregarApropriacoes();
+      if (podeConfigurarMacros) {
+        await carregarConfiguracaoMacros(obraSelecionada, false);
+      }
       const erros = Array.isArray(resultado?.erros) ? resultado.erros : [];
       const resumo = [
         `Importadas: ${resultado?.importados || 0}`,
@@ -276,6 +350,100 @@ export default function GestaoApropriacoes() {
           </label>
         </div>
       </div>
+
+      {podeConfigurarMacros ? (
+        <div className="card">
+          <div className="card-header flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Etapas macro dos formularios</h2>
+              <p className="text-sm text-[var(--c-muted)]">
+                {configuracaoMacros?.configurada
+                  ? `${configuracaoMacros.apropriacao_ids?.length || 0} etapa(s) configurada(s).`
+                  : 'Revise a sugestao antes de limitar os formularios desta obra.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => (
+                configuracaoMacros
+                  ? setExibirConfiguracaoMacros((atual) => !atual)
+                  : carregarConfiguracaoMacros(obraSelecionada, true)
+              )}
+              disabled={carregandoMacros}
+            >
+              {carregandoMacros
+                ? 'Carregando...'
+                : exibirConfiguracaoMacros
+                  ? 'Recolher configuracao'
+                  : configuracaoMacros?.configurada
+                    ? 'Editar etapas macro'
+                    : 'Revisar etapas macro'}
+            </button>
+          </div>
+
+          {exibirConfiguracaoMacros ? (
+            <div className="grid gap-3">
+              <div className="compras-responsive-table">
+                <table className="table min-w-[680px]">
+                  <thead>
+                    <tr>
+                      <th className="w-12">Usar</th>
+                      <th>Codigo</th>
+                      <th>Etapa</th>
+                      <th>Etapa superior</th>
+                      <th>Deteccao</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(configuracaoMacros?.candidatas || []).map((item) => {
+                      const sugerida = (configuracaoMacros?.sugestao_ids || []).map(Number).includes(Number(item.id));
+                      return (
+                        <tr key={item.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={macrosSelecionadas.has(Number(item.id))}
+                              onChange={() => alternarMacro(item.id)}
+                              aria-label={`Usar etapa ${item.codigo}`}
+                            />
+                          </td>
+                          <td>{item.codigo}</td>
+                          <td>{item.descricao || '-'}</td>
+                          <td>{item.apropriacao_pai?.codigo || 'Raiz'}</td>
+                          <td>{sugerida ? 'Sugerida' : 'Estrutural'}</td>
+                        </tr>
+                      );
+                    })}
+                    {(configuracaoMacros?.candidatas || []).length === 0 ? (
+                      <tr>
+                        <td colSpan="5" align="center">Nenhuma etapa candidata identificada.</td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setMacrosSelecionadas(new Set((configuracaoMacros?.sugestao_ids || []).map(Number)))}
+                >
+                  Restaurar sugestao
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={salvarMacros}
+                  disabled={salvandoMacros || !macrosSelecionadas.size}
+                >
+                  {salvandoMacros ? 'Salvando...' : `Confirmar ${macrosSelecionadas.size} etapa(s)`}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="card">
         <div className="card-header">

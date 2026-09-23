@@ -3,6 +3,15 @@ const { Apropriacao, Obra, sequelize } = require('../models');
 const { isObraCentroCusto } = require('../constants/centroCusto');
 const { allSheetsToArrayRows, createWorkbookBuffer } = require('../utils/excelWorkbook');
 const { parseValorMonetario, spreadsheetDisplayValue } = require('../utils/valorMonetario');
+const { registrarEventoSeguranca } = require('../services/securityLogService');
+const {
+  listarCandidatasMacro,
+  obraPermiteConfiguracaoMacro,
+  ordenarApropriacoes,
+  selecionarApropriacoesOperacionais,
+  selecionarApropriacoesOperacionaisPorObra,
+  sugerirIdsMacros
+} = require('../services/apropriacaoSelecaoService');
 
 function parseBoolean(value, fallback = false) {
   value = spreadsheetDisplayValue(value);
@@ -55,7 +64,9 @@ function normalizeHeader(value) {
 function findHeaderRow(rows) {
   return rows.findIndex((row) => {
     const headers = row.map(normalizeHeader);
-    return headers.includes('codigo') && headers.includes('descricao');
+    const possuiCodigo = headers.includes('codigo') || headers.includes('item');
+    const possuiDescricao = headers.includes('descricao') || headers.includes('descricao_do_servico');
+    return possuiCodigo && possuiDescricao;
   });
 }
 
@@ -82,15 +93,39 @@ function codigoPareceApropriacao(value) {
   return /^\d+(?:\.\d+)*$/.test(codigo);
 }
 
+function normalizarItemOrcamentario(value) {
+  const item = normalizarCodigoApropriacao(value);
+  if (!item || item.includes('.') || !/^\d+$/.test(item) || item.length <= 2 || item.length % 2 !== 0) {
+    return item;
+  }
+  return item.match(/.{1,2}/g).join('.');
+}
+
+function codigoPaiDoCodigo(codigo) {
+  const partes = normalizarCodigoApropriacao(codigo).split('.').filter(Boolean);
+  return partes.length > 1 ? partes.slice(0, -1).join('.') : '';
+}
+
 function parseLinhasModelo(rows, headerIndex) {
   const headers = mapHeaders(rows[headerIndex] || []);
   const linhas = [];
 
   for (const row of rows.slice(headerIndex + 1)) {
-    const codigo = normalizarCodigoApropriacao(pick(row, headers, ['codigo']));
-    const descricao = String(spreadsheetDisplayValue(pick(row, headers, ['descricao'])) || '').trim();
+    const itemFonte = headers.item !== undefined
+      ? normalizarItemOrcamentario(pick(row, headers, ['item']))
+      : '';
+    const planilhaFonte = String(spreadsheetDisplayValue(pick(row, headers, ['planilha'])) || '').trim();
+    const codigo = itemFonte
+      ? normalizarCodigoApropriacao(planilhaFonte ? `${planilhaFonte}.${itemFonte}` : itemFonte)
+      : normalizarCodigoApropriacao(pick(row, headers, ['codigo']));
+    const descricao = String(spreadsheetDisplayValue(
+      pick(row, headers, ['descricao', 'descricao_do_servico'])
+    ) || '').trim();
     const codigoObra = String(spreadsheetDisplayValue(pick(row, headers, ['codigo_obra', 'obra_codigo'])) || '').trim();
-    const codigoPai = normalizarCodigoApropriacao(pick(row, headers, ['codigo_apropriacao_pai', 'codigo_pai', 'apropriacao_pai']));
+    const codigoPaiInformado = normalizarCodigoApropriacao(
+      pick(row, headers, ['codigo_apropriacao_pai', 'codigo_pai', 'apropriacao_pai'])
+    );
+    const codigoPai = codigoPaiInformado || (itemFonte ? codigoPaiDoCodigo(codigo) : '');
 
     if (!codigo || !codigoPareceApropriacao(codigo)) {
       continue;
@@ -100,7 +135,10 @@ function parseLinhasModelo(rows, headerIndex) {
       codigo_obra: codigoObra,
       codigo,
       descricao,
-      valor_orcado: parseValorOrcado(pick(row, headers, ['valor_orcado', 'orcado', 'valor', 'preco_total', 'preco']), 0),
+      valor_orcado: parseValorOrcado(
+        pick(row, headers, ['valor_orcado', 'orcado', 'valor', 'preco_total', 'preco', 'total', 'r_total']),
+        0
+      ),
       somadora: parseBoolean(pick(row, headers, ['somadora', 'conta_somadora', 'soma']), null),
       codigo_apropriacao_pai: codigoPai
     });
@@ -143,8 +181,13 @@ async function extrairLinhasXlsx(file) {
     preserveNumbers: true
   });
   const linhas = [];
+  const planilhasOrcamentarias = sheets.filter(({ name }) => {
+    const nome = normalizeHeader(name);
+    return nome.includes('orcamento_sintetico') || nome.includes('planilha_orcamentaria');
+  });
+  const sheetsParaImportar = planilhasOrcamentarias.length ? planilhasOrcamentarias : sheets;
 
-  sheets.forEach(({ rows }) => {
+  sheetsParaImportar.forEach(({ rows }) => {
     const headerIndex = findHeaderRow(rows);
     const linhasPlanilha = headerIndex >= 0
       ? parseLinhasModelo(rows, headerIndex)
@@ -153,7 +196,10 @@ async function extrairLinhasXlsx(file) {
     linhas.push(...linhasPlanilha);
   });
 
-  return linhas;
+  return linhas.map((linha, index) => ({
+    ...linha,
+    ordem_planilha: index + 1
+  }));
 }
 
 async function validarObra(obraId) {
@@ -325,17 +371,19 @@ module.exports = {
       if (obra_id) {
         where.obra_id = obra_id;
       }
-      if (!incluirSomadoras) {
-        where.somadora = false;
-      }
-
       const apropriacoes = await Apropriacao.findAll({
         where,
         include: [{ model: Apropriacao, as: 'apropriacao_pai', attributes: ['id', 'codigo', 'descricao'], required: false }],
-        order: [['codigo', 'ASC']]
+        order: [['ordem_planilha', 'ASC'], ['id', 'ASC']]
       });
 
-      return res.json(apropriacoes);
+      return res.json(
+        incluirSomadoras
+          ? ordenarApropriacoes(apropriacoes)
+          : obra_id
+            ? selecionarApropriacoesOperacionais(apropriacoes)
+            : selecionarApropriacoesOperacionaisPorObra(apropriacoes)
+      );
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao listar apropriacoes' });
@@ -491,7 +539,8 @@ module.exports = {
               await existente.update({
                 descricao: linha.descricao || existente.descricao,
                 valor_orcado: linha.valor_orcado,
-                somadora: Boolean(somadoraInferida || existente.somadora)
+                somadora: Boolean(somadoraInferida || existente.somadora),
+                ordem_planilha: Number(linha.ordem_planilha || 0)
               }, { transaction });
               registrosSalvos.push({ registro: existente, linha, somadora: Boolean(somadoraInferida || existente.somadora) });
               atualizados += 1;
@@ -501,7 +550,8 @@ module.exports = {
                 codigo: linha.codigo,
                 descricao: linha.descricao || null,
                 valor_orcado: linha.valor_orcado,
-                somadora: Boolean(somadoraInferida)
+                somadora: Boolean(somadoraInferida),
+                ordem_planilha: Number(linha.ordem_planilha || 0)
               }, { transaction });
               registrosSalvos.push({ registro: criado, linha, somadora: Boolean(somadoraInferida) });
               criados += 1;
@@ -533,6 +583,114 @@ module.exports = {
     }
   },
 
+  async configuracaoMacros(req, res) {
+    try {
+      const obraId = Number(req.query?.obra_id || 0);
+      if (!obraId) {
+        return res.status(400).json({ error: 'Informe a obra.' });
+      }
+
+      const obra = await validarObra(obraId);
+      if (!obraPermiteConfiguracaoMacro(obra)) {
+        return res.status(400).json({
+          error: 'A configuracao de etapas macro esta liberada somente para as obras 109 e 110.'
+        });
+      }
+
+      const apropriacoes = ordenarApropriacoes(await Apropriacao.findAll({
+        where: { obra_id: obraId, ativo: true },
+        include: [{
+          model: Apropriacao,
+          as: 'apropriacao_pai',
+          attributes: ['id', 'codigo', 'descricao'],
+          required: false
+        }],
+        order: [['ordem_planilha', 'ASC'], ['id', 'ASC']]
+      }));
+      const selecionados = apropriacoes
+        .filter((item) => item.macro_formulario === true)
+        .map((item) => Number(item.id));
+
+      return res.json({
+        obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome },
+        configurada: selecionados.length > 0,
+        apropriacao_ids: selecionados,
+        sugestao_ids: sugerirIdsMacros(apropriacoes),
+        candidatas: listarCandidatasMacro(apropriacoes)
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(error.statusCode || 500).json({
+        error: error.message || 'Erro ao carregar a configuracao de etapas macro.'
+      });
+    }
+  },
+
+  async salvarConfiguracaoMacros(req, res) {
+    try {
+      const obraId = Number(req.body?.obra_id || 0);
+      const ids = [...new Set(
+        (Array.isArray(req.body?.apropriacao_ids) ? req.body.apropriacao_ids : [])
+          .map(Number)
+          .filter((id) => Number.isInteger(id) && id > 0)
+      )];
+      if (!obraId || !ids.length) {
+        return res.status(400).json({ error: 'Selecione ao menos uma etapa macro.' });
+      }
+
+      const obra = await validarObra(obraId);
+      if (!obraPermiteConfiguracaoMacro(obra)) {
+        return res.status(400).json({
+          error: 'A configuracao de etapas macro esta liberada somente para as obras 109 e 110.'
+        });
+      }
+
+      const existentes = await Apropriacao.findAll({
+        where: { id: { [Op.in]: ids }, obra_id: obraId, ativo: true },
+        attributes: ['id']
+      });
+      if (existentes.length !== ids.length) {
+        return res.status(400).json({
+          error: 'Uma ou mais etapas selecionadas nao pertencem a esta obra ou estao inativas.'
+        });
+      }
+
+      await sequelize.transaction(async (transaction) => {
+        await Apropriacao.update(
+          { macro_formulario: false },
+          { where: { obra_id: obraId, macro_formulario: true }, transaction }
+        );
+        await Apropriacao.update(
+          { macro_formulario: true },
+          { where: { obra_id: obraId, id: { [Op.in]: ids }, ativo: true }, transaction }
+        );
+      });
+
+      await registrarEventoSeguranca({
+        req,
+        usuarioId: req.user?.id || null,
+        tipoEvento: 'APROPRIACAO_MACROS_FORMULARIOS_CONFIGURADAS',
+        recursoTipo: 'OBRA',
+        recursoId: obraId,
+        status: 'SUCCESS',
+        descricao: 'Etapas macro dos formularios operacionais configuradas',
+        metadata: { obra_codigo: obra.codigo, apropriacao_ids: ids }
+      });
+
+      return res.json({
+        obra_id: obraId,
+        configurada: true,
+        apropriacao_ids: ids,
+        total: ids.length
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(error.statusCode || 500).json({
+        error: error.message || 'Erro ao salvar a configuracao de etapas macro.'
+      });
+    }
+  },
+
   async destroy(req, res) {
     try {
       const { id } = req.params;
@@ -550,3 +708,12 @@ module.exports = {
     }
   }
 };
+
+Object.defineProperty(module.exports, '__testables', {
+  value: {
+    extrairLinhasXlsx,
+    normalizarItemOrcamentario,
+    parseLinhasModelo
+  },
+  enumerable: false
+});

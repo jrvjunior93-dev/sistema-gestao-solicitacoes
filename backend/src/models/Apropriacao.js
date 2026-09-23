@@ -29,6 +29,16 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: false
       },
+      macro_formulario: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+      },
+      ordem_planilha: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+      },
       apropriacao_pai_id: {
         type: DataTypes.INTEGER,
         allowNull: true
