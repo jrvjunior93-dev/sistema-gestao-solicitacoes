@@ -18,21 +18,6 @@ module.exports = {
       });
     }
 
-    if (await tableExists(sequelize, 'apropriacoes')
-      && await columnExists(sequelize, 'apropriacoes', 'macro_formulario')) {
-      await sequelize.query(`
-        UPDATE obras o
-        SET o.nivel_apropriacao_formulario = 'PERSONALIZADO'
-        WHERE o.nivel_apropriacao_formulario IS NULL
-          AND EXISTS (
-            SELECT 1
-            FROM apropriacoes a
-            WHERE a.obra_id = o.id
-              AND a.ativo = 1
-              AND a.macro_formulario = 1
-          )
-      `);
-    }
   },
 
   async down() {
