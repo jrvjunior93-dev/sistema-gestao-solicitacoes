@@ -92,6 +92,7 @@ export const COMPETENCIA_ESTADO_LABELS = Object.freeze({
   EM_PREENCHIMENTO: 'Em preenchimento',
   FINALIZADA: 'Finalizada',
   REABERTA: 'Reaberta',
+  VENCIDA: 'Vencida',
   NAO_INICIADA: 'Não iniciada'
 });
 

@@ -3393,6 +3393,11 @@
   background: color-mix(in srgb, var(--cr-warning) 11%, transparent);
 }
 
+.cr-period-card__signals span[data-tone="positive"] {
+  color: var(--cr-success);
+  background: color-mix(in srgb, var(--cr-success) 10%, transparent);
+}
+
 .cr-period-card__footer .btn {
   flex: 0 0 auto;
 }

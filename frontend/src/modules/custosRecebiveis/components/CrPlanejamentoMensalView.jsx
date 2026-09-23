@@ -311,7 +311,7 @@ export default function CrPlanejamentoMensalView({
               title={monthLabel(item.competencia)}
               eyebrow="Competência"
               classification={obra.classificacao}
-              status={item.estado}
+              status={item.vencida ? 'VENCIDA' : item.estado}
               custoPlanejado={item.total_custo_previsto}
               custoRealizado={item.custo_realizado}
               recebivelPrevisto={item.medicao_apresentada ?? item.total_receita_prevista}
@@ -338,6 +338,7 @@ export default function CrPlanejamentoMensalView({
                 setReopeningTarget({ obra, competencia: item.competencia });
               } : null}
               reopeningDisabled={!item.reabertura_permitida}
+              reopeningStatus={item.reabertura_situacao}
               reopeningActionLabel={item.reabertura_situacao === 'SOLICITADA'
                 ? 'Reabertura aguardando decisão'
                 : (item.reabertura_situacao === 'APROVADA'

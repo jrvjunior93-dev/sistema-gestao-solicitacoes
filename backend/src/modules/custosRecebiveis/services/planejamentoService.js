@@ -648,7 +648,13 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
     const presented = money(row.total_receita_prevista);
     const approved = money(measurementByCompetency.get(Number(row.id)));
     const hasApprovedMeasurement = competenciesWithMeasurement.has(Number(row.id));
-    const reopeningState = reopeningStateByCompetency.get(Number(row.id)) || null;
+    const mappedReopeningState = reopeningStateByCompetency.get(Number(row.id)) || null;
+    // Ao finalizar novamente uma competencia que estava reaberta, a autorizacao
+    // anterior deixa de justificar o bloqueio de uma nova solicitacao.
+    const reopeningState = row.estado === 'FINALIZADA' && mappedReopeningState === 'APROVADA'
+      ? null
+      : mappedReopeningState;
+    const expired = prazoCompetencia(row.competencia) <= now;
     return {
       ...serializeCompetencia(row),
       medicao_apresentada: presented,
@@ -657,8 +663,9 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
       custo_realizado: money(costsByMonth.get(row.competencia)),
       receita_recebida: money(receivedByMonth.get(row.competencia)),
       reabertura_situacao: reopeningState,
+      vencida: expired && row.estado !== 'FINALIZADA' && reopeningState !== 'APROVADA',
       reabertura_permitida: !reopeningState && (
-        row.estado === 'FINALIZADA' || prazoCompetencia(row.competencia) <= now
+        row.estado === 'FINALIZADA' || expired
       )
     };
   });
@@ -2577,13 +2584,17 @@ async function solicitarReabertura(user, competenciaIdValue, payload = {}, overr
         'Somente competencias finalizadas ou vencidas podem solicitar reabertura.'
       );
     }
+    const activeReopeningConditions = [{ situacao: 'SOLICITADA' }];
+    if (competencia.estado !== 'FINALIZADA') {
+      activeReopeningConditions.push({
+        situacao: 'APROVADA',
+        expira_em: { [Op.gt]: new Date() }
+      });
+    }
     const existing = await deps.CrReabertura.findOne({
       where: {
         competencia_id: competenciaId,
-        [Op.or]: [
-          { situacao: 'SOLICITADA' },
-          { situacao: 'APROVADA', expira_em: { [Op.gt]: new Date() } }
-        ]
+        [Op.or]: activeReopeningConditions
       },
       transaction,
       lock: transaction.LOCK.UPDATE

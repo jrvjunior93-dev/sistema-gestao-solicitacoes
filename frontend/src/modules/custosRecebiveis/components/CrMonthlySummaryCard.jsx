@@ -38,6 +38,7 @@ export default function CrMonthlySummaryCard({
   onRequestReopening,
   reopeningDisabled = false,
   reopeningActionLabel = 'Solicitar reabertura',
+  reopeningStatus = null,
   approvedActionLabel,
   actionLabel = 'Ver detalhes'
 }) {
@@ -106,6 +107,12 @@ export default function CrMonthlySummaryCard({
 
       <footer className="cr-period-card__footer">
         <div className="cr-period-card__signals">
+          {reopeningStatus === 'SOLICITADA' ? (
+            <span data-tone="warning">Reabertura aguardando decisão</span>
+          ) : null}
+          {reopeningStatus === 'APROVADA' ? (
+            <span data-tone="positive">Reabertura ativa</span>
+          ) : null}
           {isPublic && Number(glosa) > 0 ? (
             <span data-tone="negative">Glosa {currency.format(glosa)}</span>
           ) : null}
