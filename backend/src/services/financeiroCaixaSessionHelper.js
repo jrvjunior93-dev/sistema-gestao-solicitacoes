@@ -20,6 +20,12 @@ function contaExigeSessao(conta) {
     String(conta?.tipo_operacional || '').toUpperCase() === 'CAIXA_INTERNO';
 }
 
+function sessaoAbrangeDataMovimento(sessao, dataMovimento = today()) {
+  const dataAbertura = String(sessao?.data_abertura || '');
+  const dataReferencia = String(dataMovimento || today());
+  return Boolean(dataAbertura) && dataAbertura <= dataReferencia;
+}
+
 async function carregarContaBancaria(contaBancariaId, { transaction = null } = {}) {
   const id = Number(contaBancariaId || 0);
   if (!Number.isInteger(id) || id <= 0) {
@@ -33,7 +39,11 @@ async function carregarContaBancaria(contaBancariaId, { transaction = null } = {
   return conta;
 }
 
-async function obterSessaoAbertaParaConta(contaOrId, dataMovimento = today(), { transaction = null, exigir = false } = {}) {
+async function obterSessaoAbertaParaConta(
+  contaOrId,
+  dataMovimento = today(),
+  { transaction = null, exigir = false, permitirDataAnteriorSemVinculo = false } = {}
+) {
   const conta = typeof contaOrId === 'object' && contaOrId !== null
     ? contaOrId
     : await carregarContaBancaria(contaOrId, { transaction });
@@ -48,7 +58,7 @@ async function obterSessaoAbertaParaConta(contaOrId, dataMovimento = today(), { 
     lock: transaction?.LOCK?.UPDATE
   });
 
-  if (sessao && String(sessao.data_abertura || '') <= String(dataMovimento || today())) {
+  if (sessao) {
     if (!sessao.empresa_id) {
       throw createHttpError(
         400,
@@ -61,7 +71,19 @@ async function obterSessaoAbertaParaConta(contaOrId, dataMovimento = today(), { 
         `O caixa aberto da conta ${conta.nome || conta.id} esta vinculado a empresa diferente da conta financeira. Reabra o caixa apos corrigir o cadastro.`
       );
     }
-    return sessao;
+
+    if (sessaoAbrangeDataMovimento(sessao, dataMovimento)) {
+      return sessao;
+    }
+
+    // A conciliacao de um OFX historico pode ocorrer depois que o saldo atual
+    // do caixa ja foi conferido e uma nova sessao foi aberta. Nesse caso a
+    // sessao aberta autoriza a operacao, mas nao deve receber o vinculo da
+    // transferencia antiga, pois isso descontaria o mesmo valor novamente do
+    // saldo operacional atual.
+    if (permitirDataAnteriorSemVinculo) {
+      return null;
+    }
   }
 
   if (exigir || contaExigeSessao(conta)) {
@@ -77,5 +99,6 @@ async function obterSessaoAbertaParaConta(contaOrId, dataMovimento = today(), { 
 module.exports = {
   carregarContaBancaria,
   contaExigeSessao,
-  obterSessaoAbertaParaConta
+  obterSessaoAbertaParaConta,
+  sessaoAbrangeDataMovimento
 };

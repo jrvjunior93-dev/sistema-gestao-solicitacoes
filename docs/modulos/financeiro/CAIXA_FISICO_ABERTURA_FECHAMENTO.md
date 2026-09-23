@@ -41,6 +41,11 @@ Enquanto a sessao estiver aberta, o usuario pode registrar:
 
 Movimentos gerados por outros fluxos financeiros e transferencias vinculadas ao caixa tambem integram o livro e o saldo. O usuario nao deve repetir manualmente um movimento que ja foi gerado pelo sistema.
 
+Na conciliacao de transferencia de um OFX historico, o caixa contraparte continua
+precisando estar aberto. Se a data bancaria for anterior a abertura atual, a
+transferencia fica registrada sem vinculo com essa sessao, evitando descontar
+novamente do saldo operacional que ja foi conferido na abertura.
+
 ### 3. Consultar o livro do caixa
 
 O livro apresenta, em uma unica sequencia:
@@ -111,6 +116,7 @@ O endpoint legado `POST /financeiro/caixas/confirmar-conciliacao-dia` permanece 
 | Fechar com divergencia justificada | Sessao fechada e diferenca auditada |
 | Registrar movimento depois do fechamento | Operacao bloqueada |
 | Abrir novamente o caixa | Ultimo saldo contado aparece como referencia |
+| Conciliar transferencia OFX anterior a abertura atual | Transferencia historica registrada sem alterar o saldo da sessao atual |
 | Abrir conta bancaria controlada sem confirmar OFX anterior | Regra bancaria anterior continua bloqueando |
 
 ## Rastreabilidade e limites
