@@ -1324,6 +1324,7 @@ router.get('/apropriacoes', requireAnyEnabledModule(['OBRAS', 'SOLICITACOES', 'C
 router.get('/apropriacoes/macros-configuracao', requireEnabledModule('OBRAS'), allowObrasGestaoApropriacoes, ApropriacaoController.configuracaoMacros);
 router.patch('/apropriacoes/macros-configuracao', requireEnabledModule('OBRAS'), allowObrasGestaoApropriacoes, criticalRateLimit, ApropriacaoController.salvarConfiguracaoMacros);
 router.get('/apropriacoes/modelo-xlsx', requireEnabledModule('OBRAS'), permit(['SUPERADMIN']), ApropriacaoController.modeloXlsx);
+router.post('/apropriacoes/importar-xlsx/preview', requireEnabledModule('OBRAS'), allowBusinessAdmin, uploadRateLimit, uploadComprovantes.single('file'), ApropriacaoController.previewImportacaoXlsx);
 router.post('/apropriacoes/importar-xlsx', requireEnabledModule('OBRAS'), allowBusinessAdmin, uploadRateLimit, uploadComprovantes.single('file'), ApropriacaoController.importarXlsx);
 router.post('/apropriacoes', requireEnabledModule('OBRAS'), allowObrasGestaoApropriacoes, ApropriacaoController.create);
 router.put('/apropriacoes/:id', requireEnabledModule('OBRAS'), allowObrasGestaoApropriacoes, ApropriacaoController.update);

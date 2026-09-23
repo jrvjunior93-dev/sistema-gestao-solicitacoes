@@ -14,6 +14,7 @@ import {
   useConfirmacao
 } from '../../../components/padrao';
 import StatusBadge from '../../../components/StatusBadge';
+import OverlayModal from '../../../components/ui/OverlayModal';
 import { getObras } from '../../../services/obras';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
@@ -24,10 +25,24 @@ import {
   importarApropriacoesXlsx,
   listarApropriacoes,
   obterConfiguracaoMacrosApropriacao,
+  previsualizarImportacaoApropriacoesXlsx,
   salvarConfiguracaoMacrosApropriacao
 } from '../../../services/apropriacoes';
 
-const OBRAS_COM_CONFIGURACAO_MACRO = new Set(['109', '110']);
+const NIVEIS_APROPRIACAO = [
+  { valor: 'ETAPA', rotulo: 'Etapa', detalhe: 'Visão mais resumida da planilha.' },
+  { valor: 'SERVICO', rotulo: 'Serviço', detalhe: 'Nível intermediário de cada etapa.' },
+  { valor: 'SUBSERVICO', rotulo: 'Subserviço', detalhe: 'Itens mais detalhados de cada ramo.' },
+  { valor: 'PERSONALIZADO', rotulo: 'Personalizado', detalhe: 'Você marca exatamente o que aparecerá.' }
+];
+
+function idsDaOpcao(configuracao, nivel) {
+  return (configuracao?.opcoes || []).find((opcao) => opcao.nivel === nivel)?.apropriacao_ids || [];
+}
+
+function codigosDaOpcao(previa, nivel) {
+  return (previa?.opcoes || []).find((opcao) => opcao.nivel === nivel)?.apropriacao_codigos || [];
+}
 
 /*
   A linha ORIGINAL viaja junto do registro normalizado: quando a gravação de
@@ -73,6 +88,11 @@ export default function GestaoApropriacoes() {
   const [carregandoMacros, setCarregandoMacros] = useState(false);
   const [salvandoMacros, setSalvandoMacros] = useState(false);
   const [macrosSelecionadas, setMacrosSelecionadas] = useState(() => new Set());
+  const [nivelConfiguracao, setNivelConfiguracao] = useState('');
+  const [analisandoXlsx, setAnalisandoXlsx] = useState(false);
+  const [previaXlsx, setPreviaXlsx] = useState(null);
+  const [nivelImportacao, setNivelImportacao] = useState('');
+  const [codigosImportacao, setCodigosImportacao] = useState(() => new Set());
   // O relatório da importação de Excel ficava num `alert` multilinha: sem
   // cópia, sem histórico, some ao clicar em OK. Agora ele é um BLOCO da tela.
   const [resultadoXlsx, setResultadoXlsx] = useState(null);
@@ -98,7 +118,7 @@ export default function GestaoApropriacoes() {
     () => obras.find((obra) => String(obra.id) === String(obraSelecionada)) || null,
     [obras, obraSelecionada]
   );
-  const podeConfigurarMacros = OBRAS_COM_CONFIGURACAO_MACRO.has(String(obraAtual?.codigo || '').trim());
+  const podeConfigurarMacros = Boolean(obraAtual);
 
   useEffect(() => {
     (async () => {
@@ -132,16 +152,17 @@ export default function GestaoApropriacoes() {
   }
 
   async function carregarConfiguracaoMacros(obraId, abrir = false) {
-    const obra = obras.find((item) => String(item.id) === String(obraId));
-    if (!OBRAS_COM_CONFIGURACAO_MACRO.has(String(obra?.codigo || '').trim())) return;
+    if (!obraId) return;
 
     try {
       setCarregandoMacros(true);
       const data = await obterConfiguracaoMacrosApropriacao(obraId);
       const atuais = Array.isArray(data?.apropriacao_ids) ? data.apropriacao_ids : [];
-      const sugeridas = Array.isArray(data?.sugestao_ids) ? data.sugestao_ids : [];
+      const nivel = data?.nivel_apropriacao_formulario || 'ETAPA';
+      const selecionadas = nivel === 'PERSONALIZADO' ? atuais : idsDaOpcao(data, nivel);
       setConfiguracaoMacros(data);
-      setMacrosSelecionadas(new Set((data?.configurada ? atuais : sugeridas).map(Number)));
+      setNivelConfiguracao(nivel);
+      setMacrosSelecionadas(new Set(selecionadas.map(Number)));
       if (abrir) setExibirConfiguracaoMacros(true);
     } catch (error) {
       console.error(error);
@@ -152,6 +173,7 @@ export default function GestaoApropriacoes() {
   }
 
   function alternarMacro(id) {
+    setNivelConfiguracao('PERSONALIZADO');
     setMacrosSelecionadas((atual) => {
       const proximo = new Set(atual);
       const numero = Number(id);
@@ -162,6 +184,7 @@ export default function GestaoApropriacoes() {
   }
 
   function alternarMacrosVisiveis(marcar, idsVisiveis) {
+    setNivelConfiguracao('PERSONALIZADO');
     setMacrosSelecionadas((atual) => {
       const proximo = new Set(atual);
       idsVisiveis.forEach((id) => (marcar ? proximo.add(Number(id)) : proximo.delete(Number(id))));
@@ -169,17 +192,31 @@ export default function GestaoApropriacoes() {
     });
   }
 
+  function alterarNivelConfiguracao(nivel) {
+    setNivelConfiguracao(nivel);
+    if (nivel !== 'PERSONALIZADO') {
+      setMacrosSelecionadas(new Set(idsDaOpcao(configuracaoMacros, nivel).map(Number)));
+    }
+  }
+
   async function salvarMacros() {
     const ids = [...macrosSelecionadas];
-    if (!ids.length) {
-      avisar.alerta('Selecione ao menos uma etapa macro.');
+    if (!nivelConfiguracao) {
+      avisar.alerta('Selecione o nivel de apropriacao dos formularios.');
+      return;
+    }
+    if (nivelConfiguracao === 'PERSONALIZADO' && !ids.length) {
+      avisar.alerta('Selecione ao menos uma apropriacao.');
       return;
     }
 
     try {
       setSalvandoMacros(true);
-      await salvarConfiguracaoMacrosApropriacao(obraSelecionada, ids);
-      avisar.sucesso(`${ids.length} etapa(s) macro confirmada(s) para os formularios.`);
+      const resultado = await salvarConfiguracaoMacrosApropriacao(obraSelecionada, {
+        nivel: nivelConfiguracao,
+        apropriacaoIds: nivelConfiguracao === 'PERSONALIZADO' ? ids : []
+      });
+      avisar.sucesso(`${resultado?.total || ids.length} apropriacao(oes) confirmada(s) para os formularios.`);
       await Promise.all([
         carregarConfiguracaoMacros(obraSelecionada, false),
         carregarApropriacoes(obraSelecionada)
@@ -196,7 +233,11 @@ export default function GestaoApropriacoes() {
     setSelecionados(new Set());
     setConfiguracaoMacros(null);
     setMacrosSelecionadas(new Set());
+    setNivelConfiguracao('');
     setExibirConfiguracaoMacros(false);
+    setPreviaXlsx(null);
+    setNivelImportacao('');
+    setCodigosImportacao(new Set());
     carregarApropriacoes();
     if (obraSelecionada) carregarConfiguracaoMacros(obraSelecionada, false);
   }, [obraSelecionada]);
@@ -212,6 +253,16 @@ export default function GestaoApropriacoes() {
     () => (Array.isArray(resultadoXlsx?.erros) ? resultadoXlsx.erros : []),
     [resultadoXlsx]
   );
+  const itensPreviaXlsx = useMemo(() => {
+    const itens = Array.isArray(previaXlsx?.itens) ? previaXlsx.itens : [];
+    if (nivelImportacao === 'PERSONALIZADO') return itens;
+    return itens.filter((item) => codigosImportacao.has(String(item.codigo)));
+  }, [previaXlsx, nivelImportacao, codigosImportacao]);
+  const itensConfiguracao = useMemo(() => {
+    const itens = Array.isArray(configuracaoMacros?.candidatas) ? configuracaoMacros.candidatas : [];
+    if (nivelConfiguracao === 'PERSONALIZADO') return itens;
+    return itens.filter((item) => macrosSelecionadas.has(Number(item.id)));
+  }, [configuracaoMacros, nivelConfiguracao, macrosSelecionadas]);
 
   function limparFormulario() {
     setEditandoId(null);
@@ -452,21 +503,91 @@ export default function GestaoApropriacoes() {
     avisos e o relatório INTEIRO (todos os erros, com o número da linha) fica
     num bloco da tela, até a próxima importação.
   */
-  async function importarExcel() {
+  async function revisarImportacaoExcel() {
     const arquivo = arquivoXlsx;
-    const obraAlvo = obraSelecionada || null;
 
     if (!arquivo) {
       avisar.alerta('Selecione um arquivo Excel para importar.');
       return;
     }
+    if (!obraSelecionada) {
+      avisar.alerta('Selecione a obra antes de analisar a planilha.');
+      return;
+    }
 
     try {
+      setAnalisandoXlsx(true);
+      const previa = await previsualizarImportacaoApropriacoesXlsx(arquivo, obraSelecionada);
+      const nivelInicial = previa?.nivel_atual || 'ETAPA';
+      const codigosAtuais = nivelInicial === 'PERSONALIZADO'
+        ? (previa?.itens || []).filter((item) => item.macro_formulario).map((item) => item.codigo)
+        : codigosDaOpcao(previa, nivelInicial);
+      setPreviaXlsx(previa);
+      setNivelImportacao(nivelInicial);
+      setCodigosImportacao(new Set(codigosAtuais.map(String)));
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao analisar arquivo Excel');
+    } finally {
+      setAnalisandoXlsx(false);
+    }
+  }
+
+  function alterarNivelImportacao(nivel) {
+    setNivelImportacao(nivel);
+    if (nivel !== 'PERSONALIZADO') {
+      setCodigosImportacao(new Set(codigosDaOpcao(previaXlsx, nivel).map(String)));
+      return;
+    }
+    setCodigosImportacao((atual) => {
+      if (atual.size) return atual;
+      return new Set(codigosDaOpcao(previaXlsx, 'ETAPA').map(String));
+    });
+  }
+
+  function alternarCodigoImportacao(codigo) {
+    setNivelImportacao('PERSONALIZADO');
+    setCodigosImportacao((atual) => {
+      const proximo = new Set(atual);
+      const chave = String(codigo);
+      if (proximo.has(chave)) proximo.delete(chave);
+      else proximo.add(chave);
+      return proximo;
+    });
+  }
+
+  function alternarCodigosImportacaoVisiveis(marcar, codigosVisiveis) {
+    setNivelImportacao('PERSONALIZADO');
+    setCodigosImportacao((atual) => {
+      const proximo = new Set(atual);
+      codigosVisiveis.forEach((codigo) => (
+        marcar ? proximo.add(String(codigo)) : proximo.delete(String(codigo))
+      ));
+      return proximo;
+    });
+  }
+
+  async function importarExcel() {
+    if (!arquivoXlsx || !obraSelecionada || !nivelImportacao) return;
+    if (nivelImportacao === 'PERSONALIZADO' && !codigosImportacao.size) {
+      avisar.alerta('Marque ao menos uma apropriacao para os formularios.');
+      return;
+    }
+
+    const arquivo = arquivoXlsx;
+    try {
       setImportandoXlsx(true);
-      const resultado = await importarApropriacoesXlsx(arquivo, obraAlvo);
+      const resultado = await importarApropriacoesXlsx(arquivo, obraSelecionada, {
+        nivel: nivelImportacao,
+        apropriacaoCodigos: nivelImportacao === 'PERSONALIZADO' ? [...codigosImportacao] : []
+      });
       setArquivoXlsx(null);
+      setPreviaXlsx(null);
       setResultadoXlsx({ ...resultado, arquivo: arquivo.name });
-      await carregarApropriacoes();
+      await Promise.all([
+        carregarApropriacoes(),
+        carregarConfiguracaoMacros(obraSelecionada, false)
+      ]);
 
       const erros = Array.isArray(resultado?.erros) ? resultado.erros : [];
       const importadas = resultado?.importados || 0;
@@ -548,7 +669,6 @@ export default function GestaoApropriacoes() {
     }
   ];
 
-  const sugestoesMacro = new Set((configuracaoMacros?.sugestao_ids || []).map(Number));
   const colunasMacros = [
     {
       id: 'codigo',
@@ -564,18 +684,54 @@ export default function GestaoApropriacoes() {
       render: (item) => item.descricao || '-'
     },
     {
-      id: 'pai',
-      titulo: 'Etapa superior',
+      id: 'nivel',
+      titulo: 'Nivel',
       tipo: 'codigo',
-      render: (item) => item.apropriacao_pai?.codigo || 'Raiz'
+      render: (item) => item.nivel_hierarquia || 1
     },
     {
-      id: 'sugestao',
-      titulo: 'Detecção',
+      id: 'origem',
+      titulo: 'Tipo',
       tipo: 'badge',
-      render: (item) => sugestoesMacro.has(Number(item.id))
-        ? <StatusBadge status="Sugerida" kind="info" />
-        : <StatusBadge status="Estrutural" kind="neutral" />
+      render: (item) => (
+        <StatusBadge
+          status={item.somadora ? 'Somadora' : 'Analitica'}
+          kind={item.somadora ? 'warning' : 'neutral'}
+        />
+      )
+    }
+  ];
+
+  const colunasPrevia = [
+    {
+      id: 'codigo',
+      titulo: 'Codigo',
+      tipo: 'codigo',
+      render: (item) => item.codigo
+    },
+    {
+      id: 'descricao',
+      titulo: 'Apropriacao',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (item) => item.descricao || '-'
+    },
+    {
+      id: 'nivel',
+      titulo: 'Nivel',
+      tipo: 'numero',
+      render: (item) => item.nivel_hierarquia || 1
+    },
+    {
+      id: 'origem',
+      titulo: 'Na importacao',
+      tipo: 'badge',
+      render: (item) => (
+        <StatusBadge
+          status={item.origem_previa === 'NOVA' ? 'Nova' : item.origem_previa === 'ATUALIZADA' ? 'Atualizada' : 'Cadastrada'}
+          kind={item.origem_previa === 'NOVA' ? 'success' : item.origem_previa === 'ATUALIZADA' ? 'info' : 'neutral'}
+        />
+      )
     }
   ];
 
@@ -633,13 +789,13 @@ export default function GestaoApropriacoes() {
 
       {podeConfigurarMacros ? (
         <BlocoConteudo
-          titulo="Etapas macro dos formulários"
+          titulo="Nível de apropriação dos formulários"
           descricao={configuracaoMacros?.configurada
-            ? 'Configuração ativa. Novos lançamentos fora de Custos e Recebíveis usam somente as etapas confirmadas.'
-            : 'Revise a sugestão automática antes de limitar os formulários às etapas macro.'}
+            ? 'Configuração ativa. Custos e Recebíveis mantém sua estrutura própria e não é alterado por esta escolha.'
+            : 'Escolha o detalhamento que aparecerá nas solicitações, compras e demais formulários operacionais.'}
           variante="secundario"
           contagem={configuracaoMacros?.configurada
-            ? `${configuracaoMacros.apropriacao_ids?.length || 0} configurada(s)`
+            ? `${configuracaoMacros.apropriacao_ids?.length || 0} exibida(s)`
             : 'Confirmação pendente'}
           acoes={(
             <button
@@ -654,47 +810,57 @@ export default function GestaoApropriacoes() {
             >
               {carregandoMacros
                 ? 'Carregando...'
-                : exibirConfiguracaoMacros
+                  : exibirConfiguracaoMacros
                   ? 'Recolher configuração'
                   : configuracaoMacros?.configurada
-                    ? 'Editar etapas macro'
-                    : 'Revisar etapas macro'}
+                    ? 'Editar nível'
+                    : 'Definir nível'}
             </button>
           )}
         >
           {exibirConfiguracaoMacros ? (
             <div className="space-y-3">
-              <div className="app-actionbar">
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={() => setMacrosSelecionadas(new Set((configuracaoMacros?.sugestao_ids || []).map(Number)))}
+              <FormSecao colunas={2}>
+                <CampoForm
+                  label="Nível exibido nos formulários"
+                  hint={NIVEIS_APROPRIACAO.find((item) => item.valor === nivelConfiguracao)?.detalhe}
                 >
-                  Restaurar sugestão
-                </button>
+                  <select
+                    className="input w-full"
+                    value={nivelConfiguracao}
+                    onChange={(event) => alterarNivelConfiguracao(event.target.value)}
+                  >
+                    {NIVEIS_APROPRIACAO.map((item) => (
+                      <option key={item.valor} value={item.valor}>{item.rotulo}</option>
+                    ))}
+                  </select>
+                </CampoForm>
+              </FormSecao>
+
+              <div className="app-actionbar">
                 <button
                   type="button"
                   className="btn btn-primary btn-sm"
                   onClick={salvarMacros}
-                  disabled={salvandoMacros || !macrosSelecionadas.size}
+                  disabled={salvandoMacros || !nivelConfiguracao || (nivelConfiguracao === 'PERSONALIZADO' && !macrosSelecionadas.size)}
                 >
-                  {salvandoMacros ? 'Salvando...' : `Confirmar ${macrosSelecionadas.size} etapa(s)`}
+                  {salvandoMacros ? 'Salvando...' : `Confirmar ${macrosSelecionadas.size} apropriacao(oes)`}
                 </button>
               </div>
 
               <TabelaPadrao
                 colunas={colunasMacros}
-                itens={configuracaoMacros?.candidatas || []}
+                itens={itensConfiguracao}
                 carregando={carregandoMacros}
                 getId={(item) => Number(item.id)}
                 storageKey="tabela:gestao-apropriacoes-macros"
-                rotuloRolagem="Etapas macro candidatas"
-                selecao={{
+                rotuloRolagem="Apropriacoes exibidas nos formularios"
+                selecao={nivelConfiguracao === 'PERSONALIZADO' ? {
                   selecionados: macrosSelecionadas,
                   aoAlternar: (id) => alternarMacro(id),
                   aoAlternarTodos: alternarMacrosVisiveis
-                }}
-                vazio="Nenhuma etapa candidata foi identificada nesta obra."
+                } : undefined}
+                vazio="Nenhuma apropriacao foi identificada neste nivel."
               />
             </div>
           ) : null}
@@ -789,9 +955,10 @@ export default function GestaoApropriacoes() {
           <CampoForm
             label="Arquivo"
             span={2}
-            hint="Se uma obra estiver selecionada, ela sera usada para todas as linhas. Sem obra selecionada, preencha a coluna codigo_obra no arquivo."
+            hint="Selecione a obra para analisar o arquivo, revisar o nivel de apropriacao e confirmar o que aparecera nos formularios."
           >
             <input
+              key={arquivoXlsx ? `${arquivoXlsx.name}-${arquivoXlsx.size}` : 'sem-arquivo'}
               className="input w-full"
               type="file"
               accept=".xlsx,.xls"
@@ -801,8 +968,8 @@ export default function GestaoApropriacoes() {
 
           <div className="form-campo--linha">
             <div className="app-actionbar">
-              <button type="button" className="btn btn-primary" onClick={importarExcel} disabled={importandoXlsx}>
-                {importandoXlsx ? 'Importando...' : 'Importar Excel'}
+              <button type="button" className="btn btn-primary" onClick={revisarImportacaoExcel} disabled={analisandoXlsx || importandoXlsx}>
+                {analisandoXlsx ? 'Analisando...' : 'Revisar e importar Excel'}
               </button>
             </div>
           </div>
@@ -929,6 +1096,112 @@ export default function GestaoApropriacoes() {
           />
         )}
       </BlocoConteudo>
+
+      <OverlayModal
+        aberto={Boolean(previaXlsx)}
+        rotulo="Revisar importacao de apropriacoes"
+        largura="1040px"
+        onFechar={importandoXlsx ? undefined : () => setPreviaXlsx(null)}
+        fecharComEscape={!importandoXlsx}
+      >
+        <div data-modal="cabecalho" className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--c-border)] px-4 py-3">
+          <div>
+            <h2 className="text-base font-semibold" style={{ color: 'var(--c-text)' }}>
+              Revisar importação da obra {previaXlsx?.obra?.codigo || ''}
+            </h2>
+            <p className="text-sm" style={{ color: 'var(--c-text-muted)' }}>
+              {arquivoXlsx?.name || 'Planilha selecionada'} · nenhuma alteração foi gravada ainda.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="modal-close-btn"
+            onClick={() => setPreviaXlsx(null)}
+            disabled={importandoXlsx}
+            aria-label="Fechar"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="space-y-4 p-4">
+          <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface-muted)] p-3">
+            <p className="text-sm font-semibold" style={{ color: 'var(--c-text)' }}>
+              Configuração atual: {NIVEIS_APROPRIACAO.find((item) => item.valor === previaXlsx?.nivel_atual)?.rotulo || 'Ainda não definida'}
+            </p>
+            <p className="mt-1 text-xs" style={{ color: 'var(--c-text-muted)' }}>
+              Você pode trocar o nível agora. Ao confirmar, a planilha e esta configuração serão salvas juntas.
+            </p>
+          </div>
+
+          <FormSecao colunas={2}>
+            <CampoForm
+              label="Nível que aparecerá nos formulários"
+              obrigatorio
+              hint={NIVEIS_APROPRIACAO.find((item) => item.valor === nivelImportacao)?.detalhe}
+            >
+              <select
+                className="input w-full"
+                value={nivelImportacao}
+                onChange={(event) => alterarNivelImportacao(event.target.value)}
+              >
+                {NIVEIS_APROPRIACAO.map((item) => (
+                  <option key={item.valor} value={item.valor}>{item.rotulo}</option>
+                ))}
+              </select>
+            </CampoForm>
+          </FormSecao>
+
+          <StatGrid colunas={3}>
+            <StatTile label="Linhas identificadas no arquivo" valor={previaXlsx?.total_arquivo || 0} />
+            <StatTile label="Apropriações após a importação" valor={previaXlsx?.total_resultante || 0} />
+            <StatTile label="Exibidas nos formulários" valor={codigosImportacao.size} />
+          </StatGrid>
+
+          {nivelImportacao === 'PERSONALIZADO' ? (
+            <p className="text-sm" style={{ color: 'var(--c-text-muted)' }}>
+              Marque abaixo as apropriações que devem ficar disponíveis nos formulários operacionais.
+            </p>
+          ) : (
+            <p className="text-sm" style={{ color: 'var(--c-text-muted)' }}>
+              Prévia das apropriações que serão exibidas com o nível selecionado.
+            </p>
+          )}
+
+          <TabelaPadrao
+            colunas={colunasPrevia}
+            itens={itensPreviaXlsx}
+            getId={(item) => String(item.codigo)}
+            storageKey="tabela:gestao-apropriacoes-previa-importacao"
+            rotuloRolagem="Previa da importacao de apropriacoes"
+            selecao={nivelImportacao === 'PERSONALIZADO' ? {
+              selecionados: codigosImportacao,
+              aoAlternar: alternarCodigoImportacao,
+              aoAlternarTodos: alternarCodigosImportacaoVisiveis
+            } : undefined}
+            vazio="Nenhuma apropriacao foi identificada para este nivel."
+          />
+        </div>
+
+        <div data-modal="rodape" className="app-actionbar justify-end border-t border-[var(--c-border)] px-4 py-3">
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => setPreviaXlsx(null)}
+            disabled={importandoXlsx}
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={importarExcel}
+            disabled={importandoXlsx || !nivelImportacao || !codigosImportacao.size}
+          >
+            {importandoXlsx ? 'Importando...' : `Importar e aplicar ${codigosImportacao.size} apropriacao(oes)`}
+          </button>
+        </div>
+      </OverlayModal>
 
       {elementoConfirmacao}
     </Pagina>

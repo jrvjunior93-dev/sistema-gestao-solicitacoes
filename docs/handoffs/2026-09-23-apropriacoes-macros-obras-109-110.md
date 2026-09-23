@@ -1,50 +1,51 @@
-# Handoff — etapas macro das obras 109 e 110
+# Handoff — nível de apropriação por obra e revisão da importação
 
 ## Escopo concluído
 
-- A configuração de etapas macro foi limitada às obras de código `109` e `110`.
-- A importação da Gestão de Apropriações passou a reconhecer diretamente as duas planilhas orçamentárias originais, preservar sua ordem e atualizar registros existentes pelo código, sem apagar vínculos históricos.
-- A tela sugere as etapas macro e exige confirmação do usuário antes de usá-las nos formulários operacionais.
-- Após a confirmação, os formulários fora de Custos e Recebíveis listam apenas as macros selecionadas para essas obras.
-- Obras diferentes de 109 e 110 mantêm a seleção analítica existente.
-- Nenhum arquivo do módulo Custos e Recebíveis foi alterado.
-
-## Dados verificados nas planilhas originais
-
-- Obra 109 — `BPM- ORÇAMENTO.xlsx`: 813 linhas importáveis e soma das folhas de R$ 5.490.000,00.
-- Obra 110 — `02_Planilha_Orcamentaria_Readequada_CEET_Talmo.xlsx`: 677 linhas importáveis e soma das folhas de R$ 27.000.000,00.
+- A regra antes restrita às obras 109 e 110 foi generalizada para todas as obras.
+- Cada obra pode usar `ETAPA`, `SERVICO`, `SUBSERVICO` ou `PERSONALIZADO` nos formulários operacionais.
+- O cadastro da obra passou a exigir a escolha entre Etapa, Serviço e Subserviço; o modo Personalizado é administrado na Gestão de Apropriações.
+- A importação Excel agora possui uma etapa de pré-visualização sem gravação.
+- O modal mostra a configuração atual, permite trocar o nível, recalcula a lista exibida e permite marcar linhas no modo Personalizado.
+- A importação e a atualização da configuração são confirmadas na mesma transação.
+- Inclusões, alterações e remoções manuais ressincronizam automaticamente níveis padronizados.
+- Custos e Recebíveis mantém suas tabelas e regras próprias; nenhum arquivo desse módulo foi alterado.
 
 ## Persistência e segurança
 
-- Migration: `backend/migrations/202609230001_apropriacoes_macros_formularios.js`.
-- Novos campos em `apropriacoes`: `macro_formulario` e `ordem_planilha`.
-- A confirmação é transacional, restrita por permissão da Gestão de Apropriações e registrada na trilha de segurança.
-- A reimportação é idempotente para códigos ativos: atualiza o registro atual em vez de criar duplicidade.
-- Registros já vinculados permanecem com os mesmos IDs; não há exclusão nem substituição em massa.
+- Migration anterior: `backend/migrations/202609230001_apropriacoes_macros_formularios.js`.
+- Nova migration: `backend/migrations/202609230002_obras_nivel_apropriacao_formulario.js`.
+- Novo campo em `obras`: `nivel_apropriacao_formulario`.
+- A migration preserva configurações manuais existentes como `PERSONALIZADO`.
+- A lista efetiva continua materializada em `apropriacoes.macro_formulario`, mantendo o comportamento dos consumidores atuais.
+- A confirmação continua protegida pelas permissões existentes e gera evento de segurança.
+- A reimportação atualiza códigos ativos, preservando IDs e vínculos históricos.
+
+## Planilhas reais verificadas
+
+- Obra 109 — `BPM- ORÇAMENTO.xlsx`: 813 linhas reconhecidas.
+- Obra 110 — `02_Planilha_Orcamentaria_Readequada_CEET_Talmo.xlsx`: 677 linhas reconhecidas.
 
 ## Validações executadas
 
-- Leitura real das duas planilhas anexadas, com contagem, primeiro/último item e soma das folhas.
-- `npm run test:importacao-apropriacoes`
-- `npm run test:obra-gestao-apropriacoes`
-- `npm run test:obra-apropriacoes-padrao`
-- `npm run test:compra-importacao-itens`
-- `npm run test:solicitacao-pix-apropriacoes`
-- `node scripts/validarApropriacoesMacrosFormulario.js`
-- `npm run test:apropriacao-compra`
-- `npm run build` no frontend.
+- `node --check` nos controladores, serviço, rotas e migration alterados.
+- `node backend/scripts/validarApropriacoesMacrosFormulario.js`.
+- `npm run test:importacao-apropriacoes`.
+- `npm run test:obra-apropriacoes-padrao`.
+- Leitura real das duas planilhas originais pelo mesmo parser do backend.
+- `npm run build` e `npx vite build` no frontend.
+- `git diff --check`.
 
 ## Sequência operacional após deploy
 
-1. Aplicar a migration autorizada.
-2. Na Gestão de Apropriações, selecionar a obra 109 e reimportar `BPM- ORÇAMENTO.xlsx` para completar os níveis e gravar a ordem original.
-3. Revisar a sugestão de etapas macro da obra 109 e confirmar.
-4. Selecionar a obra 110 e reimportar `02_Planilha_Orcamentaria_Readequada_CEET_Talmo.xlsx` para gravar a ordem original.
-5. Revisar a sugestão de etapas macro da obra 110 e confirmar.
-6. Conferir uma Nova Solicitação, uma Solicitação de Compra e um título financeiro em cada obra.
+1. Aplicar as migrations autorizadas, incluindo `202609230002_obras_nivel_apropriacao_formulario.js`.
+2. Reiniciar apenas o backend do ambiente correspondente.
+3. Na Gestão de Apropriações, selecionar a obra e escolher o arquivo Excel.
+4. Revisar no modal o nível e a lista resultante; usar Personalizado quando precisar marcar itens individualmente.
+5. Confirmar a importação e validar a lista em um formulário operacional.
 
 ## Riscos e observações
 
 - A migration precisa ser aplicada antes de iniciar o backend com este código.
-- A implementação local não altera banco externo, EC2, Custos e Recebíveis, nem executa as reimportações.
-- Há mudanças pendentes de outras tarefas no mesmo worktree; um commit futuro deve separar os trechos deste escopo cuidadosamente.
+- Nenhum banco externo, EC2 ou reimportação foi alterado nesta sessão.
+- O worktree contém mudanças de outras tarefas; um commit futuro deve selecionar apenas os arquivos deste escopo.

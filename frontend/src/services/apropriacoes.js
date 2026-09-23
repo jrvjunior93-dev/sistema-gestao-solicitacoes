@@ -31,13 +31,20 @@ export async function obterConfiguracaoMacrosApropriacao(obraId) {
   return handleJsonResponse(response, 'Erro ao carregar etapas macro');
 }
 
-export async function salvarConfiguracaoMacrosApropriacao(obraId, apropriacaoIds) {
+export async function salvarConfiguracaoMacrosApropriacao(
+  obraId,
+  { nivel, apropriacaoIds = [] }
+) {
   const response = await fetch(`${API_URL}/apropriacoes/macros-configuracao`, {
     method: 'PATCH',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ obra_id: Number(obraId), apropriacao_ids: apropriacaoIds })
+    body: JSON.stringify({
+      obra_id: Number(obraId),
+      nivel_apropriacao_formulario: nivel,
+      apropriacao_ids: apropriacaoIds
+    })
   });
-  return handleJsonResponse(response, 'Erro ao salvar etapas macro');
+  return handleJsonResponse(response, 'Erro ao salvar nivel de apropriacao');
 }
 
 export async function baixarModeloApropriacoes() {
@@ -64,11 +71,30 @@ export async function baixarModeloApropriacoes() {
   window.URL.revokeObjectURL(url);
 }
 
-export async function importarApropriacoesXlsx(file, obraId) {
+export async function previsualizarImportacaoApropriacoesXlsx(file, obraId) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('obra_id', obraId);
+
+  const response = await fetch(`${API_URL}/apropriacoes/importar-xlsx/preview`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData
+  });
+  return handleJsonResponse(response, 'Erro ao analisar a importacao de apropriacoes');
+}
+
+export async function importarApropriacoesXlsx(file, obraId, configuracao = {}) {
   const formData = new FormData();
   formData.append('file', file);
   if (obraId) {
     formData.append('obra_id', obraId);
+  }
+  if (configuracao.nivel) {
+    formData.append('nivel_apropriacao_formulario', configuracao.nivel);
+  }
+  if (Array.isArray(configuracao.apropriacaoCodigos)) {
+    formData.append('apropriacao_codigos', JSON.stringify(configuracao.apropriacaoCodigos));
   }
 
   const response = await fetch(`${API_URL}/apropriacoes/importar-xlsx`, {

@@ -7,6 +7,10 @@ const {
 const { canAccessFinanceiro } = require('../services/authorizationService');
 const { garantirApropriacoesPadraoNovaObra } = require('../services/obraTipoApropriacaoPadraoService');
 const {
+  normalizarNivelApropriacaoFormulario,
+  sincronizarNivelApropriacaoFormulario
+} = require('../services/apropriacaoSelecaoService');
+const {
   TIPO_CENTRO_CUSTO_OBRA,
   TIPOS_CENTRO_CUSTO,
   normalizeTipoCentroCusto
@@ -244,6 +248,7 @@ module.exports = {
       vgv,
       planilha_geral,
       margem_custo_esperada,
+      nivel_apropriacao_formulario,
       tipo_centro_custo,
       empresa_grupo_id,
       cno,
@@ -266,6 +271,15 @@ module.exports = {
     const tipoCentroCustoNorm = normalizeTipoCentroCusto(tipo_centro_custo);
     if (tipo_centro_custo && !TIPOS_CENTRO_CUSTO.includes(String(tipo_centro_custo).trim().toUpperCase())) {
       return res.status(400).json({ error: 'Tipo de centro de custo inválido. Use OBRA ou CENTRO_CUSTO' });
+    }
+    const nivelApropriacao = tipoCentroCustoNorm === TIPO_CENTRO_CUSTO_OBRA
+      ? normalizarNivelApropriacaoFormulario(nivel_apropriacao_formulario, null)
+      : null;
+    if (tipoCentroCustoNorm === TIPO_CENTRO_CUSTO_OBRA
+      && !['ETAPA', 'SERVICO', 'SUBSERVICO'].includes(nivelApropriacao)) {
+      return res.status(400).json({
+        error: 'Selecione se os formularios da obra usarao Etapa, Servico ou Subservico.'
+      });
     }
 
     const existente = await Obra.findOne({
@@ -300,7 +314,8 @@ module.exports = {
           classificacao: classificacaoNorm,
           vgv: vgv != null ? Number(vgv) : null,
           planilha_geral: planilha_geral != null ? Number(planilha_geral) : null,
-          margem_custo_esperada: margem_custo_esperada != null ? Number(margem_custo_esperada) : null
+          margem_custo_esperada: margem_custo_esperada != null ? Number(margem_custo_esperada) : null,
+          nivel_apropriacao_formulario: nivelApropriacao
         }, { transaction });
 
         await garantirApropriacoesPadraoNovaObra({
@@ -308,6 +323,14 @@ module.exports = {
           usuarioId: req.user?.id || null,
           transaction
         });
+
+        if (tipoCentroCustoNorm === TIPO_CENTRO_CUSTO_OBRA) {
+          await sincronizarNivelApropriacaoFormulario({
+            obraId: criada.id,
+            nivel: nivelApropriacao,
+            transaction
+          });
+        }
 
         return criada;
       });
@@ -331,6 +354,7 @@ module.exports = {
       vgv,
       planilha_geral,
       margem_custo_esperada,
+      nivel_apropriacao_formulario,
       tipo_centro_custo,
       empresa_grupo_id,
       cno,
@@ -375,6 +399,14 @@ module.exports = {
     if (vgv !== undefined) dados.vgv = vgv != null ? Number(vgv) : null;
     if (planilha_geral !== undefined) dados.planilha_geral = planilha_geral != null ? Number(planilha_geral) : null;
     if (margem_custo_esperada !== undefined) dados.margem_custo_esperada = margem_custo_esperada != null ? Number(margem_custo_esperada) : null;
+    if (nivel_apropriacao_formulario !== undefined) {
+      const nivel = normalizarNivelApropriacaoFormulario(nivel_apropriacao_formulario, null);
+      const tipoDestino = dados.tipo_centro_custo || null;
+      if (!nivel && tipoDestino !== 'CENTRO_CUSTO') {
+        return res.status(400).json({ error: 'Nivel de apropriacao dos formularios invalido.' });
+      }
+      dados.nivel_apropriacao_formulario = nivel;
+    }
     if (empresa_grupo_id !== undefined) {
       try {
         await validarEmpresaGrupoOperacional(empresa_grupo_id);
@@ -400,10 +432,28 @@ module.exports = {
       }
     }
 
-    await Obra.update(
-      dados,
-      { where: { id } }
-    );
+    const obraAtual = await Obra.findByPk(id);
+    if (!obraAtual) {
+      return res.status(404).json({ error: 'Obra nao encontrada' });
+    }
+    const nivelMudou = dados.nivel_apropriacao_formulario
+      && dados.nivel_apropriacao_formulario !== obraAtual.nivel_apropriacao_formulario;
+    if (nivelMudou && dados.nivel_apropriacao_formulario === 'PERSONALIZADO') {
+      return res.status(400).json({
+        error: 'A configuracao personalizada deve ser feita na Gestao de Apropriacoes.'
+      });
+    }
+
+    await sequelize.transaction(async (transaction) => {
+      await obraAtual.update(dados, { transaction });
+      if (nivelMudou) {
+        await sincronizarNivelApropriacaoFormulario({
+          obraId: obraAtual.id,
+          nivel: dados.nivel_apropriacao_formulario,
+          transaction
+        });
+      }
+    });
 
     res.sendStatus(204);
   },

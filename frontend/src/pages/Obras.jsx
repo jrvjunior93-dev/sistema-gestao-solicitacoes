@@ -154,6 +154,7 @@ function initialFormState() {
     endereco_bairro: '',
     endereco_cep: '',
     endereco_uf: '',
+    nivel_apropriacao_formulario: '',
     classificacao: '',
     vgv: '',
     planilha_geral: '',
@@ -245,6 +246,7 @@ export default function Obras() {
       endereco_bairro: obra.endereco_bairro || '',
       endereco_cep: obra.endereco_cep || '',
       endereco_uf: obra.endereco_uf || '',
+      nivel_apropriacao_formulario: obra.nivel_apropriacao_formulario || '',
       classificacao: obra.classificacao || '',
       vgv: obra.vgv != null ? String(obra.vgv) : '',
       planilha_geral: obra.planilha_geral != null ? String(obra.planilha_geral) : '',
@@ -278,6 +280,9 @@ export default function Obras() {
         endereco_bairro: String(form.endereco_bairro || '').trim() || null,
         endereco_cep: String(form.endereco_cep || '').trim() || null,
         endereco_uf: String(form.endereco_uf || '').trim().toUpperCase() || null,
+        nivel_apropriacao_formulario: cadastroEhObra
+          ? String(form.nivel_apropriacao_formulario || '').trim().toUpperCase()
+          : null,
         classificacao: cadastroEhObra ? (form.classificacao || null) : null,
         vgv: cadastroEhObra && form.classificacao === 'PRIVADA' && form.vgv !== '' ? Number(form.vgv) : null,
         planilha_geral: cadastroEhObra && form.classificacao === 'PUBLICA' && form.planilha_geral !== '' ? Number(form.planilha_geral) : null,
@@ -286,6 +291,10 @@ export default function Obras() {
 
       if (!payload.codigo || !payload.nome) {
         avisar.alerta('Informe código e nome do cadastro.');
+        return;
+      }
+      if (cadastroEhObra && !payload.nivel_apropriacao_formulario) {
+        avisar.alerta('Selecione o nível de apropriação usado nos formulários da obra.');
         return;
       }
 
@@ -592,6 +601,9 @@ export default function Obras() {
                     ...current,
                     tipo_centro_custo: event.target.value,
                     classificacao: event.target.value === 'OBRA' ? current.classificacao : '',
+                    nivel_apropriacao_formulario: event.target.value === 'OBRA'
+                      ? current.nivel_apropriacao_formulario
+                      : '',
                     vgv: event.target.value === 'OBRA' ? current.vgv : '',
                     planilha_geral: event.target.value === 'OBRA' ? current.planilha_geral : '',
                     margem_custo_esperada: event.target.value === 'OBRA' ? current.margem_custo_esperada : ''
@@ -703,6 +715,30 @@ export default function Obras() {
 
               {form.tipo_centro_custo === 'OBRA' && (
               <>
+              <label className="grid gap-1 text-sm font-medium md:col-span-2" style={{ color: 'var(--c-text)' }}>
+                Nível de apropriação nos formulários
+                <select
+                  className="input"
+                  value={form.nivel_apropriacao_formulario}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    nivel_apropriacao_formulario: event.target.value
+                  }))}
+                  required
+                >
+                  <option value="">Selecione</option>
+                  <option value="ETAPA">Etapa — visão mais resumida</option>
+                  <option value="SERVICO">Serviço — nível intermediário</option>
+                  <option value="SUBSERVICO">Subserviço — itens mais detalhados</option>
+                  {form.nivel_apropriacao_formulario === 'PERSONALIZADO' ? (
+                    <option value="PERSONALIZADO">Personalizado — definido na Gestão de Apropriações</option>
+                  ) : null}
+                </select>
+                <span className="text-xs font-normal" style={{ color: 'var(--c-text-muted)' }}>
+                  Define quais apropriações desta obra aparecem em solicitações, compras e demais formulários operacionais.
+                </span>
+              </label>
+
               <label className="grid gap-1 text-sm font-medium" style={{ color: 'var(--c-text)' }}>
                 Classificação
                 <select

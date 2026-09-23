@@ -47,6 +47,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: null
     },
+    nivel_apropriacao_formulario: {
+      type: DataTypes.STRING(20),
+      allowNull: true,
+      defaultValue: null
+    },
     cno: {
       type: DataTypes.STRING(40),
       allowNull: true

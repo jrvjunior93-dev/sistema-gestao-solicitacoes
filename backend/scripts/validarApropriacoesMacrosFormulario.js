@@ -1,6 +1,9 @@
 const assert = require('assert');
 const {
   apropriacaoPodeReceberLancamento,
+  mapaNiveisHierarquia,
+  normalizarNivelApropriacaoFormulario,
+  selecionarApropriacoesPorNivel,
   selecionarApropriacoesOperacionais,
   selecionarApropriacoesOperacionaisPorObra,
   sugerirIdsMacros
@@ -25,6 +28,24 @@ const obra109 = [
 
 assert.deepStrictEqual(sugerirIdsMacros(obra110), [1, 4]);
 assert.deepStrictEqual(sugerirIdsMacros(obra109), [11, 12, 14, 16]);
+assert.strictEqual(normalizarNivelApropriacaoFormulario(' servico '), 'SERVICO');
+assert.strictEqual(normalizarNivelApropriacaoFormulario('invalido'), null);
+assert.deepStrictEqual(
+  [...mapaNiveisHierarquia(obra110).entries()],
+  [['1', 0], ['2', 1], ['3', 2], ['4', 0]]
+);
+assert.deepStrictEqual(
+  selecionarApropriacoesPorNivel(obra110, 'ETAPA').map((item) => item.id),
+  [1, 4]
+);
+assert.deepStrictEqual(
+  selecionarApropriacoesPorNivel(obra110, 'SERVICO').map((item) => item.id),
+  [2, 4]
+);
+assert.deepStrictEqual(
+  selecionarApropriacoesPorNivel(obra110, 'SUBSERVICO').map((item) => item.id),
+  [3, 4]
+);
 
 const obra110Configurada = obra110.map((item) => ({
   ...item,
