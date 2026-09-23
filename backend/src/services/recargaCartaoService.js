@@ -22,6 +22,7 @@ const {
 const { criarNotificacao } = require('./notificacoes');
 const { publishSolicitacaoRealtimeEvent } = require('./solicitacaoRealtimeService');
 const { findSetorByCapability, resolveSetorPersistenciaValue } = require('./setorCapabilityService');
+const { apropriacaoPodeReceberLancamento } = require('./apropriacaoSelecaoService');
 
 const STATUS_CICLO = {
   PENDENTE: 'PENDENTE',
@@ -692,10 +693,12 @@ async function salvarPrestacao(solicitacaoId, payload, user, externalTransaction
     for (const item of rateios) {
       if (!idsPermitidos.has(item.obra_id)) throw erro(403, 'Uma das obras informadas nao esta vinculada ao solicitante da recarga.');
       const apropriacao = await Apropriacao.findOne({
-        where: { id: item.apropriacao_id, obra_id: item.obra_id, ativo: true, somadora: false },
+        where: { id: item.apropriacao_id, obra_id: item.obra_id, ativo: true },
         transaction
       });
-      if (!apropriacao) throw erro(400, 'Uma das apropriacoes nao pertence a obra informada ou nao aceita lancamentos.');
+      if (!apropriacao || !apropriacaoPodeReceberLancamento(apropriacao)) {
+        throw erro(400, 'Uma das apropriacoes nao pertence a obra informada ou nao aceita lancamentos.');
+      }
     }
 
     const total = roundCurrency(rateios.reduce((acc, item) => acc + item.valor_rateio, 0));
@@ -849,11 +852,11 @@ async function editarRateiosPrestacaoGeo(solicitacaoId, payload, user, externalT
         throw erro(403, 'Uma das obras informadas nao esta vinculada ao solicitante da recarga.');
       }
       const apropriacao = await Apropriacao.findOne({
-        where: { id: item.apropriacao_id, obra_id: item.obra_id, ativo: true, somadora: false },
-        attributes: ['id'],
+        where: { id: item.apropriacao_id, obra_id: item.obra_id, ativo: true },
+        attributes: ['id', 'ativo', 'somadora', 'macro_formulario'],
         transaction
       });
-      if (!apropriacao) {
+      if (!apropriacao || !apropriacaoPodeReceberLancamento(apropriacao)) {
         throw erro(400, 'Uma das apropriacoes nao pertence a obra informada ou nao aceita lancamentos.');
       }
     }

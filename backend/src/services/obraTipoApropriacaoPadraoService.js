@@ -5,6 +5,7 @@ const {
   ObraTipoApropriacaoPadrao,
   TipoSolicitacao
 } = require('../models');
+const { apropriacaoPodeReceberLancamento } = require('./apropriacaoSelecaoService');
 
 const PADROES_APROPRIACAO_AUTOMATICA = Object.freeze([
   Object.freeze({
@@ -119,21 +120,20 @@ async function resolverApropriacaoPadrao({
     where: {
       id: vinculo.apropriacao_id,
       obra_id: obra.id,
-      ativo: true,
-      somadora: false
+      ativo: true
     },
-    attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora'],
+    attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario'],
     transaction
   });
 
-  if (!apropriacao) {
+  if (!apropriacao || !apropriacaoPodeReceberLancamento(apropriacao)) {
     if (!exigir) {
       return { aplicavel: true, tipo, obra, apropriacao: null, vinculo };
     }
     throw criarErroRegra(
       409,
       'APROPRIACAO_PADRAO_INVALIDA',
-      `A apropriacao padrao de ${tipo.nome} esta inativa, e somadora ou nao pertence a obra. Corrija o vinculo antes de criar a solicitacao.`
+      `A apropriacao padrao de ${tipo.nome} esta inativa, nao habilitada ou nao pertence a obra. Corrija o vinculo antes de criar a solicitacao.`
     );
   }
 
@@ -200,7 +200,7 @@ async function garantirApropriacoesPadraoNovaObra({ obra, usuarioId = null, tran
 
     const candidatas = await Apropriacao.findAll({
       where: { obra_id: obra.id, codigo: padrao.codigo, ativo: true },
-      attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora'],
+      attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario'],
       transaction,
       lock: transaction.LOCK.UPDATE
     });
@@ -216,7 +216,7 @@ async function garantirApropriacoesPadraoNovaObra({ obra, usuarioId = null, tran
     let apropriacao = candidatas[0] || null;
     if (apropriacao) {
       const descricaoAtual = String(apropriacao.descricao || '').trim().toUpperCase();
-      if (apropriacao.somadora === true || descricaoAtual !== padrao.descricao.toUpperCase()) {
+      if (!apropriacaoPodeReceberLancamento(apropriacao) || descricaoAtual !== padrao.descricao.toUpperCase()) {
         throw criarErroRegra(
           409,
           'CODIGO_APROPRIACAO_EM_USO',

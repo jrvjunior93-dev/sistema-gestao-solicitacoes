@@ -22,6 +22,7 @@ const { validarResponsavelVinculadoObra } = require('./contratoResponsavelServic
 const { resolverDestinoInicialNovaSolicitacao } = require('./novaSolicitacaoDestinoService');
 const { assertTipoDisponivelNoDestino } = require('./tipoSolicitacaoDisponibilidadeService');
 const gerarCodigoSolicitacao = require('./solicitacao/gerarCodigo');
+const { apropriacaoPodeReceberLancamento } = require('./apropriacaoSelecaoService');
 
 /**
  * Status da parcela enquanto o contrato aguarda aprovacao.
@@ -781,7 +782,7 @@ async function criarContrato(dados, { usuarioId } = {}) {
 
   const registrosApropriacao = await Apropriacao.findAll({
     where: { id: apropriacoes.map((a) => a.apropriacao_id), obra_id: obraId, ativo: true },
-    attributes: ['id', 'somadora']
+    attributes: ['id', 'ativo', 'somadora', 'macro_formulario']
   });
   if (registrosApropriacao.length !== apropriacoes.length) {
     throw Object.assign(
@@ -791,9 +792,9 @@ async function criarContrato(dados, { usuarioId } = {}) {
   }
   // Somadora e no de agrupamento, nao recebe lancamento: aceitar aqui criava contrato que
   // nunca aprovava (validacao diferida apontada em auditoria).
-  if (registrosApropriacao.some((a) => a.somadora)) {
+  if (registrosApropriacao.some((a) => !apropriacaoPodeReceberLancamento(a))) {
     throw Object.assign(
-      new Error('Apropriacao somadora (de agrupamento) nao pode receber lancamento.'),
+      new Error('Apropriacao nao habilitada para receber lancamento.'),
       { statusCode: 400 }
     );
   }
@@ -1347,7 +1348,7 @@ async function atualizarApropriacoesDoContrato(contratoId, { usuario, req, aprop
 
     const disponiveis = await Apropriacao.findAll({
       where: { id: [...repetidas], obra_id: contrato.obra_id },
-      attributes: ['id', 'codigo', 'descricao', 'ativo', 'somadora'],
+      attributes: ['id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario'],
       transaction
     });
     const mapa = new Map(disponiveis.map((item) => [Number(item.id), item]));
@@ -1364,9 +1365,9 @@ async function atualizarApropriacoesDoContrato(contratoId, { usuario, req, aprop
         throw Object.assign(new Error(`Apropriacao ${apropriacao.codigo} esta inativa.`), { statusCode: 400 });
       }
       // Somadora e no total, nao recebe lancamento — a mesma regra que a solicitacao aplica.
-      if (apropriacao.somadora === true) {
+      if (!apropriacaoPodeReceberLancamento(apropriacao)) {
         throw Object.assign(
-          new Error(`Apropriacao ${apropriacao.codigo} e somadora. Selecione apenas apropriacoes analiticas.`),
+          new Error(`Apropriacao ${apropriacao.codigo} nao esta habilitada para os formularios.`),
           { statusCode: 400 }
         );
       }

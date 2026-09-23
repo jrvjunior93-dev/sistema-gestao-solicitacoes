@@ -80,7 +80,7 @@ export default function PrestacaoRecargaCartao({ solicitacaoId, contexto, podeIn
           const lista = Array.isArray(dados) ? dados : dados?.items || dados?.rows || [];
           setApropriacoesPorObra((atual) => ({
             ...atual,
-            [obraId]: lista.filter((item) => item?.ativo !== false && item?.somadora !== true)
+            [obraId]: lista.filter((item) => item?.ativo !== false)
           }));
         })
         .catch(() => setApropriacoesPorObra((atual) => ({ ...atual, [obraId]: [] })));

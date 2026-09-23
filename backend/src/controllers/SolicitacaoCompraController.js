@@ -36,6 +36,7 @@ const { getPresignedUrl, uploadToS3 } = require('../services/s3');
 const gerarCodigoSolicitacao = require('../services/solicitacao/gerarCodigo');
 const { normalizeOriginalName } = require('../utils/fileName');
 const { registrarAtencaoSolicitacao } = require('../services/solicitacaoAtencaoService');
+const { apropriacaoPodeReceberLancamento } = require('../services/apropriacaoSelecaoService');
 const { findSetorByCapability, resolveSetorPersistenciaValue, userHasSetorCapability } = require('../services/setorCapabilityService');
 const { normalizeTipoSolicitacaoBehavior, normalizeTipoSolicitacaoCodigo } = require('../services/tipoSolicitacaoBehaviorService');
 const { assertTipoDisponivelNoDestino } = require('../services/tipoSolicitacaoDisponibilidadeService');
@@ -108,7 +109,7 @@ const PDF_PAGE = {
 };
 const PDF_OBSERVACOES_FIXAS =
   'Solicitacoes de insumos com informacoes incompletas, incorretas ou sem a devida clareza para viabilizar a compra nao serao processadas. Leia atentamente as orientacoes destacadas em vermelho nas celulas de preenchimento. Em caso de duvida, solicite apoio antes de enviar e nao encaminhe solicitacoes com erros ou omissoes, pois isso compromete o fluxo de trabalho dos demais setores da empresa. Lembre-se: os outros setores nao estao presentes na obra e dependem exclusivamente da precisao das informacoes fornecidas. Seja claro, objetivo e tecnicamente preciso no preenchimento.';
-const APROPRIACAO_ATTRIBUTES = ['id', 'codigo', 'descricao', 'obra_id', 'somadora'];
+const APROPRIACAO_ATTRIBUTES = ['id', 'codigo', 'descricao', 'obra_id', 'somadora', 'macro_formulario', 'ativo'];
 const COMPRA_DIRETA_IMPORT_MAX_ITEMS = 300;
 const COMPRA_DIRETA_IMPORT_HEADERS = [
   'Insumo',
@@ -967,9 +968,9 @@ function prepararItemCompraPayload({
         erro: `Item ${index + 1}: apropriacao invalida para a obra selecionada.`
       };
     }
-    if (apropriacao.somadora === true) {
+    if (!apropriacaoPodeReceberLancamento(apropriacao)) {
       return {
-        erro: `Item ${index + 1}: selecione uma apropriacao analitica. Apropriacoes somadoras nao podem receber lancamentos.`
+        erro: `Item ${index + 1}: selecione uma apropriacao habilitada para os formularios.`
       };
     }
   }
@@ -2492,7 +2493,7 @@ module.exports = {
         ['Unidade', 'Sigla ou nome da unidade cadastrada.'],
         ['Quantidade', 'Numero maior que zero. Aceita virgula ou ponto decimal.'],
         ['Valor unitario', 'Valor em moeda. O total sera calculado pelo sistema.'],
-        ['Apropriacao codigo', 'Opcional. Codigo da apropriacao analitica da obra selecionada.'],
+        ['Apropriacao codigo', 'Opcional. Codigo da apropriacao habilitada para formularios na obra selecionada.'],
         ['Limite', `A importacao aceita no maximo ${COMPRA_DIRETA_IMPORT_MAX_ITEMS} itens por arquivo.`]
       ];
 
@@ -2562,7 +2563,7 @@ module.exports = {
         unidade.id ? String(unidade.id) : ''
       ]);
       const apropriacoesMap = buildCompraDiretaImportMap(
-        apropriacoes.filter((apropriacao) => apropriacao.somadora !== true),
+        apropriacoes.filter(apropriacaoPodeReceberLancamento),
         (apropriacao) => [
           apropriacao.codigo,
           apropriacao.descricao,
@@ -3737,10 +3738,10 @@ module.exports = {
           await transaction.rollback();
           return res.status(400).json({ error: 'Uma ou mais apropriacoes selecionadas estao inativas.' });
         }
-        if (apropriacao.somadora === true) {
+        if (!apropriacaoPodeReceberLancamento(apropriacao)) {
           await transaction.rollback();
           return res.status(400).json({
-            error: 'Uma ou mais apropriacoes selecionadas sao somadoras. Selecione apenas apropriacoes analiticas.'
+            error: 'Uma ou mais apropriacoes selecionadas nao estao habilitadas para os formularios.'
           });
         }
       }

@@ -8,6 +8,10 @@ const {
 } = require('../models');
 const { getUserObraScopeIds } = require('../services/authorizationService');
 const {
+  apropriacaoPodeReceberLancamento,
+  selecionarApropriacoesOperacionais
+} = require('../services/apropriacaoSelecaoService');
+const {
   TIPOS_APROPRIACAO_AUTOMATICA,
   listarPadroesNovaObra,
   resolverApropriacaoPadrao,
@@ -120,7 +124,7 @@ module.exports = {
       if (!obraId) return res.status(400).json({ error: 'Obra invalida' });
 
       const busca = String(req.query.busca || '').trim();
-      const where = { obra_id: obraId, ativo: true, somadora: false };
+      const where = { obra_id: obraId, ativo: true };
 
       if (busca) {
         where[Op.or] = [
@@ -131,12 +135,11 @@ module.exports = {
 
       const apropriacoes = await Apropriacao.findAll({
         where,
-        attributes: ['id', 'codigo', 'descricao'],
-        order: [['codigo', 'ASC']],
-        limit: 200
+        attributes: ['id', 'obra_id', 'codigo', 'descricao', 'somadora', 'macro_formulario', 'ordem_planilha'],
+        order: [['ordem_planilha', 'ASC'], ['id', 'ASC']]
       });
 
-      return res.json({ apropriacoes });
+      return res.json({ apropriacoes: selecionarApropriacoesOperacionais(apropriacoes).slice(0, 200) });
     } catch (error) {
       console.error('Erro ao listar apropriacoes da obra', error);
       return res.status(500).json({ error: 'Erro ao listar apropriacoes da obra' });
@@ -254,13 +257,13 @@ module.exports = {
       // A apropriacao precisa pertencer a obra e estar ativa: vincular apropriacao
       // desativada faria a Nova Solicitacao preencher um valor que nao pode ser usado.
       const apropriacao = await Apropriacao.findOne({
-        where: { id: apropriacaoId, obra_id: obraId, ativo: true, somadora: false },
-        attributes: ['id', 'codigo', 'descricao', 'somadora']
+        where: { id: apropriacaoId, obra_id: obraId, ativo: true },
+        attributes: ['id', 'codigo', 'descricao', 'somadora', 'macro_formulario', 'ativo']
       });
 
-      if (!apropriacao) {
+      if (!apropriacao || !apropriacaoPodeReceberLancamento(apropriacao)) {
         return res.status(400).json({
-          error: 'Apropriacao nao encontrada, inativa, somadora ou nao pertence a obra informada'
+          error: 'Apropriacao nao encontrada, inativa, nao habilitada ou nao pertence a obra informada'
         });
       }
 

@@ -510,7 +510,7 @@ export default function SolicitacaoDetalhe() {
         if (!ativo) return;
         const lista = Array.isArray(dados) ? dados : dados?.items || dados?.rows || [];
         setApropriacoesCatalogo(
-          lista.filter((item) => item?.ativo !== false && item?.somadora !== true)
+          lista.filter((item) => item?.ativo !== false)
         );
       })
       .catch((error) => {

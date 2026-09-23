@@ -22,8 +22,12 @@ import {
   criarApropriacao,
   deletarApropriacao,
   importarApropriacoesXlsx,
-  listarApropriacoes
+  listarApropriacoes,
+  obterConfiguracaoMacrosApropriacao,
+  salvarConfiguracaoMacrosApropriacao
 } from '../../../services/apropriacoes';
+
+const OBRAS_COM_CONFIGURACAO_MACRO = new Set(['109', '110']);
 
 /*
   A linha ORIGINAL viaja junto do registro normalizado: quando a gravação de
@@ -64,6 +68,11 @@ export default function GestaoApropriacoes() {
   const [textoMassa, setTextoMassa] = useState('');
   const [arquivoXlsx, setArquivoXlsx] = useState(null);
   const [importandoXlsx, setImportandoXlsx] = useState(false);
+  const [configuracaoMacros, setConfiguracaoMacros] = useState(null);
+  const [exibirConfiguracaoMacros, setExibirConfiguracaoMacros] = useState(false);
+  const [carregandoMacros, setCarregandoMacros] = useState(false);
+  const [salvandoMacros, setSalvandoMacros] = useState(false);
+  const [macrosSelecionadas, setMacrosSelecionadas] = useState(() => new Set());
   // O relatório da importação de Excel ficava num `alert` multilinha: sem
   // cópia, sem histórico, some ao clicar em OK. Agora ele é um BLOCO da tela.
   const [resultadoXlsx, setResultadoXlsx] = useState(null);
@@ -85,6 +94,11 @@ export default function GestaoApropriacoes() {
     relatório da rodada.
   */
   const isSuperadmin = String(user?.perfil || '').trim().toUpperCase() === 'SUPERADMIN';
+  const obraAtual = useMemo(
+    () => obras.find((obra) => String(obra.id) === String(obraSelecionada)) || null,
+    [obras, obraSelecionada]
+  );
+  const podeConfigurarMacros = OBRAS_COM_CONFIGURACAO_MACRO.has(String(obraAtual?.codigo || '').trim());
 
   useEffect(() => {
     (async () => {
@@ -117,9 +131,74 @@ export default function GestaoApropriacoes() {
     }
   }
 
+  async function carregarConfiguracaoMacros(obraId, abrir = false) {
+    const obra = obras.find((item) => String(item.id) === String(obraId));
+    if (!OBRAS_COM_CONFIGURACAO_MACRO.has(String(obra?.codigo || '').trim())) return;
+
+    try {
+      setCarregandoMacros(true);
+      const data = await obterConfiguracaoMacrosApropriacao(obraId);
+      const atuais = Array.isArray(data?.apropriacao_ids) ? data.apropriacao_ids : [];
+      const sugeridas = Array.isArray(data?.sugestao_ids) ? data.sugestao_ids : [];
+      setConfiguracaoMacros(data);
+      setMacrosSelecionadas(new Set((data?.configurada ? atuais : sugeridas).map(Number)));
+      if (abrir) setExibirConfiguracaoMacros(true);
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao carregar etapas macro');
+    } finally {
+      setCarregandoMacros(false);
+    }
+  }
+
+  function alternarMacro(id) {
+    setMacrosSelecionadas((atual) => {
+      const proximo = new Set(atual);
+      const numero = Number(id);
+      if (proximo.has(numero)) proximo.delete(numero);
+      else proximo.add(numero);
+      return proximo;
+    });
+  }
+
+  function alternarMacrosVisiveis(marcar, idsVisiveis) {
+    setMacrosSelecionadas((atual) => {
+      const proximo = new Set(atual);
+      idsVisiveis.forEach((id) => (marcar ? proximo.add(Number(id)) : proximo.delete(Number(id))));
+      return proximo;
+    });
+  }
+
+  async function salvarMacros() {
+    const ids = [...macrosSelecionadas];
+    if (!ids.length) {
+      avisar.alerta('Selecione ao menos uma etapa macro.');
+      return;
+    }
+
+    try {
+      setSalvandoMacros(true);
+      await salvarConfiguracaoMacrosApropriacao(obraSelecionada, ids);
+      avisar.sucesso(`${ids.length} etapa(s) macro confirmada(s) para os formularios.`);
+      await Promise.all([
+        carregarConfiguracaoMacros(obraSelecionada, false),
+        carregarApropriacoes(obraSelecionada)
+      ]);
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao salvar etapas macro');
+    } finally {
+      setSalvandoMacros(false);
+    }
+  }
+
   useEffect(() => {
     setSelecionados(new Set());
+    setConfiguracaoMacros(null);
+    setMacrosSelecionadas(new Set());
+    setExibirConfiguracaoMacros(false);
     carregarApropriacoes();
+    if (obraSelecionada) carregarConfiguracaoMacros(obraSelecionada, false);
   }, [obraSelecionada]);
 
   const idsSelecionados = useMemo(() => [...selecionados], [selecionados]);
@@ -469,6 +548,37 @@ export default function GestaoApropriacoes() {
     }
   ];
 
+  const sugestoesMacro = new Set((configuracaoMacros?.sugestao_ids || []).map(Number));
+  const colunasMacros = [
+    {
+      id: 'codigo',
+      titulo: 'Código',
+      tipo: 'codigo',
+      render: (item) => item.codigo
+    },
+    {
+      id: 'descricao',
+      titulo: 'Etapa',
+      tipo: 'identidade',
+      noCard: 'titulo',
+      render: (item) => item.descricao || '-'
+    },
+    {
+      id: 'pai',
+      titulo: 'Etapa superior',
+      tipo: 'codigo',
+      render: (item) => item.apropriacao_pai?.codigo || 'Raiz'
+    },
+    {
+      id: 'sugestao',
+      titulo: 'Detecção',
+      tipo: 'badge',
+      render: (item) => sugestoesMacro.has(Number(item.id))
+        ? <StatusBadge status="Sugerida" kind="info" />
+        : <StatusBadge status="Estrutural" kind="neutral" />
+    }
+  ];
+
   return (
     <Pagina>
       <PageHeader
@@ -520,6 +630,76 @@ export default function GestaoApropriacoes() {
           </CampoForm>
         </FormSecao>
       </BlocoConteudo>
+
+      {podeConfigurarMacros ? (
+        <BlocoConteudo
+          titulo="Etapas macro dos formulários"
+          descricao={configuracaoMacros?.configurada
+            ? 'Configuração ativa. Novos lançamentos fora de Custos e Recebíveis usam somente as etapas confirmadas.'
+            : 'Revise a sugestão automática antes de limitar os formulários às etapas macro.'}
+          variante="secundario"
+          contagem={configuracaoMacros?.configurada
+            ? `${configuracaoMacros.apropriacao_ids?.length || 0} configurada(s)`
+            : 'Confirmação pendente'}
+          acoes={(
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => (
+                configuracaoMacros
+                  ? setExibirConfiguracaoMacros((atual) => !atual)
+                  : carregarConfiguracaoMacros(obraSelecionada, true)
+              )}
+              disabled={carregandoMacros}
+            >
+              {carregandoMacros
+                ? 'Carregando...'
+                : exibirConfiguracaoMacros
+                  ? 'Recolher configuração'
+                  : configuracaoMacros?.configurada
+                    ? 'Editar etapas macro'
+                    : 'Revisar etapas macro'}
+            </button>
+          )}
+        >
+          {exibirConfiguracaoMacros ? (
+            <div className="space-y-3">
+              <div className="app-actionbar">
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={() => setMacrosSelecionadas(new Set((configuracaoMacros?.sugestao_ids || []).map(Number)))}
+                >
+                  Restaurar sugestão
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={salvarMacros}
+                  disabled={salvandoMacros || !macrosSelecionadas.size}
+                >
+                  {salvandoMacros ? 'Salvando...' : `Confirmar ${macrosSelecionadas.size} etapa(s)`}
+                </button>
+              </div>
+
+              <TabelaPadrao
+                colunas={colunasMacros}
+                itens={configuracaoMacros?.candidatas || []}
+                carregando={carregandoMacros}
+                getId={(item) => Number(item.id)}
+                storageKey="tabela:gestao-apropriacoes-macros"
+                rotuloRolagem="Etapas macro candidatas"
+                selecao={{
+                  selecionados: macrosSelecionadas,
+                  aoAlternar: (id) => alternarMacro(id),
+                  aoAlternarTodos: alternarMacrosVisiveis
+                }}
+                vazio="Nenhuma etapa candidata foi identificada nesta obra."
+              />
+            </div>
+          ) : null}
+        </BlocoConteudo>
+      ) : null}
 
       {/*
         R9 (revista em 04/09): esta tela EXISTE para cadastrar apropriação —

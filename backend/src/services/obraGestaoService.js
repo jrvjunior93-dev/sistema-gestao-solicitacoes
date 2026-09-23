@@ -51,6 +51,7 @@ function createBucketFromApropriacao(apropriacao) {
     descricao: String(apropriacao.descricao || '').trim() || 'Sem descricao',
     valor_orcado: roundCurrency(apropriacao.valor_orcado),
     somadora: apropriacaoEhSomadora(apropriacao),
+    ordem_planilha: Number(apropriacao.ordem_planilha || apropriacao.id || 0),
     pedidos: 0,
     a_pagar: 0,
     pago: 0
@@ -64,6 +65,7 @@ function createFallbackBucket() {
     descricao: 'Sem apropriacao vinculada',
     valor_orcado: 0,
     somadora: false,
+    ordem_planilha: Number.MAX_SAFE_INTEGER,
     pedidos: 0,
     a_pagar: 0,
     pago: 0
@@ -113,7 +115,10 @@ function finalizeBuckets(bucketMap) {
       };
     })
     .filter((bucket) => bucket.valor_orcado > 0 || bucket.pedidos > 0 || bucket.a_pagar > 0 || bucket.pago > 0 || bucket.id !== APROPRIACAO_SEM_VINCULO_ID)
-    .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo), 'pt-BR'));
+    .sort((a, b) => (
+      Number(a.ordem_planilha || 0) - Number(b.ordem_planilha || 0)
+        || String(a.codigo).localeCompare(String(b.codigo), 'pt-BR', { numeric: true })
+    ));
 }
 
 function buildSolicitacaoIndex(solicitacoes) {
@@ -481,7 +486,7 @@ async function carregarDadosObra(obraId) {
   ] = await Promise.all([
     Apropriacao.findAll({
       where: { obra_id: obraId, ativo: true },
-      order: [['codigo', 'ASC']]
+      order: [['ordem_planilha', 'ASC'], ['id', 'ASC']]
     }),
     Solicitacao.findAll({
       where: { obra_id: obraId },
@@ -652,6 +657,7 @@ async function obterGestaoObra(obraId) {
         descricao: item.descricao || '',
         valor_orcado: roundCurrency(item.valor_orcado),
         somadora: apropriacaoEhSomadora(item),
+        ordem_planilha: Number(item.ordem_planilha || item.id || 0),
         ativo: Boolean(item.ativo)
       })),
       total_orcado: kpis.investimento_total

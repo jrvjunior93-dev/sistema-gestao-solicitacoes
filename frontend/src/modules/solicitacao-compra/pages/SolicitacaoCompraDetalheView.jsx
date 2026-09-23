@@ -211,7 +211,7 @@ export default function SolicitacaoCompraDetalheView() {
       try {
         const data = await listarApropriacoes({ obra_id: obraIdSolicitacao });
         const lista = Array.isArray(data) ? data : [];
-        setApropriacoes(lista.filter((item) => item?.ativo !== false && item?.somadora !== true));
+        setApropriacoes(lista.filter((item) => item?.ativo !== false));
       } catch (error) {
         console.error(error);
         setApropriacoes([]);

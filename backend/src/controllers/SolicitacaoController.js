@@ -43,6 +43,7 @@ const {
   obterDestinatariosCriacaoSetor
 } = require('../services/notificacoes');
 const { registrarEventoSeguranca } = require('../services/securityLogService');
+const { apropriacaoPodeReceberLancamento } = require('../services/apropriacaoSelecaoService');
 const gerarCodigoSolicitacao = require('../services/solicitacao/gerarCodigo');
 const { uploadToS3 } = require('../services/s3');
 const { normalizeOriginalName } = require('../utils/fileName');
@@ -3605,7 +3606,7 @@ module.exports = {
         apropriacao = resolvido.apropriacao;
       } else if (registroSelecionadoEhObra && campoVisivel('apropriacao_principal') && apropriacao_id !== undefined && apropriacao_id !== null && apropriacao_id !== '') {
         apropriacao = await Apropriacao.findByPk(Number(apropriacao_id), {
-          attributes: ['id', 'obra_id', 'codigo', 'descricao', 'somadora']
+          attributes: ['id', 'obra_id', 'codigo', 'descricao', 'somadora', 'macro_formulario', 'ativo']
         });
 
         if (!apropriacao) {
@@ -3619,9 +3620,9 @@ module.exports = {
             error: 'A apropriacao selecionada nao pertence a obra informada.'
           });
         }
-        if (apropriacao.somadora === true) {
+        if (!apropriacaoPodeReceberLancamento(apropriacao)) {
           return res.status(400).json({
-            error: 'Selecione uma apropriacao analitica. Apropriacoes somadoras nao podem receber lancamentos.'
+            error: 'Selecione uma apropriacao habilitada para os formularios.'
           });
         }
       }
@@ -3669,7 +3670,7 @@ module.exports = {
             {
               model: Apropriacao,
               as: 'apropriacao',
-              attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora']
+              attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario']
             }
           ]
         });
@@ -3702,9 +3703,9 @@ module.exports = {
               error: 'Uma ou mais apropriacoes selecionadas estao inativas.'
             });
           }
-          if (vinculoContrato.apropriacao.somadora === true) {
+          if (!apropriacaoPodeReceberLancamento(vinculoContrato.apropriacao)) {
             return res.status(400).json({
-              error: 'Uma ou mais apropriacoes selecionadas sao somadoras. Selecione apenas apropriacoes analiticas.'
+              error: 'Uma ou mais apropriacoes selecionadas nao estao habilitadas para os formularios.'
             });
           }
           rateioApropriacoesDetalhado.push({
@@ -4917,10 +4918,10 @@ module.exports = {
           await transaction.rollback();
           return res.status(400).json({ error: 'Apropriacao principal esta inativa.' });
         }
-        if (apropriacao.somadora === true) {
+        if (!apropriacaoPodeReceberLancamento(apropriacao)) {
           await transaction.rollback();
           return res.status(400).json({
-            error: 'Selecione uma apropriacao analitica. Apropriacoes somadoras nao podem receber lancamentos.'
+            error: 'Selecione uma apropriacao habilitada para os formularios.'
           });
         }
       }
@@ -4951,7 +4952,7 @@ module.exports = {
             {
               model: Apropriacao,
               as: 'apropriacao',
-              attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora']
+              attributes: ['id', 'obra_id', 'codigo', 'descricao', 'ativo', 'somadora', 'macro_formulario']
             }
           ],
           transaction
@@ -4981,10 +4982,10 @@ module.exports = {
             await transaction.rollback();
             return res.status(400).json({ error: 'Uma ou mais apropriacoes selecionadas estao inativas.' });
           }
-          if (vinculoContrato.apropriacao.somadora === true) {
+          if (!apropriacaoPodeReceberLancamento(vinculoContrato.apropriacao)) {
             await transaction.rollback();
             return res.status(400).json({
-              error: 'Uma ou mais apropriacoes selecionadas sao somadoras. Selecione apenas apropriacoes analiticas.'
+              error: 'Uma ou mais apropriacoes selecionadas nao estao habilitadas para os formularios.'
             });
           }
           rateioApropriacoesDetalhado.push({
