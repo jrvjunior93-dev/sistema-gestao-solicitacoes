@@ -1,6 +1,13 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  HiOutlineArrowRight,
+  HiOutlineBuildingOffice2,
+  HiOutlineMapPin,
+  HiOutlinePencilSquare,
+  HiOutlinePower
+} from 'react-icons/hi2';
+import {
   getObras,
   getObrasGestao,
   criarObra,
@@ -9,19 +16,23 @@ import {
   desativarObra
 } from '../services/obras';
 import { getEmpresasGrupo } from '../services/empresasGrupo';
+import { getResultadoObras } from '../services/financeiro';
 import { useAuth } from '../contexts/AuthContext';
-import { canAccessGestaoObras, canManageCadastroObras } from '../utils/acessoProduto';
+import {
+  canAccessGestaoObras,
+  canManageCadastroObras,
+  canViewFinanceiroRelatorio
+} from '../utils/acessoProduto';
 import {
   Pagina,
   PageHeader,
   BlocoConteudo,
-  TabelaPadrao,
-  CelulaDupla,
   BarraFiltros,
   Avisos,
   useAvisos
 } from '../components/padrao';
 import StatusBadge from '../components/StatusBadge';
+import './Obras.css';
 
 function formatCurrency(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
@@ -124,19 +135,212 @@ function getExecucaoPercentual(orcado, executado) {
   return Math.max(0, Math.min(100, Number(((Number(executado || 0) / base) * 100).toFixed(1))));
 }
 
-function getLucroPrejuizoColor(value) {
-  const numero = Number(value || 0);
-  if (numero > 0) return 'var(--sem-success)';
-  if (numero < 0) return 'var(--sem-danger)';
-  return 'var(--c-text)';
-}
-
 function isCadastroObra(obra) {
   return String(obra?.tipo_centro_custo || 'OBRA').trim().toUpperCase() === 'OBRA';
 }
 
 function getTipoCadastroLabel(obra) {
   return isCadastroObra(obra) ? 'Obra' : 'Centro de custo';
+}
+
+function ObraMetrica({ label, value, tone = 'default', support }) {
+  return (
+    <div className={`obra-card-metrica obra-card-metrica--${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {support ? <small>{support}</small> : null}
+    </div>
+  );
+}
+
+function ObraProgresso({ label, value, max, tone = 'primary' }) {
+  const percentual = getExecucaoPercentual(max, value);
+
+  return (
+    <div className="obra-card-progresso">
+      <div className="obra-card-progresso__legenda">
+        <span>{label}</span>
+        <strong>{percentual.toFixed(1)}%</strong>
+      </div>
+      <div
+        className="obra-card-progresso__trilha"
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={percentual}
+      >
+        <span
+          className={`obra-card-progresso__barra obra-card-progresso__barra--${tone}`}
+          style={{ width: `${percentual}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ObraCadastroCard({
+  obra,
+  gestaoObrasHabilitada,
+  podeGerenciarCadastro,
+  onGerenciar,
+  onEditar,
+  onToggleAtivo
+}) {
+  const cadastroEhObra = isCadastroObra(obra);
+  const classificacao = String(obra.classificacao || '').trim().toUpperCase();
+  const obraPrivada = classificacao === 'PRIVADA';
+  const obraPublica = classificacao === 'PUBLICA';
+  const valorReferencia = Number(
+    obra.valor_referencia_resultado
+      ?? (obraPrivada
+        ? (obra.vgv_efetivo ?? obra.vgv)
+        : obraPublica
+          ? obra.planilha_geral
+          : 0)
+      ?? 0
+  );
+  const margem = Number(obra.margem_custo_esperada || 0);
+  const orcamentoCusto = obra.orcamento != null
+    ? Number(obra.orcamento)
+    : valorReferencia > 0 && margem > 0
+      ? valorReferencia * (1 - margem / 100)
+      : null;
+  const executado = Number(obra.resumo?.executado || 0);
+  const recebido = Number(obra.resumo?.recebido || 0);
+  const faltaReceber = Number(obra.resumo?.falta_receber || 0);
+  const lucroPrejuizo = Number(obra.resumo?.lucro_prejuizo || 0);
+  const valorVendido = obra.valor_vendido == null ? null : Number(obra.valor_vendido);
+  const faltaVender = obra.falta_vender == null ? null : Number(obra.falta_vender);
+  const mostrarResultado = gestaoObrasHabilitada && cadastroEhObra;
+  const referenciaLabel = obraPrivada ? 'VGV' : obraPublica ? 'Planilha geral' : 'Volume financeiro';
+  const fonteReferencia = obra.vgv_origem === 'UNIDADES'
+    ? `${Number(obra.vgv_unidades_total || 0)} unidade(s) ativa(s)`
+    : obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
+      ? `${Number(obra.vgv_unidades_sem_valor || 0)} unidade(s) sem valor base`
+      : null;
+
+  return (
+    <article className={`obra-cadastro-card${obra.ativo ? '' : ' obra-cadastro-card--inativa'}`}>
+      <header className="obra-cadastro-card__cabecalho">
+        <div className="obra-cadastro-card__icone" aria-hidden="true">
+          <HiOutlineBuildingOffice2 />
+        </div>
+        <div className="obra-cadastro-card__status">
+          <StatusBadge status={obra.ativo ? 'Ativa' : 'Inativa'} />
+          <span className="obra-cadastro-card__tipo">{getTipoCadastroLabel(obra)}</span>
+          {cadastroEhObra && classificacao ? (
+            <span className="obra-cadastro-card__tipo">{classificacao === 'PRIVADA' ? 'Privada' : 'Pública'}</span>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="obra-cadastro-card__identidade">
+        <span className="obra-cadastro-card__codigo">{obra.codigo || `OBRA ${obra.id}`}</span>
+        <h2>{obra.nome}</h2>
+        <div className="obra-cadastro-card__local">
+          <HiOutlineMapPin aria-hidden="true" />
+          <span>{obra.cidade || 'Cidade não informada'}</span>
+        </div>
+        <p>Empresa: {obra.empresaGrupo?.nome || 'Não vinculada'}</p>
+      </div>
+
+      {mostrarResultado ? (
+        <>
+          <div className="obra-cadastro-card__metricas obra-cadastro-card__metricas--referencia">
+            <ObraMetrica
+              label={referenciaLabel}
+              value={valorReferencia > 0 ? formatCurrency(valorReferencia) : '—'}
+              support={fonteReferencia}
+              tone="reference"
+            />
+            <ObraMetrica
+              label="Orçamento de custo"
+              value={orcamentoCusto == null ? '—' : formatCurrency(orcamentoCusto)}
+              support={margem > 0 ? `Margem esperada ${margem.toFixed(1)}%` : null}
+              tone="reference"
+            />
+            {obraPrivada && valorVendido != null ? (
+              <ObraMetrica
+                label="Valor vendido"
+                value={formatCurrency(valorVendido)}
+                support={`${Number(obra.quantidade_contratos_venda || 0)} contrato(s) vigente(s)`}
+                tone="received"
+              />
+            ) : null}
+            {obraPrivada && faltaVender != null ? (
+              <ObraMetrica label="Falta vender" value={formatCurrency(faltaVender)} tone="pending" />
+            ) : null}
+          </div>
+
+          <div className="obra-cadastro-card__metricas">
+            <ObraMetrica label="Executado" value={formatCurrency(executado)} tone="executed" />
+            <ObraMetrica label="Recebido" value={formatCurrency(recebido)} tone="received" />
+            <ObraMetrica label="Falta receber" value={formatCurrency(faltaReceber)} tone="pending" />
+            <ObraMetrica
+              label="Lucro/Prejuízo"
+              value={formatCurrency(lucroPrejuizo)}
+              tone={lucroPrejuizo < 0 ? 'negative' : lucroPrejuizo > 0 ? 'positive' : 'default'}
+            />
+          </div>
+
+          <div className="obra-cadastro-card__progressos">
+            {orcamentoCusto != null ? (
+              <ObraProgresso label="Executado / Orçamento" value={executado} max={orcamentoCusto} />
+            ) : null}
+            {valorReferencia > 0 ? (
+              <ObraProgresso label={`Recebido / ${referenciaLabel}`} value={recebido} max={valorReferencia} tone="success" />
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <div className="obra-cadastro-card__modo">
+          <strong>{cadastroEhObra ? 'Cadastro básico ativo' : 'Centro de custo ativo'}</strong>
+          <span>
+            {cadastroEhObra
+              ? 'A gestão financeira desta obra não está disponível no acesso atual.'
+              : 'Disponível para solicitações e títulos, sem estrutura operacional de obra.'}
+          </span>
+        </div>
+      )}
+
+      <footer className="obra-cadastro-card__acoes">
+        {gestaoObrasHabilitada && cadastroEhObra ? (
+          <button type="button" className="btn btn-primary obra-cadastro-card__gerenciar" onClick={onGerenciar}>
+            Gerenciar obra
+            <HiOutlineArrowRight aria-hidden="true" />
+          </button>
+        ) : (
+          <span className="obra-cadastro-card__acao-indisponivel">
+            {cadastroEhObra ? 'Gestão indisponível' : 'Cadastro administrativo'}
+          </span>
+        )}
+
+        {podeGerenciarCadastro ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-outline obra-cadastro-card__icone-acao"
+              onClick={onEditar}
+              title="Editar cadastro"
+              aria-label={`Editar ${obra.nome}`}
+            >
+              <HiOutlinePencilSquare aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={`btn btn-outline obra-cadastro-card__icone-acao${obra.ativo ? ' btn-perigo-suave' : ''}`}
+              onClick={onToggleAtivo}
+              title={obra.ativo ? 'Desativar cadastro' : 'Ativar cadastro'}
+              aria-label={`${obra.ativo ? 'Desativar' : 'Ativar'} ${obra.nome}`}
+            >
+              <HiOutlinePower aria-hidden="true" />
+            </button>
+          </>
+        ) : null}
+      </footer>
+    </article>
+  );
 }
 
 function initialFormState() {
@@ -179,11 +383,15 @@ export default function Obras() {
 
   const podeGerenciarCadastro = canManageCadastroObras(user);
   const gestaoObrasHabilitada = canAccessGestaoObras(user);
+  const podeVerResultadoObras = canViewFinanceiroRelatorio(
+    user,
+    'financeiro.relatorios.resultado_obras'
+  );
 
   useEffect(() => {
     carregarObras();
     carregarEmpresasGrupo();
-  }, [gestaoObrasHabilitada]);
+  }, [gestaoObrasHabilitada, podeVerResultadoObras]);
 
   async function carregarEmpresasGrupo() {
     try {
@@ -201,18 +409,43 @@ export default function Obras() {
       let lista = Array.isArray(cadastrosData) ? cadastrosData : [];
 
       if (gestaoObrasHabilitada) {
-        const gestaoData = await getObrasGestao();
+        const [gestaoData, resultadoData] = await Promise.all([
+          getObrasGestao(),
+          podeVerResultadoObras
+            ? getResultadoObras().catch((error) => {
+              console.error(error);
+              return [];
+            })
+            : Promise.resolve([])
+        ]);
         const resumoPorId = new Map((Array.isArray(gestaoData) ? gestaoData : [])
+          .map((obra) => [Number(obra.id), obra]));
+        const resultadoPorId = new Map((Array.isArray(resultadoData) ? resultadoData : [])
           .map((obra) => [Number(obra.id), obra]));
         lista = lista.map((obra) => {
           const gestaoObra = resumoPorId.get(Number(obra.id));
+          const resultadoObra = resultadoPorId.get(Number(obra.id));
           return {
             ...obra,
-            vgv_efetivo: gestaoObra?.vgv_efetivo,
-            vgv_origem: gestaoObra?.vgv_origem,
-            vgv_unidades_total: gestaoObra?.vgv_unidades_total,
-            vgv_unidades_sem_valor: gestaoObra?.vgv_unidades_sem_valor,
-            resumo: gestaoObra?.resumo || obra.resumo
+            vgv_efetivo: resultadoObra?.vgv_efetivo ?? gestaoObra?.vgv_efetivo,
+            vgv_origem: resultadoObra?.vgv_origem ?? gestaoObra?.vgv_origem,
+            vgv_unidades_total: resultadoObra?.vgv_unidades_total ?? gestaoObra?.vgv_unidades_total,
+            vgv_unidades_sem_valor: resultadoObra?.vgv_unidades_sem_valor ?? gestaoObra?.vgv_unidades_sem_valor,
+            valor_referencia_resultado: resultadoObra?.valor_referencia_resultado
+              ?? gestaoObra?.resumo?.valor_referencia_resultado,
+            orcamento: resultadoObra?.orcamento,
+            valor_vendido: resultadoObra?.valor_vendido,
+            falta_vender: resultadoObra?.falta_vender,
+            quantidade_contratos_venda: resultadoObra?.quantidade_contratos_venda,
+            resumo: resultadoObra
+              ? {
+                ...(gestaoObra?.resumo || {}),
+                executado: resultadoObra.pagar?.executado,
+                recebido: resultadoObra.receber?.recebido,
+                falta_receber: resultadoObra.falta_receber,
+                lucro_prejuizo: resultadoObra.lucro_prejuizo
+              }
+              : gestaoObra?.resumo || obra.resumo
           };
         });
       }
@@ -390,156 +623,28 @@ export default function Obras() {
             solicitações, títulos e configurações básicas.
           </p>
         )}
-        <TabelaPadrao
-          colunas={[
-            {
-              id: 'obra',
-              titulo: 'Obra / Centro de custo',
-              tipo: 'identidade',
-              noCard: 'titulo',
-              render: (obra) => (
-                <CelulaDupla
-                  principal={obra.nome}
-                  sub={[obra.codigo || `OBRA ${obra.id}`, obra.cidade].filter(Boolean).join(' · ')}
-                />
-              )
-            },
-            {
-              id: 'empresa',
-              titulo: 'Empresa / Tipo',
-              tipo: 'identidade',
-              flex: false,
-              render: (obra) => (
-                <CelulaDupla
-                  principal={obra.empresaGrupo?.nome || 'Não vinculada'}
-                  sub={[getTipoCadastroLabel(obra), isCadastroObra(obra) ? obra.classificacao : null]
-                    .filter(Boolean).join(' · ')}
-                />
-              )
-            },
-            {
-              id: 'vgv',
-              titulo: 'VGV / Orçamento',
-              tipo: 'valor',
-              render: (obra) => {
-                if (!isCadastroObra(obra)) return '-';
-                const ref = obra.classificacao === 'PRIVADA'
-                  ? (obra.vgv_efetivo ?? obra.vgv)
-                  : obra.planilha_geral;
-                const margem = obra.margem_custo_esperada;
-                const orcamento = ref != null && margem != null && margem > 0
-                  ? Number(ref) * (1 - Number(margem) / 100)
-                  : null;
-                if (ref == null && orcamento == null) return '-';
-                const avisoVgv = obra.vgv_origem === 'UNIDADES'
-                  ? `${obra.vgv_unidades_total} unidades · base de venda`
-                  : obra.vgv_origem === 'UNIDADES_INCOMPLETAS'
-                    ? `${obra.vgv_unidades_sem_valor} unidade(s) sem valor base`
-                    : null;
-                return (
-                  <CelulaDupla
-                    principal={ref != null ? formatCurrency(ref) : '-'}
-                    sub={[avisoVgv, orcamento != null ? `Orç. ${formatCurrency(orcamento)}` : null].filter(Boolean).join(' · ') || null}
-                    title={margem != null ? `Margem de custo esperada: ${Number(margem).toFixed(1)}%` : undefined}
-                  />
-                );
-              }
-            },
-            {
-              id: 'executado',
-              titulo: 'Executado',
-              tipo: 'valor',
-              render: (obra) => {
-                if (!(gestaoObrasHabilitada && isCadastroObra(obra))) return '-';
-                const orcado = Number(obra.resumo?.orcado || 0);
-                const executado = Number(obra.resumo?.executado || 0);
-                const percentual = getExecucaoPercentual(orcado, executado);
-                return (
-                  <CelulaDupla
-                    principal={formatCurrency(executado)}
-                    sub={`${percentual.toFixed(1)}% do orçado`}
-                  />
-                );
-              }
-            },
-            {
-              id: 'recebido',
-              titulo: 'Recebido',
-              tipo: 'valor',
-              render: (obra) => {
-                if (!(gestaoObrasHabilitada && isCadastroObra(obra))) return '-';
-                const recebido = Number(obra.resumo?.recebido || 0);
-                const faltaReceber = Number(obra.resumo?.falta_receber || 0);
-                return (
-                  <CelulaDupla
-                    principal={formatCurrency(recebido)}
-                    sub={faltaReceber > 0 ? `Falta ${formatCurrency(faltaReceber)}` : 'Nada a receber'}
-                  />
-                );
-              }
-            },
-            {
-              id: 'lucro',
-              titulo: 'Lucro/Prejuízo',
-              tipo: 'valor',
-              render: (obra) => {
-                if (!(gestaoObrasHabilitada && isCadastroObra(obra))) return '-';
-                const lucroPrejuizo = Number(obra.resumo?.lucro_prejuizo || 0);
-                return (
-                  <span className="font-semibold" style={{ color: getLucroPrejuizoColor(lucroPrejuizo) }}>
-                    {formatCurrency(lucroPrejuizo)}
-                  </span>
-                );
-              }
-            },
-            {
-              id: 'status',
-              titulo: 'Status',
-              tipo: 'status',
-              render: (obra) => <StatusBadge status={obra.ativo ? 'Ativa' : 'Inativa'} />
-            }
-          ]}
-          itens={obrasFiltradas}
-          carregando={loading}
-          storageKey="tabela:obras"
-          larguraAcoes={podeGerenciarCadastro ? 290 : 140}
-          aoClicarLinha={(obra) => {
-            if (gestaoObrasHabilitada && isCadastroObra(obra)) {
-              navigate(`/obras/${obra.id}`);
-            } else if (podeGerenciarCadastro) {
-              abrirModalEditarObra(obra);
-            }
-          }}
-          vazio={{
-            title: 'Nenhum cadastro encontrado',
-            message: 'Ajuste o filtro ou cadastre uma nova obra/centro de custo para iniciar o gerenciamento.'
-          }}
-          acoesLinha={(obra) => (
-            <>
-              {gestaoObrasHabilitada && isCadastroObra(obra) && (
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => navigate(`/obras/${obra.id}`)}>
-                  Gerenciar
-                </button>
-              )}
-              {podeGerenciarCadastro && (
-                <>
-                  <button type="button" className="btn btn-outline btn-sm" onClick={() => abrirModalEditarObra(obra)}>
-                    Editar
-                  </button>
-                  {obra.ativo ? (
-                    <button type="button" className="btn btn-outline btn-sm btn-perigo-suave" onClick={() => toggleAtivo(obra)}>
-                      Desativar
-                    </button>
-                  ) : (
-                    <button type="button" className="btn btn-outline btn-sm" onClick={() => toggleAtivo(obra)}>
-                      Ativar
-                    </button>
-                  )}
-                </>
-              )}
-            </>
-          )}
-        />
+        {loading ? (
+          <div className="app-empty-card">Carregando obras...</div>
+        ) : obrasFiltradas.length === 0 ? (
+          <div className="app-empty-card">
+            <strong>Nenhum cadastro encontrado</strong>
+            <span>Ajuste o filtro ou cadastre uma nova obra/centro de custo para iniciar o gerenciamento.</span>
+          </div>
+        ) : (
+          <section className="obras-card-grid" aria-label="Obras e centros de custo">
+            {obrasFiltradas.map((obra) => (
+              <ObraCadastroCard
+                key={obra.id}
+                obra={obra}
+                gestaoObrasHabilitada={gestaoObrasHabilitada}
+                podeGerenciarCadastro={podeGerenciarCadastro}
+                onGerenciar={() => navigate(`/obras/${obra.id}`)}
+                onEditar={() => abrirModalEditarObra(obra)}
+                onToggleAtivo={() => toggleAtivo(obra)}
+              />
+            ))}
+          </section>
+        )}
       </BlocoConteudo>
 
       {/* Modal */}
@@ -734,7 +839,7 @@ export default function Obras() {
                     <option value="PERSONALIZADO">Personalizado — definido na Gestão de Apropriações</option>
                   ) : null}
                 </select>
-                <span className="text-xs font-normal" style={{ color: 'var(--c-text-muted)' }}>
+                <span className="text-xs font-normal" style={{ color: 'var(--c-muted)' }}>
                   Define quais apropriações desta obra aparecem em solicitações, compras e demais formulários operacionais.
                 </span>
               </label>

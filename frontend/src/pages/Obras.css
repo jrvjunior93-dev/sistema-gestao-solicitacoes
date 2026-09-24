@@ -1,0 +1,332 @@
+.obras-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.obra-cadastro-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border: 1px solid var(--ui-border);
+  border-radius: 16px;
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-sm);
+  overflow: hidden;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.obra-cadastro-card:hover {
+  border-color: color-mix(in srgb, var(--c-primary) 32%, var(--ui-border));
+  box-shadow: var(--ui-shadow-md, var(--ui-shadow-sm));
+  transform: translateY(-1px);
+}
+
+.obra-cadastro-card--inativa {
+  opacity: 0.72;
+}
+
+.obra-cadastro-card__cabecalho {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 0;
+}
+
+.obra-cadastro-card__icone {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--c-primary);
+  background: color-mix(in srgb, var(--c-primary) 10%, var(--ui-surface));
+}
+
+.obra-cadastro-card__icone svg {
+  width: 21px;
+  height: 21px;
+}
+
+.obra-cadastro-card__status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.obra-cadastro-card__tipo {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  color: var(--c-muted);
+  background: var(--ui-canvas);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.obra-cadastro-card__identidade {
+  min-width: 0;
+  padding: 12px 16px 15px;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.obra-cadastro-card__codigo {
+  color: var(--c-primary);
+  font-size: var(--fonte-detalhe);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.obra-cadastro-card__identidade h2 {
+  margin: 5px 0 0;
+  color: var(--c-text);
+  font-size: var(--fonte-bloco);
+  font-weight: 800;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+
+.obra-cadastro-card__local {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.obra-cadastro-card__local svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.obra-cadastro-card__identidade p {
+  margin: 5px 0 0;
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+}
+
+.obra-cadastro-card__metricas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.obra-cadastro-card__metricas--referencia {
+  background: color-mix(in srgb, var(--c-primary) 3%, var(--ui-surface));
+}
+
+.obra-card-metrica {
+  min-width: 0;
+  min-height: 66px;
+  padding: 11px 14px;
+}
+
+.obra-card-metrica:nth-child(odd) {
+  border-right: 1px solid var(--ui-border);
+}
+
+.obra-card-metrica:nth-child(n + 3) {
+  border-top: 1px solid var(--ui-border);
+}
+
+.obra-card-metrica > span {
+  display: block;
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.obra-card-metrica > strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--c-text);
+  font-size: var(--fonte-corpo);
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.obra-card-metrica > small {
+  display: block;
+  margin-top: 3px;
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  line-height: 1.25;
+}
+
+.obra-card-metrica--reference > strong,
+.obra-card-metrica--executed > strong {
+  color: var(--c-primary);
+}
+
+.obra-card-metrica--received > strong,
+.obra-card-metrica--positive > strong {
+  color: var(--sem-success);
+}
+
+.obra-card-metrica--pending > strong {
+  color: var(--sem-warning);
+}
+
+.obra-card-metrica--negative > strong {
+  color: var(--sem-danger);
+}
+
+.obra-cadastro-card__progressos {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.obra-card-progresso__legenda {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 5px;
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 650;
+}
+
+.obra-card-progresso__legenda strong {
+  color: var(--c-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.obra-card-progresso__trilha {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-primary) 10%, var(--ui-border));
+}
+
+.obra-card-progresso__barra {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--c-primary);
+  transition: width 220ms ease-out;
+}
+
+.obra-card-progresso__barra--success {
+  background: var(--sem-success);
+}
+
+.obra-cadastro-card__modo {
+  display: grid;
+  gap: 5px;
+  margin: 14px;
+  padding: 12px;
+  border: 1px dashed var(--ui-border);
+  border-radius: 10px;
+  color: var(--c-muted);
+  background: var(--ui-canvas);
+  font-size: var(--fonte-detalhe);
+  line-height: 1.4;
+}
+
+.obra-cadastro-card__modo strong {
+  color: var(--c-text);
+  font-size: var(--fonte-detalhe);
+}
+
+.obra-cadastro-card__acoes {
+  display: flex;
+  gap: 7px;
+  margin-top: auto;
+  padding: 12px 14px;
+  border-top: 1px solid var(--ui-border);
+  background: color-mix(in srgb, var(--ui-canvas) 60%, var(--ui-surface));
+}
+
+.obra-cadastro-card__gerenciar,
+.obra-cadastro-card__acao-indisponivel {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.obra-cadastro-card__gerenciar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.obra-cadastro-card__gerenciar svg {
+  width: 15px;
+  height: 15px;
+}
+
+.obra-cadastro-card__acao-indisponivel {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: 9px;
+  color: var(--c-muted);
+  background: var(--ui-surface);
+  font-size: var(--fonte-detalhe);
+  font-weight: 650;
+}
+
+.obra-cadastro-card__icone-acao {
+  display: inline-flex;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.obra-cadastro-card__icone-acao svg {
+  width: 17px;
+  height: 17px;
+}
+
+@media (max-width: 520px) {
+  .obras-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .obra-cadastro-card__cabecalho,
+  .obra-cadastro-card__identidade {
+    padding-right: 13px;
+    padding-left: 13px;
+  }
+
+  .obra-card-metrica {
+    padding-right: 11px;
+    padding-left: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .obra-cadastro-card,
+  .obra-card-progresso__barra {
+    transition: none;
+  }
+}
