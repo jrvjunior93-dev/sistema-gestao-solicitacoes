@@ -207,10 +207,7 @@ export default function FinanceiroCaixas() {
       setFecharForm((current) => ({
         ...current,
         data_fechamento: today(),
-        saldo_informado: formatCurrencyInput(
-          detalhe?.resumo_atual?.saldo_sistema ?? detalhe?.saldo_sistema ?? '',
-          { emptyZero: false }
-        )
+        saldo_informado: ''
       }));
       return detalhe;
     } finally {
@@ -234,10 +231,7 @@ export default function FinanceiroCaixas() {
       setFecharForm((current) => ({
         ...current,
         data_fechamento: today(),
-        saldo_informado: formatCurrencyInput(
-          detalhe?.resumo_atual?.saldo_sistema ?? detalhe?.saldo_sistema ?? '',
-          { emptyZero: false }
-        )
+        saldo_informado: ''
       }));
     }
 
@@ -301,8 +295,12 @@ export default function FinanceiroCaixas() {
     return datasValidas[datasValidas.length - 1] || today();
   }, [movimentos, sessaoAberta?.data_abertura]);
   const saldoSistema = Number(resumo.saldo_sistema ?? sessaoAberta?.saldo_sistema ?? 0);
-  const saldoInformado = parseCurrencyInput(fecharForm.saldo_informado);
-  const diferencaFechamento = Number.isFinite(saldoInformado) ? saldoInformado - saldoSistema : 0;
+  const saldoFechamentoFoiInformado = String(fecharForm.saldo_informado || '').trim() !== '';
+  const saldoInformado = saldoFechamentoFoiInformado
+    ? parseCurrencyInput(fecharForm.saldo_informado)
+    : null;
+  const saldoFechamentoValido = saldoFechamentoFoiInformado && Number.isFinite(saldoInformado);
+  const diferencaFechamento = saldoFechamentoValido ? saldoInformado - saldoSistema : 0;
   const caixaFisico = contaEhCaixaFisico(contaSelecionada);
   const podeOperar = painel?.configuracao?.pode_operar !== false;
   const podeConfirmarConciliacao = podeOperar && canConfirmFinanceiroCaixaConciliacao(user);
@@ -417,6 +415,10 @@ export default function FinanceiroCaixas() {
   async function handleFechar(event) {
     event.preventDefault();
     if (!sessaoAberta) return;
+    if (!saldoFechamentoValido) {
+      avisar.alerta('Informe o saldo contado no fechamento.');
+      return;
+    }
     if (fecharForm.data_fechamento < dataMinimaFechamento) {
       avisar.alerta(`A data de fechamento nao pode ser anterior a ${formatDate(dataMinimaFechamento)}.`);
       return;
@@ -467,7 +469,7 @@ export default function FinanceiroCaixas() {
     setEmpresaFiltro([...(proximo.empresa || [])][0] || '');
   }
 
-  const diferencaRelevante = Math.abs(diferencaFechamento) > 0.009;
+  const diferencaRelevante = saldoFechamentoValido && Math.abs(diferencaFechamento) > 0.009;
 
   function prepararAjusteFechamento() {
     if (!diferencaRelevante) return;
@@ -803,8 +805,8 @@ export default function FinanceiroCaixas() {
             <div className="xl:col-span-2">
               <StatTile
                 label="Diferença"
-                valor={formatCurrency(diferencaFechamento)}
-                tom={diferencaRelevante ? 'warning' : 'success'}
+                valor={saldoFechamentoValido ? formatCurrency(diferencaFechamento) : 'Aguardando contagem'}
+                tom={saldoFechamentoValido ? (diferencaRelevante ? 'warning' : 'success') : 'default'}
                 full
               />
             </div>

@@ -187,6 +187,8 @@ function validateFrontendContracts() {
 
   assert(page.includes("tipo_operacional || '').toUpperCase() === 'CAIXA_INTERNO'"), 'Interface deve distinguir caixa fisico de conta bancaria.');
   assert(page.includes('min={dataMinimaFechamento}'), 'Interface deve impedir a selecao de data de fechamento retroativa.');
+  assert(!page.includes('saldo_informado: formatCurrencyInput('), 'Saldo contado do fechamento nao pode ser preenchido automaticamente.');
+  assert(page.includes("avisar.alerta('Informe o saldo contado no fechamento.')"), 'Interface deve bloquear fechamento sem contagem explicita.');
   assert(api.includes('registrarMovimentoCaixaFinanceiro'), 'Cliente da API de movimento manual ausente.');
   assert(api.includes('new FormData()'), 'Abertura e movimentos devem enviar comprovantes por multipart/form-data.');
   assert(api.includes('estornarMovimentoCaixaFinanceiro'), 'Cliente da API de estorno manual ausente.');

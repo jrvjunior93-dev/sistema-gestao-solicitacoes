@@ -19,6 +19,8 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
   propria sessao, com comprovante obrigatorio quando o ajuste for uma saida;
 - o estorno exige justificativa e so pode atingir lancamentos manuais ativos;
 - cada inclusao e estorno atualiza o resumo da sessao na mesma transacao;
+- o saldo contado do fechamento sempre inicia vazio e precisa ser informado pelo
+  usuario; o saldo calculado nunca e copiado automaticamente para esse campo;
 - o fechamento nao aceita data retroativa ao dia atual nem ao movimento mais recente;
 - divergencias entre saldo contado e saldo calculado congelam a sessao e exigem
   decisao de outro usuario com a permissao granular `financeiro.caixas.decidir_divergencia`;
@@ -65,6 +67,8 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 | Repetir envio protegido | Nenhum movimento duplicado e criado |
 | Estornar movimento manual | Movimento original fica estornado e o resumo e recalculado |
 | Tentar estornar movimento nao manual | Operacao bloqueada |
+| Abrir a conferencia de fechamento | Campo Saldo contado permanece vazio |
+| Tentar fechar sem informar o saldo contado | Operacao bloqueada |
 | Fechar sem divergencia | Saldo contado e calculado fecham a sessao |
 | Fechar com divergencia | Sessao congelada e enviada para aprovacao |
 | Aprovar divergencia por outro usuario | Ajuste auditavel criado e sessao fechada |
