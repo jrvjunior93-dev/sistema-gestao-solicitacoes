@@ -373,6 +373,7 @@ const {
   canViewRhDpObrigacoes,
   canViewSolicitacoesRelatorioOperacional
 } = require('./services/authorizationService');
+const { userBelongsToDpSetor } = require('./services/setorCapabilityService');
 
 const uploadComprovantes = require('./config/uploadComprovantes');
 const uploadComprovantesPagamento = require('./config/uploadComprovantesPagamento');
@@ -1540,6 +1541,14 @@ const allowRhDpSolicitacaoVer = permit({
       : 'Acesso negado para solicitacoes de pessoal'
   )
 });
+const allowRhDpEventosRecorrentesManage = permit({
+  resource: 'RH_DP_EVENTOS_RECORRENTES',
+  custom: async (req) => (
+    (await userBelongsToDpSetor(req.user))
+      ? true
+      : 'Acesso negado: a gestao de eventos recorrentes e exclusiva do Departamento Pessoal'
+  )
+});
 
 const allowRhDpDocumentosRead = permit({
   resource: 'RH_DP_DOCUMENTOS',
@@ -1993,9 +2002,9 @@ router.post('/rh/jornada/individual', allowRhDpSolicitacaoAbrir, criticalRateLim
 router.post('/rh/jornada/edicoes/solicitar', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.solicitarEdicao);
 router.post('/rh/jornada/edicoes/:id/decidir', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de edicao da jornada') }), RhJornadaController.decidirEdicao);
 router.get('/rh/colaboradores/:id/eventos-recorrentes', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.eventosDoColaborador);
-router.get('/rh/eventos-recorrentes', allowRhDpSolicitacaoVer, RhJornadaController.listarEventos);
-router.patch('/rh/eventos-recorrentes/:id', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.atualizarEvento);
-router.post('/rh/eventos-recorrentes/:id/desativar', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.desativarEvento);
+router.get('/rh/eventos-recorrentes', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoVer, RhJornadaController.listarEventos);
+router.patch('/rh/eventos-recorrentes/:id', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.atualizarEvento);
+router.post('/rh/eventos-recorrentes/:id/desativar', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.desativarEvento);
 router.get('/rh/apuracao-eventos/:id/itens', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Linha da folha') }), RhJornadaController.itensDaFolha);
 router.get('/rh/colaboradores/:id/historico-vinculo', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.historicoDeVinculo);
 router.get('/rh/colaboradores/:id/historico-salario', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.historicoDeSalario);

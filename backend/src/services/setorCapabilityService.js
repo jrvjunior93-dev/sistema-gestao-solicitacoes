@@ -1,5 +1,6 @@
 const { Op } = require('sequelize');
 const { Setor } = require('../models');
+const { listarSetoresDoUsuario } = require('./usuariosSetores');
 
 function normalizeToken(value) {
   return String(value || '')
@@ -48,6 +49,20 @@ function getGeoAliasTokens() {
 
 function isGeoToken(value) {
   return getGeoAliasTokens().includes(normalizeToken(value));
+}
+
+const SETORES_DP = new Set(['DP', 'DEPARTAMENTO_PESSOAL']);
+
+function isDpSetor(value) {
+  if (value && typeof value === 'object') {
+    return [value.codigo, value.nome].some((item) => SETORES_DP.has(normalizeToken(item)));
+  }
+  return SETORES_DP.has(normalizeToken(value));
+}
+
+async function userBelongsToDpSetor(user) {
+  const setores = await listarSetoresDoUsuario(user);
+  return setores.some(isDpSetor) || isDpSetor(user?.area);
 }
 
 function buildSetorComparisonTokens(setor) {
@@ -160,6 +175,7 @@ module.exports = {
   getSetorCapabilities,
   hasSetorCapability,
   inferLegacyCapabilities,
+  isDpSetor,
   isGeoToken,
   normalizeSetorCode,
   normalizeToken,
@@ -167,5 +183,6 @@ module.exports = {
   resolveSetorPersistenciaValue,
   resolveSetorReferencia,
   resolveUserSetor,
+  userBelongsToDpSetor,
   userHasSetorCapability
 };
