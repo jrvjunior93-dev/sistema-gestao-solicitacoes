@@ -1993,7 +1993,9 @@ router.post('/rh/jornada/individual', allowRhDpSolicitacaoAbrir, criticalRateLim
 router.post('/rh/jornada/edicoes/solicitar', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.solicitarEdicao);
 router.post('/rh/jornada/edicoes/:id/decidir', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de edicao da jornada') }), RhJornadaController.decidirEdicao);
 router.get('/rh/colaboradores/:id/eventos-recorrentes', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.eventosDoColaborador);
-router.post('/rh/eventos-recorrentes/:id/desativar', allowRhDpSolicitacaoDecidir, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.desativarEvento);
+router.get('/rh/eventos-recorrentes', allowRhDpSolicitacaoVer, RhJornadaController.listarEventos);
+router.patch('/rh/eventos-recorrentes/:id', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.atualizarEvento);
+router.post('/rh/eventos-recorrentes/:id/desativar', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.desativarEvento);
 router.get('/rh/apuracao-eventos/:id/itens', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Linha da folha') }), RhJornadaController.itensDaFolha);
 router.get('/rh/colaboradores/:id/historico-vinculo', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.historicoDeVinculo);
 router.get('/rh/colaboradores/:id/historico-salario', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.historicoDeSalario);

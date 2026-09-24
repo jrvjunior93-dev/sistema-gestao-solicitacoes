@@ -9,6 +9,7 @@ import {
   useConfirmacao
 } from '../components/padrao';
 import OverlayModal from '../components/ui/OverlayModal';
+import { competenciaISOParaBR } from '../components/CompetenciaInputBR';
 import '../styles/rh-pessoal-atividade.css';
 import {
   anexarNaRhSolicitacao,
@@ -115,8 +116,10 @@ const ROTULO_DADO = {
   codigo: 'Evento',
   natureza: 'Natureza',
   valor: 'Valor',
+  modo_valor: 'Forma do valor',
   competencia_inicio: 'Competência inicial',
   parcelas_total: 'Parcelas',
+  parcelas_valores: 'Valores das parcelas',
   competencia: 'Competência',
   periodicidade: 'Periodicidade',
   periodo_inicio: 'Início do período',
@@ -129,6 +132,14 @@ const ROTULO_DADO = {
 function formatarDado(chave, valor) {
   if (valor === null || valor === undefined || valor === '') return '—';
   if (typeof valor === 'boolean') return valor ? 'Sim' : 'Não';
+  if (['competencia_inicio', 'competencia'].includes(chave) && /^\d{4}-\d{2}$/.test(String(valor))) {
+    return competenciaISOParaBR(valor);
+  }
+  if (chave === 'parcelas_valores' && Array.isArray(valor)) {
+    return valor.map((parcela, index) => (
+      `${index + 1}ª ${Number(parcela).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`
+    )).join(' · ');
+  }
   if (/^data_|^periodo_|_em$|competencia_inicio/.test(chave) && /^\d{4}-\d{2}-\d{2}/.test(String(valor))) {
     return new Date(`${String(valor).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR');
   }

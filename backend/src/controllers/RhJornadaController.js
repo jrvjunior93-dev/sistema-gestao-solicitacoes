@@ -6,7 +6,13 @@ const {
   decidirEdicaoJornada,
   listarEdicoesJornadaPendentes
 } = require('../services/rhJornadaFormularioService');
-const { eventosVigentes, desativarEventoRecorrente, itensDaLinha } = require('../services/rhEventoRecorrenteService');
+const {
+  eventosVigentes,
+  listarEventosRecorrentes,
+  atualizarEventoRecorrente,
+  desativarEventoRecorrente,
+  itensDaLinha
+} = require('../services/rhEventoRecorrenteService');
 const { historicoDoColaborador: historicoDeVinculo } = require('../services/rhVinculoObraService');
 const { historicoDoColaborador: historicoDeSalario } = require('../services/rhSalarioService');
 const { responderErroController } = require('../utils/controllerError');
@@ -177,9 +183,34 @@ module.exports = {
     }
   },
 
+  async listarEventos(req, res) {
+    try {
+      const contexto = contextoDe(req);
+      contexto.obraIds = await getRhDpObraScopeIds(req.user);
+      return res.json(await listarEventosRecorrentes(req.query || {}, contexto));
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao listar a gestao de eventos recorrentes');
+    }
+  },
+
+  async atualizarEvento(req, res) {
+    try {
+      const contexto = contextoDe(req);
+      contexto.obraIds = await getRhDpObraScopeIds(req.user);
+      const evento = await atualizarEventoRecorrente(req.params.id, req.body || {}, contexto);
+      return res.json(evento);
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao atualizar o evento recorrente');
+    }
+  },
+
   async desativarEvento(req, res) {
     try {
-      const evento = await desativarEventoRecorrente(req.params.id, req.body?.motivo, contextoDe(req));
+      const contexto = contextoDe(req);
+      contexto.obraIds = await getRhDpObraScopeIds(req.user);
+      const evento = await desativarEventoRecorrente(req.params.id, req.body?.motivo, contexto);
       return res.json(evento);
     } catch (error) {
       console.error(error);

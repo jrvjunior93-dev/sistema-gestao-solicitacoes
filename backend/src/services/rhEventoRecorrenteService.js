@@ -65,6 +65,50 @@ function dividirEmParcelas(valorTotal, parcelas) {
   return Math.floor(totalCentavos / parcelas) / 100;
 }
 
+function parcelasPadrao(valorInformado, modoValor, parcelas) {
+  if (!parcelas) return null;
+  const centavos = paraCentavos(valorInformado);
+  if (modoValor === 'PARCELA') {
+    return Array.from({ length: parcelas }, () => centavos / 100);
+  }
+  const base = Math.floor(centavos / parcelas);
+  const resto = centavos - (base * parcelas);
+  return Array.from({ length: parcelas }, (_, index) => (
+    (base + (index === parcelas - 1 ? resto : 0)) / 100
+  ));
+}
+
+function normalizarParcelasInformadas(valores, parcelas, valorInformado, modoValor) {
+  if (!parcelas) return null;
+  const lista = Array.isArray(valores) && valores.length
+    ? valores.map((valor) => Number(valor))
+    : parcelasPadrao(valorInformado, modoValor, parcelas);
+
+  if (lista.length !== parcelas || lista.some((valor) => !Number.isFinite(valor) || valor <= 0)) {
+    throw new ValidationError(`Informe os valores das ${parcelas} parcelas, todos maiores que zero.`);
+  }
+
+  const normalizada = lista.map((valor) => paraCentavos(valor) / 100);
+  if (modoValor === 'TOTAL') {
+    const somaCentavos = normalizada.reduce((total, valor) => total + paraCentavos(valor), 0);
+    if (somaCentavos !== paraCentavos(valorInformado)) {
+      throw new ValidationError('A soma das parcelas precisa ser igual ao valor total informado.');
+    }
+  }
+  return normalizada;
+}
+
+function lerParcelasArmazenadas(valor) {
+  if (Array.isArray(valor)) return valor;
+  if (typeof valor !== 'string' || !valor.trim()) return [];
+  try {
+    const parsed = JSON.parse(valor);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
 /**
  * Cria a regra. Normalmente vem da aprovacao de um pedido do tipo EVENTO_RECORRENTE — "a Obra
  * solicita e o DP valida e confirma", conforme o cliente definiu em 25/08.
@@ -107,21 +151,30 @@ async function criarEventoRecorrente(dados = {}, contexto = {}, transaction = nu
       ? null
       : Number(dados.parcelas_total);
 
-    if (parcelas !== null && (!Number.isInteger(parcelas) || parcelas < 1)) {
-      throw new ValidationError('O numero de parcelas precisa ser um inteiro maior que zero.');
+    if (parcelas !== null && (!Number.isInteger(parcelas) || parcelas < 1 || parcelas > 240)) {
+      throw new ValidationError('A quantidade de parcelas precisa estar entre 1 e 240.');
     }
 
     const modoValor = String(dados.modo_valor || 'TOTAL').trim().toUpperCase();
     if (!['TOTAL', 'PARCELA'].includes(modoValor)) {
       throw new ValidationError('Informe se o valor digitado e o total ou o valor de cada parcela.');
     }
+    if (modoValor === 'TOTAL' && !parcelas) {
+      throw new ValidationError('Informe a quantidade de parcelas para dividir o valor total.');
+    }
     const valorInformado = Number(dados.valor);
-    const valorParcela = modoValor === 'PARCELA'
+    const parcelasValores = normalizarParcelasInformadas(
+      dados.parcelas_valores,
+      parcelas,
+      valorInformado,
+      modoValor
+    );
+    const valorParcela = parcelasValores?.[0] ?? (modoValor === 'PARCELA'
       ? valorInformado
-      : dividirEmParcelas(valorInformado, parcelas);
-    const valorTotal = modoValor === 'TOTAL'
-      ? valorInformado
-      : (parcelas ? valorInformado * parcelas : null);
+      : dividirEmParcelas(valorInformado, parcelas));
+    const valorTotal = parcelasValores
+      ? parcelasValores.reduce((total, valor) => total + valor, 0)
+      : (modoValor === 'TOTAL' ? valorInformado : null);
     if (!(valorParcela > 0)) {
       throw new ValidationError('O valor calculado da parcela precisa ser maior que zero.');
     }
@@ -166,6 +219,7 @@ async function criarEventoRecorrente(dados = {}, contexto = {}, transaction = nu
         competencia_inicio: inicio,
         competencia_fim: fim,
         parcelas_total: parcelas,
+        parcelas_valores_json: parcelasValores,
         beneficiario_nome: dados.beneficiario_nome || null,
         beneficiario_documento: documentoBeneficiario || null,
         beneficiario_banco: dados.beneficiario_banco || null,
@@ -187,16 +241,196 @@ async function criarEventoRecorrente(dados = {}, contexto = {}, transaction = nu
 
 /** Desliga sem apagar: o historico da folha continua apontando para a regra. */
 async function desativarEventoRecorrente(id, motivo, contexto = {}) {
-  const evento = await RhEventoRecorrente.findByPk(id);
-  if (!evento) throw new ValidationError('Evento recorrente nao encontrado.', 404);
+  const motivoNormalizado = String(motivo || '').trim();
+  if (!motivoNormalizado) throw new ValidationError('Informe o motivo do cancelamento do evento.');
+  return sequelize.transaction(async (transaction) => {
+    const evento = await RhEventoRecorrente.findByPk(id, {
+      include: [{ association: 'colaborador', attributes: ['id', 'obra_id'] }],
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!evento) throw new ValidationError('Evento recorrente nao encontrado.', 404);
+    if (Array.isArray(contexto.obraIds)
+        && !contexto.obraIds.includes(Number(evento.colaborador?.obra_id))) {
+      throw new ValidationError('Acesso negado a este evento recorrente.', 403);
+    }
+    if (!evento.ativo) throw new ValidationError('Este evento recorrente ja esta cancelado.');
 
-  await evento.update({
-    ativo: false,
-    observacoes: [evento.observacoes, `Desativado: ${String(motivo || '').trim() || 'sem motivo informado'}`]
-      .filter(Boolean).join(' | ')
+    await evento.update({
+      ativo: false,
+      observacoes: [evento.observacoes, `Cancelado: ${motivoNormalizado}`]
+        .filter(Boolean).join(' | ')
+    }, { transaction });
+
+    return evento;
+  });
+}
+
+async function aplicacoesDosEventos(eventoIds, transaction = null) {
+  if (!eventoIds.length) return new Map();
+  const linhas = await sequelize.query(
+    `SELECT i.evento_recorrente_id,
+            a.competencia,
+            MAX(i.valor) AS valor
+       FROM rh_apuracao_evento_itens i
+       JOIN rh_apuracao_eventos e ON e.id = i.apuracao_evento_id
+       JOIN rh_apuracoes a ON a.id = e.apuracao_id
+      WHERE i.evento_recorrente_id IN (:eventoIds)
+        AND a.status <> 'CANCELADA'
+      GROUP BY i.evento_recorrente_id, a.competencia
+      ORDER BY i.evento_recorrente_id, a.competencia`,
+    { replacements: { eventoIds }, type: QueryTypes.SELECT, transaction }
+  );
+  const porEvento = new Map();
+  linhas.forEach((linha) => {
+    const eventoId = Number(linha.evento_recorrente_id);
+    if (!porEvento.has(eventoId)) porEvento.set(eventoId, []);
+    porEvento.get(eventoId).push({
+      competencia: linha.competencia,
+      valor: Number(linha.valor || 0)
+    });
+  });
+  return porEvento;
+}
+
+/** Lista administrativa: inclui cancelados e informa quais parcelas ja viraram folha. */
+async function listarEventosRecorrentes(filters = {}, contexto = {}) {
+  const where = {};
+  const status = String(filters.status || '').trim().toUpperCase();
+  if (status === 'ATIVO') where.ativo = true;
+  if (status === 'CANCELADO' || status === 'INATIVO') where.ativo = false;
+
+  const colaboradorWhere = {};
+  if (Array.isArray(contexto.obraIds)) {
+    if (!contexto.obraIds.length) return [];
+    colaboradorWhere.obra_id = { [Op.in]: contexto.obraIds };
+  }
+  if (filters.colaborador_id) colaboradorWhere.id = Number(filters.colaborador_id);
+
+  const eventos = await RhEventoRecorrente.findAll({
+    where,
+    include: [{
+      association: 'colaborador',
+      required: true,
+      attributes: ['id', 'nome', 'matricula', 'obra_id'],
+      where: colaboradorWhere,
+      include: [{ association: 'obra', attributes: ['id', 'codigo', 'nome'] }]
+    }],
+    order: [['ativo', 'DESC'], ['createdAt', 'DESC'], ['id', 'DESC']]
   });
 
-  return evento;
+  const termo = String(filters.q || '').trim().toLocaleLowerCase('pt-BR');
+  const filtrados = termo
+    ? eventos.filter((evento) => [
+      evento.codigo,
+      evento.descricao,
+      evento.colaborador?.nome,
+      evento.colaborador?.matricula,
+      evento.colaborador?.obra?.nome,
+      evento.colaborador?.obra?.codigo
+    ].some((valor) => String(valor || '').toLocaleLowerCase('pt-BR').includes(termo)))
+    : eventos;
+  const aplicacoes = await aplicacoesDosEventos(filtrados.map((evento) => evento.id));
+
+  return filtrados.map((evento) => {
+    const itensAplicados = aplicacoes.get(Number(evento.id)) || [];
+    return {
+      ...evento.get({ plain: true }),
+      parcelas_aplicadas: itensAplicados.length,
+      parcelas_aplicadas_valores: itensAplicados.map((item) => item.valor)
+    };
+  });
+}
+
+/**
+ * Edita somente a regra futura. Os itens ja copiados para apuracoes permanecem intactos e as
+ * parcelas aplicadas ficam bloqueadas na propria lista de valores.
+ */
+async function atualizarEventoRecorrente(id, dados = {}, contexto = {}) {
+  return sequelize.transaction(async (transaction) => {
+    const evento = await RhEventoRecorrente.findByPk(id, {
+      include: [{ association: 'colaborador', attributes: ['id', 'obra_id'] }],
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!evento) throw new ValidationError('Evento recorrente nao encontrado.', 404);
+    if (Array.isArray(contexto.obraIds)
+        && !contexto.obraIds.includes(Number(evento.colaborador?.obra_id))) {
+      throw new ValidationError('Acesso negado a este evento recorrente.', 403);
+    }
+    if (!evento.ativo) throw new ValidationError('Um evento cancelado nao pode ser editado.');
+
+    const aplicacoes = (await aplicacoesDosEventos([evento.id], transaction)).get(Number(evento.id)) || [];
+    const aplicadas = aplicacoes.length;
+    const inicio = normalizarCompetencia(
+      dados.competencia_inicio || evento.competencia_inicio,
+      'A competencia inicial'
+    );
+    if (aplicadas > 0 && inicio !== evento.competencia_inicio) {
+      throw new ValidationError('A competencia inicial nao pode mudar depois que o evento foi aplicado.');
+    }
+
+    const parcelas = dados.parcelas_total === null || dados.parcelas_total === undefined
+      || dados.parcelas_total === ''
+      ? null
+      : Number(dados.parcelas_total);
+    if (parcelas !== null && (!Number.isInteger(parcelas) || parcelas < 1 || parcelas > 240)) {
+      throw new ValidationError('A quantidade de parcelas precisa estar entre 1 e 240.');
+    }
+    if (parcelas !== null && parcelas < aplicadas) {
+      throw new ValidationError(`O evento ja possui ${aplicadas} parcela(s) aplicada(s).`);
+    }
+
+    const modoValor = String(dados.modo_valor || evento.modo_valor || 'TOTAL').trim().toUpperCase();
+    if (!['TOTAL', 'PARCELA'].includes(modoValor)) {
+      throw new ValidationError('Informe se o valor digitado e o total ou o valor de cada parcela.');
+    }
+    if (modoValor === 'TOTAL' && !parcelas) {
+      throw new ValidationError('Informe a quantidade de parcelas para dividir o valor total.');
+    }
+    const valorInformado = Number(dados.valor);
+    if (!(valorInformado > 0)) throw new ValidationError('Informe um valor maior que zero para o evento.');
+
+    let parcelasValores = normalizarParcelasInformadas(
+      dados.parcelas_valores,
+      parcelas,
+      valorInformado,
+      modoValor
+    );
+    if (parcelasValores && aplicadas > 0) {
+      parcelasValores = parcelasValores.map((valor, index) => (
+        index < aplicadas && Number(aplicacoes[index]?.valor) > 0
+          ? Number(aplicacoes[index].valor)
+          : valor
+      ));
+      if (modoValor === 'TOTAL') {
+        const soma = parcelasValores.reduce((total, valor) => total + paraCentavos(valor), 0);
+        if (soma !== paraCentavos(valorInformado)) {
+          throw new ValidationError('A soma das parcelas, incluindo as ja aplicadas, precisa fechar o novo total.');
+        }
+      }
+    }
+
+    const valorParcela = parcelasValores?.[0] ?? valorInformado;
+    const valorTotal = parcelasValores
+      ? parcelasValores.reduce((total, valor) => total + valor, 0)
+      : (modoValor === 'TOTAL' ? valorInformado : null);
+
+    await evento.update({
+      modo_valor: modoValor,
+      valor: Number(valorParcela).toFixed(2),
+      valor_total: valorTotal === null ? null : Number(valorTotal).toFixed(2),
+      valor_parcela: Number(valorParcela).toFixed(2),
+      competencia_inicio: inicio,
+      parcelas_total: parcelas,
+      parcelas_valores_json: parcelasValores,
+      observacoes: dados.observacoes === undefined ? evento.observacoes : dados.observacoes
+    }, { transaction });
+
+    const atualizado = evento.get({ plain: true });
+    atualizado.parcelas_aplicadas = aplicadas;
+    return atualizado;
+  });
 }
 
 /**
@@ -282,7 +516,10 @@ async function aplicarRecorrentes(apuracaoEvento, competencia, transaction = nul
       if (evento.parcelas_total && parcela > evento.parcelas_total) continue;
 
       let valorAplicado = Number(evento.valor_parcela || evento.valor || 0);
-      if (evento.modo_valor === 'TOTAL' && evento.parcelas_total && parcela === evento.parcelas_total) {
+      const valoresParcelas = lerParcelasArmazenadas(evento.parcelas_valores_json);
+      if (valoresParcelas.length >= parcela && Number(valoresParcelas[parcela - 1]) > 0) {
+        valorAplicado = Number(valoresParcelas[parcela - 1]);
+      } else if (evento.modo_valor === 'TOTAL' && evento.parcelas_total && parcela === evento.parcelas_total) {
         const totalCentavos = paraCentavos(evento.valor_total || 0);
         const anterioresCentavos = paraCentavos(evento.valor_parcela || evento.valor || 0)
           * (evento.parcelas_total - 1);
@@ -342,6 +579,8 @@ module.exports = {
   CODIGOS_CONHECIDOS,
   competenciaValida,
   criarEventoRecorrente,
+  listarEventosRecorrentes,
+  atualizarEventoRecorrente,
   desativarEventoRecorrente,
   eventosVigentes,
   parcelaDaCompetencia,

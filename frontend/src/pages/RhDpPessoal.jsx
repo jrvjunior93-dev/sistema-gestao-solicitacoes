@@ -43,6 +43,7 @@ import RhDpTransferencias from './RhDpTransferencias';
 import RhDpJornada from './RhDpJornada';
 import RhDpApuracao from './RhDpApuracao';
 import RhDpFechamentos from './RhDpFechamentos';
+import RhDpEventosRecorrentes from './RhDpEventosRecorrentes';
 import {
   canViewRhDpApuracao,
   canViewRhDpObrigacoes,
@@ -51,8 +52,19 @@ import {
   isBusinessAdmin
 } from '../utils/acessoProduto';
 import { userHasSetorCapability } from '../utils/setor';
-import { formatCurrencyInput, getCpfCnpjError, getPixDocumentError, maskCpfCnpj, normalizeCurrencyTyping } from '../utils/formatters';
+import {
+  formatCurrencyInput,
+  getCpfCnpjError,
+  getPixDocumentError,
+  maskCpfCnpj,
+  normalizeCurrencyTyping,
+  parseCurrencyInput
+} from '../utils/formatters';
 import DateInputBR from '../components/DateInputBR';
+import ParcelasEventoEditor, {
+  validarParcelasEvento,
+  valoresParcelasParaPayload
+} from '../components/rh/ParcelasEventoEditor';
 import ObraAutocomplete from '../components/ui/ObraAutocomplete';
 
 /**
@@ -273,6 +285,7 @@ function formularioVazio(tipo) {
     modo_valor: 'TOTAL',
     competencia_inicio: '',
     parcelas_total: '',
+    parcelas_valores: [],
     beneficiario_nome: '',
     beneficiario_documento: '',
     beneficiario_banco: '',
@@ -399,6 +412,11 @@ export default function RhDpPessoal() {
       apoio: 'Quem está na obra hoje, com o que cada um tem em curso.'
     },
     { id: 'transferencias', rotulo: 'Transferências entre obras', apoio: 'Consulta global e transferências aprovadas pelos responsáveis das obras, sem passar pelo DP.' },
+    {
+      id: 'eventos-recorrentes',
+      rotulo: 'Eventos recorrentes',
+      apoio: 'Acompanhe parcelas futuras, ajuste valores ainda não aplicados e encerre recorrências.'
+    },
     {
       id: 'jornada',
       rotulo: 'Pagamento de Mão de Obra',
@@ -646,6 +664,13 @@ export default function RhDpPessoal() {
         return;
       }
     }
+    if (f.tipo === 'EVENTO_RECORRENTE') {
+      const erroParcelas = validarParcelasEvento(f);
+      if (erroParcelas) {
+        avisar.erro(erroParcelas);
+        return;
+      }
+    }
     const dados = {};
 
     if (f.tipo === 'ADMISSAO') {
@@ -715,10 +740,11 @@ export default function RhDpPessoal() {
       Object.assign(dados, {
         codigo: f.codigo,
         natureza: f.natureza,
-        valor: normalizeCurrencyTyping(f.valor),
+        valor: parseCurrencyInput(f.valor),
         modo_valor: f.modo_valor,
         competencia_inicio: f.competencia_inicio,
         parcelas_total: f.parcelas_total ? Number(f.parcelas_total) : null,
+        parcelas_valores: valoresParcelasParaPayload(f),
         beneficiario_nome: f.codigo === 'PENSAO_ALIMENTICIA' ? f.beneficiario_nome : undefined,
         beneficiario_documento: f.codigo === 'PENSAO_ALIMENTICIA'
           ? f.beneficiario_documento.replace(/\D/g, '')
@@ -1319,6 +1345,9 @@ export default function RhDpPessoal() {
       {abaAtiva === 'transferencias' ? <RhDpTransferencias
         onNotificacoesLidas={limparNotificacoesTransferencia}
       /> : null}
+      {abaAtiva === 'eventos-recorrentes' ? (
+        <RhDpEventosRecorrentes podeDecidir={podeDecidir} />
+      ) : null}
       {abaAtiva === 'jornada' ? (
         <RhDpJornada onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined} />
       ) : null}
@@ -2023,37 +2052,7 @@ export default function RhDpPessoal() {
                   </select>
                 </label>
 
-                <label className="form-field">
-                  <span className="form-label form-label--required">Valor</span>
-                  <input className="form-control" inputMode="decimal" value={formulario.valor}
-                    onChange={(e) => setFormulario({ ...formulario, valor: normalizeCurrencyTyping(e.target.value) })}
-                    onBlur={(e) => setFormulario({ ...formulario, valor: formatCurrencyInput(e.target.value) })} required />
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label form-label--required">Valor informado como</span>
-                  <select className="form-control" value={formulario.modo_valor}
-                    onChange={(e) => setFormulario({ ...formulario, modo_valor: e.target.value })}>
-                    <option value="TOTAL">Valor total a dividir</option>
-                    <option value="PARCELA">Valor de cada parcela</option>
-                  </select>
-                </label>
-
-                <label className="form-field">
-                  <span className="form-label form-label--required">Competencia inicial</span>
-                  <input className="form-control" placeholder="AAAA-MM"
-                    value={formulario.competencia_inicio}
-                    onChange={(e) => setFormulario({ ...formulario, competencia_inicio: e.target.value })} required />
-                </label>
-                {Number(formulario.parcelas_total) > 0 && Number(normalizeCurrencyTyping(formulario.valor)) > 0 ? (
-                  <p className="app-note">
-                    Valor estimado da parcela: {formatCurrencyInput(String(
-                      formulario.modo_valor === 'TOTAL'
-                        ? Number(normalizeCurrencyTyping(formulario.valor)) / Number(formulario.parcelas_total)
-                        : Number(normalizeCurrencyTyping(formulario.valor))
-                    ))}
-                  </p>
-                ) : null}
+                <ParcelasEventoEditor valor={formulario} onChange={setFormulario} />
 
                 {formulario.codigo === 'PENSAO_ALIMENTICIA' ? (
                   <>
@@ -2095,14 +2094,6 @@ export default function RhDpPessoal() {
                   </>
                 ) : null}
 
-                <label className="form-field">
-                  <span className="form-label">Parcelas</span>
-                  {/* O placeholder AQUI continua, e nao e rotulo: ele explica o que VAZIO significa
-                      ("sem fim"), que e informacao que nenhum rotulo carrega. */}
-                  <input className="form-control" type="number" min="1" placeholder="Vazio = sem fim"
-                    value={formulario.parcelas_total}
-                    onChange={(e) => setFormulario({ ...formulario, parcelas_total: e.target.value })} />
-                </label>
               </div>
             ) : null}
 

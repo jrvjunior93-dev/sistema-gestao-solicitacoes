@@ -20,6 +20,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
     competencia_fim: { type: DataTypes.STRING(7), allowNull: true },
     // Nulo = indefinido. Preenchido = para sozinho na ultima parcela.
     parcelas_total: { type: DataTypes.INTEGER, allowNull: true },
+    parcelas_valores_json: { type: DataTypes.JSON, allowNull: true },
     beneficiario_nome: { type: DataTypes.STRING(180), allowNull: true },
     beneficiario_documento: { type: DataTypes.STRING(14), allowNull: true },
     beneficiario_banco: { type: DataTypes.STRING(120), allowNull: true },

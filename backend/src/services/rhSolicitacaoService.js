@@ -373,6 +373,30 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
     if (!['TOTAL', 'PARCELA'].includes(modoValor)) {
       throw new ValidationError('Informe se o valor digitado e o total ou o valor de cada parcela.');
     }
+    const parcelas = dados.parcelas_total === null || dados.parcelas_total === undefined || dados.parcelas_total === ''
+      ? null
+      : Number(dados.parcelas_total);
+    if (parcelas !== null && (!Number.isInteger(parcelas) || parcelas < 1 || parcelas > 240)) {
+      throw new ValidationError('A quantidade de parcelas precisa estar entre 1 e 240.');
+    }
+    if (modoValor === 'TOTAL' && !parcelas) {
+      throw new ValidationError('Informe a quantidade de parcelas para dividir o valor total.');
+    }
+    if (dados.parcelas_valores !== undefined) {
+      if (!Array.isArray(dados.parcelas_valores) || !parcelas || dados.parcelas_valores.length !== parcelas) {
+        throw new ValidationError('A lista de parcelas precisa corresponder a quantidade informada.');
+      }
+      const valores = dados.parcelas_valores.map(Number);
+      if (valores.some((valor) => !Number.isFinite(valor) || valor <= 0)) {
+        throw new ValidationError('Todas as parcelas precisam ter valor maior que zero.');
+      }
+      if (modoValor === 'TOTAL') {
+        const somaCentavos = valores.reduce((total, valor) => total + Math.round(valor * 100), 0);
+        if (somaCentavos !== Math.round(Number(dados.valor) * 100)) {
+          throw new ValidationError('A soma das parcelas precisa ser igual ao valor total informado.');
+        }
+      }
+    }
     if (String(dados.codigo || '').toUpperCase() === 'PENSAO_ALIMENTICIA') {
       const documento = String(dados.beneficiario_documento || '').replace(/\D+/g, '');
       if (!String(dados.beneficiario_nome || '').trim()) {

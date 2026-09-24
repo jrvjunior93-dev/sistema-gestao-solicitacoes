@@ -556,6 +556,23 @@ export async function eventosRecorrentesDoColaborador(colaboradorId, competencia
   return parseJson(response, 'Erro ao listar eventos recorrentes');
 }
 
+export async function listarEventosRecorrentesRh(filters = {}) {
+  const query = buildQuery(filters);
+  const response = await fetch(`${API_URL}/rh/eventos-recorrentes${query ? `?${query}` : ''}`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao listar a gestao de eventos recorrentes');
+}
+
+export async function atualizarEventoRecorrenteRh(id, data) {
+  const response = await fetch(`${API_URL}/rh/eventos-recorrentes/${id}`, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao atualizar o evento recorrente');
+}
+
 export async function desativarEventoRecorrenteRh(id, motivo) {
   const response = await fetch(`${API_URL}/rh/eventos-recorrentes/${id}/desativar`, {
     method: 'POST',
