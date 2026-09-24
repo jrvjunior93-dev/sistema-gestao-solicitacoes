@@ -261,15 +261,20 @@ function ObraCadastroCard({
               tone="reference"
             />
             {obraPrivada && valorVendido != null ? (
-              <ObraMetrica
-                label="Valor vendido"
-                value={formatCurrency(valorVendido)}
-                support={`${Number(obra.quantidade_contratos_venda || 0)} contrato(s) vigente(s)`}
-                tone="received"
-              />
-            ) : null}
-            {obraPrivada && faltaVender != null ? (
-              <ObraMetrica label="Falta vender" value={formatCurrency(faltaVender)} tone="pending" />
+              <>
+                <ObraMetrica
+                  label="Valor vendido"
+                  value={formatCurrency(valorVendido)}
+                  support={`${Number(obra.quantidade_contratos_venda || 0)} contrato(s) vigente(s)`}
+                  tone="received"
+                />
+                <ObraMetrica
+                  label="Falta vender"
+                  value={faltaVender == null ? '—' : formatCurrency(faltaVender)}
+                  support={faltaVender == null ? 'Aguardando VGV calculável' : 'VGV menos valor vendido'}
+                  tone="pending"
+                />
+              </>
             ) : null}
           </div>
 
