@@ -189,6 +189,26 @@
     minmax(220px, 0.75fr);
 }
 
+.cr-context-bar--executive.cr-context-bar--with-actions {
+  grid-template-columns:
+    minmax(260px, 1.25fr)
+    minmax(160px, 0.55fr)
+    minmax(230px, 0.8fr)
+    minmax(190px, 0.65fr)
+    auto;
+}
+
+.cr-context-actions {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+}
+
+.cr-context-actions .btn {
+  min-height: 2.55rem;
+  white-space: nowrap;
+}
+
 .cr-competence-filter {
   position: relative;
   min-width: 0;
@@ -4660,14 +4680,18 @@
 .cr-month-detail-surface > .cr-section { margin: 12px; }
 
 @media (max-width: 1180px) {
-  .cr-context-bar--executive {
+  .cr-context-bar--executive,
+  .cr-context-bar--executive.cr-context-bar--with-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .cr-context-summary { min-height: 100%; }
+  .cr-context-actions { justify-content: flex-start; }
 }
 
 @media (max-width: 760px) {
-  .cr-context-bar--executive { grid-template-columns: 1fr; }
+  .cr-context-bar--executive,
+  .cr-context-bar--executive.cr-context-bar--with-actions { grid-template-columns: 1fr; }
+  .cr-context-actions .btn { width: 100%; }
   .cr-operational-period { grid-template-columns: 1fr 1fr; }
   .cr-planning-deadline { grid-template-columns: auto minmax(0, 1fr); }
   .cr-planning-deadline .btn { grid-column: 1 / -1; width: 100%; justify-content: center; }

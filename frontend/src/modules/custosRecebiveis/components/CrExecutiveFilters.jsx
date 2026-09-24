@@ -58,7 +58,8 @@ export default function CrExecutiveFilters({
   onCompetenciaReferenciaChange,
   onCompetenciasChange,
   operational = false,
-  onPeriodChange
+  onPeriodChange,
+  onClear
 }) {
   /*
     "COMPETÊNCIAS DOS CARDS" NÃO FECHAVA CLICANDO FORA (05/09) — o defeito
@@ -160,7 +161,10 @@ export default function CrExecutiveFilters({
   }
 
   return (
-    <section className="cr-context-bar cr-context-bar--executive" aria-label="Filtros do dashboard">
+    <section
+      className={`cr-context-bar cr-context-bar--executive${onClear ? ' cr-context-bar--with-actions' : ''}`}
+      aria-label="Filtros do dashboard"
+    >
       <div className="cr-field">
         <span>{operational ? 'Obra' : 'Filtros'}</span>
         <ObraAutocomplete
@@ -267,6 +271,14 @@ export default function CrExecutiveFilters({
         <strong>{selectedWork?.nome || `${filteredWorks.length} obra(s)`}</strong>
         <small>{selectedMonths.length} competência(s) selecionada(s)</small>
       </div>
+
+      {onClear ? (
+        <div className="cr-context-actions">
+          <button type="button" className="btn btn-outline" onClick={onClear}>
+            Limpar filtros
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

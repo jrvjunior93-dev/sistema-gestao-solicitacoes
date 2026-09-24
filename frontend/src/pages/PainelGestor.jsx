@@ -56,6 +56,15 @@ function firstDayOfMonth() {
   return `${currentMonth()}-01`;
 }
 
+function initialResultFilters() {
+  return {
+    obra_id: '',
+    classificacao: '',
+    data_inicial: firstDayOfMonth(),
+    data_final: localDate()
+  };
+}
+
 function monthsBetween(start, end) {
   if (!/^\d{4}-\d{2}$/.test(start) || !/^\d{4}-\d{2}$/.test(end) || start > end) return [];
   const values = [];
@@ -85,9 +94,7 @@ function ResultadoObrasTab({ avisar }) {
   const [obras, setObras] = useState([]);
   const [dados, setDados] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({
-    obra_id: '', classificacao: '', data_inicial: firstDayOfMonth(), data_final: localDate()
-  });
+  const [filters, setFilters] = useState(initialResultFilters);
   const [applied, setApplied] = useState(filters);
 
   useEffect(() => {
@@ -124,6 +131,12 @@ function ResultadoObrasTab({ avisar }) {
     setApplied({ ...filters });
   }
 
+  function clearFilters() {
+    const initial = initialResultFilters();
+    setFilters(initial);
+    setApplied(initial);
+  }
+
   return (
     <div className="pg-tab-stack">
       <BlocoConteudo titulo="Filtros do resultado" descricao="Movimentos são recortados pelo período; posições estruturais permanecem atuais.">
@@ -145,7 +158,10 @@ function ResultadoObrasTab({ avisar }) {
           </select></label>
           <label><span>Período inicial</span><DateInputBR value={filters.data_inicial} max={filters.data_final} onChange={(event) => setFilters((current) => ({ ...current, data_inicial: event.target.value }))} /></label>
           <label><span>Período final</span><DateInputBR value={filters.data_final} min={filters.data_inicial} max={localDate()} onChange={(event) => setFilters((current) => ({ ...current, data_final: event.target.value }))} /></label>
-          <button className="btn btn-primary" type="submit">Aplicar filtros</button>
+          <div className="pg-filter-actions">
+            <button className="btn btn-outline" type="button" onClick={clearFilters}>Limpar filtros</button>
+            <button className="btn btn-primary" type="submit">Aplicar filtros</button>
+          </div>
         </form>
       </BlocoConteudo>
 
@@ -193,6 +209,14 @@ function CustosRecebiveisTab({ avisar }) {
     obterCustosRecebiveisPainelGestor(competencia, selectedObra, competenciasParam, selectedClassification)
   ), []);
 
+  function clearFilters() {
+    const month = currentMonth();
+    setObraId('');
+    setClassificacao('');
+    setPeriodStart(month);
+    setPeriodEnd(month);
+  }
+
   return (
     <div className="pg-tab-stack custos-recebiveis-layout-scope">
       <CrExecutiveFilters
@@ -211,6 +235,7 @@ function CustosRecebiveisTab({ avisar }) {
         }}
         operational
         onPeriodChange={(start, end) => { setPeriodStart(start); setPeriodEnd(end); }}
+        onClear={clearFilters}
       />
       <CrDashboardView
         competencia={periodEnd}

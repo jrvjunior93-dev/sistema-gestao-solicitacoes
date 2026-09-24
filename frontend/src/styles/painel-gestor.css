@@ -127,6 +127,17 @@
   align-items: end;
 }
 
+.pg-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.pg-filter-actions .btn {
+  min-height: 2.55rem;
+  white-space: nowrap;
+}
+
 .pg-filter-grid label,
 .pg-balance-toolbar label,
 .pg-register-date label {
@@ -254,6 +265,7 @@
   .cr-ops-dashboard--gestor .cr-portfolio-planning__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pg-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pg-filter-grid .btn { justify-self: start; }
+  .pg-filter-actions { grid-column: 1 / -1; }
   .pg-balance-summary { grid-template-columns: 1fr; }
   .pg-balance-summary dl { border-left: 0; border-top: 1px solid var(--c-border); }
 }
@@ -262,6 +274,7 @@
   .cr-ops-dashboard--gestor .cr-portfolio-planning__grid { grid-template-columns: 1fr; }
   .pg-filter-grid { grid-template-columns: 1fr; }
   .pg-filter-grid .btn { width: 100%; }
+  .pg-filter-actions { display: grid; grid-template-columns: 1fr; }
   .pg-balance-toolbar, .pg-register-date { align-items: stretch; flex-direction: column; }
   .pg-balance-toolbar label, .pg-register-date label { width: 100%; }
   .pg-balance-toolbar__actions { display: grid; grid-template-columns: 1fr 1fr; }
