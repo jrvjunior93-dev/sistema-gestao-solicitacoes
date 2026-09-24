@@ -24,6 +24,7 @@ import {
   categoriaFinanceiraMatchesSearch
 } from '../utils/categoriaFinanceira';
 import CategoriaFinanceiraAutocomplete from '../components/ui/CategoriaFinanceiraAutocomplete';
+import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 import OverlayModal from '../components/ui/OverlayModal';
 import {
   Avisos,
@@ -1870,19 +1871,15 @@ export default function FinanceiroTituloNovo() {
                           ? 'Nenhum item cadastrado para esta obra.'
                           : `${apropriacoes.length} item(s) disponivel(is).`}
                   >
-                    <select
-                      className="input w-full"
+                    <ApropriacaoAutocomplete
                       value={form.apropriacao_id}
-                      onChange={(event) => updateField('apropriacao_id', event.target.value)}
+                      options={apropriacoes}
+                      onChange={(id) => updateField('apropriacao_id', id)}
                       disabled={!form.obra_id || loadingApropriacoes}
-                    >
-                      <option value="">Sem apropriação</option>
-                      {apropriacoes.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.codigo ? `${item.codigo} — ${item.descricao}` : item.descricao}
-                        </option>
-                      ))}
-                    </select>
+                      disabledPlaceholder="Selecione a obra primeiro"
+                      placeholder="Sem apropriação — pesquise para selecionar"
+                      loading={loadingApropriacoes}
+                    />
                   </CampoForm>
                 )}
               </FormSecao>

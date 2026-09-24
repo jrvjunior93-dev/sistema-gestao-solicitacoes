@@ -21,6 +21,7 @@ export default function ObraAutocomplete({
       emptyText="Nenhuma obra ativa encontrada"
       inputClassName="form-control"
       portalZIndex="var(--z-modal-acima)"
+      mostrarConsultaCompleta={false}
     />
   );
 }

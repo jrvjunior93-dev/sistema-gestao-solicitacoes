@@ -19,6 +19,7 @@ import {
   categoriaFinanceiraMatchesAutocomplete,
   categoriaFinanceiraMatchesSearch
 } from '../utils/categoriaFinanceira';
+import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 import {
   Pagina,
   PageHeader,
@@ -1118,17 +1119,13 @@ export default function FinanceiroTituloEditar() {
               </CampoForm>
 
               <CampoForm label="Apropriação">
-                <select
-                  className="input w-full"
+                <ApropriacaoAutocomplete
                   value={form.apropriacao_id}
-                  onChange={(event) => updateField('apropriacao_id', event.target.value)}
+                  options={apropriacoes}
+                  onChange={(id) => updateField('apropriacao_id', id)}
                   disabled={Boolean(bloqueio)}
-                >
-                  <option value="">Sem apropriação</option>
-                  {apropriacoes.map((apropriacao) => (
-                    <option key={apropriacao.id} value={apropriacao.id}>{apropriacao.codigo ? `${apropriacao.codigo} - ` : ''}{apropriacao.nome}</option>
-                  ))}
-                </select>
+                  placeholder="Sem apropriação — pesquise para selecionar"
+                />
               </CampoForm>
 
               <CampoForm label="Número do documento">

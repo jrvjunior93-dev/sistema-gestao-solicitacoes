@@ -15,6 +15,7 @@ import {
 } from '../../../components/padrao';
 import StatusBadge from '../../../components/StatusBadge';
 import OverlayModal from '../../../components/ui/OverlayModal';
+import ApropriacaoAutocomplete from '../../../components/ui/ApropriacaoAutocomplete';
 import { getObras } from '../../../services/obras';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
@@ -898,20 +899,14 @@ export default function GestaoApropriacoes() {
               label="Apropriação pai"
               hint="Deixe em 'Identificar pelo codigo' para o sistema deduzir o pai a partir da numeracao."
             >
-              {/* R12: select de FORMULÁRIO (entrada de dado do registro) —
-                  legítimo pela própria regra. */}
-              <select
-                className="input w-full"
+              <ApropriacaoAutocomplete
                 value={apropriacaoPaiId}
-                onChange={(event) => setApropriacaoPaiId(event.target.value)}
-              >
-                <option value="">Identificar pelo código</option>
-                {apropriacoesPaisDisponiveis.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.codigo} - {item.descricao || 'Sem descricao'}
-                  </option>
-                ))}
-              </select>
+                options={apropriacoesPaisDisponiveis}
+                onChange={setApropriacaoPaiId}
+                placeholder="Identificar pelo código"
+                emptyText="Nenhuma apropriação pai disponível"
+                tituloConsulta="Apropriações disponíveis como pai"
+              />
             </CampoForm>
 
             <div className="form-campo--linha">

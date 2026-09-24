@@ -51,6 +51,7 @@ import {
   useFiltrosVisiveis
 } from '../components/padrao';
 import OverlayModal from '../components/ui/OverlayModal';
+import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
 
 const DESCRICAO_GESTAO = 'Cadastro, importacao e acompanhamento dos contratos por obra.';
@@ -619,18 +620,13 @@ export default function GestaoContratos() {
 
         {lista.map((item, index) => (
           <div key={`${index}-${item.apropriacao_id || 'nova'}`} className="grid gap-2 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,0.5fr)_minmax(0,0.5fr)_minmax(0,1fr)_auto]">
-            <select
-              className="input input-sm"
+            <ApropriacaoAutocomplete
               value={item.apropriacao_id}
-              onChange={e => alterarLinhaApropriacao(index, 'apropriacao_id', e.target.value, setter)}
-            >
-              <option value="">Apropriação</option>
-              {disponiveis.map(ap => (
-                <option key={ap.id} value={ap.id}>
-                  {ap.codigo} - {ap.descricao}
-                </option>
-              ))}
-            </select>
+              options={disponiveis}
+              onChange={(id) => alterarLinhaApropriacao(index, 'apropriacao_id', id, setter)}
+              inputClassName="input input-sm w-full"
+              placeholder="Apropriação"
+            />
             <input
               className="input input-sm"
               value={item.percentual}

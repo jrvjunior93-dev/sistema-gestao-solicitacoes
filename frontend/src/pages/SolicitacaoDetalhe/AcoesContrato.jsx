@@ -766,6 +766,7 @@ export default function AcoesContrato({ contrato, onMudou }) {
                   onChange={(id) => { setCategoriaId(id ? String(id) : ''); setErroCategoria(''); }}
                   inputClassName="input input-sm w-full"
                   placeholder="Buscar por código ou nome do plano de contas..."
+                  mostrarConsultaCompleta={false}
                 />
                 <input type="hidden" name="categoria_financeira_id" value={categoriaId} />
               </CampoForm>

@@ -18,6 +18,7 @@ import { criarContratoFluxoNovo, aprovarContratoFluxoNovo, rejeitarContratoFluxo
 import { buscarParceiros } from '../services/parceiros';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
 import DateInputBR from '../components/DateInputBR';
+import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 
 /**
  * Criacao de contrato do fluxo novo (wireframe 1).
@@ -435,10 +436,14 @@ export default function ContratoFluxoNovo() {
           </CampoForm>
 
           <CampoForm label="Apropriação" obrigatorio hint="A lista depende da obra escolhida.">
-            <select className="input w-full" value={form.apropriacao_id} onChange={campo('apropriacao_id')}>
-              <option value="">Selecione</option>
-              {apropriacoesObra.map((a) => <option key={a.id} value={a.id}>{a.codigo} — {a.descricao}</option>)}
-            </select>
+            <ApropriacaoAutocomplete
+              value={form.apropriacao_id}
+              options={apropriacoesObra}
+              onChange={(id) => setForm((atual) => ({ ...atual, apropriacao_id: id }))}
+              disabled={!form.obra_id}
+              required
+              disabledPlaceholder="Selecione a obra primeiro"
+            />
           </CampoForm>
         </FormSecao>
 

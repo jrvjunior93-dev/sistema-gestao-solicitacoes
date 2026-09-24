@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { HiOutlineMagnifyingGlass, HiOutlineXMark } from 'react-icons/hi2';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
 import { usePosicaoFlutuante } from '../../hooks/usePosicaoFlutuante';
+import OverlayModal from './OverlayModal';
 
 function normalize(v) {
   return String(v || '')
@@ -13,6 +15,14 @@ function normalize(v) {
 function optionLabel(item) {
   const desc = item.descricao || item.nome || '';
   return item.codigo ? `${item.codigo} - ${desc}` : desc;
+}
+
+function optionType(item) {
+  const somadora = item.somadora ?? item.conta_somadora ?? item.is_somadora;
+  if (somadora === true || somadora === 1 || String(somadora).toUpperCase() === 'SIM') {
+    return 'Etapa somadora';
+  }
+  return 'Apropriação analítica';
 }
 
 export default function ApropriacaoAutocomplete({
@@ -31,10 +41,14 @@ export default function ApropriacaoAutocomplete({
   loading = false,
   loadingText = 'Consultando...',
   ariaLabel,
+  mostrarConsultaCompleta = true,
+  tituloConsulta = 'Apropriações da obra',
 }) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [consultaAberta, setConsultaAberta] = useState(false);
+  const [consulta, setConsulta] = useState('');
   // A lista vai em PORTAL, e a posicao dela e medida a partir do input.
   //
   // Ela era `absolute` dentro do proprio campo, e por isso sumia quando o autocomplete ficava
@@ -132,13 +146,42 @@ export default function ApropriacaoAutocomplete({
     });
   }, [options, query, selectedLabel]);
 
+  const opcoesConsulta = useMemo(() => {
+    const q = normalize(consulta.trim());
+    if (!q) return options;
+    return options.filter((item) => normalize([
+      item.codigo,
+      item.descricao,
+      item.nome,
+      optionType(item),
+    ].filter(Boolean).join(' ')).includes(q));
+  }, [consulta, options]);
+
   useEffect(() => {
     setActiveIndex(0);
   }, [query, options.length]);
 
+  useEffect(() => {
+    if (!disabled) return;
+    setOpen(false);
+    setConsultaAberta(false);
+  }, [disabled]);
+
   function select(option) {
     onChange(option ? String(option.id) : '');
     setOpen(false);
+  }
+
+  function abrirConsultaCompleta() {
+    if (disabled) return;
+    setOpen(false);
+    setConsulta('');
+    setConsultaAberta(true);
+  }
+
+  function selecionarNaConsulta(option) {
+    select(option);
+    setConsultaAberta(false);
   }
 
   function handleInputChange(e) {
@@ -171,73 +214,200 @@ export default function ApropriacaoAutocomplete({
   }
 
   return (
-    <div ref={campoRef} className={`relative ${className}`}>
-      <input
-        className={inputClassName}
-        value={query}
-        onChange={handleInputChange}
-        onFocus={() => {
-          setOpen(true);
-          onSearch?.(query);
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder={disabled ? disabledPlaceholder : placeholder}
-        disabled={disabled}
-        required={required && !value}
-        autoComplete="off"
-        role="combobox"
-        aria-label={ariaLabel}
-        aria-expanded={open}
-        aria-autocomplete="list"
-      />
+    <>
+      <div ref={campoRef} className={`relative ${className}`}>
+        <input
+          className={inputClassName}
+          style={mostrarConsultaCompleta ? { paddingRight: '2.75rem' } : undefined}
+          value={query}
+          onChange={handleInputChange}
+          onFocus={() => {
+            setOpen(true);
+            onSearch?.(query);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={disabled ? disabledPlaceholder : placeholder}
+          disabled={disabled}
+          required={required && !value}
+          autoComplete="off"
+          role="combobox"
+          aria-label={ariaLabel}
+          aria-expanded={open}
+          aria-autocomplete="list"
+        />
 
-      {open && !disabled && caixa && typeof document !== 'undefined' && createPortal((
-        <div
-          ref={painelRef}
-          className="max-h-60 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl"
-          style={{ ...caixa.estilo, zIndex: zIndexPainel }}
-        >
-          {loading ? (
-            <div className="px-3 py-2 text-sm text-[var(--c-muted)]" role="status">
-              {loadingText}
-            </div>
-          ) : filteredOptions.length ? (
-            filteredOptions.map((option, i) => (
-              <button
-                key={option.id}
-                type="button"
-                className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                  i === activeIndex
-                    ? 'bg-[var(--c-primary)] text-white'
-                    : 'text-[var(--c-text)] hover:bg-[var(--c-bg)]'
-                }`}
-                onMouseEnter={() => setActiveIndex(i)}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  select(option);
-                }}
-              >
-                {option.codigo && (
-                  <span
-                    className={`block font-mono text-xs ${
-                      i === activeIndex ? 'text-white/70' : 'text-[var(--c-muted)]'
-                    }`}
-                  >
-                    {option.codigo}
+        {mostrarConsultaCompleta ? (
+          <button
+            type="button"
+            className="absolute right-1 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-muted)] shadow-sm transition-colors hover:border-[var(--c-primary)] hover:text-[var(--c-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-primary)] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-40"
+            onClick={abrirConsultaCompleta}
+            disabled={disabled}
+            aria-label="Ver todas as apropriações da obra"
+            title={disabled ? disabledPlaceholder : 'Ver todas as apropriações da obra'}
+          >
+            <HiOutlineMagnifyingGlass className="h-4 w-4" aria-hidden="true" />
+          </button>
+        ) : null}
+
+        {open && !disabled && caixa && typeof document !== 'undefined' && createPortal((
+          <div
+            ref={painelRef}
+            className="max-h-60 overflow-y-auto rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-1 shadow-xl"
+            style={{ ...caixa.estilo, zIndex: zIndexPainel }}
+          >
+            {loading ? (
+              <div className="px-3 py-2 text-sm text-[var(--c-muted)]" role="status">
+                {loadingText}
+              </div>
+            ) : filteredOptions.length ? (
+              filteredOptions.map((option, i) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={`w-full rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+                    i === activeIndex
+                      ? 'bg-[var(--c-primary)] text-white'
+                      : 'text-[var(--c-text)] hover:bg-[var(--c-bg)]'
+                  }`}
+                  onMouseEnter={() => setActiveIndex(i)}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    select(option);
+                  }}
+                >
+                  {option.codigo && (
+                    <span
+                      className={`block font-mono text-xs ${
+                        i === activeIndex ? 'text-white/70' : 'text-[var(--c-muted)]'
+                      }`}
+                    >
+                      {option.codigo}
+                    </span>
+                  )}
+                  <span className="block truncate font-medium">
+                    {option.descricao || option.nome || ''}
                   </span>
-                )}
-                <span className="block truncate font-medium">
-                  {option.descricao || option.nome || ''}
-                </span>
-              </button>
-            ))
-          ) : (
-            <div className="px-3 py-2 text-sm text-[var(--c-muted)]">
-              {emptyText}
-            </div>
-          )}
+                </button>
+              ))
+            ) : (
+              <div className="px-3 py-2 text-sm text-[var(--c-muted)]">
+                {emptyText}
+              </div>
+            )}
+          </div>
+        ), document.body)}
+      </div>
+
+      <OverlayModal
+        aberto={consultaAberta}
+        largura="var(--modal-max-w-xl, 1040px)"
+        rotulo={tituloConsulta}
+        onFechar={() => setConsultaAberta(false)}
+      >
+        <div
+          data-modal="cabecalho"
+          className="flex items-start justify-between gap-4 border-b border-[var(--c-border)] px-5 py-4"
+        >
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-[var(--c-text)]">{tituloConsulta}</h2>
+            <p className="mt-1 text-sm text-[var(--c-muted)]">
+              Consulte e selecione uma das {options.length} apropriações disponíveis para esta obra.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)] text-[var(--c-muted)] transition-colors hover:border-[var(--c-primary)] hover:text-[var(--c-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--c-primary)]"
+            onClick={() => setConsultaAberta(false)}
+            aria-label="Fechar consulta de apropriações"
+            title="Fechar"
+          >
+            <HiOutlineXMark className="h-5 w-5" aria-hidden="true" />
+          </button>
         </div>
-      ), document.body)}
-    </div>
+
+        <div className="space-y-3 p-5">
+          <div className="relative">
+            <HiOutlineMagnifyingGlass
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--c-muted)]"
+              aria-hidden="true"
+            />
+            <input
+              className="input w-full pl-9"
+              value={consulta}
+              onChange={(event) => setConsulta(event.target.value)}
+              placeholder="Pesquisar por código, descrição ou tipo..."
+              autoFocus
+              aria-label="Pesquisar apropriações da obra"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-3 text-xs text-[var(--c-muted)]">
+            <span>{opcoesConsulta.length} resultado(s)</span>
+            <span>A lista respeita o nível de apropriação configurado para a obra.</span>
+          </div>
+
+          <div className="max-h-[58vh] overflow-auto rounded-xl border border-[var(--c-border)]">
+            <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+              <thead
+                className="sticky top-0 bg-[var(--c-bg)] text-xs uppercase tracking-wide text-[var(--c-muted)]"
+                style={{ zIndex: 'var(--z-celula-fixa)' }}
+              >
+                <tr>
+                  <th className="w-48 border-b border-[var(--c-border)] px-3 py-2.5 font-semibold">Código</th>
+                  <th className="border-b border-[var(--c-border)] px-3 py-2.5 font-semibold">Descrição</th>
+                  <th className="w-48 border-b border-[var(--c-border)] px-3 py-2.5 font-semibold">Tipo</th>
+                  <th className="w-28 border-b border-[var(--c-border)] px-3 py-2.5 text-right font-semibold">Ação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-[var(--c-muted)]" role="status">
+                      {loadingText}
+                    </td>
+                  </tr>
+                ) : opcoesConsulta.length ? opcoesConsulta.map((option) => {
+                  const selecionada = String(option.id) === String(value || '');
+                  return (
+                    <tr
+                      key={option.id}
+                      className={`border-b border-[var(--c-border)] last:border-b-0 ${
+                        selecionada ? '' : 'hover:bg-[var(--c-bg)]'
+                      }`}
+                      style={selecionada ? { background: 'var(--c-bg)' } : undefined}
+                    >
+                      <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs font-semibold text-[var(--c-text)]">
+                        {option.codigo || '—'}
+                      </td>
+                      <td className="px-3 py-2.5 font-medium text-[var(--c-text)]">
+                        {option.descricao || option.nome || 'Sem descrição'}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-[var(--c-muted)]">
+                        {optionType(option)}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${selecionada ? 'btn-secondary' : 'btn-primary'}`}
+                          onClick={() => selecionarNaConsulta(option)}
+                        >
+                          {selecionada ? 'Selecionada' : 'Selecionar'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                }) : (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-10 text-center text-[var(--c-muted)]">
+                      {emptyText}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </OverlayModal>
+    </>
   );
 }

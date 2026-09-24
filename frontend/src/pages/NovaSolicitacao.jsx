@@ -2838,6 +2838,7 @@ export default function NovaSolicitacao() {
                 <ApropriacaoAutocomplete
                   value={form.contrato_id}
                   options={contratosAutocomplete}
+                  mostrarConsultaCompleta={false}
                   onChange={(contratoId) => {
                     const contrato = contratosDisponiveis.find(c => String(c.id) === String(contratoId));
                     limparErroCampo('contrato_id');

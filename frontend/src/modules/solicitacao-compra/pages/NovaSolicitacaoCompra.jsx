@@ -1918,6 +1918,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
               onChange={(valor) => { limparErroCampo('obra_id'); setObraId(valor); }}
               placeholder="Buscar obra por código ou nome..."
               inputClassName="input w-full"
+              mostrarConsultaCompleta={false}
             />
           </CampoForm>
 
