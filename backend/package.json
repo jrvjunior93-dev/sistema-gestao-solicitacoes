@@ -78,6 +78,8 @@
     "test:rhdp-jornada-periodos": "node scripts/validarJornadaPeriodosEdicao.js",
     "test:rhdp-regras-pagamento": "node scripts/validarRhDpRegrasPagamento.js",
     "test:rhdp-eventos-recorrentes": "node scripts/validarEventosRecorrentesDp.js",
+    "dados-dev:rhdp-pessoal:auditar": "node scripts/popularPessoalDev.js",
+    "dados-dev:rhdp-pessoal:aplicar": "node scripts/popularPessoalDev.js --apply",
     "test:filtro-valor-titulos": "node scripts/validarFiltroValorTitulos.js",
     "test:intercompany-cartoes": "node scripts/validarIntercompanyCartoesMultiplasEmpresas.js",
     "test:live-updates": "node scripts/validarLiveUpdates.js",
