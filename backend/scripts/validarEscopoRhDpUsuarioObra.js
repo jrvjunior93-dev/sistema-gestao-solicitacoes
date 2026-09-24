@@ -13,12 +13,23 @@ const {
   userHasStrictAreaPermission
 } = require('../src/services/authorizationService');
 const permit = require('../src/middlewares/permissions');
-const { detalharColaboradorRh, listarColaboradoresRh } = require('../src/services/rhService');
+const {
+  __test: rhServiceTest,
+  detalharColaboradorRh,
+  listarColaboradoresRh
+} = require('../src/services/rhService');
 const rhSolicitacaoService = require('../src/services/rhSolicitacaoService');
 const rhTransferenciaService = require('../src/services/rhTransferenciaService');
 const { hojeLocal } = require('../src/services/rhPessoalDomain');
 
 async function executar() {
+  assert.strictEqual(rhServiceTest.normalizeCpfSearch('QA-RHDP-001'), '',
+    'matricula alfanumerica nao pode virar pesquisa parcial de CPF');
+  assert.strictEqual(rhServiceTest.normalizeCpfSearch('123.456.789-01'), '12345678901',
+    'uma pesquisa formatada como CPF deve ser normalizada');
+  assert.strictEqual(rhServiceTest.normalizeCpfSearch(' 123456 '), '123456',
+    'pesquisa numerica parcial de CPF deve continuar disponivel');
+
   const usuarioObra = {
     id: 987654,
     perfil: 'USUARIO',

@@ -104,6 +104,13 @@ function normalizeDigits(value) {
   return String(value || '').replace(/\D+/g, '');
 }
 
+function normalizeCpfSearch(value) {
+  const termo = String(value || '').trim();
+  // Matriculas como `QA-RHDP-001` possuem digitos, mas nao sao uma busca de CPF. Extrair `001`
+  // nesses casos amplia o OR para qualquer CPF que contenha essa sequencia e polui o resultado.
+  return termo && /^[\d.\-/\s]+$/.test(termo) ? normalizeDigits(termo) : '';
+}
+
 function normalizeToken(value) {
   return String(value || '')
     .trim()
@@ -664,7 +671,7 @@ function buildDocumentoWhere(filters = {}) {
   }
 
   if (filters.q) {
-    const digits = normalizeDigits(filters.q);
+    const digits = normalizeCpfSearch(filters.q);
     const terms = [
       { nome_original: { [Op.like]: `%${filters.q}%` } },
       { observacoes: { [Op.like]: `%${filters.q}%` } },
@@ -1639,5 +1646,6 @@ module.exports = {
   listarEmpresasGrupoRh,
   listarTiposDocumentoRh,
   obterLinkDocumentoRh,
-  substituirDocumentoRh
+  substituirDocumentoRh,
+  __test: { normalizeCpfSearch }
 };
