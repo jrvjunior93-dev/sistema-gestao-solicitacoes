@@ -37,9 +37,6 @@ module.exports = {
       allowNull: true,
       after: 'id'
     });
-    await sequelize.query(
-      "UPDATE rh_solicitacoes SET codigo = CONCAT('RH-', LPAD(id, 6, '0')) WHERE codigo IS NULL OR TRIM(codigo) = ''"
-    );
     if (!(await indexExists(sequelize, 'rh_solicitacoes', 'uq_rh_solicitacoes_codigo'))) {
       await queryInterface.addIndex('rh_solicitacoes', ['codigo'], {
         name: 'uq_rh_solicitacoes_codigo',
