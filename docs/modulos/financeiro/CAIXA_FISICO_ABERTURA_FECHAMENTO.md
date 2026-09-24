@@ -13,10 +13,10 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
   da primeira configuracao, vinculacao como responsavel pelo controle diario;
 - entradas e saidas manuais exigem valor positivo, descricao e natureza validos;
 - toda saida manual exige comprovante anexado, validado tambem pelo backend;
-- o saldo informado na abertura e comparado ao ultimo fechamento (ou ao saldo
-  inicial da conta quando ainda nao existe fechamento); uma diferenca gera entrada
-  ou saida de ajuste na propria sessao, com motivo obrigatorio e comprovante quando
-  o ajuste for uma saida;
+- o saldo contado na abertura e obrigatorio e comparado ao ultimo fechamento (ou ao
+  saldo inicial da conta quando ainda nao existe fechamento); uma diferenca exige
+  justificativa com pelo menos 10 caracteres e gera entrada ou saida de ajuste na
+  propria sessao, com comprovante obrigatorio quando o ajuste for uma saida;
 - o estorno exige justificativa e so pode atingir lancamentos manuais ativos;
 - cada inclusao e estorno atualiza o resumo da sessao na mesma transacao;
 - o fechamento nao aceita data retroativa ao dia atual nem ao movimento mais recente;
@@ -55,8 +55,10 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 
 | Cenario | Resultado esperado |
 | --- | --- |
+| Abrir sem informar o saldo contado | Operacao bloqueada |
 | Abrir sem diferenca do fechamento anterior | Sessao aberta com a continuidade do saldo preservada |
-| Abrir com valor maior | Entrada de ajuste e auditoria criadas na mesma operacao |
+| Abrir com valor maior sem justificativa | Operacao bloqueada |
+| Abrir com valor maior e justificativa | Entrada de ajuste e auditoria criadas na mesma operacao |
 | Abrir com valor menor sem comprovante | Operacao bloqueada |
 | Registrar entrada manual | Livro e total de entradas aumentam uma unica vez |
 | Registrar saida manual com comprovante | Livro e total de saidas aumentam uma unica vez |

@@ -639,12 +639,12 @@ async function abrirSessaoCaixa(req, payload = {}, comprovante = null) {
     const saldoPadrao = ultimaFechada
       ? roundCurrency(ultimaFechada.saldo_informado ?? ultimaFechada.saldo_sistema)
       : roundCurrency(conta.saldo_inicial || 0);
-    const saldoContado = parseMoney(payload.saldo_abertura, 'Saldo de abertura') ?? saldoPadrao;
+    const saldoContado = parseMoney(payload.saldo_abertura, 'Saldo contado na abertura', { required: true });
     const diferencaAbertura = roundCurrency(saldoContado - saldoPadrao);
     const naturezaAjuste = diferencaAbertura > 0 ? 'ENTRADA' : 'SAIDA';
     const descricaoAjuste = String(payload.ajuste_descricao || '').trim();
     if (Math.abs(diferencaAbertura) > 0.009 && descricaoAjuste.length < 10) {
-      throw createHttpError(400, 'Informe o motivo do ajuste com pelo menos 10 caracteres para abrir com saldo divergente.');
+      throw createHttpError(400, 'Informe a justificativa da divergencia com pelo menos 10 caracteres para abrir o caixa.');
     }
     if (diferencaAbertura < -0.009 && !comprovanteUrl) {
       if (comprovante) {

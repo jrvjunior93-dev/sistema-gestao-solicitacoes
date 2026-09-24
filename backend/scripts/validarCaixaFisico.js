@@ -4,6 +4,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const {
+  validateFinanceCaixaAberturaBody,
   validateFinanceCaixaMovimentoBody,
   validateFinanceCaixaMovimentoEstornoBody,
   validateFinanceCaixaMovimentoParams
@@ -21,6 +22,17 @@ function readRepository(relativePath) {
 }
 
 function validatePayloads() {
+  const abertura = validateFinanceCaixaAberturaBody({
+    conta_bancaria_id: 1,
+    data_abertura: '2026-08-16',
+    saldo_abertura: 500
+  });
+  assert.strictEqual(abertura.saldo_abertura, 500);
+  assert.throws(
+    () => validateFinanceCaixaAberturaBody({ conta_bancaria_id: 1, data_abertura: '2026-08-16' }),
+    /Saldo contado na abertura/
+  );
+
   const movimento = validateFinanceCaixaMovimentoBody({
     natureza: 'ENTRADA',
     data_movimento: '2026-08-16',
@@ -84,6 +96,7 @@ function validateBackendContracts() {
   ].forEach((contract) => assert(service.includes(contract), `Regra do caixa fisico ausente: ${contract}`));
 
   assert(service.includes('if (!contaEhCaixaFisico(conta))'), 'Caixa fisico deve ignorar a trava de conciliacao OFX na abertura.');
+  assert(service.includes("parseMoney(payload.saldo_abertura, 'Saldo contado na abertura', { required: true })"), 'Saldo contado deve ser obrigatorio na abertura.');
   assert(service.includes('movimentoWhereVinculadoSessao'), 'Movimentos novos devem usar o vinculo canonico com a sessao do caixa.');
   assert(service.includes('movimentoWhereLegadoSessao'), 'Movimentos antigos devem manter compatibilidade por conta e periodo.');
   assert(service.includes('obterDataMinimaFechamento'), 'Fechamento deve considerar hoje e o movimento mais recente da sessao.');
@@ -157,7 +170,9 @@ function validateFrontendContracts() {
     'Divergências ficam registradas com justificativa',
     'Visao consolidada do dia',
     'Decidir divergencia',
-    'Saldo esperado do fechamento anterior',
+    'Fechamento anterior',
+    'Saldo contado *',
+    'Justificativa da divergência *',
     'Preparar '
   ].forEach((contract) => assert(page.includes(contract), `Contrato de interface ausente: ${contract}`));
 

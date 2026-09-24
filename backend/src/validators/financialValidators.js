@@ -1973,9 +1973,9 @@ function validateFinanceCaixaAberturaBody(body = {}) {
   return {
     conta_bancaria_id: parseInteger(body.conta_bancaria_id, 'Conta financeira', { required: true }),
     data_abertura: parseDateOnly(body.data_abertura, 'Data de abertura'),
-    saldo_abertura: parseDecimal(body.saldo_abertura, 'Saldo de abertura'),
+    saldo_abertura: parseDecimal(body.saldo_abertura, 'Saldo contado na abertura', { required: true }),
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
-    ajuste_descricao: parseOptionalText(body.ajuste_descricao, 'Motivo do ajuste', 1000)
+    ajuste_descricao: parseOptionalText(body.ajuste_descricao, 'Justificativa da divergencia', 1000)
   };
 }
 

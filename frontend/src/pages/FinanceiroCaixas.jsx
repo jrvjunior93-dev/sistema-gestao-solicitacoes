@@ -278,13 +278,15 @@ export default function FinanceiroCaixas() {
       ?? contaSelecionada?.saldo_inicial
       ?? 0
   );
-  const saldoAberturaContado = abrirForm.saldo_abertura === ''
-    ? saldoAberturaEsperado
-    : parseCurrencyInput(abrirForm.saldo_abertura);
-  const diferencaAbertura = Number.isFinite(saldoAberturaContado)
+  const saldoAberturaFoiInformado = String(abrirForm.saldo_abertura || '').trim() !== '';
+  const saldoAberturaContado = saldoAberturaFoiInformado
+    ? parseCurrencyInput(abrirForm.saldo_abertura)
+    : null;
+  const saldoAberturaValido = saldoAberturaFoiInformado && Number.isFinite(saldoAberturaContado);
+  const diferencaAbertura = saldoAberturaValido
     ? saldoAberturaContado - saldoAberturaEsperado
     : 0;
-  const aberturaDivergente = Math.abs(diferencaAbertura) > 0.009;
+  const aberturaDivergente = saldoAberturaValido && Math.abs(diferencaAbertura) > 0.009;
   const resumo = sessaoDetalhe?.resumo_atual || sessaoAberta?.resumo_atual || {};
   const movimentos = Array.isArray(sessaoDetalhe?.movimentos_detalhados) ? sessaoDetalhe.movimentos_detalhados : [];
   const dataMinimaFechamento = useMemo(() => {
@@ -357,8 +359,12 @@ export default function FinanceiroCaixas() {
 
   async function handleAbrir(event) {
     event.preventDefault();
+    if (!saldoAberturaValido) {
+      avisar.alerta('Informe o saldo contado na abertura.');
+      return;
+    }
     if (aberturaDivergente && abrirForm.ajuste_descricao.trim().length < 10) {
-      avisar.alerta('Informe o motivo do ajuste de abertura com pelo menos 10 caracteres.');
+      avisar.alerta('Informe a justificativa da divergência de abertura com pelo menos 10 caracteres.');
       return;
     }
     if (diferencaAbertura < -0.009 && !abrirForm.comprovante) {
@@ -619,21 +625,25 @@ export default function FinanceiroCaixas() {
         <BlocoConteudo
           titulo={podeAbrir ? 'Abrir caixa' : 'Confirmar conciliação anterior'}
           variante="primario"
-          descricao={caixaFisico ? 'Informe o saldo inicial. O caixa físico não depende de conciliação OFX.' : 'Esta conta mantém a conferência OFX anterior.'}
+          descricao={caixaFisico ? 'Conte o valor disponível e confronte com o fechamento anterior. O caixa físico não depende de conciliação OFX.' : 'Informe o saldo contado e confronte com o fechamento anterior.'}
           acoes={<span className={statusClass('FECHADO')}>FECHADO</span>}
         >
           <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-12 xl:items-end" onSubmit={podeAbrir ? handleAbrir : (event) => event.preventDefault()}>
             <label className="sol-filter-field xl:col-span-2"><span className="sol-filter-label">Data de abertura *</span><DateInputBR className="input w-full" value={abrirForm.data_abertura} onChange={(event) => setAbrirForm((current) => ({ ...current, data_abertura: event.target.value }))} required /></label>
-            <label className="sol-filter-field xl:col-span-2"><span className="sol-filter-label">Saldo inicial</span><input className="input input-moeda w-full" inputMode="decimal" placeholder="Ex.: 500,00" value={abrirForm.saldo_abertura} onChange={(event) => setAbrirForm((current) => ({ ...current, saldo_abertura: event.target.value }))} /></label>
+            <label className="sol-filter-field xl:col-span-2"><span className="sol-filter-label">Saldo contado *</span><input className="input input-moeda w-full" inputMode="decimal" placeholder="Ex.: 500,00" value={abrirForm.saldo_abertura} onChange={(event) => setAbrirForm((current) => ({ ...current, saldo_abertura: normalizeCurrencyTyping(event.target.value) }))} onBlur={() => setAbrirForm((current) => ({ ...current, saldo_abertura: formatCurrencyInput(current.saldo_abertura) }))} required /></label>
             <label className="sol-filter-field sm:col-span-2 xl:col-span-6"><span className="sol-filter-label">Observação de abertura</span><input className="input w-full" maxLength={4000} placeholder="Opcional" value={abrirForm.observacoes} onChange={(event) => setAbrirForm((current) => ({ ...current, observacoes: event.target.value }))} /></label>
             {/* D3: os dois pesos visíveis — "Abrir caixa" é a primária sólida,
                 "Confirmar OFX" a secundária em contorno. */}
             <div className="flex flex-wrap justify-end gap-2 sm:col-span-2 xl:col-span-2">{!caixaFisico && podeConfirmarConciliacao ? <button type="button" className="btn btn-outline" onClick={handleConfirmarOfx} disabled={saving}>Confirmar OFX</button> : null}{podeAbrir ? <button type="submit" className="btn btn-primary" disabled={saving}>Abrir caixa</button> : null}</div>
             <div className="sm:col-span-2 xl:col-span-12 rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-3 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[var(--c-muted)]">Saldo esperado do fechamento anterior</span><strong>{formatCurrency(saldoAberturaEsperado)}</strong></div>
+              <StatGrid colunas={3}>
+                <StatTile label="Fechamento anterior" valor={formatCurrency(saldoAberturaEsperado)} />
+                <StatTile label="Saldo contado" valor={saldoAberturaValido ? formatCurrency(saldoAberturaContado) : 'Aguardando contagem'} />
+                <StatTile label="Diferença" valor={saldoAberturaValido ? formatCurrency(diferencaAbertura) : '-'} tom={aberturaDivergente ? 'warning' : 'default'} />
+              </StatGrid>
               {aberturaDivergente ? <div className="mt-3 grid gap-3 border-t border-[var(--c-border)] pt-3 sm:grid-cols-2">
                 <p className="sm:col-span-2 text-[var(--sem-warning)]"><strong>{diferencaAbertura > 0 ? 'Entrada' : 'Saída'} de ajuste: {formatCurrency(Math.abs(diferencaAbertura))}.</strong> O lançamento será criado junto com a abertura e ficará na auditoria.</p>
-                <label className="sol-filter-field"><span className="sol-filter-label">Motivo do ajuste *</span><input className="input w-full" minLength={10} maxLength={1000} value={abrirForm.ajuste_descricao} onChange={(event) => setAbrirForm((current) => ({ ...current, ajuste_descricao: event.target.value }))} required /></label>
+                <label className="sol-filter-field"><span className="sol-filter-label">Justificativa da divergência *</span><input className="input w-full" minLength={10} maxLength={1000} value={abrirForm.ajuste_descricao} onChange={(event) => setAbrirForm((current) => ({ ...current, ajuste_descricao: event.target.value }))} required /></label>
                 {diferencaAbertura < 0 ? <label className="sol-filter-field"><span className="sol-filter-label">Comprovante da saída *</span><input ref={comprovanteAberturaRef} className="input w-full" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={(event) => setAbrirForm((current) => ({ ...current, comprovante: event.target.files?.[0] || null }))} required /></label> : null}
               </div> : null}
             </div>
