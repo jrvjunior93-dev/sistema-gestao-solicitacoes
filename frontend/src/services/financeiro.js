@@ -1528,8 +1528,11 @@ export async function atualizarCategoriaFinanceira(id, data) {
   return parseJson(response, 'Erro ao atualizar categoria financeira');
 }
 
-export async function getResultadoObras() {
-  const response = await fetch(`${API_URL}/financeiro/relatorios/resultado-obras`, {
+export async function getResultadoObras(params = {}) {
+  const query = new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  ).toString();
+  const response = await fetch(`${API_URL}/financeiro/relatorios/resultado-obras${query ? `?${query}` : ''}`, {
     headers: authHeaders()
   });
 

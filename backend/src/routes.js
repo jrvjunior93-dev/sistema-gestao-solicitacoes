@@ -474,6 +474,7 @@ const TransferenciaFinanceiraController = require('./controllers/TransferenciaFi
 const TarifaBancariaConfigController = require('./controllers/TarifaBancariaConfigController');
 const ResultadoObrasController = require('./controllers/ResultadoObrasController');
 const ResultadoCentrosCustoController = require('./controllers/ResultadoCentrosCustoController');
+const PainelGestorController = require('./controllers/PainelGestorController');
 const PermissoesAreasController = require('./controllers/PermissoesAreasController');
 const BoletoController = require('./controllers/BoletoController');
 const BoletoCaixaCnabController = require('./controllers/BoletoCaixaCnabController');
@@ -2151,6 +2152,12 @@ router.get('/financeiro/relatorios/movimentacao-contas', allowFinanceiroRelatori
 router.get('/financeiro/relatorios/conciliacao-contas', allowFinanceiroRelatorio(['financeiro.relatorios.conciliacao_contas']), validateRequest({ query: validateFinanceRelatorioConciliacaoQuery }), RelatorioFinanceiroController.conciliacaoContas);
 router.get('/financeiro/relatorios/resultado-obras', allowFinanceiroRelatorio(['financeiro.relatorios.resultado_obras']), ResultadoObrasController.index);
 router.get('/financeiro/relatorios/centros-custo', allowFinanceiroRelatorio(['financeiro.relatorios.centros_custo']), ResultadoCentrosCustoController.index);
+router.get('/painel-gestor/obras', PainelGestorController.obras);
+router.get('/painel-gestor/resultado-obras', PainelGestorController.resultadoObras);
+router.get('/painel-gestor/custos-recebiveis', PainelGestorController.custosRecebiveis);
+router.get('/painel-gestor/saldos', PainelGestorController.saldos);
+router.get('/painel-gestor/saldos/preenchimento', PainelGestorController.preenchimentoSaldos);
+router.post('/painel-gestor/saldos', criticalRateLimit, PainelGestorController.salvarSaldos);
 router.get('/financeiro/baixas', allowFinanceiro, validateRequest({ query: validateFinanceBaixasQuery }), TituloFinanceiroController.baixas);
 router.get('/financeiro/financiamentos-bancarios', allowFinanceiro, validateRequest({ query: validateFinanceFinanciamentoBancarioQuery }), FinanciamentoBancarioController.index);
 router.post('/financeiro/financiamentos-bancarios', allowFinanceiro, criticalRateLimit, validateRequest({ body: validateFinanceFinanciamentoBancarioCreateBody }), FinanciamentoBancarioController.create);

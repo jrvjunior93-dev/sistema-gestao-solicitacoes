@@ -97,6 +97,7 @@ import {
   canAccessConfiguracoes,
   canAccessCompras,
   canAccessDashboard,
+  canAccessPainelGestor,
   canAccessContratos,
   canAccessFinanceiro,
   canAccessFinanceiroDda,
@@ -279,10 +280,18 @@ export const NAV_MODULES = [
   {
     id: 'painel',
     label: 'Painel',
-    desc: 'Visão executiva com indicadores do grupo.',
+    desc: 'Visões executivas e indicadores do grupo.',
     icon: HiOutlineSquares2X2,
-    gate: (user) => canAccessDashboard(user),
+    gate: (user) => canAccessPainelGestor(user) || canAccessDashboard(user),
     children: [
+      {
+        id: 'painel-gestor', ordem: 5,
+        label: 'Painel do Gestor',
+        desc: 'Resultado de obras, custos, recebíveis e saldos diários.',
+        icon: HiOutlinePresentationChartLine,
+        to: '/painel-gestor',
+        can: (user) => canAccessPainelGestor(user)
+      },
       {
         id: 'dashboard', ordem: 10,
         label: 'Dashboard',

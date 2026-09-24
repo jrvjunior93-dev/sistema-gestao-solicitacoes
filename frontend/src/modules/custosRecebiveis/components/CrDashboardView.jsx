@@ -111,7 +111,8 @@ export default function CrDashboardView({
   obraFilterId = null,
   classificacaoFilter = '',
   canOpenPlanning = false,
-  onOpenArea
+  onOpenArea,
+  loadDashboard = obterCustosRecebiveisDashboard
 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -122,7 +123,7 @@ export default function CrDashboardView({
     try {
       setLoading(true);
       setError('');
-      setData(await obterCustosRecebiveisDashboard(
+      setData(await loadDashboard(
         competencia,
         obraFilterId,
         competenciasParam,
@@ -134,7 +135,7 @@ export default function CrDashboardView({
     } finally {
       setLoading(false);
     }
-  }, [classificacaoFilter, competencia, competenciasParam, obraFilterId]);
+  }, [classificacaoFilter, competencia, competenciasParam, loadDashboard, obraFilterId]);
 
   useEffect(() => {
     void load();

@@ -12,6 +12,8 @@ import {
   canAccessComunicacao,
   canAccessCompras,
   canAccessDashboard,
+  canAccessPainelGestor,
+  canInformPainelGestorSaldos,
   canAccessContratos,
   canAccessFinanceiro,
   canAccessFinanceiroDda,
@@ -82,6 +84,8 @@ const Login = lazy(() => import('./pages/Login'));
 const RecuperarSenha = lazy(() => import('./pages/RecuperarSenha'));
 const DefinirSenha = lazy(() => import('./pages/DefinirSenha'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const PainelGestor = lazy(() => import('./pages/PainelGestor'));
+const PainelGestorSaldosRegistro = lazy(() => import('./pages/PainelGestorSaldosRegistro'));
 const Solicitacoes = lazy(() => import('./pages/Solicitacoes'));
 const SolicitacaoDetalhe = lazy(() => import('./pages/SolicitacaoDetalhe'));
 const SolicitacoesArquivadas = lazy(() => import('./pages/SolicitacoesArquivadas'));
@@ -359,6 +363,26 @@ function DashboardRoute() {
     return <Navigate to="/" replace />;
   }
   return <Dashboard />;
+}
+
+function HomeEntry() {
+  const { user } = useAuth();
+  if (canAccessPainelGestor(user)) {
+    return <Navigate to="/painel-gestor" replace />;
+  }
+  return <HomeHub />;
+}
+
+function PainelGestorRoute({ children }) {
+  const { user } = useAuth();
+  if (!canAccessPainelGestor(user)) return <Navigate to="/" replace />;
+  return children;
+}
+
+function PainelGestorSaldosRoute({ children }) {
+  const { user } = useAuth();
+  if (!canInformPainelGestorSaldos(user)) return <Navigate to="/painel-gestor?aba=saldos" replace />;
+  return children;
 }
 
 function SolicitacoesRelatoriosRoute({ children }) {
@@ -898,9 +922,11 @@ export default function App() {
       >
         {/* Hub Principal (nível 1) e hubs de módulo (nível 2). O
             Dashboard executivo, antes na raiz, vive agora em /dashboard. */}
-        <Route index element={<HomeHub />} />
+        <Route index element={<HomeEntry />} />
         <Route path="hub/:moduleId" element={<ModuleHub />} />
         <Route path="dashboard" element={<DashboardRoute />} />
+        <Route path="painel-gestor" element={<PainelGestorRoute><PainelGestor /></PainelGestorRoute>} />
+        <Route path="painel-gestor/saldos/registro" element={<PainelGestorRoute><PainelGestorSaldosRoute><PainelGestorSaldosRegistro /></PainelGestorSaldosRoute></PainelGestorRoute>} />
 
         <Route path="solicitacoes" element={<Solicitacoes />} />
         <Route path="solicitacoes/relatorios" element={<SolicitacoesRelatoriosRoute><ModuloRelatorios modulo="solicitacoes" /></SolicitacoesRelatoriosRoute>} />

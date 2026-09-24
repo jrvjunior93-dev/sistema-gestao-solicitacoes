@@ -690,6 +690,45 @@ export function canAccessDashboard(user) {
   return isBusinessAdmin(user) || canAccessFinanceiro(user) || perfil === 'ADMIN';
 }
 
+export function canAccessPainelGestor(user) {
+  return isBusinessAdmin(user) || hasAnyExplicitPermissao(user, ['painel_gestor.acessar']);
+}
+
+export function canViewPainelGestorResultadoObras(user) {
+  return canAccessPainelGestor(user) && (
+    isBusinessAdmin(user)
+    || hasAnyExplicitPermissao(user, ['painel_gestor.resultado_obras.visualizar'])
+  );
+}
+
+export function canViewPainelGestorCustosRecebiveis(user) {
+  return canAccessPainelGestor(user) && (
+    isBusinessAdmin(user)
+    || hasAnyExplicitPermissao(user, ['painel_gestor.custos_recebiveis.visualizar'])
+  );
+}
+
+export function canViewPainelGestorSaldos(user) {
+  return canAccessPainelGestor(user) && (
+    isBusinessAdmin(user)
+    || hasAnyExplicitPermissao(user, ['painel_gestor.saldos.visualizar'])
+  );
+}
+
+export function canInformPainelGestorSaldos(user) {
+  return canAccessPainelGestor(user) && (
+    isBusinessAdmin(user)
+    || hasAnyExplicitPermissao(user, ['painel_gestor.saldos.informar'])
+  );
+}
+
+export function canCorrectPainelGestorSaldos(user) {
+  return canAccessPainelGestor(user) && (
+    isBusinessAdmin(user)
+    || hasAnyExplicitPermissao(user, ['painel_gestor.saldos.corrigir'])
+  );
+}
+
 const FINANCEIRO_RELATORIOS_KEYS = [
   'financeiro.relatorios.visualizar',
   'financeiro.relatorios.grupo_consolidado',

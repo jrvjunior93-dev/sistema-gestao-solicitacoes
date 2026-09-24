@@ -112,6 +112,8 @@ db.TreinamentoConteudo = require('./TreinamentoConteudo')(sequelize, Sequelize);
 db.TreinamentoLeituraUsuario = require('./TreinamentoLeituraUsuario')(sequelize, Sequelize);
 db.SecurityEventLog = require('./SecurityEventLog')(sequelize, Sequelize);
 db.ContaBancaria = require('./ContaBancaria')(sequelize, Sequelize);
+db.PainelGestorSaldoDiario = require('./PainelGestorSaldoDiario')(sequelize, Sequelize);
+db.PainelGestorSaldoHistorico = require('./PainelGestorSaldoHistorico')(sequelize, Sequelize);
 db.CategoriaFinanceira = require('./CategoriaFinanceira')(sequelize, Sequelize);
 db.FormaPagamentoFinanceira = require('./FormaPagamentoFinanceira')(sequelize, Sequelize);
 db.CartaoFinanceiro = require('./CartaoFinanceiro')(sequelize, Sequelize);
@@ -3156,6 +3158,52 @@ db.EmpresaGrupo.hasMany(db.ContaBancaria, {
 db.ContaBancaria.belongsTo(db.EmpresaGrupo, {
   foreignKey: 'empresa_id',
   as: 'empresa'
+});
+
+db.ContaBancaria.hasMany(db.PainelGestorSaldoDiario, {
+  foreignKey: 'conta_bancaria_id',
+  as: 'saldosPainelGestor'
+});
+
+db.PainelGestorSaldoDiario.belongsTo(db.ContaBancaria, {
+  foreignKey: 'conta_bancaria_id',
+  as: 'conta'
+});
+
+db.EmpresaGrupo.hasMany(db.PainelGestorSaldoDiario, {
+  foreignKey: 'empresa_id',
+  as: 'saldosPainelGestor'
+});
+
+db.PainelGestorSaldoDiario.belongsTo(db.EmpresaGrupo, {
+  foreignKey: 'empresa_id',
+  as: 'empresa'
+});
+
+db.PainelGestorSaldoDiario.belongsTo(db.User, {
+  foreignKey: 'informado_por',
+  as: 'informadoPor'
+});
+
+db.PainelGestorSaldoDiario.belongsTo(db.User, {
+  foreignKey: 'atualizado_por',
+  as: 'atualizadoPor'
+});
+
+db.PainelGestorSaldoDiario.hasMany(db.PainelGestorSaldoHistorico, {
+  foreignKey: 'saldo_diario_id',
+  as: 'historico',
+  onDelete: 'CASCADE'
+});
+
+db.PainelGestorSaldoHistorico.belongsTo(db.PainelGestorSaldoDiario, {
+  foreignKey: 'saldo_diario_id',
+  as: 'saldoDiario'
+});
+
+db.PainelGestorSaldoHistorico.belongsTo(db.User, {
+  foreignKey: 'usuario_id',
+  as: 'usuario'
 });
 
 db.User.hasMany(db.CategoriaFinanceira, {

@@ -25,6 +25,31 @@ const MODULO_PERMISSION_GROUPS = [
         permissoes: [
           { key: 'painel.dashboard.visualizar', label: 'Visualizar Dashboard', descricao: 'Permite acessar o dashboard inicial do painel.' }
         ]
+      },
+      {
+        key: 'painel_gestor.acesso',
+        label: 'Painel do Gestor',
+        permissoes: [
+          { key: 'painel_gestor.acessar', label: 'Acessar Painel do Gestor', descricao: 'Torna o Painel do Gestor a entrada principal do usuario.' },
+          { key: 'painel_gestor.escopo.todas_obras', label: 'Visualizar todas as obras', descricao: 'Amplia os indicadores gerenciais para todas as obras; sem esta permissao, respeita os vinculos do usuario.' }
+        ]
+      },
+      {
+        key: 'painel_gestor.visualizacao',
+        label: 'Visoes do Painel do Gestor',
+        permissoes: [
+          { key: 'painel_gestor.resultado_obras.visualizar', label: 'Ver Resultado de Obras', descricao: 'Consulta resultado financeiro por obra e periodo.' },
+          { key: 'painel_gestor.custos_recebiveis.visualizar', label: 'Ver Custos e Recebiveis', descricao: 'Consulta o dashboard gerencial de custos e recebiveis.' },
+          { key: 'painel_gestor.saldos.visualizar', label: 'Ver Saldos e Contas', descricao: 'Consulta os saldos disponiveis informados diariamente.' }
+        ]
+      },
+      {
+        key: 'painel_gestor.saldos',
+        label: 'Saldos diarios do gestor',
+        permissoes: [
+          { key: 'painel_gestor.saldos.informar', label: 'Informar saldos do dia', descricao: 'Registra ou atualiza os saldos disponiveis das contas no dia corrente.' },
+          { key: 'painel_gestor.saldos.corrigir', label: 'Corrigir saldos anteriores', descricao: 'Permite corrigir datas anteriores com justificativa e auditoria.' }
+        ]
       }
     ]
   },

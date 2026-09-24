@@ -14,7 +14,7 @@ import {
 import { getResultadoObras } from '../services/financeiro';
 import './FinanceiroResultadoObras.css';
 
-function formatCurrency(value) {
+export function formatCurrency(value) {
   return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
@@ -76,7 +76,7 @@ function ProgressoObra({ rotulo, valor, max, tom }) {
   );
 }
 
-function ObraBloco({ obra }) {
+export function ObraBloco({ obra }) {
   const classificacao = classificacaoObra(obra);
   const isPrivada = classificacao === 'PRIVADA';
   const isPublica = classificacao === 'PUBLICA';
@@ -92,15 +92,22 @@ function ObraBloco({ obra }) {
   const historicoPago = Number(obra.pagar.historico?.valor || 0);
   const historicoRecebido = Number(obra.receber.historico?.valor || 0);
   const baseTotalObra = valorTotalObra(obra);
-  const faltaReceber = baseTotalObra > 0
-    ? baseTotalObra - recebido
-    : Number(obra.receber.saldo || 0);
+  const faltaReceber = Number(obra.falta_receber ?? (
+    baseTotalObra > 0 ? baseTotalObra - recebido : obra.receber.saldo || 0
+  ));
   const valorVendido = Number(obra.valor_vendido || 0);
   const faltaVender = obra.falta_vender == null ? null : Number(obra.falta_vender);
   const lucroPrejuizo = Number(obra.lucro_prejuizo ?? (recebido - executado));
+  const comPeriodo = Boolean(obra.periodo?.data_inicial && obra.periodo?.data_final);
+  const executadoProgresso = comPeriodo
+    ? Number(obra.pagar.executado_acumulado_ate || 0)
+    : Number(executado || 0);
+  const recebidoProgresso = comPeriodo
+    ? Number(obra.receber.recebido_acumulado_ate || 0)
+    : Number(recebido || 0);
 
-  const margemRealizada = executado > 0 && valorReferencia > 0
-    ? ((executado / valorReferencia) * 100).toFixed(1)
+  const margemRealizada = executadoProgresso > 0 && valorReferencia > 0
+    ? ((executadoProgresso / valorReferencia) * 100).toFixed(1)
     : null;
 
   const baseRecebimento = baseTotalObra > 0 ? baseTotalObra : totalReceber;
@@ -151,7 +158,7 @@ function ObraBloco({ obra }) {
           </>
         ) : null}
         <MetricaObra
-          rotulo="Executado (pago)"
+          rotulo={comPeriodo ? 'Executado no período' : 'Executado (pago)'}
           valor={formatCurrency(executado)}
           apoio={historicoPago > 0
             ? `inclui ${formatCurrency(historicoPago)} pagos no sistema anterior`
@@ -159,7 +166,7 @@ function ObraBloco({ obra }) {
           tom="executado"
         />
         <MetricaObra
-          rotulo="Recebido"
+          rotulo={comPeriodo ? 'Recebido no período' : 'Recebido'}
           valor={formatCurrency(recebido)}
           apoio={historicoRecebido > 0 ? `inclui ${formatCurrency(historicoRecebido)} do sistema anterior` : undefined}
           tom="recebido"
@@ -167,11 +174,11 @@ function ObraBloco({ obra }) {
         <MetricaObra
           rotulo="Falta receber"
           valor={formatCurrency(faltaReceber)}
-          apoio={baseTotalObra > 0 ? `${isPrivada ? 'VGV' : 'Planilha geral'} menos recebido` : 'Saldo dos títulos a receber'}
+          apoio={baseTotalObra > 0 ? `${isPrivada ? 'VGV' : 'Planilha geral'} menos ${comPeriodo ? 'recebido acumulado até a data final' : 'recebido'}` : 'Saldo dos títulos a receber'}
           tom="pendente"
         />
         <MetricaObra
-          rotulo="Lucro/Prejuízo"
+          rotulo={comPeriodo ? 'Resultado do período' : 'Lucro/Prejuízo'}
           valor={formatCurrency(lucroPrejuizo)}
           apoio="Recebido menos executado"
           tom={lucroPrejuizo < 0 ? 'negativo' : 'positivo'}
@@ -187,12 +194,12 @@ function ObraBloco({ obra }) {
 
       <footer className="resultado-obra-rodape">
         {orcamento != null ? (
-          <ProgressoObra rotulo="Executado / Orçamento" valor={executado} max={orcamento} tom="executado" />
+          <ProgressoObra rotulo={`${comPeriodo ? 'Executado acumulado' : 'Executado'} / Orçamento`} valor={executadoProgresso} max={orcamento} tom="executado" />
         ) : null}
         {baseRecebimento > 0 ? (
           <ProgressoObra
-            rotulo={`Recebido / ${baseTotalObra > 0 ? (isPrivada ? 'VGV' : 'Planilha geral') : 'Títulos a receber'}`}
-            valor={recebido}
+            rotulo={`${comPeriodo ? 'Recebido acumulado' : 'Recebido'} / ${baseTotalObra > 0 ? (isPrivada ? 'VGV' : 'Planilha geral') : 'Títulos a receber'}`}
+            valor={recebidoProgresso}
             max={baseRecebimento}
             tom="recebido"
           />
