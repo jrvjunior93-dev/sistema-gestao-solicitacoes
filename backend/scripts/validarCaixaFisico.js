@@ -55,6 +55,7 @@ function validateBackendContracts() {
   const controller = readBackend('src/controllers/CaixaFinanceiroController.js');
   const permissionRegistry = readBackend('src/constants/moduloPermissoes.js');
   const authorizationService = readBackend('src/services/authorizationService.js');
+  const caixaConfigService = readBackend('src/services/caixaDiarioConfigService.js');
   const caixaPermissionKeys = [
     'financeiro.caixas.visualizar',
     'financeiro.caixas.confirmar_conciliacao',
@@ -112,6 +113,11 @@ function validateBackendContracts() {
   assert(
     authorizationService.includes("[...ALL_PERMISSION_KEYS].filter((key) => key.startsWith('financeiro.'))"),
     'Acesso geral ao Financeiro deve ser derivado do registro central de permissoes.'
+  );
+  assert(
+    caixaConfigService.includes("userHasConfiguredAreaPermissions(user)")
+      && caixaConfigService.includes("financeiro.caixas.decidir_divergencia"),
+    'A permissao granular deve liberar a decisao da divergencia sem uma segunda lista silenciosa.'
   );
   assert(controller.includes('registrarMovimentoCaixa'), 'Controller de movimento manual ausente.');
   assert(controller.includes('estornarMovimentoCaixa'), 'Controller de estorno manual ausente.');
@@ -181,6 +187,7 @@ function validateFrontendContracts() {
   assert(app.includes('FinanceiroCaixasRoute'), 'Rota da tela de caixas deve exigir permissao granular de visualizacao.');
   assert(navigation.includes('canViewFinanceiroCaixas(user)'), 'Navegacao de caixas deve respeitar permissao granular.');
   assert(page.includes('podeMovimentar') && page.includes('podeEstornar') && page.includes('podeFechar'), 'Acoes de caixa devem respeitar as permissoes granulares no frontend.');
+  assert(page.includes('usuarioSolicitouDivergencia') && page.includes('podeDecidirSessao'), 'Interface deve preservar a segregacao entre solicitante e aprovador da divergencia.');
 }
 
 function validateDocumentation() {

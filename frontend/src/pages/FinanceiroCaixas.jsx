@@ -310,6 +310,12 @@ export default function FinanceiroCaixas() {
   const podeFechar = podeOperar && canCloseFinanceiroCaixa(user);
   const podeDecidirDivergencia = painel?.configuracao?.pode_aprovar_divergencia === true
     && canDecideFinanceiroCaixaDivergence(user);
+  const usuarioSolicitouDivergencia = useCallback((sessao) => (
+    Number(sessao?.divergencia_solicitada_por) === Number(user?.id)
+  ), [user?.id]);
+  const podeDecidirSessao = useCallback((sessao) => (
+    podeDecidirDivergencia && !usuarioSolicitouDivergencia(sessao)
+  ), [podeDecidirDivergencia, usuarioSolicitouDivergencia]);
 
   useEffect(() => {
     setFecharForm((current) => (
@@ -542,7 +548,7 @@ export default function FinanceiroCaixas() {
                 acoesLinha={(item) => (
                   <div className="flex flex-wrap justify-end gap-2">
                     <button type="button" className="btn btn-outline btn-sm" onClick={() => setContaSelecionadaId(String(item.conta?.id || ''))}>Abrir detalhe</button>
-                    {item.situacao === 'DIVERGENCIA_PENDENTE' && podeDecidirDivergencia ? (
+                    {item.situacao === 'DIVERGENCIA_PENDENTE' && podeDecidirSessao(item.sessao) ? (
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => setDecisaoDivergencia({ sessao: item.sessao, decisao: 'APROVAR', observacao: '' })}>Decidir</button>
                     ) : null}
                   </div>
@@ -658,10 +664,14 @@ export default function FinanceiroCaixas() {
             <StatTile label="Solicitado por" valor={sessaoPendente.divergenciaSolicitadaPor?.nome || '-'} />
           </StatGrid>
           <p className="mt-3 text-sm text-[var(--c-muted)]">Justificativa: {sessaoPendente.observacoes_fechamento || '-'}</p>
-          {podeDecidirDivergencia ? (
+          {podeDecidirSessao(sessaoPendente) ? (
             <div className="mt-3 flex justify-end">
               <button type="button" className="btn btn-primary" onClick={() => setDecisaoDivergencia({ sessao: sessaoPendente, decisao: 'APROVAR', observacao: '' })}>Decidir divergencia</button>
             </div>
+          ) : usuarioSolicitouDivergencia(sessaoPendente) ? (
+            <p className="mt-3 text-sm font-medium text-[var(--sem-warning)]">
+              Você informou esta divergência. Outro usuário com a permissão Decidir divergências precisa analisá-la.
+            </p>
           ) : null}
         </BlocoConteudo>
       ) : null}

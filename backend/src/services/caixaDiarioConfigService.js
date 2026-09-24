@@ -106,6 +106,19 @@ async function usuarioPodeOperarCaixa(user) {
 
 async function usuarioPodeAprovarDivergencia(user) {
   if (isSuperadmin(user)) return true;
+
+  // A permissao granular e a fonte de verdade para usuarios que ja usam a matriz nova. A lista
+  // antiga de aprovadores continua somente como compatibilidade para cadastros ainda nao migrados.
+  // Sem esta bifurcacao, marcar `financeiro.caixas.decidir_divergencia` na tela de permissoes nao
+  // produzia efeito: o painel escondia o botao por causa de uma segunda autorizacao silenciosa.
+  const {
+    userHasAreaPermission,
+    userHasConfiguredAreaPermissions
+  } = require('./authorizationService');
+  if (await userHasConfiguredAreaPermissions(user)) {
+    return userHasAreaPermission(user, ['financeiro.caixas.decidir_divergencia']);
+  }
+
   const config = await obterCaixaDiarioConfig();
   return config.aprovadores_usuario_ids.includes(Number(user?.id));
 }

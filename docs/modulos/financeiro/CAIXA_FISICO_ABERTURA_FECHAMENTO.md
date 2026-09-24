@@ -21,7 +21,7 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 - cada inclusao e estorno atualiza o resumo da sessao na mesma transacao;
 - o fechamento nao aceita data retroativa ao dia atual nem ao movimento mais recente;
 - divergencias entre saldo contado e saldo calculado congelam a sessao e exigem
-  decisao de outro usuario configurado como aprovador;
+  decisao de outro usuario com a permissao granular `financeiro.caixas.decidir_divergencia`;
 - antes de enviar uma divergencia de fechamento para aprovacao, a interface permite
   preparar o lancamento correspondente para que o operador corrija o livro;
 - a aprovacao gera um movimento de ajuste auditavel e fecha a sessao; a rejeicao
@@ -37,8 +37,11 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 ## Controle diario consolidado
 
 - a configuracao `FINANCEIRO_CAIXA_DIARIO_CONFIG` nasce com o bloqueio desligado;
-- somente o superadmin ativa ou desativa a flag e escolhe responsaveis e aprovadores;
+- somente o superadmin ativa ou desativa a flag e escolhe os responsaveis pela rotina;
 - os responsaveis escolhidos operam a rotina e sao os usuarios sujeitos ao bloqueio;
+- para usuarios com matriz granular configurada, a permissao **Decidir divergencias** e a fonte de
+  verdade da aprovacao; a lista anterior de aprovadores permanece apenas para compatibilidade com
+  usuarios legados ainda sem matriz individual;
 - com a flag ativa, novas mutacoes financeiras desses usuarios ficam bloqueadas ate
   todas as contas controladas possuirem sessao aberta na data operacional;
 - consultas, conciliacao OFX e o proprio controle diario continuam disponiveis para
