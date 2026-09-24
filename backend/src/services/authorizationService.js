@@ -4,7 +4,7 @@ const {
   normalizePermission,
   normalizeRhDpPermissionList
 } = require('../constants/rhDpPermissions');
-const { normalizeModuloPermissaoList } = require('../constants/moduloPermissoes');
+const { ALL_PERMISSION_KEYS, normalizeModuloPermissaoList } = require('../constants/moduloPermissoes');
 
 const CHAVE_SETORES_ACESSO_TODAS_OBRAS = 'SETORES_ACESSO_TODAS_OBRAS';
 const CHAVE_USUARIOS_ACESSO_FINANCEIRO = 'USUARIOS_ACESSO_FINANCEIRO';
@@ -28,54 +28,13 @@ const FINANCEIRO_RELATORIOS_PERMISSION_KEYS = [
   'financeiro.relatorios.centros_custo'
 ];
 
-const FINANCEIRO_PERMISSION_KEYS = [
-  'financeiro.titulos.visualizar',
-  'financeiro.titulos.criar',
-  'financeiro.titulos.renegociar',
-  'financeiro.titulos.importar',
-  'financeiro.titulos.exportar',
-  'financeiro.titulos.importar_codigos',
-  'financeiro.titulos.baixar',
-  'financeiro.titulos.excluir',
-  'financeiro.titulos.estornar',
-  'financeiro.titulos.pagamentos_bancarios.visualizar',
-  'financeiro.titulos.movimentos.visualizar',
-  'financeiro.titulos.auditoria.visualizar',
-  'financeiro.comprovantes.excluir',
-  ...FINANCEIRO_RELATORIOS_PERMISSION_KEYS,
-  'financeiro.conciliacao.visualizar',
-  'financeiro.conciliacao.importar',
-  'financeiro.conciliacao.conciliar',
-  'financeiro.conciliacao.estornar',
-  'financeiro.bancos.visualizar',
-  'financeiro.bancos.auditar',
-  'financeiro.bancos.conciliar',
-  'financeiro.bancos.remessas',
-  'financeiro.bancos.retornos',
-  'financeiro.bancos.configurar',
-  'financeiro.cadastros.visualizar',
-  'financeiro.cadastros.gerenciar',
-  'financeiro.pagamentos.visualizar',
-  'financeiro.pagamentos.preparar',
-  'financeiro.pagamentos.aprovar',
-  'financeiro.pagamentos.rejeitar',
-  'financeiro.pagamentos.enviar_banco',
-  'financeiro.pagamentos.sincronizar_banco',
-  'financeiro.pagamentos.cancelar',
-  'financeiro.pagamentos.reprocessar',
-  'financeiro.pagamentos.confirmar_baixa',
-  'financeiro.pagamentos.auditar',
-  'financeiro.pagamentos.configurar',
-  'financeiro.favorecidos.visualizar',
-  'financeiro.favorecidos.gerenciar',
-  'financeiro.favorecidos.auditar',
-  'financeiro.dda.visualizar',
-  'financeiro.dda.sincronizar',
-  'financeiro.dda.vincular',
-  'financeiro.dda.ignorar',
-  'financeiro.dda.auditar',
-  'financeiro.dda.configurar'
-];
+// Fonte unica: qualquer permissao granular cadastrada sob `financeiro.*`
+// habilita a entrada no modulo. As rotas continuam exigindo a chave exata
+// de cada operacao. Assim uma nova permissao nao fica funcional no frontend
+// e bloqueada no backend por esquecimento nesta lista.
+const FINANCEIRO_PERMISSION_KEYS = Object.freeze(
+  [...ALL_PERMISSION_KEYS].filter((key) => key.startsWith('financeiro.'))
+);
 
 const FINANCEIRO_PAGAMENTOS_PERMISSION_KEYS = [
   'financeiro.pagamentos.visualizar',

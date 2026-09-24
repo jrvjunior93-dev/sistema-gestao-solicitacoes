@@ -17,6 +17,7 @@ import {
   canAccessContratos,
   canAccessFinanceiro,
   canAccessFinanceiroDda,
+  canViewFinanceiroCaixas,
   canAccessFilaPagamentos,
   canAccessFiscal,
   canAccessConfiguracoes,
@@ -500,6 +501,14 @@ function ComprasCotacoesManageRoute({ children }) {
 function FinanceiroRoute({ children }) {
   const { user } = useAuth();
   if (!canAccessFinanceiro(user)) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
+function FinanceiroCaixasRoute({ children }) {
+  const { user } = useAuth();
+  if (!canViewFinanceiroCaixas(user)) {
     return <Navigate to="/" replace />;
   }
   return children;
@@ -1148,7 +1157,7 @@ export default function App() {
         <Route path="financeiro/financiamentos-bancarios" element={<FinanceiroRoute><FinanceiroFinanciamentosBancarios /></FinanceiroRoute>} />
         <Route path="financeiro/bancos" element={<FinanceiroRoute><FinanceiroBancos /></FinanceiroRoute>} />
         <Route path="financeiro/conciliacao" element={<FinanceiroRoute><FinanceiroConciliacao /></FinanceiroRoute>} />
-        <Route path="financeiro/caixas" element={<FinanceiroRoute><FinanceiroCaixas /></FinanceiroRoute>} />
+        <Route path="financeiro/caixas" element={<FinanceiroCaixasRoute><FinanceiroCaixas /></FinanceiroCaixasRoute>} />
         <Route path="financeiro/cadastros" element={<FinanceiroRoute><FinanceiroCadastros /></FinanceiroRoute>} />
         <Route path="custos-recebiveis" element={<CustosRecebiveisRoute><CustosRecebiveis /></CustosRecebiveisRoute>} />
         <Route path="configuracoes-responsaveis-obras" element={<CustosRecebiveisRoute><ResponsaveisObra /></CustosRecebiveisRoute>} />

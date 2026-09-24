@@ -83,9 +83,10 @@
     "test:live-updates": "node scripts/validarLiveUpdates.js",
     "test:roteamento-aditivo-juridico": "node scripts/validarRoteamentoAditivoJuridico.js",
     "audit:permissoes-granulares": "node scripts/auditarPermissoesGranulares.js",
+    "test:permissoes-granulares": "node scripts/auditarPermissoesGranulares.js --check",
     "test:caixa-fisico": "node scripts/validarCaixaFisico.js",
     "test:lista-preferencias": "node scripts/validarListaPreferencias.js",
-    "verificar:regras": "npm run test:lista-preferencias && npm run test:caixa-fisico && npm run test:banking-enterprise && npm run test:compras-delegacao && npm run test:compra-oferta-saldo-mesmo-fornecedor && npm run test:filtro-valor-titulos && npm run test:intercompany-cartoes && npm run test:live-updates && npm run test:roteamento-aditivo-juridico && npm run audit:permissoes-granulares"
+    "verificar:regras": "npm run test:lista-preferencias && npm run test:caixa-fisico && npm run test:painel-gestor && npm run test:banking-enterprise && npm run test:compras-delegacao && npm run test:compra-oferta-saldo-mesmo-fornecedor && npm run test:filtro-valor-titulos && npm run test:intercompany-cartoes && npm run test:live-updates && npm run test:roteamento-aditivo-juridico && npm run test:permissoes-granulares"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.888.0",

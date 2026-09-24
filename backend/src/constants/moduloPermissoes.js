@@ -394,6 +394,19 @@ const MODULO_PERMISSION_GROUPS = [
         ]
       },
       {
+        key: 'financeiro.caixas',
+        label: 'Caixas e Contas',
+        permissoes: [
+          { key: 'financeiro.caixas.visualizar', label: 'Visualizar caixas e contas', descricao: 'Consultar o painel diário, sessões, saldos e movimentos das contas com controle de abertura e fechamento.' },
+          { key: 'financeiro.caixas.confirmar_conciliacao', label: 'Confirmar conciliação anterior', descricao: 'Confirmar a conferência OFX exigida antes da abertura de contas bancárias controladas.' },
+          { key: 'financeiro.caixas.abrir', label: 'Abrir caixa ou conta', descricao: 'Registrar a abertura diária e eventuais ajustes de saldo inicial com rastreabilidade.' },
+          { key: 'financeiro.caixas.movimentar', label: 'Registrar entradas e saídas', descricao: 'Criar movimentos manuais durante uma sessão aberta, incluindo comprovantes obrigatórios para saídas.' },
+          { key: 'financeiro.caixas.estornar', label: 'Estornar movimentos', descricao: 'Estornar movimentos manuais do livro de caixa mediante justificativa.' },
+          { key: 'financeiro.caixas.fechar', label: 'Fechar caixa ou conta', descricao: 'Conferir o saldo contado e encerrar a sessão diária.' },
+          { key: 'financeiro.caixas.decidir_divergencia', label: 'Decidir divergências', descricao: 'Aprovar ou rejeitar divergências de fechamento, respeitando a segregação entre solicitante e aprovador.' }
+        ]
+      },
+      {
         key: 'financeiro.bancos',
         label: 'Bancos Enterprise',
         permissoes: [

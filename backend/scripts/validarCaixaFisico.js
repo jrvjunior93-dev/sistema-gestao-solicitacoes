@@ -53,6 +53,17 @@ function validateBackendContracts() {
   const sessionHelper = readBackend('src/services/financeiroCaixaSessionHelper.js');
   const routes = readBackend('src/routes.js');
   const controller = readBackend('src/controllers/CaixaFinanceiroController.js');
+  const permissionRegistry = readBackend('src/constants/moduloPermissoes.js');
+  const authorizationService = readBackend('src/services/authorizationService.js');
+  const caixaPermissionKeys = [
+    'financeiro.caixas.visualizar',
+    'financeiro.caixas.confirmar_conciliacao',
+    'financeiro.caixas.abrir',
+    'financeiro.caixas.movimentar',
+    'financeiro.caixas.estornar',
+    'financeiro.caixas.fechar',
+    'financeiro.caixas.decidir_divergencia'
+  ];
 
   [
     "=== 'CAIXA_INTERNO'",
@@ -94,6 +105,14 @@ function validateBackendContracts() {
   assert(routes.includes("'/financeiro/caixas/:id/decidir-divergencia'"), 'Rota de decisao da divergencia ausente.');
   assert(routes.includes("'/financeiro/caixas-painel-diario'"), 'Rota do painel diario consolidado ausente.');
   assert(routes.includes('criticalRateLimit'), 'Rotas criticas do caixa devem manter rate limit.');
+  caixaPermissionKeys.forEach((permissionKey) => {
+    assert(permissionRegistry.includes(permissionKey), `Permissao de caixa ausente no registro central: ${permissionKey}`);
+    assert(routes.includes(permissionKey), `Permissao de caixa sem protecao de rota: ${permissionKey}`);
+  });
+  assert(
+    authorizationService.includes("[...ALL_PERMISSION_KEYS].filter((key) => key.startsWith('financeiro.'))"),
+    'Acesso geral ao Financeiro deve ser derivado do registro central de permissoes.'
+  );
   assert(controller.includes('registrarMovimentoCaixa'), 'Controller de movimento manual ausente.');
   assert(controller.includes('estornarMovimentoCaixa'), 'Controller de estorno manual ausente.');
 }
@@ -101,6 +120,9 @@ function validateBackendContracts() {
 function validateFrontendContracts() {
   const page = readRepository('frontend/src/pages/FinanceiroCaixas.jsx');
   const api = readRepository('frontend/src/services/financeiro.js');
+  const access = readRepository('frontend/src/utils/acessoProduto.js');
+  const app = readRepository('frontend/src/App.jsx');
+  const navigation = readRepository('frontend/src/navigation/navigationConfig.jsx');
 
   /*
     DOIS CONTRATOS ENVELHECERAM, E O CONSERTO E OLHAR A CAPACIDADE (05/09).
@@ -147,6 +169,18 @@ function validateFrontendContracts() {
   assert(api.includes('registrarMovimentoCaixaFinanceiro'), 'Cliente da API de movimento manual ausente.');
   assert(api.includes('new FormData()'), 'Abertura e movimentos devem enviar comprovantes por multipart/form-data.');
   assert(api.includes('estornarMovimentoCaixaFinanceiro'), 'Cliente da API de estorno manual ausente.');
+  [
+    'canViewFinanceiroCaixas',
+    'canConfirmFinanceiroCaixaConciliacao',
+    'canOpenFinanceiroCaixa',
+    'canMoveFinanceiroCaixa',
+    'canReverseFinanceiroCaixaMovement',
+    'canCloseFinanceiroCaixa',
+    'canDecideFinanceiroCaixaDivergence'
+  ].forEach((helper) => assert(access.includes(helper), `Regra de acesso do frontend ausente: ${helper}`));
+  assert(app.includes('FinanceiroCaixasRoute'), 'Rota da tela de caixas deve exigir permissao granular de visualizacao.');
+  assert(navigation.includes('canViewFinanceiroCaixas(user)'), 'Navegacao de caixas deve respeitar permissao granular.');
+  assert(page.includes('podeMovimentar') && page.includes('podeEstornar') && page.includes('podeFechar'), 'Acoes de caixa devem respeitar as permissoes granulares no frontend.');
 }
 
 function validateDocumentation() {

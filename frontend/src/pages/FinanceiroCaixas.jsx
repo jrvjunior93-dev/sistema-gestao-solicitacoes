@@ -17,6 +17,15 @@ import {
   getContasBancarias,
   registrarMovimentoCaixaFinanceiro
 } from '../services/financeiro';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  canCloseFinanceiroCaixa,
+  canConfirmFinanceiroCaixaConciliacao,
+  canDecideFinanceiroCaixaDivergence,
+  canMoveFinanceiroCaixa,
+  canOpenFinanceiroCaixa,
+  canReverseFinanceiroCaixaMovement
+} from '../utils/acessoProduto';
 import OverlayModal from '../components/ui/OverlayModal';
 import {
   Pagina,
@@ -101,6 +110,7 @@ function statusClass(status) {
 }
 
 export default function FinanceiroCaixas() {
+  const { user } = useAuth();
   const [contas, setContas] = useState([]);
   const [contaSelecionadaId, setContaSelecionadaId] = useState('');
   const [empresaFiltro, setEmpresaFiltro] = useState('');
@@ -293,6 +303,13 @@ export default function FinanceiroCaixas() {
   const diferencaFechamento = Number.isFinite(saldoInformado) ? saldoInformado - saldoSistema : 0;
   const caixaFisico = contaEhCaixaFisico(contaSelecionada);
   const podeOperar = painel?.configuracao?.pode_operar !== false;
+  const podeConfirmarConciliacao = podeOperar && canConfirmFinanceiroCaixaConciliacao(user);
+  const podeAbrir = podeOperar && canOpenFinanceiroCaixa(user);
+  const podeMovimentar = podeOperar && canMoveFinanceiroCaixa(user);
+  const podeEstornar = podeOperar && canReverseFinanceiroCaixaMovement(user);
+  const podeFechar = podeOperar && canCloseFinanceiroCaixa(user);
+  const podeDecidirDivergencia = painel?.configuracao?.pode_aprovar_divergencia === true
+    && canDecideFinanceiroCaixaDivergence(user);
 
   useEffect(() => {
     setFecharForm((current) => (
@@ -525,7 +542,7 @@ export default function FinanceiroCaixas() {
                 acoesLinha={(item) => (
                   <div className="flex flex-wrap justify-end gap-2">
                     <button type="button" className="btn btn-outline btn-sm" onClick={() => setContaSelecionadaId(String(item.conta?.id || ''))}>Abrir detalhe</button>
-                    {item.situacao === 'DIVERGENCIA_PENDENTE' && painel.configuracao?.pode_aprovar_divergencia ? (
+                    {item.situacao === 'DIVERGENCIA_PENDENTE' && podeDecidirDivergencia ? (
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => setDecisaoDivergencia({ sessao: item.sessao, decisao: 'APROVAR', observacao: '' })}>Decidir</button>
                     ) : null}
                   </div>
@@ -592,20 +609,20 @@ export default function FinanceiroCaixas() {
         </BlocoConteudo>
       ) : null}
 
-      {contaSelecionada && !sessaoAtiva && !loading && podeOperar ? (
+      {contaSelecionada && !sessaoAtiva && !loading && (podeAbrir || podeConfirmarConciliacao) ? (
         <BlocoConteudo
-          titulo="Abrir caixa"
+          titulo={podeAbrir ? 'Abrir caixa' : 'Confirmar conciliação anterior'}
           variante="primario"
           descricao={caixaFisico ? 'Informe o saldo inicial. O caixa físico não depende de conciliação OFX.' : 'Esta conta mantém a conferência OFX anterior.'}
           acoes={<span className={statusClass('FECHADO')}>FECHADO</span>}
         >
-          <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-12 xl:items-end" onSubmit={handleAbrir}>
+          <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-12 xl:items-end" onSubmit={podeAbrir ? handleAbrir : (event) => event.preventDefault()}>
             <label className="sol-filter-field xl:col-span-2"><span className="sol-filter-label">Data de abertura *</span><DateInputBR className="input w-full" value={abrirForm.data_abertura} onChange={(event) => setAbrirForm((current) => ({ ...current, data_abertura: event.target.value }))} required /></label>
             <label className="sol-filter-field xl:col-span-2"><span className="sol-filter-label">Saldo inicial</span><input className="input input-moeda w-full" inputMode="decimal" placeholder="Ex.: 500,00" value={abrirForm.saldo_abertura} onChange={(event) => setAbrirForm((current) => ({ ...current, saldo_abertura: event.target.value }))} /></label>
             <label className="sol-filter-field sm:col-span-2 xl:col-span-6"><span className="sol-filter-label">Observação de abertura</span><input className="input w-full" maxLength={4000} placeholder="Opcional" value={abrirForm.observacoes} onChange={(event) => setAbrirForm((current) => ({ ...current, observacoes: event.target.value }))} /></label>
             {/* D3: os dois pesos visíveis — "Abrir caixa" é a primária sólida,
                 "Confirmar OFX" a secundária em contorno. */}
-            <div className="flex flex-wrap justify-end gap-2 sm:col-span-2 xl:col-span-2">{!caixaFisico ? <button type="button" className="btn btn-outline" onClick={handleConfirmarOfx} disabled={saving}>Confirmar OFX</button> : null}<button type="submit" className="btn btn-primary" disabled={saving}>Abrir caixa</button></div>
+            <div className="flex flex-wrap justify-end gap-2 sm:col-span-2 xl:col-span-2">{!caixaFisico && podeConfirmarConciliacao ? <button type="button" className="btn btn-outline" onClick={handleConfirmarOfx} disabled={saving}>Confirmar OFX</button> : null}{podeAbrir ? <button type="submit" className="btn btn-primary" disabled={saving}>Abrir caixa</button> : null}</div>
             <div className="sm:col-span-2 xl:col-span-12 rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[var(--c-muted)]">Saldo esperado do fechamento anterior</span><strong>{formatCurrency(saldoAberturaEsperado)}</strong></div>
               {aberturaDivergente ? <div className="mt-3 grid gap-3 border-t border-[var(--c-border)] pt-3 sm:grid-cols-2">
@@ -618,10 +635,10 @@ export default function FinanceiroCaixas() {
         </BlocoConteudo>
       ) : null}
 
-      {contaSelecionada && !sessaoAtiva && !loading && !podeOperar ? (
+      {contaSelecionada && !sessaoAtiva && !loading && !podeAbrir && !podeConfirmarConciliacao ? (
         <BlocoConteudo titulo="Conta sem sessao aberta" variante="primario">
           <p className="text-sm text-[var(--c-muted)]">
-            Voce pode consultar o painel, mas somente os responsaveis definidos pelo superadmin podem confirmar a conciliacao e abrir ou fechar contas.
+            Você pode consultar o painel, mas não possui permissão para confirmar a conciliação ou abrir esta conta.
           </p>
         </BlocoConteudo>
       ) : null}
@@ -641,7 +658,7 @@ export default function FinanceiroCaixas() {
             <StatTile label="Solicitado por" valor={sessaoPendente.divergenciaSolicitadaPor?.nome || '-'} />
           </StatGrid>
           <p className="mt-3 text-sm text-[var(--c-muted)]">Justificativa: {sessaoPendente.observacoes_fechamento || '-'}</p>
-          {painel?.configuracao?.pode_aprovar_divergencia ? (
+          {podeDecidirDivergencia ? (
             <div className="mt-3 flex justify-end">
               <button type="button" className="btn btn-primary" onClick={() => setDecisaoDivergencia({ sessao: sessaoPendente, decisao: 'APROVAR', observacao: '' })}>Decidir divergencia</button>
             </div>
@@ -670,7 +687,7 @@ export default function FinanceiroCaixas() {
           </StatGrid>
         </BlocoConteudo>
 
-        {caixaFisico && podeOperar ? (
+        {caixaFisico && podeMovimentar ? (
           <BlocoConteudo
             titulo="Registrar entrada ou saída"
             descricao="Use para dinheiro físico ainda não registrado por outro fluxo financeiro."
@@ -749,14 +766,14 @@ export default function FinanceiroCaixas() {
             storageKey="tabela:financeiro-caixas:movimentos"
             rotuloRolagem="Livro do caixa"
             larguraAcoes={140}
-            acoesLinha={(movimento) => (movimento.estornavel
+            acoesLinha={(movimento) => (movimento.estornavel && podeEstornar
               // D3/C5: a destrutiva fica visível, em vermelho suave e apartada.
               ? <button type="button" className="btn btn-outline btn-perigo-suave btn-sm" onClick={() => setEstorno({ movimento, motivo: '' })}>Estornar</button>
               : <span className="text-[var(--c-muted)]">-</span>)}
           />
         </BlocoConteudo>
 
-        {podeOperar ? <BlocoConteudo
+        {podeFechar ? <BlocoConteudo
           titulo="Conferir e fechar caixa"
           descricao={`${caixaFisico ? 'Conte o dinheiro físico e informe o saldo encontrado.' : 'Confira o saldo operacional e informe o valor apurado.'} Divergências ficam registradas com justificativa.`}
         >
@@ -844,7 +861,7 @@ export default function FinanceiroCaixas() {
         do overlay à mão com `bg-slate-950/55`, e o texto passou a declarar
         que a operação não se desfaz.
       */}
-      {decisaoDivergencia.sessao ? (
+      {decisaoDivergencia.sessao && podeDecidirDivergencia ? (
         <OverlayModal
           rotulo="Decidir divergencia de caixa"
           largura="var(--modal-max-w-md, 640px)"

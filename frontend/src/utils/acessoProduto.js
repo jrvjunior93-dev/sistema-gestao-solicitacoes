@@ -749,61 +749,8 @@ export function canAccessFinanceiro(user) {
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
   if (isBusinessAdmin(user)) return true;
   if (hasConfiguredAreaPermissions(user)) {
-    return hasAnyPermissao(user, [
-      'financeiro.titulos.visualizar',
-      'financeiro.titulos.criar',
-      'financeiro.titulos.importar',
-      'financeiro.titulos.exportar',
-      'financeiro.titulos.importar_codigos',
-      'financeiro.titulos.baixar',
-      'financeiro.titulos.excluir',
-      'financeiro.titulos.estornar',
-      'financeiro.comprovantes.excluir',
-      'financeiro.cheques.visualizar',
-      'financeiro.cheques.cadastrar',
-      'financeiro.cheques.importar',
-      'financeiro.cheques.depositar',
-      'financeiro.cheques.devolver',
-      'financeiro.cheques.cancelar',
-      'financeiro.cheques.transferir',
-      'financeiro.baixas_compostas.visualizar',
-      'financeiro.baixas_compostas.criar',
-      'financeiro.baixas_compostas.confirmar',
-      'financeiro.baixas_compostas.estornar',
-      ...FINANCEIRO_RELATORIOS_KEYS,
-      'financeiro.conciliacao.visualizar',
-      'financeiro.conciliacao.importar',
-      'financeiro.conciliacao.conciliar',
-      'financeiro.conciliacao.estornar',
-      'financeiro.bancos.visualizar',
-      'financeiro.bancos.auditar',
-      'financeiro.bancos.conciliar',
-      'financeiro.bancos.remessas',
-      'financeiro.bancos.retornos',
-      'financeiro.bancos.configurar',
-      'financeiro.cadastros.visualizar',
-      'financeiro.cadastros.gerenciar',
-      'financeiro.pagamentos.visualizar',
-      'financeiro.pagamentos.preparar',
-      'financeiro.pagamentos.aprovar',
-      'financeiro.pagamentos.rejeitar',
-      'financeiro.pagamentos.enviar_banco',
-      'financeiro.pagamentos.sincronizar_banco',
-      'financeiro.pagamentos.cancelar',
-      'financeiro.pagamentos.reprocessar',
-      'financeiro.pagamentos.confirmar_baixa',
-      'financeiro.pagamentos.auditar',
-      'financeiro.pagamentos.configurar',
-      'financeiro.dda.visualizar',
-      'financeiro.dda.sincronizar',
-      'financeiro.dda.vincular',
-      'financeiro.dda.ignorar',
-      'financeiro.dda.auditar',
-      'financeiro.dda.configurar',
-      'financeiro.favorecidos.visualizar',
-      'financeiro.favorecidos.gerenciar',
-      'financeiro.favorecidos.auditar'
-    ]);
+    return (Array.isArray(user?.areas_permissoes) ? user.areas_permissoes : [])
+      .some((permission) => String(permission || '').trim().toLowerCase().startsWith('financeiro.'));
   }
 
   return (
@@ -812,6 +759,21 @@ export function canAccessFinanceiro(user) {
     userHasSetorCapability(user, 'eh_setor_financeiro')
   );
 }
+
+function canFinanceiroCaixa(user, permissionKey) {
+  if (!hasEnabledModule(user, 'FINANCEIRO')) return false;
+  if (isBusinessAdmin(user)) return true;
+  if (hasConfiguredAreaPermissions(user)) return hasPermissao(user, permissionKey);
+  return canAccessFinanceiro(user);
+}
+
+export const canViewFinanceiroCaixas = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.visualizar');
+export const canConfirmFinanceiroCaixaConciliacao = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.confirmar_conciliacao');
+export const canOpenFinanceiroCaixa = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.abrir');
+export const canMoveFinanceiroCaixa = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.movimentar');
+export const canReverseFinanceiroCaixaMovement = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.estornar');
+export const canCloseFinanceiroCaixa = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.fechar');
+export const canDecideFinanceiroCaixaDivergence = (user) => canFinanceiroCaixa(user, 'financeiro.caixas.decidir_divergencia');
 
 export function canViewFinanceiroRelatorios(user) {
   if (!hasEnabledModule(user, 'FINANCEIRO')) return false;

@@ -19,6 +19,7 @@ const frontendRoot = path.resolve(__dirname, '..', '..', 'frontend', 'src');
 const registryFile = path.resolve(backendRoot, 'constants', 'moduloPermissoes.js');
 const useDb = process.argv.includes('--db');
 const asJson = process.argv.includes('--json');
+const checkMode = process.argv.includes('--check');
 
 function walk(dir) {
   if (!fs.existsSync(dir)) return [];
@@ -36,6 +37,18 @@ const IMPLICIT_BACKEND_PERMISSION_KEYS = new Set([
   // na configuracao, sem precisar de um teste literal no filtro SQL.
   'compras.escopo.minhas_atribuidas'
 ]);
+
+const CLIENT_ONLY_PERMISSION_KEYS = new Set([
+  // O CSV e montado a partir dos titulos que a API ja autorizou e devolveu.
+  // Nao existe endpoint de exportacao para proteger no backend.
+  'financeiro.titulos.exportar'
+]);
+
+function removeFullLineComments(source) {
+  return String(source || '')
+    .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\r\n]/g, ' '))
+    .replace(/^[\t ]*\/\/.*$/gm, (comment) => comment.replace(/[^\r\n]/g, ' '));
+}
 
 function flattenRegistry(groups = MODULO_PERMISSION_GROUPS) {
   return groups.flatMap((group) =>
@@ -61,7 +74,10 @@ function scanUsage(files, registryKeys) {
   const usage = Object.fromEntries([...registryKeys].map((key) => [key, []]));
   files.forEach((file) => {
     if (path.resolve(file) === registryFile) return;
-    const source = fs.readFileSync(file, 'utf8');
+    // Comentarios explicativos podem citar uma chave sem que exista qualquer
+    // verificacao em runtime. Ignora-los evita classificar documentacao como
+    // uma regra de autorizacao implementada.
+    const source = removeFullLineComments(fs.readFileSync(file, 'utf8'));
     registryKeys.forEach((key) => {
       if (!source.includes(key)) return;
       const lines = source.split(/\r?\n/);
@@ -181,11 +197,35 @@ async function main() {
     .map((item) => item.key);
   const duplicateKeys = duplicates(fullRegistry.map((item) => item.key));
   const backendOnly = registry.filter((item) => backendUsage[item.key].length && !frontendUsage[item.key].length);
-  const frontendOnly = registry.filter((item) => !backendUsage[item.key].length && frontendUsage[item.key].length);
+  const frontendOnly = registry.filter((item) => (
+    !CLIENT_ONLY_PERMISSION_KEYS.has(item.key)
+    && !backendUsage[item.key].length
+    && frontendUsage[item.key].length
+  ));
+  const clientOnly = registry.filter((item) => (
+    CLIENT_ONLY_PERMISSION_KEYS.has(item.key) && frontendUsage[item.key].length
+  ));
   const withoutRuntimeUse = registry.filter(
     (item) => !backendUsage[item.key].length && !frontendUsage[item.key].length
   );
   const broadManageCandidates = registry.filter((item) => /(^|\.)(gerenciar|editar)$/.test(item.key));
+  const registryControllerSource = fs.readFileSync(
+    path.resolve(backendRoot, 'controllers', 'PermissoesAreasController.js'),
+    'utf8'
+  );
+  const frontendRegistryServiceSource = fs.readFileSync(
+    path.resolve(frontendRoot, 'services', 'configuracoesSistema.js'),
+    'utf8'
+  );
+  const frontendRegistryPageSource = fs.readFileSync(
+    path.resolve(frontendRoot, 'pages', 'PermissoesAreas.jsx'),
+    'utf8'
+  );
+  const registryDelivery = {
+    backend_uses_central_registry: registryControllerSource.includes('getVisiblePermissionRegistry(MODULO_PERMISSION_GROUPS)'),
+    frontend_loads_registry_endpoint: frontendRegistryServiceSource.includes('/configuracoes/permissoes-areas/registry'),
+    frontend_renders_registry_groups: frontendRegistryPageSource.includes('registry.map((grupo)')
+  };
 
   const report = {
     generated_at: new Date().toISOString(),
@@ -200,36 +240,48 @@ async function main() {
     usage: {
       used_backend_and_frontend: registry.length - backendOnly.length - frontendOnly.length - withoutRuntimeUse.length,
       backend_only: backendOnly.map((item) => item.key),
+      client_only: clientOnly.map((item) => item.key),
       frontend_only_risk: frontendOnly.map((item) => ({ key: item.key, locations: frontendUsage[item.key] })),
       without_runtime_literal: withoutRuntimeUse.map((item) => item.key)
     },
+    registry_delivery: registryDelivery,
     split_review_candidates: broadManageCandidates.map((item) => ({ key: item.key, label: item.label })),
     database: useDb ? await auditDatabase(registryKeys) : null
   };
 
   if (asJson) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-    return;
+  } else {
+    console.log('AUDITORIA DE PERMISSOES GRANULARES (somente leitura)');
+    console.log(`Registro: ${report.registry.modules} modulos / ${report.registry.permissions} permissoes (${report.registry.active_permissions} ativas na politica atual)`);
+    console.log(`Chaves invalidas: ${invalidKeys.length} | duplicadas: ${duplicateKeys.length}`);
+    console.log(`Uso em backend + frontend: ${report.usage.used_backend_and_frontend}`);
+    console.log(`Somente backend: ${backendOnly.length}`);
+    console.log(`Somente frontend por desenho: ${clientOnly.length}`);
+    console.log(`Somente frontend (risco): ${frontendOnly.length}`);
+    console.log(`Sem uso literal fora do registro: ${withoutRuntimeUse.length}`);
+    console.log(`Registro entregue ao frontend: ${Object.values(registryDelivery).every(Boolean) ? 'SIM' : 'NAO'}`);
+    if (frontendOnly.length) console.log(`Frontend sem evidencia backend: ${frontendOnly.map((item) => item.key).join(', ')}`);
+    if (withoutRuntimeUse.length) console.log(`Sem uso: ${withoutRuntimeUse.map((item) => item.key).join(', ')}`);
+    if (report.database) {
+      console.log(`Banco: config #${report.database.config_id || '-'} / ${report.database.active_users} usuarios ativos`);
+      console.log(`Banco: ${report.database.unknown_keys.length} chave(s) desconhecida(s), ${report.database.explicit_empty_users.length} usuario(s) explicitamente vazio(s)`);
+      console.log(`Banco: ${report.database.legacy_unconfigured_users.length} usuario(s) ativo(s) ainda em compatibilidade legada irrestrita`);
+      if (report.database.legacy_unconfigured_users.length) {
+        console.log(`Legado irrestrito: ${report.database.legacy_unconfigured_users.map((item) => `${item.id}-${item.nome} (${item.perfil}/${item.setor || 'sem setor'})`).join(', ')}`);
+      }
+      if (report.database.unknown_keys.length) console.log(`Chaves desconhecidas: ${report.database.unknown_keys.join(', ')}`);
+      if (report.database.orphan_block_users.length) console.log(`Bloqueios sem concessao individual: ${report.database.orphan_block_users.join(', ')}`);
+    }
   }
 
-  console.log('AUDITORIA DE PERMISSOES GRANULARES (somente leitura)');
-  console.log(`Registro: ${report.registry.modules} modulos / ${report.registry.permissions} permissoes (${report.registry.active_permissions} ativas na politica atual)`);
-  console.log(`Chaves invalidas: ${invalidKeys.length} | duplicadas: ${duplicateKeys.length}`);
-  console.log(`Uso em backend + frontend: ${report.usage.used_backend_and_frontend}`);
-  console.log(`Somente backend: ${backendOnly.length}`);
-  console.log(`Somente frontend (risco): ${frontendOnly.length}`);
-  console.log(`Sem uso literal fora do registro: ${withoutRuntimeUse.length}`);
-  if (frontendOnly.length) console.log(`Frontend sem evidencia backend: ${frontendOnly.map((item) => item.key).join(', ')}`);
-  if (withoutRuntimeUse.length) console.log(`Sem uso: ${withoutRuntimeUse.map((item) => item.key).join(', ')}`);
-  if (report.database) {
-    console.log(`Banco: config #${report.database.config_id || '-'} / ${report.database.active_users} usuarios ativos`);
-    console.log(`Banco: ${report.database.unknown_keys.length} chave(s) desconhecida(s), ${report.database.explicit_empty_users.length} usuario(s) explicitamente vazio(s)`);
-    console.log(`Banco: ${report.database.legacy_unconfigured_users.length} usuario(s) ativo(s) ainda em compatibilidade legada irrestrita`);
-    if (report.database.legacy_unconfigured_users.length) {
-      console.log(`Legado irrestrito: ${report.database.legacy_unconfigured_users.map((item) => `${item.id}-${item.nome} (${item.perfil}/${item.setor || 'sem setor'})`).join(', ')}`);
-    }
-    if (report.database.unknown_keys.length) console.log(`Chaves desconhecidas: ${report.database.unknown_keys.join(', ')}`);
-    if (report.database.orphan_block_users.length) console.log(`Bloqueios sem concessao individual: ${report.database.orphan_block_users.join(', ')}`);
+  if (checkMode) {
+    const failures = [];
+    if (invalidKeys.length) failures.push(`${invalidKeys.length} chave(s) invalida(s)`);
+    if (duplicateKeys.length) failures.push(`${duplicateKeys.length} chave(s) duplicada(s)`);
+    if (frontendOnly.length) failures.push(`${frontendOnly.length} permissao(oes) usada(s) somente no frontend`);
+    if (!Object.values(registryDelivery).every(Boolean)) failures.push('registro central nao chega integralmente a tela de configuracao');
+    if (failures.length) throw new Error(`Auditoria de permissoes reprovada: ${failures.join('; ')}`);
   }
 }
 

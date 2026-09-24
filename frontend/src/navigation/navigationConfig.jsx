@@ -101,6 +101,7 @@ import {
   canAccessContratos,
   canAccessFinanceiro,
   canAccessFinanceiroDda,
+  canViewFinanceiroCaixas,
   canAccessFilaPagamentos,
   canAccessBancosEnterprise,
   canAccessFiscal,
@@ -438,7 +439,7 @@ export const NAV_MODULES = [
       { id: 'fin-relatorios', ordem: 170, label: 'Relatórios Financeiros', desc: 'DRE, fluxo consolidado e análises.', icon: HiOutlineChartBar, to: '/financeiro/relatorios', can: (user) => canViewFinanceiroRelatorios(user) },
       { id: 'fin-baixas', ordem: 30, label: 'Baixas Realizadas', desc: 'Histórico de baixas de títulos.', icon: HiOutlineBanknotes, to: '/financeiro/baixas', can: (user) => canAccessFinanceiro(user) },
       { id: 'fin-conciliacao', ordem: 40, label: 'Conciliação OFX', desc: 'Conciliação de extratos bancários.', icon: HiOutlineScale, to: '/financeiro/conciliacao', can: (user) => canAccessFinanceiro(user) },
-      { id: 'fin-caixas', ordem: 50, label: 'Caixas e Contas', desc: 'Caixas operacionais e contas bancárias.', icon: HiOutlineWallet, to: '/financeiro/caixas', can: (user) => canAccessFinanceiro(user) },
+      { id: 'fin-caixas', ordem: 50, label: 'Caixas e Contas', desc: 'Caixas operacionais e contas bancárias.', icon: HiOutlineWallet, to: '/financeiro/caixas', can: (user) => canViewFinanceiroCaixas(user) },
       { id: 'fin-cadastros', ordem: 190, label: 'Cadastros Financeiros', desc: 'Categorias, formas de pagamento e afins.', icon: HiOutlineRectangleGroup, to: '/financeiro/cadastros', can: (user) => canAccessFinanceiro(user) },
       { id: 'fin-upload-comprovantes', fixavel: 'acao', ordem: 140, label: 'Upload Comprovantes', desc: 'Envio de comprovantes de pagamento.', icon: HiOutlineCloudArrowUp, to: '/comprovantes/upload', can: (user) => canAccessFinanceiro(user) },
       { id: 'fin-comprovantes-pendentes', ordem: 150, label: 'Comprovantes Pendentes', desc: 'Comprovantes aguardando conferência.', icon: HiOutlineReceiptRefund, to: '/comprovantes/pendentes', can: (user) => canAccessFinanceiro(user) }
