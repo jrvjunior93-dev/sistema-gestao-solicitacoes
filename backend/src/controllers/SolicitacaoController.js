@@ -4320,6 +4320,7 @@ module.exports = {
           'valor_fechado',
           'desconto_total',
           'frete_tipo',
+          'frete_modo',
           'frete_valor',
           'frete_data_vencimento',
           'frete_parceiro_id',

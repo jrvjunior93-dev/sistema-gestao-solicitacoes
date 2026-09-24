@@ -21,6 +21,8 @@ function includesAll(source, markers, label) {
 function run() {
   const migration = read('backend/migrations/202608130001_compra_direta_frete.js');
   const model = read('backend/src/models/SolicitacaoCompra.js');
+  const itemModel = read('backend/src/models/SolicitacaoCompraItem.js');
+  const itemManualModel = read('backend/src/models/SolicitacaoCompraItemManual.js');
   const associations = read('backend/src/models/index.js');
   const validator = read('backend/src/validators/operationalValidators.js');
   const controller = read('backend/src/controllers/SolicitacaoCompraController.js');
@@ -31,15 +33,17 @@ function run() {
   const detalhe = read('frontend/src/pages/SolicitacaoDetalhe/index.jsx');
   const migrationPagamento = read('backend/migrations/202609180005_compra_direta_frete_pagamento.js');
   const migrationFavorecidoTitulo = read('backend/migrations/202609180007_titulos_favorecido_compra_direta.js');
+  const migrationFretePorItem = read('backend/migrations/202609220001_compra_direta_frete_por_item.js');
 
   const campos = [
     'frete_tipo',
+    'frete_modo',
     'frete_valor',
     'frete_data_vencimento',
     'frete_parceiro_id',
     'frete_dados_pagamento'
   ];
-  includesAll(migration, campos, 'migration');
+  includesAll(migration, campos.filter((campo) => campo !== 'frete_modo'), 'migration');
   includesAll(model, campos, 'model');
   includesAll(validator, campos, 'validator');
   includesAll(controller, campos, 'controller');
@@ -58,6 +62,20 @@ function run() {
     'isFormaPagamentoFopag',
     'FOPAG nao esta disponivel para solicitacoes de compra.'
   ], 'regras backend');
+  includesAll(migrationFretePorItem, [
+    'frete_modo',
+    'frete_valor',
+    'solicitacao_compra_itens',
+    'solicitacao_compra_itens_manuais'
+  ], 'migration frete por item');
+  includesAll(itemModel, ['frete_valor'], 'modelo de item cadastrado');
+  includesAll(itemManualModel, ['frete_valor'], 'modelo de item manual');
+  includesAll(controller, [
+    "['GLOBAL', 'POR_ITEM']",
+    "freteModoCompraDireta === 'POR_ITEM'",
+    'informe o frete do item, mesmo que seja zero.',
+    'frete_modo: freteModoCompraDireta'
+  ], 'regras de frete por item');
   assert(
     controller.includes("arredondarMoeda(valorTotalCompraDireta + (freteTipoCompraDireta !== 'SEM_FRETE' ? freteValorCompraDireta : 0))"),
     'Backend deve somar qualquer frete informado ao total da compra direta.'
@@ -75,6 +93,9 @@ function run() {
     'Condições comerciais e comprovantes',
     'Embutido',
     'Pago a terceiro',
+    'Frete por item',
+    "freteModo === 'POR_ITEM'",
+    "atualizarItem(item.__indice, 'frete_valor'",
     'label="Credor do frete" obrigatorio',
     'label="Dados para pagamento do frete"',
     'Comprovantes da Despesa',
@@ -88,6 +109,7 @@ function run() {
     'Formulario deve somar frete embutido ou de terceiro ao total da compra direta.'
   );
   includesAll(revisao, ['Credor do frete', 'Valor total da solicitação'], 'revisao');
+  includesAll(revisao, ['freteModoCompraDireta', "titulo: 'Frete'"], 'revisao do frete por item');
   includesAll(financeiro, [
     'getFreteTerceiroCompraDireta',
     'freteTerceiro.freteCredor',
@@ -119,6 +141,16 @@ function run() {
     itens: [{ nome: 'Item teste' }]
   });
   assert.deepStrictEqual(pagamentosComValor.formas_pagamento, [{ id: 2, valor: 75 }, { id: 3, valor: 25 }]);
+  const fretePorItem = validateCompraDiretaCreateBody({
+    obra_id: 20,
+    necessario_para: '2026-09-19',
+    forma_pagamento_ids: [2],
+    frete_tipo: 'EMBUTIDO',
+    frete_modo: 'POR_ITEM',
+    frete_valor: 15,
+    itens: [{ nome: 'Item teste', frete_valor: 15 }]
+  });
+  assert.strictEqual(fretePorItem.frete_modo, 'POR_ITEM');
   includesAll(controller, [
     'for (const forma of formasPagamentoCompraDireta)',
     'const favorecidoFormaId = Number(payloadForma.favorecido_id || favorecido_id || 0)',

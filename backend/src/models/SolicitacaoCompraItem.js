@@ -50,6 +50,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 0
       },
+      frete_valor: {
+        type: DataTypes.DECIMAL(14, 2),
+        allowNull: false,
+        defaultValue: 0
+      },
       especificacao: {
         type: DataTypes.TEXT,
         allowNull: false

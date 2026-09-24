@@ -167,6 +167,9 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
   );
   const valorTotalCompraDireta = Number(draft?.resumo?.valor_total || valorLiquidoItensCompraDireta || 0);
   const freteTipoCompraDireta = String(draft?.payload?.frete_tipo || 'SEM_FRETE').toUpperCase();
+  const freteModoCompraDireta = String(draft?.payload?.frete_modo || 'GLOBAL').toUpperCase() === 'POR_ITEM'
+    ? 'POR_ITEM'
+    : 'GLOBAL';
   const freteValorCompraDireta = Number(draft?.payload?.frete_valor || 0);
   const freteTipoLabel = freteTipoCompraDireta === 'TERCEIRO'
     ? 'Frete pago a terceiro'
@@ -209,6 +212,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
           <td>${escapeHtml(item.quantidade || '-')}</td>
           ${modoCompraDireta ? `<td>${escapeHtml(formatarMoeda(item.valor_unitario))}</td>` : ''}
           ${modoCompraDireta ? `<td>${escapeHtml(formatarMoeda(item.valor_total))}</td>` : ''}
+          ${modoCompraDireta && freteModoCompraDireta === 'POR_ITEM' ? `<td>${escapeHtml(formatarMoeda(item.frete_valor))}</td>` : ''}
           ${modoCompraDireta ? '' : `<td>${escapeHtml(item.especificacao || '-')}</td>`}
           <td>${montarLinhasResumoApropriacao(item).map((linha) => escapeHtml(linha)).join('<br />') || '-'}</td>
           ${modoCompraDireta ? '' : `<td>${escapeHtml(formatarData(item.necessario_para))}</td>`}
@@ -241,7 +245,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
           ${temDescontoCompraDireta ? `<div class="meta"><strong>Valor bruto:</strong> ${escapeHtml(formatarMoeda(valorBrutoCompraDireta))}</div>` : ''}
           ${temDescontoCompraDireta ? `<div class="meta"><strong>Desconto concedido:</strong> ${escapeHtml(formatarMoeda(descontoCompraDireta))}</div>` : ''}
           ${modoCompraDireta ? `<div class="meta"><strong>Valor líquido dos itens:</strong> ${escapeHtml(formatarMoeda(valorLiquidoItensCompraDireta))}</div>` : ''}
-          ${modoCompraDireta ? `<div class="meta"><strong>Frete:</strong> ${escapeHtml(freteTipoLabel)}${freteTipoCompraDireta !== 'SEM_FRETE' ? ` - ${escapeHtml(formatarMoeda(freteValorCompraDireta))}` : ''}</div>` : ''}
+          ${modoCompraDireta ? `<div class="meta"><strong>Frete:</strong> ${escapeHtml(freteTipoLabel)}${freteTipoCompraDireta !== 'SEM_FRETE' ? ` - ${escapeHtml(freteModoCompraDireta === 'POR_ITEM' ? 'por item' : 'valor total')} - ${escapeHtml(formatarMoeda(freteValorCompraDireta))}` : ''}</div>` : ''}
           ${modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO' ? `<div class="meta"><strong>Credor do frete:</strong> ${escapeHtml(draft.resumo?.frete_credor_nome || '-')}</div>` : ''}
           ${modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO' ? `<div class="meta"><strong>Pagamento do frete:</strong> ${escapeHtml(formatarData(draft.payload?.frete_data_vencimento))} - ${escapeHtml(draft.payload?.frete_dados_pagamento || '-')}</div>` : ''}
           ${modoCompraDireta && freteTipoCompraDireta === 'TERCEIRO' ? `<div class="meta"><strong>Forma do frete:</strong> ${escapeHtml(draft.resumo?.frete_forma_pagamento || '-')}</div>` : ''}
@@ -265,7 +269,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
                 <th>Insumo</th>
                 <th>Unidade</th>
                 <th>Quantidade</th>
-                ${modoCompraDireta ? '<th>Valor unit.</th><th>Valor total</th>' : ''}
+                ${modoCompraDireta ? `<th>Valor unit.</th><th>Valor total</th>${freteModoCompraDireta === 'POR_ITEM' ? '<th>Frete</th>' : ''}` : ''}
                 ${modoCompraDireta ? '' : '<th>Especificação</th>'}
                 <th>Apropriação</th>
                 ${modoCompraDireta ? '' : '<th>Necessario para</th><th>Link</th><th>Arquivo</th>'}
@@ -284,6 +288,7 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     temDescontoCompraDireta,
     valorBrutoCompraDireta,
     freteTipoCompraDireta,
+    freteModoCompraDireta,
     freteTipoLabel,
     freteValorCompraDireta,
     valorLiquidoItensCompraDireta,
@@ -433,7 +438,9 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
     {
       label: 'Frete',
       valor: freteTipoLabel,
-      sub: freteTipoCompraDireta !== 'SEM_FRETE' ? formatarMoeda(freteValorCompraDireta) : undefined,
+      sub: freteTipoCompraDireta !== 'SEM_FRETE'
+        ? `${freteModoCompraDireta === 'POR_ITEM' ? 'Por item' : 'Valor total'} · ${formatarMoeda(freteValorCompraDireta)}`
+        : undefined,
       contexto: modoCompraDireta
     },
     {
@@ -627,7 +634,12 @@ export default function RevisarSolicitacaoCompra({ modoCompraDireta = false }) {
                   <div className="mt-1 font-semibold">{formatarMoeda(item.valor_total)}</div>
                 </>
               )
-            }] : []),
+            }, ...(freteModoCompraDireta === 'POR_ITEM' ? [{
+              id: 'frete_valor',
+              titulo: 'Frete',
+              tipo: 'valor',
+              render: (item) => formatarMoeda(item.frete_valor)
+            }] : [])] : []),
             {
               id: 'apropriacao',
               titulo: 'Apropriação',

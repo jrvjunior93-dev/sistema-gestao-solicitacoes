@@ -1,5 +1,49 @@
 # Ownership Ativo
 
+Ownership temporario `/root` em 23/09/2026: adicionar consulta completa de
+apropriacoes por obra, acionada por icone de lupa nos campos de selecao, com
+modal reutilizavel e rolagem vertical/horizontal. Escopo: componente compartilhado
+`ApropriacaoAutocomplete`, adaptacao dos seletores antigos de contratos, financeiro
+e Gestao de Apropriacoes, validacoes e handoff. Preservar alteracoes pendentes de
+Compras, fila de pagamentos, comprovantes e `outputs/`; sem EC2, RDS, commit, push
+ou deploy nesta etapa.
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-23-consulta-apropriacoes-modal.md`.
+
+Ownership temporario `/root` em 23/09/2026: generalizar a configuracao do nivel
+de apropriacao exibido nos formularios por obra (Etapa, Servico, Subservico ou
+Personalizado) e incluir revisao previa no modal de importacao da planilha. Escopo:
+modelo/migration de Obra, selecao hierarquica compartilhada, controllers/rotas de
+Obras e Apropriacoes, Gestao de Apropriacoes, cadastro de Obras, services frontend,
+validacoes e handoff. Preservar alteracoes pendentes de Compras, fila de pagamentos,
+comprovantes e `outputs/`; sem EC2, RDS, commit, push ou deploy nesta etapa.
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-23-apropriacoes-macros-obras-109-110.md`.
+
+Ownership temporario `/root` em 23/09/2026: configurar etapas macro selecionaveis
+somente nas obras 109 e 110, preservar a hierarquia completa e a ordem da planilha
+na Gestao de Apropriacoes e restringir os formularios externos as macros confirmadas,
+sem alterar tabelas, importacoes ou fluxos do modulo Custos e Recebiveis. Escopo
+previsto: modelo/migration e servico de configuracao de macros de apropriacao,
+`backend/src/controllers/ApropriacaoController.js`, validacoes operacionais que
+selecionam apropriacoes, `backend/src/routes.js`,
+`frontend/src/modules/solicitacao-compra/pages/GestaoApropriacoes.jsx`,
+`frontend/src/services/apropriacoes.js`, testes e handoff. Preservar todas as
+alteracoes pendentes anteriores e `outputs/`; sem EC2, RDS, commit, push ou deploy
+ate autorizacao posterior do usuario.
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-23-apropriacoes-macros-obras-109-110.md`.
+
+Ownership temporario `/root` em 22/09/2026: adicionar leitura deterministica de
+comprovante PIX Banestes nas variacoes com Historico e com Mensagem na Fila de
+Pagamentos. Escopo: `backend/src/services/pagamentoComprovantePdfService.js`,
+`backend/scripts/validarComprovantesPdfFila.js`,
+`frontend/src/pages/FinanceiroFilaPagamentos.jsx`, validacao com os dois PDFs reais,
+handoff desta implementacao e este registro. Preservar todas as alteracoes pendentes
+anteriores e `outputs/`; sem EC2, banco externo, commit, push ou deploy nesta tarefa.
+Implementacao local concluida, validada com os nove PDFs e ownership liberado.
+Handoff: `docs/handoffs/2026-09-22-fila-pagamentos-pix-banestes.md`.
+
 Ownership temporario /root em 19/09/2026: consolidar o fluxo setorial GEO -> fila de pagamentos -> Financeiro -> Obra; manter aprovacoes operacionais no GEO, impedir encaminhamento antecipado ao Financeiro, fazer Compras gerar os titulos dos pedidos com categoria padrao configuravel e manter a solicitacao de compra em Compras ate o envio de titulo para a fila. Escopo previsto: `backend/src/services/pagamentoManualFilaService.js`, `backend/src/services/solicitacaoFinanceiroStatusService.js`, `backend/src/services/pedidoCompraFinanceiroService.js`, `backend/src/services/pedidoCompraService.js`, `backend/src/services/medicaoContratoService.js`, `backend/src/services/solicitacao/aprovacaoTipoConfig.js`, `backend/src/services/solicitacao/atualizarStatus.js`, `backend/src/controllers/SolicitacaoController.js`, `backend/src/controllers/ConfiguracaoSistemaController.js`, autorizacoes, rotas, configuracao de categorias de titulos de Compras, componentes e telas correspondentes no frontend, validacoes, documentacao e handoff. Preservar todas as alteracoes pendentes anteriores e `outputs/`; sem EC2, RDS, commit, push ou deploy nesta tarefa.
 Implementacao local concluida; ownership de edicao liberado. Handoff: `docs/handoffs/2026-09-19-fluxo-setorial-geo-financeiro-compras.md`.
 

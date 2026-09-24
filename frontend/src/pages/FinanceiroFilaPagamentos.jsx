@@ -275,7 +275,7 @@ function ErroRegistroBaixaModal({ erro, onFechar }) {
 }
 
 function bancoLabel(value) {
-  return ({ BANCO_DO_BRASIL: 'Banco do Brasil', CAIXA: 'CAIXA', SICREDI: 'Sicredi' })[value] || 'Banco não identificado';
+  return ({ BANCO_DO_BRASIL: 'Banco do Brasil', BANESTES: 'Banestes', CAIXA: 'CAIXA', SICREDI: 'Sicredi' })[value] || 'Banco não identificado';
 }
 
 function ComprovantesPdfModal({ onFechar, onVinculados, onParcial }) {

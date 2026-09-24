@@ -171,6 +171,7 @@ function criarItemBase(insumo) {
     quantidade: '1',
     valor_unitario: '',
     valor_total: '',
+    frete_valor: '',
     especificacao: '',
     apropriacao_id: '',
     apropriacoes: [],
@@ -191,6 +192,7 @@ function criarItemManualBase(dados, necessarioParaPadrao) {
     quantidade: String(dados.quantidade || '1'),
     valor_unitario: dados.valor_unitario || '',
     valor_total: dados.valor_total || '',
+    frete_valor: dados.frete_valor || '',
     especificacao: dados.especificacao || '',
     apropriacao_id: dados.apropriacoes?.[0]?.apropriacao_id || '',
     apropriacoes: Array.isArray(dados.apropriacoes) ? dados.apropriacoes : [],
@@ -261,6 +263,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   const [dadosPagamento, setDadosPagamento] = useState('');
   const [descontoTotal, setDescontoTotal] = useState('');
   const [freteTipo, setFreteTipo] = useState('SEM_FRETE');
+  const [freteModo, setFreteModo] = useState('GLOBAL');
   const [freteValor, setFreteValor] = useState('');
   const [freteDataVencimento, setFreteDataVencimento] = useState('');
   const [freteParceiroId, setFreteParceiroId] = useState('');
@@ -488,6 +491,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     setDadosPagamento('');
     setDescontoTotal('');
     setFreteTipo('SEM_FRETE');
+    setFreteModo('GLOBAL');
     setFreteValor('');
     setFreteDataVencimento('');
     setFreteParceiroId('');
@@ -617,6 +621,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       setDadosPagamento(payload.dados_pagamento || '');
       setDescontoTotal(payload.desconto_total ? String(payload.desconto_total) : '');
       setFreteTipo(String(payload.frete_tipo || 'SEM_FRETE').toUpperCase());
+      setFreteModo(String(payload.frete_modo || 'GLOBAL').toUpperCase() === 'POR_ITEM' ? 'POR_ITEM' : 'GLOBAL');
       setFreteValor(payload.frete_valor ? String(payload.frete_valor) : '');
       setFreteDataVencimento(payload.frete_data_vencimento || '');
       setFreteParceiroId(payload.frete_parceiro_id ? String(payload.frete_parceiro_id) : '');
@@ -695,6 +700,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                 quantidade: String(item.quantidade ?? '1'),
                 valor_unitario: item.valor_unitario ? String(item.valor_unitario) : '',
                 valor_total: item.valor_total ? String(item.valor_total) : '',
+                frete_valor: item.frete_valor !== null && item.frete_valor !== undefined
+                  ? String(item.frete_valor)
+                  : '',
                 especificacao: item.especificacao || '',
                 apropriacao_id: item.apropriacao_id ? String(item.apropriacao_id) : '',
                 apropriacoes: Array.isArray(item.apropriacoes) ? item.apropriacoes : [],
@@ -739,7 +747,12 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           dados_pagamento: dadosPagamento || '',
           desconto_total: descontoTotal || '',
           frete_tipo: freteTipo,
-          frete_valor: freteTipo === 'SEM_FRETE' ? '' : freteValor || '',
+          frete_modo: freteTipo === 'SEM_FRETE' ? 'GLOBAL' : freteModo,
+          frete_valor: freteTipo === 'SEM_FRETE'
+            ? ''
+            : freteModo === 'POR_ITEM'
+              ? arredondarMoeda(itens.reduce((total, item) => total + Math.max(0, parseValorMonetario(item?.frete_valor)), 0))
+              : freteValor || '',
           frete_data_vencimento: freteTipo === 'TERCEIRO' ? freteDataVencimento || null : null,
           frete_parceiro_id: freteTipo === 'TERCEIRO' ? freteParceiroId || null : null,
           frete_dados_pagamento: freteTipo === 'TERCEIRO' ? freteDadosPagamento || '' : '',
@@ -793,6 +806,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     freteChavePix,
     freteParceiroBusca,
     freteParceiroId,
+    freteModo,
     freteTipo,
     freteValor,
     itens,
@@ -882,8 +896,13 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   );
 
   const freteValorNumero = useMemo(
-    () => arredondarMoeda(Math.max(0, parseValorMonetario(freteValor))),
-    [freteValor]
+    () => arredondarMoeda(Math.max(
+      0,
+      freteModo === 'POR_ITEM'
+        ? itens.reduce((total, item) => total + parseValorMonetario(item?.frete_valor), 0)
+        : parseValorMonetario(freteValor)
+    )),
+    [freteModo, freteValor, itens]
   );
 
   const valorTotalSolicitacaoCompraDireta = useMemo(
@@ -1088,7 +1107,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     setFreteTipo(tipo);
     limparErroCampo('frete_valor');
     if (tipo === 'SEM_FRETE') {
+      setFreteModo('GLOBAL');
       setFreteValor('');
+      setItens((atuais) => atuais.map((item) => ({ ...item, frete_valor: '' })));
     }
     if (tipo !== 'TERCEIRO') {
       setFreteDataVencimento('');
@@ -1103,6 +1124,13 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       setFreteParceiros([]);
       setAutocompleteFreteAberto(false);
     }
+  }
+
+  function alterarFreteModo(modo) {
+    const modoNormalizado = modo === 'POR_ITEM' ? 'POR_ITEM' : 'GLOBAL';
+    setFreteModo(modoNormalizado);
+    limparErroCampo('frete_valor');
+    setErrosItem({});
   }
 
   async function cadastrarCredorCompraDireta() {
@@ -1646,6 +1674,16 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         reprovarItem(index, 'valor_unitario', `Item ${index + 1}: informe o valor unitario.`);
         return;
       }
+      if (modoCompraDireta && freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM'
+        && (item.frete_valor === null || item.frete_valor === undefined || String(item.frete_valor).trim() === '')) {
+        reprovarItem(index, 'frete_valor', `Item ${index + 1}: informe o frete do item, mesmo que seja zero.`);
+        return;
+      }
+      if (modoCompraDireta && freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM'
+        && parseValorMonetario(item.frete_valor) < 0) {
+        reprovarItem(index, 'frete_valor', `Item ${index + 1}: o frete nao pode ser negativo.`);
+        return;
+      }
       if (!modoCompraDireta && !item.necessario_para) {
         reprovarItem(index, 'necessario_para', `Item ${index + 1}: o prazo de entrega é obrigatório.`);
         return;
@@ -1673,6 +1711,10 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
     }
 
     if (modoCompraDireta && freteTipo !== 'SEM_FRETE' && freteValorNumero <= 0) {
+      if (freteModo === 'POR_ITEM') {
+        reprovarItem(0, 'frete_valor', 'Informe ao menos um frete de item maior que zero.');
+        return;
+      }
       reprovarCampo(
         'frete_valor',
         freteTipo === 'EMBUTIDO'
@@ -1750,6 +1792,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         dados_pagamento: modoCompraDireta ? detalheLegadoFavorecido.dados_pagamento || null : undefined,
         desconto_total: modoCompraDireta ? descontoCompraDireta : undefined,
         frete_tipo: modoCompraDireta ? freteTipo : undefined,
+        frete_modo: modoCompraDireta && freteTipo !== 'SEM_FRETE' ? freteModo : 'GLOBAL',
         frete_valor: modoCompraDireta && freteTipo !== 'SEM_FRETE' ? freteValorNumero : undefined,
         frete_data_vencimento: modoCompraDireta && freteTipo === 'TERCEIRO' ? freteDataVencimento : undefined,
         frete_parceiro_id: modoCompraDireta && freteTipo === 'TERCEIRO' ? Number(freteParceiroId) : undefined,
@@ -1771,6 +1814,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           quantidade: Number(item.quantidade),
           valor_unitario: modoCompraDireta ? parseValorMonetario(item.valor_unitario) : undefined,
           valor_total: modoCompraDireta ? calcularValorTotalItem(item) : undefined,
+          frete_valor: modoCompraDireta && freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM'
+            ? arredondarMoeda(Math.max(0, parseValorMonetario(item.frete_valor)))
+            : 0,
           especificacao: item.especificacao || '',
           necessario_para: item.necessario_para || necessarioPara || null,
           link_produto: item.link_produto || null,
@@ -1806,6 +1852,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
         desconto_total: modoCompraDireta ? descontoCompraDireta : null,
         valor_total_itens: modoCompraDireta ? valorTotalCompraDireta : null,
         frete_tipo: modoCompraDireta ? freteTipo : null,
+        frete_modo: modoCompraDireta && freteTipo !== 'SEM_FRETE' ? freteModo : 'GLOBAL',
         frete_valor: modoCompraDireta && freteTipo !== 'SEM_FRETE' ? freteValorNumero : 0,
         frete_credor_nome: modoCompraDireta && freteTipo === 'TERCEIRO'
           ? (freteCredorSelecionado ? formatarCredor(freteCredorSelecionado) : freteParceiroBusca || '')
@@ -1824,6 +1871,9 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
           ...item,
           valor_unitario: modoCompraDireta ? parseValorMonetario(item.valor_unitario) : undefined,
           valor_total: modoCompraDireta ? calcularValorTotalItem(item) : undefined,
+          frete_valor: modoCompraDireta && freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM'
+            ? arredondarMoeda(Math.max(0, parseValorMonetario(item.frete_valor)))
+            : 0,
           apropriacao_linhas: montarLinhasResumoApropriacao(item, apropriacoes)
         }))
       };
@@ -2298,6 +2348,22 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
 
             {freteTipo !== 'SEM_FRETE' && (
               <CampoForm
+                label="Como informar o frete"
+                hint="Use o valor por item quando o fornecedor detalhar o frete individualmente."
+              >
+                <select
+                  className="input"
+                  value={freteModo}
+                  onChange={(event) => alterarFreteModo(event.target.value)}
+                >
+                  <option value="GLOBAL">Valor total do frete</option>
+                  <option value="POR_ITEM">Frete por item</option>
+                </select>
+              </CampoForm>
+            )}
+
+            {freteTipo !== 'SEM_FRETE' && freteModo === 'GLOBAL' && (
+              <CampoForm
                 label="Valor do frete"
                 obrigatorio
                 erro={errosCampo.frete_valor}
@@ -2313,6 +2379,12 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                   inputMode="decimal"
                 />
               </CampoForm>
+            )}
+
+            {freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM' && (
+              <div className="form-campo--linha rounded-lg border border-[var(--c-border)] bg-[var(--ui-surface-2)] px-3 py-2 text-xs text-[var(--c-muted)]">
+                Preencha o frete em cada linha da lista de itens. Total informado: <strong className="text-[var(--c-text)]">{formatarMoeda(freteValorNumero)}</strong>.
+              </div>
             )}
 
             {freteTipo === 'TERCEIRO' && (
@@ -2722,7 +2794,27 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
                     titulo: 'Total',
                     tipo: 'valor',
                     render: (item) => <strong>{formatarMoeda(calcularValorTotalItem(item))}</strong>
-                  }
+                  },
+                  ...(freteTipo !== 'SEM_FRETE' && freteModo === 'POR_ITEM' ? [{
+                    id: 'frete_valor',
+                    titulo: 'Frete do item *',
+                    tipo: 'valor',
+                    render: (item) => (
+                      <>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="input"
+                          aria-label={`Frete do item ${item.insumo_nome || item.nome_manual || item.__indice + 1}`}
+                          value={item.frete_valor ?? ''}
+                          onChange={(event) => atualizarItem(item.__indice, 'frete_valor', event.target.value)}
+                          placeholder="0,00"
+                        />
+                        <ErroCampo mensagem={erroDoItem(item.__indice, 'frete_valor')} />
+                      </>
+                    )
+                  }] : [])
                 ] : [
                   {
                     id: 'especificacao',

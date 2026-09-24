@@ -113,6 +113,11 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 'SEM_FRETE'
       },
+      frete_modo: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+        defaultValue: 'GLOBAL'
+      },
       frete_valor: {
         type: DataTypes.DECIMAL(14, 2),
         allowNull: false,

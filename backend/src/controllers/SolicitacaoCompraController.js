@@ -982,6 +982,7 @@ function prepararItemCompraPayload({
     valor_total: arredondarMoeda(
       parseValorMonetario(item?.valor_total) || quantidade * parseValorMonetario(item?.valor_unitario)
     ),
+    frete_valor: arredondarMoeda(parseValorMonetario(item?.frete_valor)),
     especificacao: item?.especificacao || '',
     necessario_para: item?.necessario_para || necessarioParaPadrao || null,
     link_produto: item?.link_produto || null,
@@ -1047,6 +1048,7 @@ function obterLinhasPdf(solicitacao) {
     quantidade: item.quantidade,
     valor_unitario: item.valor_unitario,
     valor_total: item.valor_total,
+    frete_valor: item.frete_valor,
     especificacao: item.especificacao || '-',
     apropriacao: construirResumoApropriacoes(item).linhas.join('\n') || '-',
     necessario_para: item.necessario_para,
@@ -1063,6 +1065,7 @@ function obterLinhasPdf(solicitacao) {
     quantidade: item.quantidade,
     valor_unitario: item.valor_unitario,
     valor_total: item.valor_total,
+    frete_valor: item.frete_valor,
     especificacao: item.especificacao || '-',
     apropriacao: construirResumoApropriacoes(item).linhas.join('\n') || '-',
     necessario_para: item.necessario_para,
@@ -1690,7 +1693,7 @@ function desenharCabecalhoFicha(doc, solicitacao) {
   return y + totalHeaderHeight + 8;
 }
 
-function desenharCabecalhoTabela(doc, y, colWidths, colX, compraDireta = false) {
+function desenharCabecalhoTabela(doc, y, colWidths, colX, compraDireta = false, fretePorItem = false) {
   const headerHeight = 18;
   doc.save();
   doc.rect(PDF_PAGE.left, y, PDF_PAGE.width, headerHeight).fillAndStroke('#d6deec', '#000000');
@@ -1701,7 +1704,16 @@ function desenharCabecalhoTabela(doc, y, colWidths, colX, compraDireta = false) 
   }
 
   const labels = compraDireta
-    ? [
+    ? fretePorItem ? [
+        'ITEM',
+        'INSUMO',
+        'UNIDADE',
+        'QTD',
+        'VALOR UNIT.',
+        'VALOR TOTAL',
+        'FRETE',
+        'APROPRIACAO'
+      ] : [
         'ITEM',
         'INSUMO',
         'UNIDADE',
@@ -1784,8 +1796,11 @@ function desenharBlocoObservacoes(doc, y, solicitacao) {
 
 async function renderPdfSolicitacaoCompra(doc, solicitacao) {
   const compraDireta = isSolicitacaoCompraDireta(solicitacao);
+  const fretePorItem = compraDireta && normalizeTextCompra(solicitacao?.frete_modo) === 'POR_ITEM';
   const colWidths = compraDireta
-    ? [38, 230, 70, 62, 92, 100, 210]
+    ? fretePorItem
+      ? [34, 180, 58, 52, 78, 86, 78, 236]
+      : [38, 230, 70, 62, 92, 100, 210]
     : [38, 160, 56, 62, 132, 84, 90, 180];
   const colX = [PDF_PAGE.left];
   for (let index = 1; index < colWidths.length; index += 1) {
@@ -1794,7 +1809,7 @@ async function renderPdfSolicitacaoCompra(doc, solicitacao) {
   const linhas = obterLinhasPdf(solicitacao);
   const anexosVisuais = await obterAnexosVisuaisPdf(linhas);
   const anexosVisuaisMap = new Map(anexosVisuais.map((anexo) => [anexo.index, anexo]));
-  let y = desenharCabecalhoTabela(doc, desenharCabecalhoFicha(doc, solicitacao), colWidths, colX, compraDireta);
+  let y = desenharCabecalhoTabela(doc, desenharCabecalhoFicha(doc, solicitacao), colWidths, colX, compraDireta, fretePorItem);
 
   linhas.forEach((item, index) => {
     const anexoVisualNaCelula = !compraDireta && !item.link_produto ? anexosVisuaisMap.get(index) : null;
@@ -1803,7 +1818,7 @@ async function renderPdfSolicitacaoCompra(doc, solicitacao) {
 
     doc.fontSize(8).font('Helvetica');
     const especificacaoIndex = compraDireta ? null : 4;
-    const apropriacaoIndex = compraDireta ? 6 : 5;
+    const apropriacaoIndex = compraDireta ? (fretePorItem ? 7 : 6) : 5;
     const anexoIndex = compraDireta ? null : 7;
     const alturaNome = doc.heightOfString(nomeItem, { width: colWidths[1] - 10 });
     const alturaEspecificacao = compraDireta
@@ -1826,7 +1841,7 @@ async function renderPdfSolicitacaoCompra(doc, solicitacao) {
 
     if (y + rowHeight + 72 > PDF_PAGE.bottomLimit) {
       doc.addPage({ margin: 40, size: 'A4', layout: 'landscape' });
-      y = desenharCabecalhoTabela(doc, desenharCabecalhoFicha(doc, solicitacao), colWidths, colX, compraDireta);
+      y = desenharCabecalhoTabela(doc, desenharCabecalhoFicha(doc, solicitacao), colWidths, colX, compraDireta, fretePorItem);
     }
 
     doc.rect(PDF_PAGE.left, y, PDF_PAGE.width, rowHeight).stroke('#000000');
@@ -1861,6 +1876,12 @@ async function renderPdfSolicitacaoCompra(doc, solicitacao) {
         align: 'center',
         paddingX: 3
       });
+      if (fretePorItem) {
+        desenharTextoNaCelula(doc, `R$ ${formatCurrencyPdf(item.frete_valor)}`, colX[6], y, colWidths[6], rowHeight, {
+          align: 'center',
+          paddingX: 3
+        });
+      }
     }
 
     if (!compraDireta) {
@@ -3926,6 +3947,7 @@ module.exports = {
         desconto_total,
         anexos_cabecalho,
         frete_tipo,
+        frete_modo,
         frete_valor,
         frete_data_vencimento,
         frete_parceiro_id,
@@ -4029,8 +4051,38 @@ module.exports = {
         return res.status(400).json({ error: 'Selecione um tipo de frete valido.' });
       }
 
+      const freteModoCompraDireta = compraDireta && freteTipoCompraDireta !== 'SEM_FRETE'
+        ? String(frete_modo || 'GLOBAL').trim().toUpperCase()
+        : 'GLOBAL';
+      if (!['GLOBAL', 'POR_ITEM'].includes(freteModoCompraDireta)) {
+        await transaction.rollback();
+        return res.status(400).json({ error: 'Selecione um modo de frete valido.' });
+      }
+
+      if (freteModoCompraDireta === 'POR_ITEM') {
+        for (const [index, item] of itens.entries()) {
+          if (item?.frete_valor === null || item?.frete_valor === undefined || String(item.frete_valor).trim() === '') {
+            await transaction.rollback();
+            return res.status(400).json({ error: `Item ${index + 1}: informe o frete do item, mesmo que seja zero.` });
+          }
+          if (parseValorMonetario(item.frete_valor) < 0) {
+            await transaction.rollback();
+            return res.status(400).json({ error: `Item ${index + 1}: o frete do item nao pode ser negativo.` });
+          }
+        }
+      } else {
+        entradasCompraDireta.forEach((entry) => {
+          entry.item.frete_valor = 0;
+        });
+      }
+
       const freteValorCompraDireta = compraDireta && freteTipoCompraDireta !== 'SEM_FRETE'
-        ? arredondarMoeda(parseValorMonetario(frete_valor))
+        ? freteModoCompraDireta === 'POR_ITEM'
+          ? arredondarMoeda(entradasCompraDireta.reduce(
+              (total, entry) => total + Number(entry.item.frete_valor || 0),
+              0
+            ))
+          : arredondarMoeda(parseValorMonetario(frete_valor))
         : 0;
       if (freteTipoCompraDireta !== 'SEM_FRETE' && freteValorCompraDireta <= 0) {
         await transaction.rollback();
@@ -4249,6 +4301,7 @@ module.exports = {
           valor_fechado: compraDireta ? valorTotalFornecedorCompraDireta : 0,
           desconto_total: compraDireta ? descontoTotalCompraDireta : 0,
           frete_tipo: freteTipoCompraDireta,
+          frete_modo: freteModoCompraDireta,
           frete_valor: freteValorCompraDireta,
           frete_data_vencimento: freteTipoCompraDireta === 'TERCEIRO' ? frete_data_vencimento : null,
           frete_parceiro_id: freteTipoCompraDireta === 'TERCEIRO' ? freteCredorCompraDireta.id : null,
@@ -4363,10 +4416,10 @@ module.exports = {
         compraDireta && descontoTotalCompraDireta > 0 ? `Desconto concedido: R$ ${formatCurrencyPdf(descontoTotalCompraDireta)}` : null,
         compraDireta ? `Valor liquido dos itens: R$ ${formatCurrencyPdf(valorTotalCompraDireta)}` : null,
         compraDireta && freteTipoCompraDireta === 'EMBUTIDO'
-          ? `Frete embutido devido ao credor principal${freteValorCompraDireta > 0 ? `: R$ ${formatCurrencyPdf(freteValorCompraDireta)}` : ''}`
+          ? `Frete embutido devido ao credor principal (${freteModoCompraDireta === 'POR_ITEM' ? 'por item' : 'valor total'})${freteValorCompraDireta > 0 ? `: R$ ${formatCurrencyPdf(freteValorCompraDireta)}` : ''}`
           : null,
         compraDireta && freteTipoCompraDireta === 'TERCEIRO'
-          ? `Frete pago a terceiro: R$ ${formatCurrencyPdf(freteValorCompraDireta)} - Credor: ${freteCredorCompraDireta.nome || freteCredorCompraDireta.cpf_cnpj || freteCredorCompraDireta.id} - Vencimento: ${frete_data_vencimento} - Dados: ${String(frete_dados_pagamento || '').trim()}`
+          ? `Frete pago a terceiro (${freteModoCompraDireta === 'POR_ITEM' ? 'por item' : 'valor total'}): R$ ${formatCurrencyPdf(freteValorCompraDireta)} - Credor: ${freteCredorCompraDireta.nome || freteCredorCompraDireta.cpf_cnpj || freteCredorCompraDireta.id} - Vencimento: ${frete_data_vencimento} - Dados: ${String(frete_dados_pagamento || '').trim()}`
           : null,
         compraDireta ? `Valor total da solicitacao: R$ ${formatCurrencyPdf(valorTotalSolicitacaoCompraDireta)}` : null,
         observacoes ? `Observações: ${observacoes}` : null
@@ -4424,6 +4477,7 @@ module.exports = {
             desconto_total: compraDireta ? descontoTotalCompraDireta : null,
             valor_total_itens: compraDireta ? valorTotalCompraDireta : null,
             frete_tipo: compraDireta ? freteTipoCompraDireta : null,
+            frete_modo: compraDireta ? freteModoCompraDireta : null,
             frete_valor: compraDireta ? freteValorCompraDireta : null,
             frete_parceiro_id: compraDireta ? freteCredorCompraDireta?.id || null : null,
             frete_data_vencimento: compraDireta ? frete_data_vencimento || null : null,
@@ -4466,6 +4520,7 @@ module.exports = {
           desconto_total: compraDireta ? descontoTotalCompraDireta : null,
           valor_total_itens: compraDireta ? valorTotalCompraDireta : null,
           frete_tipo: compraDireta ? freteTipoCompraDireta : null,
+          frete_modo: compraDireta ? freteModoCompraDireta : null,
           frete_valor: compraDireta ? freteValorCompraDireta : null,
           frete_parceiro_id: compraDireta ? freteCredorCompraDireta?.id || null : null,
           frete_data_vencimento: compraDireta ? frete_data_vencimento || null : null,
@@ -4511,6 +4566,7 @@ module.exports = {
         desconto_total: compraDireta ? descontoTotalCompraDireta : null,
         valor_total_itens: compraDireta ? valorTotalCompraDireta : null,
         frete_tipo: compraDireta ? freteTipoCompraDireta : null,
+        frete_modo: compraDireta ? freteModoCompraDireta : null,
         frete_valor: compraDireta ? freteValorCompraDireta : null,
         frete_credor: compraDireta && freteCredorCompraDireta ? {
           id: freteCredorCompraDireta.id,

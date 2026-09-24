@@ -208,6 +208,28 @@ function parseSicrediPix(text, fileName) {
   return result;
 }
 
+function parseBanestesPix(text, fileName) {
+  const result = baseResult({ banco: 'BANESTES', tipo: 'PIX', text, fileName });
+  const payerBlock = text.match(/DADOS DO PAGADOR([\s\S]*?)DADOS DO RECEBEDOR/i)?.[1] || '';
+  const receiverBlock = text.match(/DADOS DO RECEBEDOR([\s\S]*?)DADOS DA TRANSA(?:C|Ç)[AÃ]O/i)?.[1] || '';
+
+  result.identificador_transacao = capture(text, /^ID DA TRANSA(?:C|Ç)[AÃ]O[ \t]*:?[ \t]*([^\n]+)/im, 1, 160);
+  result.autenticacao = capture(text, /^PROTOCOLO[ \t]*:?[ \t]*([^\n]+)/im, 1, 160);
+  result.status_documento = normalizedName(capture(text, /^SITUA(?:C|Ç)[AÃ]O[ \t]*:?[ \t]*([^\n]+)/im)) || 'CONFIRMADO';
+  result.valor = parseMoney(capture(text, /^VALOR[ \t]*:?[ \t]*R?\$?[ \t]*([^\n]+)/im));
+  result.data_pagamento = parseDate(
+    capture(text, /^DATA DA EFETIVA(?:C|Ç)[AÃ]O[ \t]*:?[ \t]*([^\n]+)/im)
+    || capture(text, /^DATA DO REGISTRO[ \t]*:?[ \t]*([^\n]+)/im)
+  );
+  result.pagador_nome = capture(payerBlock, /^NOME[ \t]*:?[ \t]*([^\n]+)/im);
+  result.pagador_documento = capture(payerBlock, /^(?:CPF|CNPJ)[ \t]*:?[ \t]*([^\n]+)/im);
+  result.favorecido_nome = capture(receiverBlock, /^NOME[ \t]*:?[ \t]*([^\n]+)/im);
+  result.favorecido_documento = capture(receiverBlock, /^(?:CPF|CNPJ)[ \t]*:?[ \t]*([^\n]+)/im);
+  result.conta_origem_agencia = capture(payerBlock, /^AG[EÊ]NCIA[ \t]*:?[ \t]*([^\n]+)/im, 1, 40);
+  result.conta_origem_numero = capture(payerBlock, /^CONTA[ \t]*:?[ \t]*([^\n]+)/im, 1, 60);
+  return result;
+}
+
 function parseReceiptText(text, fileName = '') {
   const normalized = String(text || '').replace(/\r/g, '').slice(0, MAX_TEXT_LENGTH);
   if (/Comprovante de pagamento de DARF NUMERADO/i.test(normalized)) return parseCaixaDarf(normalized, fileName);
@@ -216,6 +238,7 @@ function parseReceiptText(text, fileName = '') {
   if (/Comprovante de Transa(?:c|ç)[aã]o Pix/i.test(normalized)) return parseCaixaPix(normalized, fileName);
   if (/SISBB[\s\S]*Comprovante Pix/i.test(normalized)) return parseBancoBrasilPix(normalized, fileName);
   if (/Comprovante de Pagamento Pix[\s\S]*Sicredi/i.test(normalized)) return parseSicrediPix(normalized, fileName);
+  if (/COMPROVANTE DE PIX ENVIADO[\s\S]*DADOS DO PAGADOR[\s\S]*BANESTES/i.test(normalized)) return parseBanestesPix(normalized, fileName);
   return {
     ...baseResult({ banco: 'NAO_IDENTIFICADO', tipo: 'NAO_IDENTIFICADO', text: normalized, fileName }),
     status_documento: 'REVISAR',
@@ -237,7 +260,7 @@ async function parsePdfFile(file) {
   const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
   const text = await extractPdfText(file.buffer);
   if (!text.trim()) throw createHttpError(422, `O PDF ${file.originalname} nao possui texto pesquisavel.`);
-  const transactionIds = [...text.matchAll(/ID da transa(?:c|ç)[aã]o:\s*([^\n]+)/gi)].map((match) => compact(match[1], 160)).filter(Boolean);
+  const transactionIds = [...text.matchAll(/ID da transa(?:c|ç)[aã]o[ \t]*:?[ \t]*([^\n]+)/gi)].map((match) => compact(match[1], 160)).filter(Boolean);
   const operationIds = [...text.matchAll(/C[oó]digo da opera(?:c|ç)[aã]o:\s*([^\n]+)/gi)].map((match) => compact(match[1], 160)).filter(Boolean);
   if (new Set(transactionIds).size > 1 || new Set(operationIds).size > 1) {
     throw createHttpError(422, `O PDF ${file.originalname} parece conter mais de um pagamento. Separe um comprovante por arquivo.`);

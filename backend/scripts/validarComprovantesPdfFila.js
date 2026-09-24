@@ -100,6 +100,70 @@ Autenticação Eletrônica: E888`, 'SOL-5570.pdf');
   assert.equal(sicredi.valor, 50611.6);
   assert.equal(sicredi.referencia_solicitacao, 'SOL-5570');
 
+  const banestesComHistorico = parseReceiptText(`COMPROVANTE DE PIX ENVIADO
+DADOS DO PAGADOR
+INSTITUIÇÃO \tBCO BANESTES S.A.
+NOME \tCONSTRUTORA TALISMA LTDA
+CNPJ \t27.123.008/0001-00
+AGÊNCIA \t121
+CONTA \t34382762
+TIPO \tCORRENTE
+DADOS DO RECEBEDOR
+INSTITUIÇÃO \tCOOP SICREDI UNIÃO RS
+NOME \t63.964.446 GEOVANE LOPES FERREIRA
+CNPJ \t63.964.446/0001-56
+DADOS DA TRANSAÇÃO
+DATA DO REGISTRO \t04/09/2026 - 16:15:13
+VALOR \tR$ 1.576,76
+HISTÓRICO \tSOL-4906
+SITUAÇÃO \tEFETIVADA
+DATA DA EFETIVAÇÃO \t04/09/2026 - 17:01:57
+PROTOCOLO \t1260963541736
+DADOS DO PIX
+ID DA TRANSAÇÃO \tE28127603202609041914QBIBJXRMHO9`, 'banestes-historico.pdf');
+  assert.equal(banestesComHistorico.banco, 'BANESTES');
+  assert.equal(banestesComHistorico.tipo, 'PIX');
+  assert.equal(banestesComHistorico.valor, 1576.76);
+  assert.equal(banestesComHistorico.data_pagamento, '2026-09-04');
+  assert.equal(banestesComHistorico.referencia_solicitacao, 'SOL-4906');
+  assert.equal(banestesComHistorico.status_documento, 'EFETIVADA');
+  assert.equal(banestesComHistorico.pagador_nome, 'CONSTRUTORA TALISMA LTDA');
+  assert.equal(banestesComHistorico.conta_origem_agencia, '121');
+  assert.equal(banestesComHistorico.conta_origem_numero, '34382762');
+  assert.equal(banestesComHistorico.favorecido_nome, '63.964.446 GEOVANE LOPES FERREIRA');
+  assert.equal(banestesComHistorico.favorecido_documento, '63.964.446/0001-56');
+  assert.equal(banestesComHistorico.autenticacao, '1260963541736');
+
+  const banestesComMensagem = parseReceiptText(`COMPROVANTE DE PIX ENVIADO
+DADOS DO PAGADOR
+INSTITUIÇÃO \tBCO BANESTES S.A.
+NOME \tCONSTRUTORA TALISMA LTDA
+CNPJ \t27.123.008/0001-00
+AGÊNCIA \t121
+CONTA \t34382762
+TIPO \tCORRENTE
+DADOS DO RECEBEDOR
+INSTITUIÇÃO \tSICOOB SUL
+NOME \tJORGE LUIZ CASATI
+CPF \t***.219.097-**
+DADOS DA TRANSAÇÃO
+DATA DO REGISTRO \t04/09/2026 - 13:02:19
+VALOR \tR$ 24.580,00
+MENSAGEM \tACERTO CHEQUE 293 DAVI CASATI
+SITUAÇÃO \tEFETIVADA
+DATA DA EFETIVAÇÃO \t04/09/2026 - 13:03:39
+PROTOCOLO \t1260963465555
+DADOS DO PIX
+ID DA TRANSAÇÃO \tE28127603202609041601VK2DS3OFTGX`, 'banestes-mensagem.pdf');
+  assert.equal(banestesComMensagem.banco, 'BANESTES');
+  assert.equal(banestesComMensagem.tipo, 'PIX');
+  assert.equal(banestesComMensagem.valor, 24580);
+  assert.equal(banestesComMensagem.data_pagamento, '2026-09-04');
+  assert.equal(banestesComMensagem.referencia_solicitacao, null);
+  assert.equal(banestesComMensagem.favorecido_nome, 'JORGE LUIZ CASATI');
+  assert.equal(banestesComMensagem.favorecido_documento, '***.219.097-**');
+  assert.equal(banestesComMensagem.identificador_transacao, 'E28127603202609041601VK2DS3OFTGX');
+
   const scored = scoreCandidate(bb, {
     valor_previsto: 590,
     titulo: {

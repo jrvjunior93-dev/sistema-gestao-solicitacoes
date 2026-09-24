@@ -1498,6 +1498,10 @@ export default function SolicitacaoDetalhe() {
                 id: 'quantidade', titulo: 'Quantidade', tipo: 'numero',
                 render: (item) => `${item.quantidade ?? '-'} ${item.unidade_label || ''}`
               },
+              ...(String(compraDiretaDetalhe?.frete_modo || solicitacao.compra_direta?.frete_modo || '').toUpperCase() === 'POR_ITEM' ? [{
+                id: 'frete_valor', titulo: 'Frete', tipo: 'valor',
+                render: (item) => formatarMoedaLocal(item.frete_valor || 0)
+              }] : []),
               {
                 id: 'origem', titulo: 'Origem', tipo: 'texto',
                 render: (item) => item.item_tipo === 'MANUAL' ? 'Manual' : 'Cadastro de insumos'
