@@ -76,7 +76,7 @@ na execução do teste.
 | PES-005 | Detalhe | Não CLT diária | Abrir `QA-RHDP-003` | Tipo Não CLT e diária de R$ 180,00 são exibidos | |
 | PES-006 | Dados bancários | Mensal 40/60 | Conferir favorecido, CPF, banco, agência, conta, tipo e PIX | Dados completos, vinculados ao colaborador e ao parceiro financeiro | |
 | PES-007 | Edição | DP | Alterar telefone e salvar; recarregar a ficha | Alteração persiste sem mudar obra ou salário | |
-| PES-008 | Proteção | DP | Tentar alterar diretamente obra e salário pela ficha | Sistema orienta a usar solicitação formal e não altera o dado | |
+| PES-008 | Edição gerencial | DP | Alterar diretamente obra e salário pela ficha | Alterações são permitidas ao DP, persistem e permanecem rastreáveis no cadastro/histórico | |
 | ACC-001 | Visibilidade | Responsável obra 1 | Abrir Pessoal | Vê apenas colaboradores das obras permitidas | |
 | ACC-002 | Visibilidade | Usuário sem vínculo | Pesquisar os oito CPFs/matrículas QA | Não recebe dados das obras sem vínculo | |
 | ACC-003 | API | Usuário sem vínculo | Tentar abrir diretamente o ID de um colaborador QA | API responde acesso negado, sem expor a ficha | |

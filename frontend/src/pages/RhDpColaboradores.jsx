@@ -346,6 +346,7 @@ export default function RhDpColaboradores() {
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [colaboradores, setColaboradores] = useState([]);
+  const ultimaConsultaColaboradoresRef = useRef(0);
   const [empresas, setEmpresas] = useState([]);
   const [obras, setObras] = useState([]);
   const [setores, setSetores] = useState([]);
@@ -514,7 +515,7 @@ export default function RhDpColaboradores() {
     }
   }
 
-  async function carregarColaboradores() {
+  async function carregarColaboradores(consultaId) {
     const data = await getRhColaboradores({
       q: busca || undefined,
       empresa_grupo_id: valorUnico(marcados.empresa_grupo_id),
@@ -522,18 +523,22 @@ export default function RhDpColaboradores() {
       tipo_vinculo: valorUnico(marcados.tipo_vinculo),
       status: valorUnico(marcados.status)
     });
+    if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
     setColaboradores(Array.isArray(data) ? data : []);
   }
 
   async function recarregarColaboradores() {
+    const consultaId = ultimaConsultaColaboradoresRef.current + 1;
+    ultimaConsultaColaboradoresRef.current = consultaId;
     try {
       setCarregando(true);
-      await carregarColaboradores();
+      await carregarColaboradores(consultaId);
     } catch (error) {
+      if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
       console.error(error);
       avisar.erro(error?.message || 'Erro ao filtrar colaboradores');
     } finally {
-      setCarregando(false);
+      if (consultaId === ultimaConsultaColaboradoresRef.current) setCarregando(false);
     }
   }
 

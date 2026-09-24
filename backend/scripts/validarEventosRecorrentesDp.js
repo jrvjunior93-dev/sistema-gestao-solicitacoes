@@ -4,6 +4,7 @@ process.env.NODE_ENV = 'test';
 
 const assert = require('assert');
 const { isDpSetor, userBelongsToDpSetor } = require('../src/services/setorCapabilityService');
+const { __test } = require('../src/services/rhEventoRecorrenteService');
 
 async function executar() {
   assert.strictEqual(isDpSetor('DP'), true);
@@ -23,7 +24,57 @@ async function executar() {
     setor: { id: 5, codigo: 'RH', nome: 'Recursos Humanos' }
   }), false);
 
-  console.log('Validacao do acesso do DP a eventos recorrentes concluida com sucesso.');
+  const beneficiarioAtualizado = __test.normalizarBeneficiarioPensao({
+    beneficiario_nome: 'Beneficiaria original',
+    beneficiario_documento: '12345678901',
+    beneficiario_banco: 'Banco original',
+    beneficiario_agencia: '0001',
+    beneficiario_conta: '12345-6',
+    beneficiario_tipo_conta: 'CORRENTE'
+  }, {
+    beneficiario_nome: 'Beneficiaria atualizada',
+    beneficiario_documento: '987.654.321-00'
+  });
+  assert.deepStrictEqual(beneficiarioAtualizado, {
+    beneficiario_nome: 'Beneficiaria atualizada',
+    beneficiario_documento: '98765432100',
+    beneficiario_banco: 'Banco original',
+    beneficiario_agencia: '0001',
+    beneficiario_conta: '12345-6',
+    beneficiario_tipo_conta: 'CORRENTE',
+    beneficiario_chave_pix: null
+  });
+
+  assert.deepStrictEqual(__test.normalizarBeneficiarioPensao({}, {
+    beneficiario_nome: 'Beneficiaria PIX',
+    beneficiario_documento: '12345678901',
+    beneficiario_chave_pix: 'beneficiaria@example.com'
+  }), {
+    beneficiario_nome: 'Beneficiaria PIX',
+    beneficiario_documento: '12345678901',
+    beneficiario_banco: null,
+    beneficiario_agencia: null,
+    beneficiario_conta: null,
+    beneficiario_tipo_conta: null,
+    beneficiario_chave_pix: 'beneficiaria@example.com'
+  });
+
+  assert.throws(
+    () => __test.normalizarBeneficiarioPensao({}, {
+      beneficiario_nome: '',
+      beneficiario_documento: '123'
+    }),
+    /nome e o CPF/
+  );
+  assert.throws(
+    () => __test.normalizarBeneficiarioPensao({}, {
+      beneficiario_nome: 'Beneficiaria sem pagamento',
+      beneficiario_documento: '12345678901'
+    }),
+    /chave PIX ou a conta bancaria/
+  );
+
+  console.log('Validacao do acesso do DP e dos dados de pensao recorrente concluida com sucesso.');
 }
 
 executar().catch((error) => {

@@ -4,6 +4,7 @@ process.env.NODE_ENV = 'test';
 
 const assert = require('assert');
 const { __test } = require('../src/services/rhFechamentoService');
+const { __test: apuracaoTest } = require('../src/services/rhApuracaoService');
 
 const apuracao = { competencia: '2026-08' };
 const colaboradorMensal = {
@@ -60,5 +61,30 @@ const diaria = __test.buildParcelasColaborador({
   valor_liquido: 880
 }, apuracao, {});
 assert.deepStrictEqual(diaria.map((item) => [item.tipoTitulo, item.valor]), [['DIARIAS', 880]]);
+
+const filtrosClt = apuracaoTest.filtrosRecortesImportacoesConfirmadas({
+  competencia: '2026-09',
+  empresa_grupo_id: 2,
+  tipo_vinculo: 'CLT'
+});
+assert.strictEqual(filtrosClt.importacaoWhere.tipo_vinculo, undefined,
+  'o tipo de vinculo nao pode filtrar o cabecalho de uma jornada mista');
+assert.strictEqual(filtrosClt.colaboradorWhere.tipo_vinculo, 'CLT',
+  'o tipo de vinculo deve filtrar o colaborador da linha');
+assert.strictEqual(filtrosClt.importacaoWhere.competencia, '2026-09');
+assert.strictEqual(filtrosClt.importacaoWhere.empresa_grupo_id, 2);
+
+assert.deepStrictEqual(apuracaoTest.whereApuracaoRecorte({
+  competencia: '2026-09',
+  empresa_grupo_id: 2,
+  obra_id: 3,
+  tipo_vinculo: 'CLT'
+}, 'CONFERIDA'), {
+  competencia: '2026-09',
+  empresa_grupo_id: 2,
+  obra_id: 3,
+  tipo_vinculo: 'CLT',
+  status: 'CONFERIDA'
+});
 
 console.log('Validacao das regras gerenciais de pagamento RH/DP concluida com sucesso.');

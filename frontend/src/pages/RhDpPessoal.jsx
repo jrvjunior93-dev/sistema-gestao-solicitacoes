@@ -306,6 +306,10 @@ export default function RhDpPessoal() {
     && userHasSetorCapability(user, 'eh_setor_obra');
 
   const [colaboradores, setColaboradores] = useState([]);
+  // A busca e disparada a cada alteracao depois do debounce. Uma resposta antiga pode chegar
+  // depois da consulta mais especifica (por exemplo, `QA-RHDP-0` depois de `QA-RHDP-001`) e nao
+  // pode substituir o resultado atual da tela.
+  const ultimaConsultaColaboradoresRef = useRef(0);
   const [obras, setObras] = useState([]);
   // Lista propositalmente separada: filtros, admissao e jornada continuam limitados ao escopo
   // normal do usuario. Somente a Obra de destino da transferencia precisa enxergar todas as obras
@@ -592,6 +596,8 @@ export default function RhDpPessoal() {
    * confirmam.
    */
   const carregar = useCallback(async () => {
+    const consultaId = ultimaConsultaColaboradoresRef.current + 1;
+    ultimaConsultaColaboradoresRef.current = consultaId;
     setCarregando(true);
     try {
       const [lista, listaObras, solicitacoesAbertas] = await Promise.all([
@@ -601,13 +607,15 @@ export default function RhDpPessoal() {
           : (usuarioOperacionalDaObra ? getMinhasObras({ escopo: 'OBRAS' }) : getObras()),
         listarRhSolicitacoes({ situacao: 'ABERTA' })
       ]);
+      if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
       setColaboradores(Array.isArray(lista) ? lista : []);
       setTotalSolicitacoesAbertas(Array.isArray(solicitacoesAbertas) ? solicitacoesAbertas.length : 0);
       if (!obras.length) setObras(Array.isArray(listaObras) ? listaObras : []);
     } catch (error) {
+      if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
       avisar.erro(error.message || 'Nao foi possivel carregar a lista de pessoal.');
     } finally {
-      setCarregando(false);
+      if (consultaId === ultimaConsultaColaboradoresRef.current) setCarregando(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtroObra, busca, obras, empresas, usuarioOperacionalDaObra, user?.id]);

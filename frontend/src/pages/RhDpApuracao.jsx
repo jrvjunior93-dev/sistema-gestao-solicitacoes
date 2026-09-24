@@ -409,10 +409,21 @@ export default function RhDpApuracao() {
       });
 
       const apuracoesGeradas = Array.isArray(data?.apuracoes) ? data.apuracoes : [data].filter(Boolean);
+      const apuracoesIgnoradas = Array.isArray(data?.ignoradas) ? data.ignoradas : [];
       setDetalhe(apuracoesGeradas[0] || null);
       await carregarApuracoes();
       if (apuracoesGeradas.length > 1) {
         avisar.informacao(`${apuracoesGeradas.length} apuracoes foram geradas, uma para cada obra confirmada na importacao.`);
+      } else if (apuracoesGeradas.length === 1) {
+        avisar.sucesso('A apuração da obra foi gerada ou atualizada.');
+      } else if (apuracoesIgnoradas.length) {
+        avisar.informacao('Nenhuma apuração nova foi gerada. Os recortes encontrados já estavam conferidos.');
+      }
+      if (apuracoesIgnoradas.length && apuracoesGeradas.length) {
+        avisar.informacao(
+          `${apuracoesIgnoradas.length} recorte(s) já conferido(s) foram preservados; `
+          + `${apuracoesGeradas.length} recorte(s) foram processados.`
+        );
       }
     } catch (error) {
       console.error(error);

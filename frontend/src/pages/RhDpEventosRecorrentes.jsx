@@ -20,7 +20,7 @@ import {
   desativarEventoRecorrenteRh,
   listarEventosRecorrentesRh
 } from '../services/rhDp';
-import { formatCurrencyBRL, parseCurrencyInput } from '../utils/formatters';
+import { formatCurrencyBRL, maskCpfCnpj, parseCurrencyInput } from '../utils/formatters';
 
 const ROTULO_EVENTO = {
   VALE_ALIMENTACAO: 'Vale alimentação',
@@ -83,6 +83,21 @@ export default function RhDpEventosRecorrentes({ podeDecidir }) {
       avisar.erro(erro);
       return;
     }
+    const ehPensao = edicao.evento.codigo === 'PENSAO_ALIMENTICIA';
+    if (ehPensao) {
+      const documento = String(edicao.formulario.beneficiario_documento || '').replace(/\D/g, '');
+      const temConta = edicao.formulario.beneficiario_banco
+        && edicao.formulario.beneficiario_agencia
+        && edicao.formulario.beneficiario_conta;
+      if (!String(edicao.formulario.beneficiario_nome || '').trim() || documento.length !== 11) {
+        avisar.erro('Informe o nome e o CPF do beneficiário da pensão.');
+        return;
+      }
+      if (!String(edicao.formulario.beneficiario_chave_pix || '').trim() && !temConta) {
+        avisar.erro('Informe a chave PIX ou os dados bancários do beneficiário da pensão.');
+        return;
+      }
+    }
     setSalvando(true);
     limpar();
     try {
@@ -94,7 +109,16 @@ export default function RhDpEventosRecorrentes({ podeDecidir }) {
           ? Number(edicao.formulario.parcelas_total)
           : null,
         parcelas_valores: valoresParcelasParaPayload(edicao.formulario),
-        observacoes: edicao.formulario.observacoes || null
+        observacoes: edicao.formulario.observacoes || null,
+        ...(ehPensao ? {
+          beneficiario_nome: edicao.formulario.beneficiario_nome,
+          beneficiario_documento: String(edicao.formulario.beneficiario_documento || '').replace(/\D/g, ''),
+          beneficiario_banco: edicao.formulario.beneficiario_banco || null,
+          beneficiario_agencia: edicao.formulario.beneficiario_agencia || null,
+          beneficiario_conta: edicao.formulario.beneficiario_conta || null,
+          beneficiario_tipo_conta: edicao.formulario.beneficiario_tipo_conta || null,
+          beneficiario_chave_pix: edicao.formulario.beneficiario_chave_pix || null
+        } : {})
       });
       setEdicao(null);
       await carregar();
@@ -262,6 +286,104 @@ export default function RhDpEventosRecorrentes({ podeDecidir }) {
               onChange={(formulario) => setEdicao((atual) => ({ ...atual, formulario }))}
               parcelasBloqueadas={Number(edicao.evento.parcelas_aplicadas || 0)}
             />
+
+            {edicao.evento.codigo === 'PENSAO_ALIMENTICIA' ? (
+              <fieldset className="space-y-3">
+                <legend className="form-label">Dados do beneficiário da pensão</legend>
+                <div className="rh-colaboradores-filter-grid">
+                  <label className="form-field">
+                    <span className="form-label form-label--required">Beneficiário</span>
+                    <input
+                      className="form-control"
+                      value={edicao.formulario.beneficiario_nome || ''}
+                      onChange={(event) => setEdicao((atual) => ({
+                        ...atual,
+                        formulario: { ...atual.formulario, beneficiario_nome: event.target.value }
+                      }))}
+                      required
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label form-label--required">CPF do beneficiário</span>
+                    <input
+                      className="form-control"
+                      inputMode="numeric"
+                      value={maskCpfCnpj(edicao.formulario.beneficiario_documento || '')}
+                      onChange={(event) => setEdicao((atual) => ({
+                        ...atual,
+                        formulario: {
+                          ...atual.formulario,
+                          beneficiario_documento: maskCpfCnpj(event.target.value)
+                        }
+                      }))}
+                      required
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label">Banco</span>
+                    <input
+                      className="form-control"
+                      value={edicao.formulario.beneficiario_banco || ''}
+                      onChange={(event) => setEdicao((atual) => ({
+                        ...atual,
+                        formulario: { ...atual.formulario, beneficiario_banco: event.target.value }
+                      }))}
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label">Agência</span>
+                    <input
+                      className="form-control"
+                      value={edicao.formulario.beneficiario_agencia || ''}
+                      onChange={(event) => setEdicao((atual) => ({
+                        ...atual,
+                        formulario: { ...atual.formulario, beneficiario_agencia: event.target.value }
+                      }))}
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label">Conta</span>
+                    <input
+                      className="form-control"
+                      value={edicao.formulario.beneficiario_conta || ''}
+                      onChange={(event) => setEdicao((atual) => ({
+                        ...atual,
+                        formulario: { ...atual.formulario, beneficiario_conta: event.target.value }
+                      }))}
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label">Tipo de conta</span>
+                    <select
+                      className="form-control"
+                      value={edicao.formulario.beneficiario_tipo_conta || ''}
+                      onChange={(event) => setEdicao((atual) => ({
+                        ...atual,
+                        formulario: { ...atual.formulario, beneficiario_tipo_conta: event.target.value }
+                      }))}
+                    >
+                      <option value="">Selecione</option>
+                      <option value="CORRENTE">Corrente</option>
+                      <option value="POUPANCA">Poupança</option>
+                      <option value="SALARIO">Salário</option>
+                      <option value="PAGAMENTO">Pagamento</option>
+                    </select>
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label">Chave PIX</span>
+                    <input
+                      className="form-control"
+                      value={edicao.formulario.beneficiario_chave_pix || ''}
+                      onChange={(event) => setEdicao((atual) => ({
+                        ...atual,
+                        formulario: { ...atual.formulario, beneficiario_chave_pix: event.target.value }
+                      }))}
+                    />
+                  </label>
+                </div>
+                <p className="app-note">Informe a chave PIX ou o conjunto banco, agência e conta.</p>
+              </fieldset>
+            ) : null}
 
             <label className="form-field">
               <span className="form-label">Observações</span>

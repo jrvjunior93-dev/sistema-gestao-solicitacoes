@@ -65,6 +65,37 @@ function dividirEmParcelas(valorTotal, parcelas) {
   return Math.floor(totalCentavos / parcelas) / 100;
 }
 
+function normalizarBeneficiarioPensao(evento = {}, dados = {}) {
+  const valorAtualizado = (campo) => {
+    if (dados[campo] === undefined) return evento[campo] || null;
+    return String(dados[campo] || '').trim() || null;
+  };
+  const beneficiario = {
+    beneficiario_nome: valorAtualizado('beneficiario_nome'),
+    beneficiario_documento: String(
+      dados.beneficiario_documento === undefined
+        ? (evento.beneficiario_documento || '')
+        : (dados.beneficiario_documento || '')
+    ).replace(/\D+/g, '') || null,
+    beneficiario_banco: valorAtualizado('beneficiario_banco'),
+    beneficiario_agencia: valorAtualizado('beneficiario_agencia'),
+    beneficiario_conta: valorAtualizado('beneficiario_conta'),
+    beneficiario_tipo_conta: valorAtualizado('beneficiario_tipo_conta'),
+    beneficiario_chave_pix: valorAtualizado('beneficiario_chave_pix')
+  };
+
+  if (!beneficiario.beneficiario_nome || beneficiario.beneficiario_documento?.length !== 11) {
+    throw new ValidationError('Informe o nome e o CPF do beneficiario da pensao alimenticia.');
+  }
+  if (!beneficiario.beneficiario_chave_pix
+      && !(beneficiario.beneficiario_banco
+        && beneficiario.beneficiario_agencia
+        && beneficiario.beneficiario_conta)) {
+    throw new ValidationError('Informe a chave PIX ou a conta bancaria do beneficiario da pensao.');
+  }
+  return beneficiario;
+}
+
 function parcelasPadrao(valorInformado, modoValor, parcelas) {
   if (!parcelas) return null;
   const centavos = paraCentavos(valorInformado);
@@ -416,6 +447,11 @@ async function atualizarEventoRecorrente(id, dados = {}, contexto = {}) {
       ? parcelasValores.reduce((total, valor) => total + valor, 0)
       : (modoValor === 'TOTAL' ? valorInformado : null);
 
+    const codigo = String(evento.codigo || '').trim().toUpperCase();
+    const beneficiario = codigo === 'PENSAO_ALIMENTICIA'
+      ? normalizarBeneficiarioPensao(evento, dados)
+      : null;
+
     await evento.update({
       modo_valor: modoValor,
       valor: Number(valorParcela).toFixed(2),
@@ -424,6 +460,7 @@ async function atualizarEventoRecorrente(id, dados = {}, contexto = {}) {
       competencia_inicio: inicio,
       parcelas_total: parcelas,
       parcelas_valores_json: parcelasValores,
+      ...(beneficiario || {}),
       observacoes: dados.observacoes === undefined ? evento.observacoes : dados.observacoes
     }, { transaction });
 
@@ -585,5 +622,6 @@ module.exports = {
   eventosVigentes,
   parcelaDaCompetencia,
   aplicarRecorrentes,
-  itensDaLinha
+  itensDaLinha,
+  __test: { normalizarBeneficiarioPensao }
 };

@@ -199,26 +199,24 @@ async function detalharApuracaoPorPk(id, transaction) {
   return enrichApuracao(apuracao);
 }
 
+function whereApuracaoRecorte(data, status) {
+  return {
+    competencia: data.competencia,
+    empresa_grupo_id: data.empresa_grupo_id || null,
+    obra_id: data.obra_id || null,
+    tipo_vinculo: data.tipo_vinculo || null,
+    status
+  };
+}
+
 async function resolveExistingDraft(data, transaction) {
   const draft = await RhApuracao.findOne({
-    where: {
-      competencia: data.competencia,
-      empresa_grupo_id: data.empresa_grupo_id || null,
-      obra_id: data.obra_id || null,
-      tipo_vinculo: data.tipo_vinculo || null,
-      status: 'RASCUNHO'
-    },
+    where: whereApuracaoRecorte(data, 'RASCUNHO'),
     transaction
   });
 
   const conferida = await RhApuracao.findOne({
-    where: {
-      competencia: data.competencia,
-      empresa_grupo_id: data.empresa_grupo_id || null,
-      obra_id: data.obra_id || null,
-      tipo_vinculo: data.tipo_vinculo || null,
-      status: 'CONFERIDA'
-    },
+    where: whereApuracaoRecorte(data, 'CONFERIDA'),
     transaction
   });
 
@@ -283,7 +281,6 @@ async function buildAgrupamentoImportacoes(data, transaction) {
   };
   addExactRecorteFilter(importacaoWhere, 'empresa_grupo_id', data.empresa_grupo_id);
   addExactRecorteFilter(importacaoWhere, 'obra_id', data.obra_id);
-  addExactRecorteFilter(importacaoWhere, 'tipo_vinculo', data.tipo_vinculo);
 
   const colaboradorWhere = {};
   if (data.empresa_grupo_id) colaboradorWhere.empresa_grupo_id = data.empresa_grupo_id;
@@ -420,25 +417,52 @@ async function buildAgrupamentoImportacoes(data, transaction) {
   return Array.from(agrupados.values());
 }
 
-async function listarRecortesImportacoesConfirmadas(data, transaction) {
-  const where = {
+function filtrosRecortesImportacoesConfirmadas(data) {
+  const importacaoWhere = {
     status: 'CONFIRMADA',
     competencia: data.competencia,
     obra_id: { [Op.ne]: null }
   };
 
-  addExactRecorteFilter(where, 'empresa_grupo_id', data.empresa_grupo_id);
-  addExactRecorteFilter(where, 'tipo_vinculo', data.tipo_vinculo);
+  addExactRecorteFilter(importacaoWhere, 'empresa_grupo_id', data.empresa_grupo_id);
+  const colaboradorWhere = {};
+  if (data.tipo_vinculo) colaboradorWhere.tipo_vinculo = data.tipo_vinculo;
 
-  const importacoes = await RhImportacao.findAll({
-    where,
-    attributes: ['empresa_grupo_id', 'obra_id', 'tipo_vinculo'],
-    order: [['obra_id', 'ASC'], ['id', 'ASC']],
+  return { importacaoWhere, colaboradorWhere };
+}
+
+async function listarRecortesImportacoesConfirmadas(data, transaction) {
+  const { importacaoWhere, colaboradorWhere } = filtrosRecortesImportacoesConfirmadas(data);
+
+  // O formulario de jornada pode conter CLT e nao CLT na mesma importacao e, por isso, grava o
+  // tipo no colaborador/linha, nao no cabecalho. Descobrir os recortes pelas linhas evita que o
+  // filtro CLT descarte uma jornada confirmada cujo `tipo_vinculo` do cabecalho e nulo.
+  const linhas = await RhImportacaoLinha.findAll({
+    where: { status: 'CONFIRMADA' },
+    attributes: ['id'],
+    include: [
+      {
+        model: RhImportacao,
+        as: 'importacao',
+        required: true,
+        attributes: ['empresa_grupo_id', 'obra_id'],
+        where: importacaoWhere
+      },
+      {
+        model: RhColaborador,
+        as: 'colaborador',
+        required: true,
+        attributes: ['id', 'tipo_vinculo'],
+        where: colaboradorWhere
+      }
+    ],
+    order: [['id', 'ASC']],
     transaction
   });
 
   const recortes = new Map();
-  importacoes.forEach((importacao) => {
+  linhas.forEach((linha) => {
+    const importacao = linha.importacao;
     const obraId = Number(importacao.obra_id || 0);
     if (!Number.isInteger(obraId) || obraId <= 0) {
       return;
@@ -833,14 +857,37 @@ async function gerarApuracaoRh(data, user) {
 
     const recortes = await listarRecortesImportacoesConfirmadas(data, transaction);
     const apuracoes = [];
+    const ignoradas = [];
 
     for (const recorte of recortes) {
+      // Geracao em lote nao deve ser atomizada por uma obra ja concluida. O recorte conferido e
+      // preservado e as demais obras continuam sendo geradas/recalculadas na mesma transacao.
+      // A chamada direta com `obra_id` continua recusando a reabertura implicita.
+      // eslint-disable-next-line no-await-in-loop
+      const conferida = await RhApuracao.findOne({
+        where: whereApuracaoRecorte(recorte, 'CONFERIDA'),
+        attributes: ['id', 'obra_id', 'empresa_grupo_id', 'tipo_vinculo'],
+        transaction
+      });
+      if (conferida) {
+        ignoradas.push({
+          id: Number(conferida.id),
+          obra_id: Number(conferida.obra_id),
+          empresa_grupo_id: conferida.empresa_grupo_id || null,
+          tipo_vinculo: conferida.tipo_vinculo || null,
+          motivo: 'APURACAO_JA_CONFERIDA'
+        });
+        continue;
+      }
+      // eslint-disable-next-line no-await-in-loop
       apuracoes.push(await gerarApuracaoRecorteRh(recorte, user, transaction));
     }
 
     return {
       apuracoes,
-      total: apuracoes.length
+      total: apuracoes.length,
+      ignoradas,
+      total_ignoradas: ignoradas.length
     };
   });
 }
@@ -959,5 +1006,9 @@ module.exports = {
   detalharApuracaoRh,
   gerarApuracaoRh,
   listarApuracoesRh,
-  atualizarItemApuracaoRh
+  atualizarItemApuracaoRh,
+  __test: {
+    filtrosRecortesImportacoesConfirmadas,
+    whereApuracaoRecorte
+  }
 };
