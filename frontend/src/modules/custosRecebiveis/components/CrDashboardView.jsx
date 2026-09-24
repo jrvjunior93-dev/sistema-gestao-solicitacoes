@@ -110,6 +110,7 @@ export default function CrDashboardView({
   competencias = [],
   obraFilterId = null,
   classificacaoFilter = '',
+  presentation = 'default',
   canOpenPlanning = false,
   onOpenArea,
   loadDashboard = obterCustosRecebiveisDashboard
@@ -226,7 +227,7 @@ export default function CrDashboardView({
   }
 
   return (
-    <div className="cr-ops-dashboard">
+    <div className={`cr-ops-dashboard${presentation === 'gestor' ? ' cr-ops-dashboard--gestor' : ''}`}>
       {/*
         B1/B2 (matriz) — A CARTEIRA CONSOLIDADA É O BLOCO DA TELA.
 
@@ -362,6 +363,7 @@ export default function CrDashboardView({
             {visibleWorkSummaries.map((item) => (
               <CrMonthlySummaryCard
                 key={`${item.obra.id}-${item.competencia}`}
+                presentation={presentation}
                 title={item.obra.nome}
                 eyebrow={`${item.obra.codigo || item.obra.id} · ${formatMonth(item.competencia)}`}
                 classification={item.obra.classificacao}

@@ -24,6 +24,102 @@
 
 .pg-tab-stack { display: grid; gap: 1rem; }
 
+/* No painel executivo, os resumos mensais seguem a mesma leitura dos cards
+   de Resultado de Obras: identidade no topo, métricas abertas em duas
+   colunas e cores reservadas ao significado financeiro. */
+.cr-ops-dashboard--gestor .cr-portfolio-planning__grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--esp-4);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card {
+  border-color: var(--ui-border-strong);
+  border-radius: var(--raio-3);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card[data-alert="true"] {
+  border-color: color-mix(in srgb, var(--c-warning) 42%, var(--ui-border-strong));
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__header {
+  min-height: 4.65rem;
+  padding: var(--esp-3) var(--esp-4);
+  border-bottom-color: var(--ui-border);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__header > div {
+  gap: var(--esp-1);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__header span:not(.cr-status-pill) {
+  color: var(--c-muted);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__header h3 {
+  color: var(--c-text);
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  text-transform: uppercase;
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metrics {
+  gap: var(--esp-4) var(--esp-6);
+  padding: var(--esp-4);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric {
+  display: grid;
+  align-content: start;
+  gap: var(--esp-1);
+  padding: 0;
+  border: 0;
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric dt {
+  color: var(--texto-apoio-aa);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric dd {
+  margin: 0;
+  color: var(--c-text);
+  font-size: var(--fonte-corpo);
+  line-height: var(--lh-corpo);
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric[data-tone="context"] dd {
+  color: var(--c-primary);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric[data-tone="positive"] dd {
+  color: var(--c-success);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric[data-tone="warning"] dd {
+  color: var(--c-warning);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__metric[data-tone="negative"] dd {
+  color: var(--c-danger);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__footer {
+  min-height: 3.4rem;
+  padding: var(--esp-3) var(--esp-4);
+  border-top-color: var(--ui-border);
+  background: var(--ui-surface);
+}
+
+.cr-ops-dashboard--gestor .cr-period-card__signals span {
+  border-radius: var(--raio-3);
+}
+
 .pg-filter-grid {
   display: grid;
   grid-template-columns: minmax(15rem, 1.6fr) repeat(3, minmax(10rem, 1fr)) auto;
@@ -155,6 +251,7 @@
 .pg-register-actions { display: flex; justify-content: flex-end; gap: .55rem; padding-bottom: 1rem; }
 
 @media (max-width: 1050px) {
+  .cr-ops-dashboard--gestor .cr-portfolio-planning__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pg-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pg-filter-grid .btn { justify-self: start; }
   .pg-balance-summary { grid-template-columns: 1fr; }
@@ -162,6 +259,7 @@
 }
 
 @media (max-width: 700px) {
+  .cr-ops-dashboard--gestor .cr-portfolio-planning__grid { grid-template-columns: 1fr; }
   .pg-filter-grid { grid-template-columns: 1fr; }
   .pg-filter-grid .btn { width: 100%; }
   .pg-balance-toolbar, .pg-register-date { align-items: stretch; flex-direction: column; }

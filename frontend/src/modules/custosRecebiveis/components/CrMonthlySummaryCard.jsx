@@ -21,6 +21,7 @@ function Metric({ label, value, tone = 'neutral' }) {
 }
 
 export default function CrMonthlySummaryCard({
+  presentation = 'default',
   title,
   eyebrow,
   classification,
@@ -72,7 +73,7 @@ export default function CrMonthlySummaryCard({
         <Metric
           label="Custo realizado"
           value={currency.format(custoRealizado || 0)}
-          tone="positive"
+          tone={presentation === 'gestor' ? 'context' : 'positive'}
         />
         <Metric
           label={isPublic ? 'Medição aprovada' : 'Receita recebida'}
@@ -88,7 +89,9 @@ export default function CrMonthlySummaryCard({
         <Metric
           label="Desvio de custo"
           value={currency.format(costDelta)}
-          tone={costDelta > 0 ? 'negative' : (costDelta < 0 ? 'context' : 'neutral')}
+          tone={costDelta > 0
+            ? 'negative'
+            : (costDelta < 0 ? (presentation === 'gestor' ? 'positive' : 'context') : 'neutral')}
         />
         {isPublic ? (
           <Metric

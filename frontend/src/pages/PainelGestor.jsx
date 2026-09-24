@@ -199,6 +199,7 @@ function CustosRecebiveisTab({ avisar }) {
         competencias={competencias}
         obraFilterId={obraId || null}
         classificacaoFilter={classificacao}
+        presentation="gestor"
         loadDashboard={loader}
         canOpenPlanning={false}
       />
