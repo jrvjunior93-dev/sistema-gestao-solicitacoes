@@ -43,6 +43,9 @@ async function validar() {
     assert(painelServiceSource.includes('PAINEL_GESTOR_SALDO_AUTOMATICO'), 'Backend deve bloquear informacao manual para conta automatica.');
     const painelPageSource = require('fs').readFileSync(require('path').resolve(__dirname, '../../frontend/src/pages/PainelGestor.jsx'), 'utf8');
     assert(painelPageSource.includes('Detalhar por conta'), 'Resumo principal deve expandir o detalhe de todas as contas.');
+    assert(painelPageSource.includes('pg-balance-entry'), 'A aba de saldos deve permitir informar contas em um painel expansivel.');
+    assert(painelPageSource.includes('Saldo atual por conta'), 'A aba de saldos deve manter os cards de saldo atual visiveis.');
+    assert(painelPageSource.includes('salvarSaldosPainelGestor'), 'A informacao de saldos deve ser salva diretamente na aba protegida.');
 
     console.log('Contrato de obras do Painel do Gestor validado com sucesso.');
   } finally {

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   HiOutlineBanknotes,
   HiOutlineBuildingOffice2,
   HiOutlineChartBarSquare,
   HiOutlineChevronDown,
   HiOutlineChevronUp,
-  HiOutlineExclamationTriangle,
+  HiOutlineCheckCircle,
   HiOutlineWallet
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,6 +27,7 @@ import {
 } from '../components/padrao';
 import DateInputBR from '../components/DateInputBR';
 import ObraAutocomplete from '../components/ui/ObraAutocomplete';
+import { normalizeCurrencyTyping, parseCurrencyInput } from '../utils/formatters';
 import {
   ObraBloco,
   contextoValorTotalObras,
@@ -39,7 +40,8 @@ import {
   listarObrasPainelGestor,
   obterCustosRecebiveisPainelGestor,
   obterResultadoObrasPainelGestor,
-  obterSaldosPainelGestor
+  obterSaldosPainelGestor,
+  salvarSaldosPainelGestor
 } from '../services/painelGestor';
 import '../modules/custosRecebiveis/styles/custos-recebiveis.css';
 import '../styles/painel-gestor.css';
@@ -48,6 +50,14 @@ function localDate() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
   }).format(new Date());
+}
+
+function normalizeBalanceTyping(value) {
+  const raw = String(value || '');
+  const negative = raw.trim().startsWith('-');
+  const formatted = normalizeCurrencyTyping(raw.replace(/-/g, ''));
+  if (!formatted) return negative ? '-' : '';
+  return negative ? `-${formatted}` : formatted;
 }
 
 function currentMonth() {
@@ -288,50 +298,88 @@ function CustosRecebiveisTab({ avisar }) {
   );
 }
 
-function SaldosTab({ avisar, canInform, initialDate }) {
-  const [data, setData] = useState(initialDate || localDate());
+function SaldosTab({ avisar, canInform, onSaved }) {
+  const data = localDate();
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [values, setValues] = useState({});
 
   const load = useCallback(() => {
     setLoading(true);
-    obterSaldosPainelGestor(data)
-      .then(setSnapshot)
+    return obterSaldosPainelGestor(data)
+      .then((payload) => {
+        setSnapshot(payload);
+        setValues(Object.fromEntries((payload?.contas || [])
+          .filter((item) => !item.saldo_automatico)
+          .map((item) => [item.id, item.saldo ? Number(item.saldo.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''])));
+      })
       .catch((error) => avisar.erro(error.message))
       .finally(() => setLoading(false));
   }, [avisar, data]);
 
   useEffect(() => { load(); }, [load]);
-  const resumo = snapshot?.resumo || {};
+  const contasManuais = useMemo(() => (snapshot?.contas || []).filter((item) => !item.saldo_automatico), [snapshot?.contas]);
+  const preenchidas = useMemo(() => contasManuais.filter((item) => String(values[item.id] || '').trim()), [contasManuais, values]);
+  const pendentes = contasManuais.filter((item) => !item.saldo).length;
+
+  async function salvar(event) {
+    event.preventDefault();
+    if (!preenchidas.length) {
+      avisar.alerta('Informe o saldo de pelo menos uma conta.');
+      return;
+    }
+    if (preenchidas.some((item) => String(values[item.id]).trim() === '-')) {
+      avisar.alerta('Revise os saldos informados. O sinal negativo precisa acompanhar um valor.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await salvarSaldosPainelGestor({
+        data_referencia: data,
+        contas: preenchidas.map((item) => ({
+          conta_bancaria_id: item.id,
+          saldo_disponivel: parseCurrencyInput(values[item.id])
+        }))
+      });
+      avisar.sucesso('Saldos atualizados com sucesso.');
+      await Promise.all([load(), onSaved?.()]);
+      setExpanded(false);
+    } catch (error) {
+      avisar.erro(error.message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="pg-tab-stack">
-      <div className="pg-balance-toolbar">
-        <label><span>Data do saldo</span><DateInputBR value={data} max={localDate()} onChange={(event) => setData(event.target.value)} /></label>
-        <div className="pg-balance-toolbar__actions">
-          <button type="button" className="btn btn-outline" onClick={load} disabled={loading}>Atualizar</button>
-          {canInform ? <Link className="btn btn-primary" to={`/painel-gestor/saldos/registro?data=${data}`}>Informar saldos</Link> : null}
+      {canInform ? <section className="pg-balance-entry" data-expanded={expanded ? 'true' : 'false'}>
+        <button type="button" className="pg-balance-entry__toggle" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>
+          <span><HiOutlineWallet /><span><strong>Informar saldos das contas</strong><small>{pendentes ? `${pendentes} conta(s) manual(is) pendente(s) em ${formatDate(data)}` : `Saldos manuais conferidos em ${formatDate(data)}`}</small></span></span>
+          <span className="pg-balance-entry__action">{expanded ? 'Recolher' : 'Expandir'}{expanded ? <HiOutlineChevronUp /> : <HiOutlineChevronDown />}</span>
+        </button>
+        <div className="pg-balance-entry__content">
+          <div>
+            {contasManuais.length ? <form onSubmit={salvar}>
+              <div className="pg-register-list">{contasManuais.map((item) => (
+                <label className="pg-register-row" key={item.id}>
+                  <span className="pg-register-row__identity"><HiOutlineWallet /><span><strong>{item.nome}</strong><small>{item.empresa?.nome || 'Sem empresa vinculada'} · {item.banco || 'Conta bancária'}</small></span></span>
+                  <span className="pg-register-row__value"><span>Saldo disponível</span><input inputMode="decimal" placeholder="R$ 0,00" value={values[item.id] || ''} onChange={(event) => setValues((current) => ({ ...current, [item.id]: normalizeBalanceTyping(event.target.value) }))} /></span>
+                  <span className="pg-register-row__status">{item.saldo ? <><HiOutlineCheckCircle /> Registrado</> : 'Pendente'}</span>
+                </label>
+              ))}</div>
+              <div className="pg-balance-entry__footer"><span>Contas automáticas são atualizadas pelo controle de abertura e fechamento.</span><button className="btn btn-primary" type="submit" disabled={saving || !preenchidas.length}>{saving ? 'Salvando...' : 'Salvar saldos'}</button></div>
+            </form> : <div className="app-empty-card">Não existem contas de preenchimento manual no seu escopo.</div>}
+          </div>
         </div>
-      </div>
+      </section> : null}
 
-      <section className="pg-balance-summary" data-completo={resumo.completo ? 'true' : 'false'}>
-        <div><span>{resumo.completo ? 'Saldo consolidado do grupo' : 'Saldo parcial disponível'}</span><strong>{formatCurrency(resumo.saldo_informado || 0)}</strong><small>Disponível em {formatDate(snapshot?.data_referencia || data)}</small></div>
-        <dl>
-          <div><dt>Contas com saldo</dt><dd>{resumo.contas_informadas || 0} de {resumo.contas_total || 0}</dd></div>
-          <div><dt>Pendentes</dt><dd>{resumo.contas_pendentes || 0}</dd></div>
-          <div><dt>Última atualização</dt><dd>{formatDateTime(resumo.ultima_atualizacao)}</dd></div>
-        </dl>
+      <section className="pg-current-accounts">
+        <header><div><strong>Saldo atual por conta</strong><span>Posição registrada em {formatDate(data)}. Contas automáticas são identificadas nos cards.</span></div><button type="button" className="btn btn-outline" onClick={load} disabled={loading}>Atualizar</button></header>
+        {loading ? <div className="app-empty-card">Carregando saldos...</div> : snapshot?.contas?.length ? <div className="pg-account-grid">{snapshot.contas.map((item) => <ContaSaldoCard key={item.id} item={item} />)}</div> : <div className="app-empty-card">Nenhuma conta disponível no seu escopo.</div>}
       </section>
-
-      {snapshot?.empresas?.length ? <div className="pg-company-strip">{snapshot.empresas.map((empresa) => (
-        <div key={empresa.id || empresa.nome}><span>{empresa.nome}</span><strong>{formatCurrency(empresa.saldo)}</strong><small>{empresa.contas_informadas} conta(s)</small></div>
-      ))}</div> : null}
-
-      {loading ? <div className="app-empty-card">Carregando saldos...</div> : snapshot?.contas?.length ? (
-        <div className="pg-account-grid">{snapshot.contas.map((item) => <ContaSaldoCard key={item.id} item={item} />)}</div>
-      ) : (
-        <div className="pg-empty-balance"><HiOutlineExclamationTriangle /><strong>Nenhum saldo informado nesta data</strong><span>Contas sem lançamento não são transportadas nem exibidas neste painel.</span>{canInform ? <Link className="btn btn-primary" to={`/painel-gestor/saldos/registro?data=${data}`}>Informar agora</Link> : null}</div>
-      )}
 
       {snapshot?.historico?.length ? (
         <BlocoConteudo titulo="Histórico do saldo diário" descricao="Cada inclusão, atualização e correção desta data permanece rastreável.">
@@ -401,7 +449,7 @@ export default function PainelGestor() {
       {!active ? <div className="app-empty-card">Seu acesso ao Painel do Gestor ainda não possui nenhuma visão liberada.</div> : null}
       {active === 'resultado-obras' ? <ResultadoObrasTab avisar={avisar} /> : null}
       {active === 'custos-recebiveis' ? <CustosRecebiveisTab avisar={avisar} /> : null}
-      {active === 'saldos' ? <SaldosTab avisar={avisar} canInform={canInformPainelGestorSaldos(user)} initialDate={searchParams.get('data')} /> : null}
+      {active === 'saldos' ? <SaldosTab avisar={avisar} canInform={canInformPainelGestorSaldos(user)} onSaved={loadMainBalance} /> : null}
     </Pagina>
   );
 }
