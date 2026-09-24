@@ -24,6 +24,7 @@ import {
   useAvisos
 } from '../components/padrao';
 import DateInputBR from '../components/DateInputBR';
+import ObraAutocomplete from '../components/ui/ObraAutocomplete';
 import { ObraBloco, formatCurrency } from './FinanceiroResultadoObras';
 import CrDashboardView from '../modules/custosRecebiveis/components/CrDashboardView';
 import CrExecutiveFilters from '../modules/custosRecebiveis/components/CrExecutiveFilters';
@@ -121,12 +122,18 @@ function ResultadoObrasTab({ avisar }) {
     <div className="pg-tab-stack">
       <BlocoConteudo titulo="Filtros do resultado" descricao="Movimentos são recortados pelo período; posições estruturais permanecem atuais.">
         <form className="pg-filter-grid" onSubmit={apply}>
-          <label><span>Obra</span><select value={filters.obra_id} onChange={(event) => setFilters((current) => ({ ...current, obra_id: event.target.value }))}>
-            <option value="">Todas as obras do seu escopo</option>
-            {obras.filter((obra) => !filters.classificacao || obra.classificacao === filters.classificacao).map((obra) => (
-              <option key={obra.id} value={obra.id}>{obra.codigo || obra.id} · {obra.nome}</option>
-            ))}
-          </select></label>
+          <label>
+            <span>Obra</span>
+            <ObraAutocomplete
+              value={filters.obra_id}
+              options={obras.filter((obra) => (
+                !filters.classificacao || obra.classificacao === filters.classificacao
+              ))}
+              onChange={(obraId) => setFilters((current) => ({ ...current, obra_id: obraId }))}
+              placeholder="Pesquisar obra por código ou nome..."
+              ariaLabel="Pesquisar obra no Resultado de Obras"
+            />
+          </label>
           <label><span>Classificação</span><select value={filters.classificacao} onChange={(event) => setFilters((current) => ({ ...current, classificacao: event.target.value, obra_id: '' }))}>
             <option value="">Públicas e privadas</option><option value="PUBLICA">Públicas</option><option value="PRIVADA">Privadas</option>
           </select></label>
