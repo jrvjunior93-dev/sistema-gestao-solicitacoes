@@ -1270,7 +1270,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                       aria-label={`Acréscimos de ${linha.nome}`}
                       value={linha.adicionais}
                       disabled={!podeEditarLinha(linha)}
-                      onChange={(e) => alterar(linha.__indice, 'adicionais', formatCurrencyInput(e.target.value))}
+                      onChange={(e) => alterar(linha.__indice, 'adicionais', normalizeCurrencyTyping(e.target.value))}
+                      onBlur={(e) => alterar(linha.__indice, 'adicionais', formatCurrencyInput(e.target.value))}
                     />
                   ))
                 },
@@ -1284,7 +1285,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                       aria-label={`Descontos de ${linha.nome}`}
                       value={linha.descontos}
                       disabled={!podeEditarLinha(linha)}
-                      onChange={(e) => alterar(linha.__indice, 'descontos', formatCurrencyInput(e.target.value))}
+                      onChange={(e) => alterar(linha.__indice, 'descontos', normalizeCurrencyTyping(e.target.value))}
+                      onBlur={(e) => alterar(linha.__indice, 'descontos', formatCurrencyInput(e.target.value))}
                     />
                   ))
                 },

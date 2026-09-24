@@ -1521,8 +1521,9 @@ export default function RhDpPessoal() {
 
                 <label className="form-field">
                   <span className="form-label">Salario</span>
-                  <input className="form-control" value={formulario.salario_base}
-                    onChange={(e) => setFormulario({ ...formulario, salario_base: formatCurrencyInput(e.target.value) })} />
+                  <input className="form-control" inputMode="decimal" value={formulario.salario_base}
+                    onChange={(e) => setFormulario({ ...formulario, salario_base: normalizeCurrencyTyping(e.target.value) })}
+                    onBlur={(e) => setFormulario({ ...formulario, salario_base: formatCurrencyInput(e.target.value) })} />
                 </label>
 
                 <label className="form-field">
@@ -1543,8 +1544,9 @@ export default function RhDpPessoal() {
                 {formulario.forma_calculo_gerencial === 'DIARIA' ? (
                   <label className="form-field">
                     <span className="form-label form-label--required">Valor da diaria</span>
-                    <input className="form-control" required value={formulario.valor_diaria}
-                      onChange={(e) => setFormulario({ ...formulario, valor_diaria: formatCurrencyInput(e.target.value) })} />
+                    <input className="form-control" inputMode="decimal" required value={formulario.valor_diaria}
+                      onChange={(e) => setFormulario({ ...formulario, valor_diaria: normalizeCurrencyTyping(e.target.value) })}
+                      onBlur={(e) => setFormulario({ ...formulario, valor_diaria: formatCurrencyInput(e.target.value) })} />
                   </label>
                 ) : (
                   <label className="flex items-center gap-2">
@@ -1805,8 +1807,9 @@ export default function RhDpPessoal() {
                   <div className="rh-colaboradores-filter-grid">
                     <label className="form-field">
                       <span className="form-label form-label--required">Novo salario</span>
-                      <input className="form-control" required value={formulario.novo_salario || ''}
-                        onChange={(e) => setFormulario({ ...formulario, novo_salario: formatCurrencyInput(e.target.value) })} />
+                      <input className="form-control" inputMode="decimal" required value={formulario.novo_salario || ''}
+                        onChange={(e) => setFormulario({ ...formulario, novo_salario: normalizeCurrencyTyping(e.target.value) })}
+                        onBlur={(e) => setFormulario({ ...formulario, novo_salario: formatCurrencyInput(e.target.value) })} />
                     </label>
 
                     <label className="form-field">
@@ -1930,8 +1933,9 @@ export default function RhDpPessoal() {
                   <div className="rh-colaboradores-filter-grid">
                     <label className="form-field">
                       <span className="form-label form-label--required">Valor acordado</span>
-                      <input className="form-control" required value={formulario.valor_acordado || ''}
-                        onChange={(e) => setFormulario({ ...formulario, valor_acordado: formatCurrencyInput(e.target.value) })} />
+                      <input className="form-control" inputMode="decimal" required value={formulario.valor_acordado || ''}
+                        onChange={(e) => setFormulario({ ...formulario, valor_acordado: normalizeCurrencyTyping(e.target.value) })}
+                        onBlur={(e) => setFormulario({ ...formulario, valor_acordado: formatCurrencyInput(e.target.value) })} />
                     </label>
 
                     <label className="form-field">
@@ -2021,8 +2025,9 @@ export default function RhDpPessoal() {
 
                 <label className="form-field">
                   <span className="form-label form-label--required">Valor</span>
-                  <input className="form-control" value={formulario.valor}
-                    onChange={(e) => setFormulario({ ...formulario, valor: formatCurrencyInput(e.target.value) })} required />
+                  <input className="form-control" inputMode="decimal" value={formulario.valor}
+                    onChange={(e) => setFormulario({ ...formulario, valor: normalizeCurrencyTyping(e.target.value) })}
+                    onBlur={(e) => setFormulario({ ...formulario, valor: formatCurrencyInput(e.target.value) })} required />
                 </label>
 
                 <label className="form-field">
@@ -2106,8 +2111,9 @@ export default function RhDpPessoal() {
                 <div className="rh-colaboradores-filter-grid">
                   <label className="form-field">
                     <span className="form-label form-label--required">Novo salario</span>
-                    <input className="form-control" value={formulario.novo_salario}
-                      onChange={(e) => setFormulario({ ...formulario, novo_salario: formatCurrencyInput(e.target.value) })} required />
+                    <input className="form-control" inputMode="decimal" value={formulario.novo_salario}
+                      onChange={(e) => setFormulario({ ...formulario, novo_salario: normalizeCurrencyTyping(e.target.value) })}
+                      onBlur={(e) => setFormulario({ ...formulario, novo_salario: formatCurrencyInput(e.target.value) })} required />
                   </label>
 
                   <label className="form-field">
