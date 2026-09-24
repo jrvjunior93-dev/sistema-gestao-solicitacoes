@@ -94,11 +94,15 @@ async function resolverEscopo(user) {
   const obras = obraIds.length
     ? await db.Obra.findAll({
       where: { id: { [Op.in]: obraIds }, ativo: true },
-      attributes: ['id', 'empresa_id'],
+      attributes: ['id', 'empresa_grupo_id'],
       raw: true
     })
     : [];
-  const empresaIds = [...new Set(obras.map((item) => Number(item.empresa_id)).filter(Number.isInteger))];
+  const empresaIds = [...new Set(
+    obras
+      .map((item) => Number(item.empresa_grupo_id))
+      .filter((id) => Number.isInteger(id) && id > 0)
+  )];
   return { todas: false, obraIds, empresaIds };
 }
 
@@ -108,8 +112,8 @@ async function listarObras(user) {
   if (!scope.todas) where.id = { [Op.in]: scope.obraIds };
   return db.Obra.findAll({
     where,
-    attributes: ['id', 'codigo', 'nome', 'cidade', 'classificacao', 'empresa_id'],
-    include: [{ model: db.EmpresaGrupo, as: 'empresa', attributes: ['id', 'nome'] }],
+    attributes: ['id', 'codigo', 'nome', 'cidade', 'classificacao', 'empresa_grupo_id'],
+    include: [{ model: db.EmpresaGrupo, as: 'empresaGrupo', attributes: ['id', 'nome'], required: false }],
     order: [['nome', 'ASC']]
   });
 }

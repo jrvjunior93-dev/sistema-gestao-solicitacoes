@@ -138,11 +138,16 @@ function ResultadoObrasTab({ avisar }) {
 
       <BlocoConteudo titulo="Consolidado do período" descricao={`${formatDate(applied.data_inicial)} a ${formatDate(applied.data_final)} · ${dados.length} obra(s)`} variante="primario" cor="var(--module-financeiro)">
         <StatGrid colunas={3}>
-          <StatTile label="Orçamento atual" valor={formatCurrency(resumo.orcamento)} />
-          <StatTile label="Executado no período" valor={formatCurrency(resumo.executado)} />
-          <StatTile label="Recebido no período" valor={formatCurrency(resumo.recebido)} />
-          <StatTile label="Falta receber" valor={formatCurrency(resumo.faltaReceber)} sub="Posição acumulada até a data final" />
-          <StatTile label="Resultado do período" valor={formatCurrency(resumo.resultado)} sub="Recebido menos executado" />
+          <StatTile label="Orçamento atual" valor={formatCurrency(resumo.orcamento)} tom="info" />
+          <StatTile label="Executado no período" valor={formatCurrency(resumo.executado)} tom="info" />
+          <StatTile label="Recebido no período" valor={formatCurrency(resumo.recebido)} tom="success" />
+          <StatTile label="Falta receber" valor={formatCurrency(resumo.faltaReceber)} sub="Posição acumulada até a data final" tom="warning" />
+          <StatTile
+            label="Resultado do período"
+            valor={formatCurrency(resumo.resultado)}
+            sub="Recebido menos executado"
+            tom={resumo.resultado < 0 ? 'danger' : resumo.resultado > 0 ? 'success' : undefined}
+          />
         </StatGrid>
       </BlocoConteudo>
 
