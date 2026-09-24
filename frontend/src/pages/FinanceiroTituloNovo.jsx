@@ -22,6 +22,7 @@ import {
   categoriaFinanceiraMatchesSearch
 } from '../utils/categoriaFinanceira';
 import CategoriaFinanceiraAutocomplete from '../components/ui/CategoriaFinanceiraAutocomplete';
+import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 
 const FORMAS_COBRANCA = ['BOLETO', 'PIX', 'OUTROS'];
 const STATUS_COBRANCA = ['PENDENTE_EMISSAO', 'EMITIDO', 'PAGO_BANCO', 'CONCILIADO', 'CANCELADO'];
@@ -2179,19 +2180,14 @@ export default function FinanceiroTituloNovo() {
               {moduloApropriacoesHabilitado && obraSelecionadaEhObra && (
               <label className="sol-filter-field xl:col-span-4">
                 <span className="sol-filter-label">Item de apropriacão</span>
-                <select
-                  className="input w-full"
+                <ApropriacaoAutocomplete
                   value={form.apropriacao_id}
-                  onChange={(event) => updateField('apropriacao_id', event.target.value)}
+                  options={apropriacoes}
+                  onChange={(id) => updateField('apropriacao_id', id)}
                   disabled={!form.obra_id || loadingApropriacoes}
-                >
-                  <option value="">Sem apropriacão</option>
-                  {apropriacoes.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.codigo ? `${item.codigo} — ${item.descricao}` : item.descricao}
-                    </option>
-                  ))}
-                </select>
+                  disabledPlaceholder="Selecione a obra primeiro"
+                  placeholder="Sem apropriação — pesquise para selecionar"
+                />
                 <span className="app-note mt-2">
                   {!form.obra_id
                     ? 'Selecione uma obra para ver os itens.'

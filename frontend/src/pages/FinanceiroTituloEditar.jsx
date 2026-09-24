@@ -17,6 +17,7 @@ import {
   categoriaFinanceiraMatchesAutocomplete,
   categoriaFinanceiraMatchesSearch
 } from '../utils/categoriaFinanceira';
+import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 
 const FORMAS_COBRANCA = ['BOLETO', 'PIX', 'OUTROS'];
 const STATUS_COBRANCA = ['PENDENTE_EMISSAO', 'EMITIDO', 'PAGO_BANCO', 'CONCILIADO', 'CANCELADO'];
@@ -1020,12 +1021,13 @@ export default function FinanceiroTituloEditar() {
 
           <label className="form-field">
             <span>Apropriacao</span>
-            <select value={form.apropriacao_id} onChange={(event) => updateField('apropriacao_id', event.target.value)} disabled={Boolean(bloqueio)}>
-              <option value="">Sem apropriacao</option>
-              {apropriacoes.map((apropriacao) => (
-                <option key={apropriacao.id} value={apropriacao.id}>{apropriacao.codigo ? `${apropriacao.codigo} - ` : ''}{apropriacao.nome}</option>
-              ))}
-            </select>
+            <ApropriacaoAutocomplete
+              value={form.apropriacao_id}
+              options={apropriacoes}
+              onChange={(id) => updateField('apropriacao_id', id)}
+              disabled={Boolean(bloqueio)}
+              placeholder="Sem apropriação — pesquise para selecionar"
+            />
           </label>
 
           <label className="form-field">

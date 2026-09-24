@@ -1406,6 +1406,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
               onChange={setObraId}
               placeholder="Buscar obra por código ou nome..."
               inputClassName="input w-full"
+              mostrarConsultaCompleta={false}
             />
           </div>
 

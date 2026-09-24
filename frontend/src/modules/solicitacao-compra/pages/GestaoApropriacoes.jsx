@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import ApropriacaoAutocomplete from '../../../components/ui/ApropriacaoAutocomplete';
 import { getObras } from '../../../services/obras';
 import { useAuth } from '../../../contexts/AuthContext';
 import {
@@ -478,18 +479,14 @@ export default function GestaoApropriacoes() {
           </label>
           <label className="grid gap-1 text-sm">
             Apropriacao pai
-            <select
-              className="input"
+            <ApropriacaoAutocomplete
               value={apropriacaoPaiId}
-              onChange={(event) => setApropriacaoPaiId(event.target.value)}
-            >
-              <option value="">Identificar pelo codigo</option>
-              {apropriacoesPaisDisponiveis.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.codigo} - {item.descricao || 'Sem descricao'}
-                </option>
-              ))}
-            </select>
+              options={apropriacoesPaisDisponiveis}
+              onChange={setApropriacaoPaiId}
+              placeholder="Identificar pelo código"
+              emptyText="Nenhuma apropriação pai disponível"
+              tituloConsulta="Apropriações disponíveis como pai"
+            />
           </label>
           <div className="flex flex-wrap gap-2 md:col-span-4">
             <button type="submit" className="btn btn-primary" disabled={salvando}>

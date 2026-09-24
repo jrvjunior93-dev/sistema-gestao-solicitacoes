@@ -34,6 +34,7 @@ import {
 import { listarApropriacoes } from '../services/apropriacoes';
 import { buscarParceiros } from '../services/parceiros';
 import { ResizableTable, ResizableTh } from '../components/ResizableTable';
+import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 
 const CONTRATOS_TABLE_COLUMNS = [
   { key: 'selecionar', width: 56, minWidth: 48 },
@@ -478,18 +479,13 @@ export default function GestaoContratos() {
 
         {lista.map((item, index) => (
           <div key={`${index}-${item.apropriacao_id || 'nova'}`} className="grid gap-2 lg:grid-cols-[minmax(220px,1.5fr)_100px_100px_minmax(160px,1fr)_auto]">
-            <select
-              className="input input-sm"
+            <ApropriacaoAutocomplete
               value={item.apropriacao_id}
-              onChange={e => alterarLinhaApropriacao(index, 'apropriacao_id', e.target.value, setter)}
-            >
-              <option value="">Apropriacao</option>
-              {disponiveis.map(ap => (
-                <option key={ap.id} value={ap.id}>
-                  {ap.codigo} - {ap.descricao}
-                </option>
-              ))}
-            </select>
+              options={disponiveis}
+              onChange={(id) => alterarLinhaApropriacao(index, 'apropriacao_id', id, setter)}
+              inputClassName="input input-sm w-full"
+              placeholder="Apropriação"
+            />
             <input
               className="input input-sm"
               value={item.percentual}
