@@ -3110,6 +3110,7 @@ module.exports = {
         favorecido_id,
         forma_pagamento_id,
         favorecido_chave_pix,
+        dados_pagamento,
         boleto_anexo_nome,
         despesa_eventual_declaracoes,
         cartao_recarga_id,
@@ -3350,9 +3351,16 @@ module.exports = {
         const subtipoSelecionado = await TipoSubContrato.findOne({
           where: {
             id: tipo_sub_id,
-            tipo_macro_id: tipo_solicitacao_id,
             ativo: true
-          }
+          },
+          include: [{
+            model: TipoSolicitacao,
+            as: 'tiposSolicitacao',
+            where: { id: tipo_solicitacao_id },
+            attributes: ['id'],
+            through: { attributes: [] },
+            required: true
+          }]
         });
         if (!subtipoSelecionado) {
           return res.status(400).json({
@@ -3838,6 +3846,19 @@ module.exports = {
       if (formaPagamentoEhBoleto(formaPagamentoSelecionada) && !String(boleto_anexo_nome || '').trim()) {
         return res.status(400).json({ error: 'Anexe o boleto para usar esta forma de pagamento.' });
       }
+      const dadosPagamentoPersistidos = formaPagamentoSelecionada
+        && !formaPagamentoEhPix(formaPagamentoSelecionada)
+        && !formaPagamentoEhBoleto(formaPagamentoSelecionada)
+        ? String(dados_pagamento || '').trim()
+        : null;
+      if (
+        formaPagamentoSelecionada
+        && !formaPagamentoEhPix(formaPagamentoSelecionada)
+        && !formaPagamentoEhBoleto(formaPagamentoSelecionada)
+        && !dadosPagamentoPersistidos
+      ) {
+        return res.status(400).json({ error: 'Informe os dados para pagamento desta forma.' });
+      }
       if (
         exibeFormaPagamentoNaNovaSolicitacao
         && !formaPagamentoEhBoleto(formaPagamentoSelecionada)
@@ -3914,6 +3935,7 @@ module.exports = {
         favorecido_id: favorecido?.id || null,
         forma_pagamento_id: formaPagamentoIdPersistida,
         favorecido_chave_pix: chavePixPersistida,
+        dados_pagamento: dadosPagamentoPersistidos,
         despesa_eventual_declaracoes: declaracoesDespesaEventualNormalizadas
           ? JSON.stringify(declaracoesDespesaEventualNormalizadas)
           : null,

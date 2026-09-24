@@ -953,12 +953,14 @@ export default function GestaoApropriacoes() {
             hint="Selecione a obra para analisar o arquivo, revisar o nivel de apropriacao e confirmar o que aparecera nos formularios."
           >
             <input
-              key={arquivoXlsx ? `${arquivoXlsx.name}-${arquivoXlsx.size}` : 'sem-arquivo'}
               className="input w-full"
               type="file"
               accept=".xlsx,.xls"
               onChange={(event) => setArquivoXlsx(event.target.files?.[0] || null)}
             />
+            <span className="form-hint" title={arquivoXlsx?.name || undefined}>
+              {arquivoXlsx?.name ? `Arquivo selecionado: ${arquivoXlsx.name}` : 'Nenhum arquivo selecionado.'}
+            </span>
           </CampoForm>
 
           <div className="form-campo--linha">

@@ -29,10 +29,10 @@ export default function TiposSubContrato() {
   const [mostrarTiposInativos, setMostrarTiposInativos] = useState(false);
   const [formAberto, setFormAberto] = useState(false); // painel "Novo subtipo"
   const [nome, setNome] = useState('');
-  const [tipoMacroId, setTipoMacroId] = useState('');
+  const [tipoMacroIds, setTipoMacroIds] = useState([]);
   const [editId, setEditId] = useState(null);
   const [editNome, setEditNome] = useState('');
-  const [editMacroId, setEditMacroId] = useState('');
+  const [editMacroIds, setEditMacroIds] = useState([]);
   const [saving, setSaving] = useState(false);
   // R3: aviso e confirmação do sistema no lugar das caixas do navegador.
   const { avisos, avisar, fechar } = useAvisos();
@@ -59,13 +59,23 @@ export default function TiposSubContrato() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    await criarTipoSubContrato({
-      nome,
-      tipo_macro_id: tipoMacroId
-    });
-    setNome('');
-    setTipoMacroId('');
-    carregar();
+    try {
+      setSaving(true);
+      await criarTipoSubContrato({
+        nome,
+        tipo_solicitacao_ids: tipoMacroIds
+      });
+      setNome('');
+      setTipoMacroIds([]);
+      setFormAberto(false);
+      await carregar();
+      avisar.sucesso('Subtipo criado e vinculado aos Tipos de Solicitação selecionados.');
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao criar subtipo.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function toggle(tipo) {
@@ -104,13 +114,13 @@ export default function TiposSubContrato() {
   function iniciarEdicao(item) {
     setEditId(item.id);
     setEditNome(item.nome);
-    setEditMacroId(item.tipo_macro_id ? String(item.tipo_macro_id) : '');
+    setEditMacroIds(idsDoSubtipo(item).map(String));
   }
 
   function cancelarEdicao() {
     setEditId(null);
     setEditNome('');
-    setEditMacroId('');
+    setEditMacroIds([]);
   }
 
   async function salvarEdicao(id) {
@@ -118,7 +128,7 @@ export default function TiposSubContrato() {
       setSaving(true);
       await atualizarTipoSubContrato(id, {
         nome: editNome,
-        tipo_macro_id: editMacroId
+        tipo_solicitacao_ids: editMacroIds
       });
       cancelarEdicao();
       carregar();
@@ -150,10 +160,27 @@ export default function TiposSubContrato() {
       .sort((a, b) => String(a?.nome || '').localeCompare(String(b?.nome || ''), 'pt-BR'));
   }, [macros, mostrarTiposInativos]);
 
+  function idsDoSubtipo(tipo) {
+    const ids = Array.isArray(tipo?.tipo_solicitacao_ids)
+      ? tipo.tipo_solicitacao_ids
+      : [tipo?.tipo_macro_id];
+    return [...new Set(ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  }
+
+  function alternarMacro(id, edicao = false) {
+    const setter = edicao ? setEditMacroIds : setTipoMacroIds;
+    setter((atuais) => {
+      const valor = String(id);
+      return atuais.includes(valor)
+        ? atuais.filter((item) => item !== valor)
+        : [...atuais, valor];
+    });
+  }
+
   const tiposFiltrados = useMemo(() => {
     return tipos.filter(tipo => {
-      const macro = macrosPorId.get(Number(tipo.tipo_macro_id));
-      if (!mostrarTiposInativos && macro?.ativo === false) return false;
+      const macrosVinculados = idsDoSubtipo(tipo).map((id) => macrosPorId.get(id)).filter(Boolean);
+      if (!mostrarTiposInativos && macrosVinculados.length > 0 && macrosVinculados.every((macro) => macro?.ativo === false)) return false;
       return true;
     });
   }, [macrosPorId, mostrarTiposInativos, tipos]);
@@ -163,14 +190,15 @@ export default function TiposSubContrato() {
     return `${macro?.nome || '-'} - ${status}`;
   }
 
-  function macroDoSubtipo(t) {
-    return macrosPorId.get(Number(t.tipo_macro_id)) || t.macro;
+  function macrosDoSubtipo(t) {
+    const vinculados = idsDoSubtipo(t).map((id) => macrosPorId.get(id)).filter(Boolean);
+    if (vinculados.length) return vinculados;
+    return t.macro ? [t.macro] : [];
   }
 
   // 6 colunas viraram 3 + acoes. O que a tabela antiga repetia foi unificado:
-  // a coluna "Setor" e o "status do tipo" apareciam soltos E dentro do texto
-  // da coluna "Tipo macro" (macroLabel) — agora setores viram o subtexto da
-  // coluna Tipo macro e o status do tipo vira o subtexto da coluna Status.
+  // os Tipos de Solicitação aparecem juntos e o status consolidado fica na
+  // coluna Status.
   const colunas = [
     {
       id: 'subtipo',
@@ -192,30 +220,28 @@ export default function TiposSubContrato() {
     },
     {
       id: 'tipo_macro',
-      // TRAVADA (05/09): em edicao esta coluna e o select do tipo macro — o
-      // unico caminho de trocar o macro do subtipo.
+      // Em edição esta coluna é o seletor múltiplo dos Tipos de Solicitação.
       sempreVisivel: true,
-      titulo: 'Tipo macro',
+      titulo: 'Tipos de Solicitação',
       tipo: 'texto',
       render: (t) => (
         editId === t.id ? (
-          <select
-            className="input input-sm w-full"
-            aria-label="Tipo macro"
-            value={editMacroId}
-            onChange={e => setEditMacroId(e.target.value)}
-          >
-            <option value="">Tipo macro</option>
-            {macrosDoSetor.map(m => (
-              <option key={m.id} value={m.id}>
-                {macroLabel(m)}
-              </option>
+          <div className="max-h-40 space-y-1 overflow-y-auto rounded border border-[var(--c-border)] p-2" aria-label="Tipos de Solicitação">
+            {macrosDoSetor.map((macro) => (
+              <label key={macro.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editMacroIds.includes(String(macro.id))}
+                  onChange={() => alternarMacro(macro.id, true)}
+                />
+                <span>{macroLabel(macro)}</span>
+              </label>
             ))}
-          </select>
+          </div>
         ) : (
           <CelulaDupla
-            principal={macroDoSubtipo(t)?.nome || '-'}
-            sub="Herda a disponibilidade do tipo macro"
+            principal={macrosDoSubtipo(t).map((macro) => macro.nome).join(', ') || '-'}
+            sub={`${macrosDoSubtipo(t).length} tipo(s) vinculado(s)`}
           />
         )
       )
@@ -225,13 +251,13 @@ export default function TiposSubContrato() {
       titulo: 'Status',
       tipo: 'status',
       render: (t) => {
-        const macro = macroDoSubtipo(t);
-        const statusTipo = macro?.ativo === false ? 'inativo' : 'ativo';
+        const tiposVinculados = macrosDoSubtipo(t);
+        const statusTipo = tiposVinculados.some((macro) => macro?.ativo !== false) ? 'ativo' : 'inativo';
         return (
           <CelulaDupla
             principal={<StatusBadge status={t.ativo ? 'Ativo' : 'Inativo'} />}
-            sub={`Tipo ${statusTipo}`}
-            title={`Subtipo ${t.ativo ? 'ativo' : 'inativo'} — tipo macro ${statusTipo}`}
+            sub={`Tipos ${statusTipo}s`}
+            title={`Subtipo ${t.ativo ? 'ativo' : 'inativo'} — Tipos de Solicitação ${statusTipo}s`}
           />
         );
       }
@@ -245,7 +271,7 @@ export default function TiposSubContrato() {
       <PageHeader
         titulo="Subtipos"
         contagem={`${tiposFiltrados.length} subtipo(s)`}
-        descricao="Cadastro dos subtipos vinculados aos tipos macro. A disponibilidade é herdada da Obra ou Centro de Custo."
+        descricao="Cadastre subtipos reutilizáveis e vincule cada um a um ou mais Tipos de Solicitação."
         acaoPrincipal={{ rotulo: 'Novo subtipo', onClick: abrirNovoSubtipo }}
       />
 
@@ -268,23 +294,22 @@ export default function TiposSubContrato() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <FormSecao legenda="Dados do subtipo" colunas={3}>
                 <CampoForm
-                  label="Tipo macro"
+                  label="Tipos de Solicitação"
                   obrigatorio
-                  hint="O subtipo acompanha o tipo macro em todos os catálogos onde ele estiver disponível."
+                  hint="Marque todos os tipos em que este subtipo poderá ser escolhido."
                 >
-                  <select
-                    className="input w-full"
-                    value={tipoMacroId}
-                    onChange={e => setTipoMacroId(e.target.value)}
-                    required
-                  >
-                    <option value="">Selecione</option>
-                    {macrosDoSetor.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {macroLabel(m)}
-                      </option>
+                  <div className="max-h-52 space-y-1 overflow-y-auto rounded border border-[var(--c-border)] p-2">
+                    {macrosDoSetor.map((macro) => (
+                      <label key={macro.id} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-[var(--c-surface)]">
+                        <input
+                          type="checkbox"
+                          checked={tipoMacroIds.includes(String(macro.id))}
+                          onChange={() => alternarMacro(macro.id)}
+                        />
+                        <span>{macroLabel(macro)}</span>
+                      </label>
                     ))}
-                  </select>
+                  </div>
                 </CampoForm>
 
                 <CampoForm label="Nome do subtipo" obrigatorio hint="Ex: Combustivel">
@@ -297,8 +322,8 @@ export default function TiposSubContrato() {
                 </CampoForm>
 
                 <div className="flex items-end">
-                  <button type="submit" className="btn btn-primary">
-                    Adicionar
+                  <button type="submit" className="btn btn-primary" disabled={saving || tipoMacroIds.length === 0}>
+                    {saving ? 'Adicionando...' : 'Adicionar'}
                   </button>
                 </div>
               </FormSecao>
@@ -338,7 +363,7 @@ export default function TiposSubContrato() {
           acoesLinha={(t) => (
             editId === t.id ? (
               <>
-                <button type="button" className="btn btn-primary btn-sm" onClick={() => salvarEdicao(t.id)} disabled={saving}>
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => salvarEdicao(t.id)} disabled={saving || editMacroIds.length === 0}>
                   {saving ? 'Salvando...' : 'Salvar'}
                 </button>
                 <button type="button" className="btn btn-outline btn-sm" onClick={cancelarEdicao} disabled={saving}>

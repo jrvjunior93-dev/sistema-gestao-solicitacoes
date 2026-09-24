@@ -15,8 +15,9 @@ export async function criarTipoSubContrato(data) {
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Erro ao criar subtipo');
-  return res.json();
+  const resposta = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(resposta?.error || 'Erro ao criar subtipo');
+  return resposta;
 }
 
 export async function atualizarTipoSubContrato(id, data) {
@@ -25,8 +26,9 @@ export async function atualizarTipoSubContrato(id, data) {
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(data)
   });
-  if (!res.ok) throw new Error('Erro ao atualizar subtipo');
-  return res.json();
+  const resposta = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(resposta?.error || 'Erro ao atualizar subtipo');
+  return resposta;
 }
 
 export async function ativarTipoSubContrato(id) {

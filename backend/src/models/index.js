@@ -85,6 +85,7 @@ db.IntegracaoSiengeLog = require('./IntegracaoSiengeLog')(sequelize, Sequelize);
 db.IntegracaoSiengeMapeamento = require('./IntegracaoSiengeMapeamento')(sequelize, Sequelize);
 db.TipoMacroContrato = require('./TipoMacroContrato')(sequelize, Sequelize);
 db.TipoSubContrato = require('./TipoSubContrato')(sequelize, Sequelize);
+db.TipoSubContratoTipoSolicitacao = require('./TipoSubContratoTipoSolicitacao')(sequelize, Sequelize);
 db.SolicitacaoVisibilidadeUsuario =
   require('./SolicitacaoVisibilidadeUsuario')(sequelize, Sequelize);
 db.SolicitacaoPedidoRetorno = require('./SolicitacaoPedidoRetorno')(sequelize, Sequelize);
@@ -944,6 +945,23 @@ db.TipoSolicitacao.hasMany(db.TipoSubContrato, {
 db.TipoSubContrato.belongsTo(db.TipoSolicitacao, {
   foreignKey: 'tipo_macro_id',
   as: 'macro'
+});
+
+// O campo legado `tipo_macro_id` continua apontando para o primeiro tipo para preservar
+// contratos e integrações antigas. Esta associação representa o catálogo completo: um mesmo
+// subtipo pode ser oferecido por vários Tipos de Solicitação.
+db.TipoSolicitacao.belongsToMany(db.TipoSubContrato, {
+  through: db.TipoSubContratoTipoSolicitacao,
+  foreignKey: 'tipo_solicitacao_id',
+  otherKey: 'tipo_sub_contrato_id',
+  as: 'subtiposVinculados'
+});
+
+db.TipoSubContrato.belongsToMany(db.TipoSolicitacao, {
+  through: db.TipoSubContratoTipoSolicitacao,
+  foreignKey: 'tipo_sub_contrato_id',
+  otherKey: 'tipo_solicitacao_id',
+  as: 'tiposSolicitacao'
 });
 
 db.TipoSolicitacao.hasMany(db.Contrato, {

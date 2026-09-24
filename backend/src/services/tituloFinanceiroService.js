@@ -1269,6 +1269,16 @@ async function carregarSolicitacaoFinanceira(req, solicitacaoId) {
         attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email', 'ativo']
       },
       {
+        model: Parceiro,
+        as: 'favorecido',
+        attributes: ['id', 'nome', 'cpf_cnpj', 'telefone', 'email', 'ativo']
+      },
+      {
+        model: FormaPagamentoFinanceira,
+        as: 'formaPagamento',
+        attributes: ['id', 'nome', 'codigo', 'tipo']
+      },
+      {
         model: TipoSolicitacao,
         as: 'tipo',
         attributes: ['id', 'nome']
@@ -2705,7 +2715,9 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
     }
     const parceiroPagamento = await validarParceiro(parceiroIdPagamento);
     validarCompatibilidadeParceiroTitulo(parceiroPagamento, tipo);
-    const favorecidoPagamentoId = Number(pagamentoPayload.favorecido_pagamento_id || 0);
+    const favorecidoPagamentoId = Number(
+      pagamentoPayload.favorecido_pagamento_id || solicitacao.favorecido_id || 0
+    );
     const favorecidoPagamento = favorecidoPagamentoId > 0
       ? await Parceiro.findOne({ where: { id: favorecidoPagamentoId, ativo: true }, attributes: ['id', 'nome', 'cpf_cnpj'] })
       : null;
@@ -2731,7 +2743,10 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
       : categoriaPadrao;
     const consideraDrePagamento = payload.considera_dre !== false && categoriaClassificadaParaDre(categoriaPagamento);
     validarCategoriaDreTitulo(categoriaPagamento, { considera_dre: consideraDrePagamento });
-    const formaPagamento = await validarFormaPagamentoFinanceira(pagamentoPayload.forma_pagamento_id, pagamentoPayload);
+    const formaPagamento = await validarFormaPagamentoFinanceira(
+      pagamentoPayload.forma_pagamento_id || solicitacao.forma_pagamento_id,
+      pagamentoPayload
+    );
     const intercompanyFields = await resolverIntercompanyPagamento({
       formaPagamento,
       pagamentoPayload,
@@ -2864,7 +2879,11 @@ async function criarTituloPorSolicitacao(req, solicitacaoId, payload = {}) {
           data_emissao: payload.data_emissao || getHoje(),
           data_vencimento: vencimentoParcela,
           data_quitacao: null,
-          observacoes: parcelaPayload.observacoes || pagamento.payload.observacoes || payload.observacoes || null,
+          observacoes: parcelaPayload.observacoes
+            || pagamento.payload.observacoes
+            || payload.observacoes
+            || solicitacao.dados_pagamento
+            || null,
           ...buildCobrancaFields(cobrancaPayload, tipo),
           criado_por: req.user?.id || null,
           atualizado_por: req.user?.id || null

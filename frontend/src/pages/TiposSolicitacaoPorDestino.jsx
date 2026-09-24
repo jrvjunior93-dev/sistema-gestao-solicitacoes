@@ -11,6 +11,10 @@ import {
   getTiposSolicitacaoPorDestino,
   salvarTiposSolicitacaoPorDestino
 } from '../services/configuracoesSistema';
+import { criarTipoSolicitacao } from '../services/tiposSolicitacao';
+import { getDefaultTipoSolicitacaoBehavior } from '../utils/tipoSolicitacao';
+import OverlayModal from '../components/ui/OverlayModal';
+import { HiOutlinePlus } from 'react-icons/hi2';
 
 function idsValidos(valores) {
   return [...new Set((Array.isArray(valores) ? valores : [])
@@ -38,6 +42,10 @@ export default function TiposSolicitacaoPorDestino() {
   const [busca, setBusca] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
+  const [modalNovoTipoAberto, setModalNovoTipoAberto] = useState(false);
+  const [novoTipoNome, setNovoTipoNome] = useState('');
+  const [novoTipoCodigo, setNovoTipoCodigo] = useState('');
+  const [criandoTipo, setCriandoTipo] = useState(false);
   const { avisos, avisar, fechar } = useAvisos();
 
   async function carregar() {
@@ -126,6 +134,47 @@ export default function TiposSolicitacaoPorDestino() {
     }
   }
 
+  async function criarTipoNoEscopo(event) {
+    event.preventDefault();
+    const nome = String(novoTipoNome || '').trim();
+    if (!nome) {
+      avisar.alerta('Informe o nome do tipo de solicitação.');
+      return;
+    }
+    if (escopo === 'CENTRO_CUSTO' && !centroCustoId) {
+      avisar.alerta('Selecione o Centro de Custo antes de criar o tipo.');
+      return;
+    }
+
+    try {
+      setCriandoTipo(true);
+      const criado = await criarTipoSolicitacao({
+        nome,
+        codigo_interno: String(novoTipoCodigo || '').trim(),
+        comportamento: getDefaultTipoSolicitacaoBehavior(),
+        disponivel_para_obras: escopo === 'OBRA'
+      });
+
+      const tiposDoEscopo = idsValidos([...selecionados, criado.id]);
+      await salvarTiposSolicitacaoPorDestino({
+        escopo,
+        centro_custo_id: escopo === 'CENTRO_CUSTO' ? Number(centroCustoId) : undefined,
+        tipos: tiposDoEscopo
+      });
+
+      setNovoTipoNome('');
+      setNovoTipoCodigo('');
+      setModalNovoTipoAberto(false);
+      await carregar();
+      avisar.sucesso('Tipo criado e disponibilizado no escopo selecionado. Ele poderá ser reutilizado em outras Obras e Centros de Custo.');
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao criar o tipo de solicitação.');
+    } finally {
+      setCriandoTipo(false);
+    }
+  }
+
   return (
     <Pagina>
       <PageHeader
@@ -137,6 +186,13 @@ export default function TiposSolicitacaoPorDestino() {
           onClick: salvar,
           desabilitada: salvando || carregando || (escopo === 'CENTRO_CUSTO' && !centroCustoId)
         }}
+        secundarias={[{
+          rotulo: 'Criar tipo',
+          icone: <HiOutlinePlus className="h-4 w-4" aria-hidden="true" />,
+          onClick: () => setModalNovoTipoAberto(true),
+          desabilitada: carregando || (escopo === 'CENTRO_CUSTO' && !centroCustoId),
+          title: 'Criar um tipo reutilizável e adicioná-lo ao escopo atual'
+        }]}
       />
 
       <Avisos avisos={avisos} aoFechar={fechar} />
@@ -220,6 +276,59 @@ export default function TiposSolicitacaoPorDestino() {
           </p>
         </div>
       </BlocoConteudo>
+
+      {modalNovoTipoAberto && (
+        <OverlayModal
+          rotulo="Criar tipo de solicitação"
+          onFechar={criandoTipo ? undefined : () => setModalNovoTipoAberto(false)}
+          fecharComEscape={!criandoTipo}
+        >
+          <div data-modal="cabecalho" className="flex items-center justify-between border-b border-[var(--c-border)] px-4 py-3">
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--c-text)]">Novo tipo de solicitação</h3>
+              <p className="text-sm text-[var(--c-muted)]">
+                Será incluído em {escopo === 'OBRA' ? 'todas as Obras' : 'este Centro de Custo'} e continuará disponível para reutilização nos demais destinos.
+              </p>
+            </div>
+            <button type="button" className="btn btn-outline btn-sm" onClick={() => setModalNovoTipoAberto(false)} disabled={criandoTipo}>
+              Fechar
+            </button>
+          </div>
+          <form onSubmit={criarTipoNoEscopo} className="space-y-4 px-4 py-3">
+            <FormSecao legenda="Identificação" colunas={2}>
+              <CampoForm label="Nome do tipo" obrigatorio>
+                <input
+                  className="input w-full"
+                  value={novoTipoNome}
+                  onChange={(event) => setNovoTipoNome(event.target.value)}
+                  placeholder="Ex.: Solicitação de serviço"
+                  required
+                  autoFocus
+                />
+              </CampoForm>
+              <CampoForm label="Código interno" hint="Opcional; usado por integrações e regras internas.">
+                <input
+                  className="input w-full"
+                  value={novoTipoCodigo}
+                  onChange={(event) => setNovoTipoCodigo(event.target.value.toUpperCase())}
+                  placeholder="Ex.: SOLICITACAO_SERVICO"
+                />
+              </CampoForm>
+            </FormSecao>
+            <p className="app-note">
+              O cadastro é global. Aqui você apenas define que o novo tipo ficará disponível no destino selecionado; depois ele poderá ser marcado em outras Obras ou Centros de Custo.
+            </p>
+            <div data-modal="rodape" className="app-actionbar justify-end border-t border-[var(--c-border)] pt-3">
+              <button type="button" className="btn btn-outline" onClick={() => setModalNovoTipoAberto(false)} disabled={criandoTipo}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={criandoTipo}>
+                {criandoTipo ? 'Criando...' : 'Criar e disponibilizar'}
+              </button>
+            </div>
+          </form>
+        </OverlayModal>
+      )}
     </Pagina>
   );
 }

@@ -295,6 +295,12 @@ export default function Header({
       valor: solicitacao?.favorecido_chave_pix || null,
       span: 2
     },
+    {
+      label: 'Dados para pagamento',
+      contexto: !temContrato,
+      valor: solicitacao?.dados_pagamento || null,
+      span: 4
+    },
     { label: 'Responsável', contexto: temContrato, valor: contratoDoFluxo?.responsavel?.nome || null },
     { label: 'Obra', valor: solicitacao?.obra?.nome || null, span: 2 },
     { label: 'Criado em', valor: formatarDataHora(solicitacao?.createdAt) },

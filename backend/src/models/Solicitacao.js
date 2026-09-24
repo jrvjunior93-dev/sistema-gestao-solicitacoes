@@ -88,6 +88,10 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(255),
         allowNull: true
       },
+      dados_pagamento: {
+        type: DataTypes.TEXT,
+        allowNull: true
+      },
       despesa_eventual_declaracoes: {
         type: DataTypes.TEXT,
         allowNull: true

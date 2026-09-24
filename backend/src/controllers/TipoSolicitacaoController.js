@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { TipoSolicitacao, TipoSubContrato, Solicitacao, Contrato } = require('../models');
+const { TipoSolicitacao, TipoSubContrato, TipoSubContratoTipoSolicitacao, Solicitacao, Contrato } = require('../models');
 const {
   enrichTipoSolicitacao,
   normalizeTipoSolicitacaoCodigo,
@@ -130,7 +130,7 @@ module.exports = {
       }
 
       const [totalSubtipos, totalSolicitacoes, totalContratos] = await Promise.all([
-        TipoSubContrato.count({ where: { tipo_macro_id: id } }),
+        TipoSubContratoTipoSolicitacao.count({ where: { tipo_solicitacao_id: id } }),
         Solicitacao.count({ where: { tipo_solicitacao_id: id } }),
         Contrato.count({ where: { tipo_macro_id: id } })
       ]);

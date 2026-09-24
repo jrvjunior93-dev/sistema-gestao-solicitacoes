@@ -291,6 +291,7 @@ export default function NovaSolicitacao() {
     favorecido_id: '',
     forma_pagamento_id: '',
     favorecido_chave_pix: '',
+    dados_pagamento: '',
     itens_apropriacao: '',
     ref_contrato_abertura: '',
     valor: '',
@@ -637,6 +638,7 @@ export default function NovaSolicitacao() {
       favorecido_id: '',
       forma_pagamento_id: '',
       favorecido_chave_pix: '',
+      dados_pagamento: '',
       justificativa: ''
     }));
     setContratos([]);
@@ -940,6 +942,7 @@ export default function NovaSolicitacao() {
   );
   const pagamentoViaPix = formaPagamentoEhPix(formaPagamentoSelecionada);
   const pagamentoViaBoleto = formaPagamentoEhBoleto(formaPagamentoSelecionada);
+  const pagamentoViaOutraForma = Boolean(formaPagamentoSelecionada) && !pagamentoViaPix && !pagamentoViaBoleto;
   // Regra unica para todo tipo que exibe Forma de pagamento, inclusive quando o campo foi
   // habilitado pela configuracao: o anexo geral ja nasce obrigatorio com o tipo. Selecionar
   // Boleto remove essa obrigatoriedade porque o boleto possui seu proprio upload.
@@ -965,14 +968,15 @@ export default function NovaSolicitacao() {
     setForm((prev) => ({
       ...prev,
       forma_pagamento_id: '',
-      favorecido_chave_pix: ''
+      favorecido_chave_pix: '',
+      dados_pagamento: ''
     }));
     setBoletoArquivos([]);
   }, [form.forma_pagamento_id, formasPagamentoDisponiveis, formasPagamentoSolicitacao.length]);
 
   useEffect(() => {
     if (!exibirFormaPagamento) {
-      setForm((prev) => ({ ...prev, forma_pagamento_id: '', favorecido_chave_pix: '' }));
+      setForm((prev) => ({ ...prev, forma_pagamento_id: '', favorecido_chave_pix: '', dados_pagamento: '' }));
       setFormasPagamentoSolicitacao([]);
       setErroFormasPagamento('');
       setBoletoArquivos([]);
@@ -1021,6 +1025,11 @@ export default function NovaSolicitacao() {
     setBoletoArquivos([]);
     if (boletoRef.current) boletoRef.current.value = '';
   }, [pagamentoViaBoleto]);
+
+  useEffect(() => {
+    if (pagamentoViaOutraForma) return;
+    setForm((prev) => (prev.dados_pagamento ? { ...prev, dados_pagamento: '' } : prev));
+  }, [pagamentoViaOutraForma]);
 
   useEffect(() => {
     if (!exibirCamposContrato) {
@@ -1543,6 +1552,10 @@ export default function NovaSolicitacao() {
       reprovarCampo('boleto', 'Anexe o boleto para usar esta forma de pagamento.');
       return;
     }
+    if (pagamentoViaOutraForma && !String(form.dados_pagamento || '').trim()) {
+      reprovarCampo('dados_pagamento', 'Informe os dados necessários para realizar o pagamento.');
+      return;
+    }
     if (justificativaObrigatoria && !form.justificativa.trim()) {
       reprovarCampo('justificativa', 'Informe a justificativa da solicitação.');
       return;
@@ -1927,6 +1940,9 @@ export default function NovaSolicitacao() {
       forma_pagamento_id: exibirFormaPagamento ? (form.forma_pagamento_id || null) : null,
       favorecido_chave_pix: pagamentoViaPix
         ? String(form.favorecido_chave_pix || '').trim()
+        : null,
+      dados_pagamento: pagamentoViaOutraForma
+        ? String(form.dados_pagamento || '').trim()
         : null,
       boleto_anexo_nome: pagamentoViaBoleto ? (boletoArquivos[0]?.nome || null) : null,
       despesa_eventual_declaracoes: usaFluxoDespesaEventual ? despesaEventualDeclaracoes : undefined,
@@ -2682,6 +2698,9 @@ export default function NovaSolicitacao() {
                         forma_pagamento_id: formaId,
                         favorecido_chave_pix: formaPagamentoEhPix(forma)
                           ? chavePixPreferencial(favorecidoSelecionado)
+                          : '',
+                        dados_pagamento: forma && !formaPagamentoEhPix(forma) && !formaPagamentoEhBoleto(forma)
+                          ? prev.dados_pagamento
                           : ''
                       }));
                     }}
@@ -2776,6 +2795,28 @@ export default function NovaSolicitacao() {
                     required
                     onChange={handleChange}
                     placeholder="Informe ou altere a chave PIX"
+                  />
+                </CampoForm>
+              )}
+
+              {exibirFormaPagamento && pagamentoViaOutraForma && (
+                <CampoForm
+                  label="Dados para pagamento"
+                  obrigatorio
+                  linha
+                  erro={errosCampo.dados_pagamento}
+                  hint="Informe os dados necessários para o Financeiro realizar o pagamento por esta forma."
+                >
+                  <textarea
+                    className="input w-full"
+                    name="dados_pagamento"
+                    value={form.dados_pagamento}
+                    required
+                    onChange={(event) => {
+                      limparErroCampo('dados_pagamento');
+                      handleChange(event);
+                    }}
+                    placeholder="Ex.: banco, agência, conta, instruções ou referência do pagamento"
                   />
                 </CampoForm>
               )}

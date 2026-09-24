@@ -95,6 +95,9 @@ function validarIntegracaoFrontendBackend() {
   const lotePagamento = read('backend/src/services/paymentBatchService.js');
   const aprovacaoTipo = read('backend/src/services/solicitacao/aprovacaoTipoConfig.js');
   const telaAprovacaoTipo = read('frontend/src/pages/AprovacaoSolicitacaoPorTipo.jsx');
+  const filaPagamentos = read('frontend/src/pages/FinanceiroFilaPagamentos.jsx');
+  const filaPagamentosService = read('backend/src/services/pagamentoManualFilaService.js');
+  const dadosPagamentoMigration = read('backend/migrations/202609240005_solicitacao_dados_pagamento.js');
 
   assert(financeiro.includes('function buildPaymentDraftForTitle'));
   assert(financeiro.includes('Dados para pagamento deste título'));
@@ -128,6 +131,15 @@ function validarIntegracaoFrontendBackend() {
   assert(solicitacaoController.includes("!exibeFormaPagamentoNaNovaSolicitacao && campoObrigatorio('anexos')"));
   assert(solicitacaoController.includes('!formaPagamentoEhBoleto(formaPagamentoSelecionada)'));
   assert(solicitacaoController.includes('Anexe ao menos um comprovante para esta forma de pagamento.'));
+  assert(novaSolicitacao.includes('pagamentoViaOutraForma'));
+  assert(novaSolicitacao.includes('name="dados_pagamento"'));
+  assert(solicitacaoController.includes("Informe os dados para pagamento desta forma."));
+  assert(dadosPagamentoMigration.includes("addColumn('solicitacoes', 'dados_pagamento'"));
+  assert(tituloFinanceiro.includes('solicitacao.dados_pagamento'));
+  assert(filaPagamentosService.includes("tipo: 'BOLETO'"));
+  assert(filaPagamentosService.includes("'favorecido_chave_pix'"));
+  assert(filaPagamentos.includes('solicitacao.favorecido_chave_pix'));
+  assert(filaPagamentos.includes("'Boleto / arquivos'"));
 
   // Os dois PDFs usam o mesmo renderizador e devem receber a descricao carregada da apropriacao.
   assert(solicitacaoCompraController.includes('const compraDireta = isSolicitacaoCompraDireta(solicitacao)'));

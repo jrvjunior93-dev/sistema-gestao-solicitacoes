@@ -40,6 +40,16 @@ function tipoPodeSerConfigurado(tipo) {
   return normalizeTipoSolicitacaoBehavior(tipo)?.somente_sistema !== true;
 }
 
+function enriquecerTipoComSubtipos(tipo) {
+  const plain = enrichTipoSolicitacao(tipo);
+  const vinculados = Array.isArray(plain?.subtiposVinculados) ? plain.subtiposVinculados : [];
+  plain.subtipos = vinculados
+    .map((subtipo) => ({ ...subtipo, tipo_macro_id: Number(plain.id) }))
+    .sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR'));
+  delete plain.subtiposVinculados;
+  return plain;
+}
+
 async function listarTiposDisponiveis(destinoId, { transaction = null } = {}) {
   const destino = await carregarDestino(destinoId, transaction);
   const ehObra = isObraCentroCusto(destino.tipo_centro_custo);
@@ -50,12 +60,12 @@ async function listarTiposDisponiveis(destinoId, { transaction = null } = {}) {
       where: { ativo: true, disponivel_para_obras: true },
       include: [{
         model: TipoSubContrato,
-        as: 'subtipos',
+        as: 'subtiposVinculados',
         required: false,
         where: { ativo: true },
         attributes: ['id', 'nome', 'tipo_macro_id', 'ativo']
       }],
-      order: [['nome', 'ASC'], [{ model: TipoSubContrato, as: 'subtipos' }, 'nome', 'ASC']],
+      order: [['nome', 'ASC'], [{ model: TipoSubContrato, as: 'subtiposVinculados' }, 'nome', 'ASC']],
       transaction
     });
   } else {
@@ -69,12 +79,12 @@ async function listarTiposDisponiveis(destinoId, { transaction = null } = {}) {
       where: { id: { [Op.in]: ids }, ativo: true },
       include: [{
         model: TipoSubContrato,
-        as: 'subtipos',
+        as: 'subtiposVinculados',
         required: false,
         where: { ativo: true },
         attributes: ['id', 'nome', 'tipo_macro_id', 'ativo']
       }],
-      order: [['nome', 'ASC'], [{ model: TipoSubContrato, as: 'subtipos' }, 'nome', 'ASC']],
+      order: [['nome', 'ASC'], [{ model: TipoSubContrato, as: 'subtiposVinculados' }, 'nome', 'ASC']],
       transaction
     });
   }
@@ -82,7 +92,7 @@ async function listarTiposDisponiveis(destinoId, { transaction = null } = {}) {
   return {
     destino: destino.get({ plain: true }),
     contexto: ehObra ? 'OBRA' : 'CENTRO_CUSTO',
-    tipos: tipos.filter(tipoPodeSerAbertoManualmente).map(enrichTipoSolicitacao)
+    tipos: tipos.filter(tipoPodeSerAbertoManualmente).map(enriquecerTipoComSubtipos)
   };
 }
 

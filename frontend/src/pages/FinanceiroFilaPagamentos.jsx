@@ -146,26 +146,38 @@ function statusKind(status) {
 
 function beneficiaryData(titulo) {
   const beneficiary = titulo?.paymentBeneficiary;
-  const form = [titulo?.formaPagamento?.tipo, titulo?.formaPagamento?.codigo, titulo?.formaPagamento?.nome]
+  const solicitacao = titulo?.solicitacao || {};
+  const formaPagamento = titulo?.formaPagamento || solicitacao?.formaPagamento;
+  const form = [formaPagamento?.tipo, formaPagamento?.codigo, formaPagamento?.nome]
     .filter(Boolean).join(' ').toUpperCase();
   const boletoData = titulo?.linha_digitavel || titulo?.codigo_barras;
+  const boletoAnexado = solicitacao?.boletos?.[0];
+  const favorecidoSolicitacao = solicitacao?.favorecido;
   if (beneficiary) {
     let pagamento = 'Sem dados bancários cadastrados';
     if (form.includes('BOLETO') && boletoData) pagamento = `Boleto: ${boletoData}`;
+    else if (form.includes('BOLETO') && boletoAnexado) pagamento = `Boleto anexado: ${boletoAnexado.nome}`;
     else if (beneficiary.pix_chave) pagamento = `PIX ${beneficiary.pix_tipo_chave || ''}: ${beneficiary.pix_chave}`;
+    else if (form.includes('PIX') && solicitacao.favorecido_chave_pix) pagamento = `PIX: ${solicitacao.favorecido_chave_pix}`;
     else if (beneficiary.banco_codigo || beneficiary.agencia || beneficiary.conta) {
       pagamento = `Banco ${beneficiary.banco_codigo || '—'} · Ag. ${beneficiary.agencia || '—'} · Conta ${beneficiary.conta || '—'}`;
     }
+    else if (solicitacao.dados_pagamento) pagamento = solicitacao.dados_pagamento;
     return {
-      nome: beneficiary.nome || titulo?.parceiro?.nome || 'Não informado',
-      documento: beneficiary.cpf_cnpj || titulo?.parceiro?.cpf_cnpj || '',
+      nome: beneficiary.nome || favorecidoSolicitacao?.nome || titulo?.parceiro?.nome || 'Não informado',
+      documento: beneficiary.cpf_cnpj || favorecidoSolicitacao?.cpf_cnpj || titulo?.parceiro?.cpf_cnpj || '',
       pagamento
     };
   }
+  let pagamento = titulo?.observacoes || 'Sem instrução bancária cadastrada';
+  if (form.includes('BOLETO') && boletoData) pagamento = `Boleto: ${boletoData}`;
+  else if (form.includes('BOLETO') && boletoAnexado) pagamento = `Boleto anexado: ${boletoAnexado.nome}`;
+  else if (form.includes('PIX') && solicitacao.favorecido_chave_pix) pagamento = `PIX: ${solicitacao.favorecido_chave_pix}`;
+  else if (solicitacao.dados_pagamento) pagamento = solicitacao.dados_pagamento;
   return {
-    nome: titulo?.favorecidoPagamento?.nome || titulo?.parceiro?.nome || 'Não informado',
-    documento: titulo?.favorecidoPagamento?.cpf_cnpj || titulo?.parceiro?.cpf_cnpj || '',
-    pagamento: boletoData ? `Boleto: ${boletoData}` : titulo?.observacoes || 'Sem instrução bancária cadastrada'
+    nome: titulo?.favorecidoPagamento?.nome || favorecidoSolicitacao?.nome || titulo?.parceiro?.nome || 'Não informado',
+    documento: titulo?.favorecidoPagamento?.cpf_cnpj || favorecidoSolicitacao?.cpf_cnpj || titulo?.parceiro?.cpf_cnpj || '',
+    pagamento
   };
 }
 
@@ -914,7 +926,11 @@ export default function FinanceiroFilaPagamentos() {
                 const title = row.titulo || {};
                 const solicitacaoId = Number(title.solicitacao_id || title.solicitacao?.id);
                 const solicitacaoVinculada = solicitacaoId > 0
-                  ? { id: solicitacaoId, codigo: title.solicitacao?.codigo || `#${solicitacaoId}` }
+                  ? {
+                      id: solicitacaoId,
+                      codigo: title.solicitacao?.codigo || `#${solicitacaoId}`,
+                      temBoleto: Boolean(title.solicitacao?.boletos?.length)
+                    }
                   : null;
                 const beneficiary = beneficiaryData(title);
                 const account = selectedAccount(row);
@@ -952,7 +968,7 @@ export default function FinanceiroFilaPagamentos() {
                             Solicitação {solicitacaoVinculada.codigo}
                           </Link>
                           <button type="button" className="btn btn-outline btn-sm" onClick={() => setSolicitacaoArquivos(solicitacaoVinculada)}>
-                            Arquivos
+                            {solicitacaoVinculada.temBoleto ? 'Boleto / arquivos' : 'Arquivos'}
                           </button>
                         </div>
                       ) : null}

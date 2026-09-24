@@ -25,8 +25,9 @@ export async function criarTipoSolicitacao(data) {
     body: JSON.stringify(data)
   });
 
-  if (!res.ok) throw new Error('Erro ao criar tipo');
-  return res.json();
+  const resposta = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(resposta?.error || 'Erro ao criar tipo');
+  return resposta;
 }
 
 export async function atualizarTipoSolicitacao(id, data) {

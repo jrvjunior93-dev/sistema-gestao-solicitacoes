@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
+  Anexo,
   ContaBancaria,
   EmpresaGrupo,
   FormaPagamentoFinanceira,
@@ -69,7 +70,22 @@ function filaInclude() {
         { model: FormaPagamentoFinanceira, as: 'formaPagamento', attributes: ['id', 'nome', 'codigo', 'tipo', 'exige_cartao', 'gera_fatura'] },
         { model: Obra, as: 'obra', attributes: ['id', 'codigo', 'nome', 'empresa_grupo_id'] },
         { model: EmpresaGrupo, as: 'empresa', attributes: ['id', 'codigo', 'nome', 'razao_social', 'cnpj'] },
-        { model: Solicitacao, as: 'solicitacao', attributes: ['id', 'codigo', 'descricao'] }
+        {
+          model: Solicitacao,
+          as: 'solicitacao',
+          attributes: [
+            'id', 'codigo', 'descricao', 'favorecido_id', 'favorecido_chave_pix',
+            'dados_pagamento', 'forma_pagamento_id'
+          ],
+          include: [
+            { model: Parceiro, as: 'favorecido', attributes: ['id', 'nome', 'cpf_cnpj'] },
+            {
+              model: FormaPagamentoFinanceira,
+              as: 'formaPagamento',
+              attributes: ['id', 'nome', 'codigo', 'tipo']
+            }
+          ]
+        }
       ]
     },
     {
@@ -111,7 +127,37 @@ async function listarFilaPagamentos(req, filters = {}) {
     order: [['selecionado_em', 'ASC'], ['id', 'ASC']],
     limit: 500
   });
-  const data = rows.filter((item) => matchesSearch(item, filters.q));
+  const data = rows
+    .filter((item) => matchesSearch(item, filters.q))
+    .map((item) => item.toJSON());
+  const solicitacaoIds = Array.from(new Set(
+    data
+      .map((item) => Number(item?.titulo?.solicitacao_id || item?.titulo?.solicitacao?.id))
+      .filter((id) => Number.isInteger(id) && id > 0)
+  ));
+  const boletos = solicitacaoIds.length > 0
+    ? await Anexo.findAll({
+        where: {
+          solicitacao_id: { [Op.in]: solicitacaoIds },
+          tipo: 'BOLETO',
+          deleted_at: null
+        },
+        attributes: ['id', 'solicitacao_id', 'nome_original'],
+        order: [['id', 'ASC']],
+        raw: true
+      })
+    : [];
+  const boletosPorSolicitacao = boletos.reduce((acc, boleto) => {
+    const id = Number(boleto.solicitacao_id);
+    if (!acc.has(id)) acc.set(id, []);
+    acc.get(id).push({ id: Number(boleto.id), nome: boleto.nome_original });
+    return acc;
+  }, new Map());
+  data.forEach((item) => {
+    const solicitacao = item?.titulo?.solicitacao;
+    if (!solicitacao) return;
+    solicitacao.boletos = boletosPorSolicitacao.get(Number(solicitacao.id)) || [];
+  });
   const counts = await PagamentoManualFilaItem.findAll({
     attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'total']],
     group: ['status'],

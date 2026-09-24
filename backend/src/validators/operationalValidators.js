@@ -1752,6 +1752,7 @@ function validateSolicitacaoCreateBody(body = {}) {
       'favorecido_id',
       'forma_pagamento_id',
       'favorecido_chave_pix',
+      'dados_pagamento',
       'boleto_anexo_nome',
       'despesa_eventual_declaracoes',
       'cartao_recarga_id',
@@ -1792,6 +1793,7 @@ function validateSolicitacaoCreateBody(body = {}) {
     favorecido_id: parseInteger(body.favorecido_id, 'Favorecido'),
     forma_pagamento_id: parseInteger(body.forma_pagamento_id, 'Forma de pagamento'),
     favorecido_chave_pix: parseOptionalText(body.favorecido_chave_pix, 'Chave PIX do favorecido', 255),
+    dados_pagamento: parseOptionalText(body.dados_pagamento, 'Dados para pagamento', 2000),
     boleto_anexo_nome: parseOptionalText(body.boleto_anexo_nome, 'Arquivo do boleto', 255),
     despesa_eventual_declaracoes: body.despesa_eventual_declaracoes && typeof body.despesa_eventual_declaracoes === 'object'
       ? {

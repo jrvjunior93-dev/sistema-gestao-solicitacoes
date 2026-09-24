@@ -903,7 +903,15 @@ async function criarContrato(dados, { usuarioId } = {}) {
 
     if (tipoSubId) {
       const subtipo = await TipoSubContrato.findOne({
-        where: { id: tipoSubId, ativo: true, tipo_macro_id: Number(tipoMacroId) }
+        where: { id: tipoSubId, ativo: true },
+        include: [{
+          model: TipoSolicitacao,
+          as: 'tiposSolicitacao',
+          where: { id: Number(tipoMacroId) },
+          attributes: ['id'],
+          through: { attributes: [] },
+          required: true
+        }]
       });
       if (!subtipo) {
         throw Object.assign(

@@ -532,7 +532,11 @@ export function buildDefaultForm(solicitacao) {
           ].filter(Boolean).join('\n')
         }
       ))
-    : [createPagamento(solicitacao, valorItens)];
+    : [createPagamento(solicitacao, valorItens, '', {
+        observacoes: solicitacao?.dados_pagamento
+          ? `Dados para pagamento: ${solicitacao.dados_pagamento}`
+          : ''
+      })];
   const pagamentos = freteTerceiro
     ? [
         ...pagamentosCompra,

@@ -12,6 +12,16 @@ const destinoInicial = ler('src', 'services', 'novaSolicitacaoDestinoService.js'
 const solicitacoes = ler('src', 'controllers', 'SolicitacaoController.js');
 const compras = ler('src', 'controllers', 'SolicitacaoCompraController.js');
 const contratos = ler('src', 'services', 'contratoFluxoNovoService.js');
+const subtipos = ler('src', 'controllers', 'TipoSubContratoController.js');
+const subtipoMigration = ler('migrations', '202609240004_subtipos_multiplos_tipos_solicitacao.js');
+const telaDestino = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'frontend', 'src', 'pages', 'TiposSolicitacaoPorDestino.jsx'),
+  'utf8'
+);
+const telaSubtipos = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'frontend', 'src', 'pages', 'TiposSubContrato.jsx'),
+  'utf8'
+);
 const novaSolicitacao = fs.readFileSync(
   path.join(__dirname, '..', '..', 'frontend', 'src', 'pages', 'NovaSolicitacao.jsx'),
   'utf8'
@@ -34,5 +44,10 @@ assert(compras.includes('assertTipoDisponivelNoDestino(obra, tipoSolicitacao, { 
 assert(!novaSolicitacao.includes('name="area_responsavel"'), 'A tela nao deve permitir escolher o setor inicial.');
 assert(novaSolicitacao.includes('getTiposSolicitacaoDisponiveis(form.obra_id)'));
 assert(novaSolicitacao.includes('area_responsavel: undefined'));
+assert(telaDestino.includes("rotulo: 'Criar tipo'"), 'A configuração por destino deve oferecer cadastro rápido de tipo.');
+assert(telaDestino.includes('criarTipoSolicitacao({'), 'O atalho deve criar um tipo global reutilizável.');
+assert(subtipoMigration.includes('tipos_sub_contrato_tipos_solicitacao'), 'A relação muitos-para-muitos de subtipos deve possuir migration.');
+assert(subtipos.includes('setTiposSolicitacao'), 'O backend deve sincronizar todos os Tipos de Solicitação do subtipo.');
+assert(telaSubtipos.includes('tipo_solicitacao_ids'), 'A tela deve enviar múltiplos Tipos de Solicitação por subtipo.');
 
 console.log('Catalogo de tipos por Obra/Centro de Custo validado com sucesso.');
