@@ -10,6 +10,7 @@ const { ehTransferencia, hojeLocal, dataIso } = require('./rhPessoalDomain');
 const { vinculoAberto, registrarVinculo } = require('./rhVinculoObraService');
 const { comAtividade, marcarLida, marcarListaLida: registrarListaLida } = require('./rhSolicitacaoAtividadeService');
 const { criarNotificacaoDireta } = require('./notificacoes');
+const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
 
 const camposColaborador = ['id', 'nome', 'matricula', 'cargo', 'obra_id'];
 const camposObra = ['id', 'nome', 'codigo'];
@@ -131,7 +132,7 @@ async function exigirLeitura(s, user, transaction) {
 // do colaborador, inclusive em pedidos legados.
 function resumo(s, ids, usuarioId) {
   const d = dadosDe(s);
-  return { id: s.id, colaborador_id: s.colaborador_id, colaborador: s.colaborador,
+  return { id: s.id, codigo: s.codigo || `RH-${String(s.id).padStart(6, '0')}`, colaborador_id: s.colaborador_id, colaborador: s.colaborador,
     obra_id: s.obra_id, obra: s.obra, obra_destino_id: Number(d.obra_destino_id),
     obra_solicitante_id: Number(d.obra_solicitante_id),
     obra_aprovadora_id: d.aprovacao_automatica ? null : ladoAprovador(s),
@@ -309,6 +310,7 @@ async function abrir(user, payload) {
       dados_json: { obra_destino_id: destino, obra_solicitante_id: fluxo.obraSolicitanteId,
         obra_aprovadora_id: fluxo.obraAprovadoraId, aprovacao_automatica: fluxo.aprovacaoAutomatica }
     }, { transaction });
+    await garantirCodigoRhSolicitacao(s, transaction);
     if (fluxo.aprovacaoAutomatica) {
       await historico(s, user, 'ABERTURA',
         `Transferencia da obra ${origem} para ${destino} aberta com aprovacao automatica.`, transaction);

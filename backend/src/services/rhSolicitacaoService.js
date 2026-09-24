@@ -19,6 +19,7 @@ const { setorParaHistorico } = require('../utils/codigoDoSetor');
 const rhVinculoObraService = require('./rhVinculoObraService');
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { normalizeOriginalName } = require('../utils/fileName');
+const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
 
 /**
  * O PEDIDO DE PESSOAL: a Obra pede, o DP decide (Fase 2 do modulo DP, 25/08).
@@ -230,6 +231,13 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
         && !(Number(dados.carga_horaria_semanal) >= 0)) {
       throw new ValidationError('A carga horaria semanal precisa ser um numero.');
     }
+    const formaCalculo = String(dados.forma_calculo_gerencial || 'MENSAL').toUpperCase();
+    if (!['MENSAL', 'DIARIA'].includes(formaCalculo)) {
+      throw new ValidationError('Informe a forma de calculo gerencial: mensal ou por diaria.');
+    }
+    if (formaCalculo === 'DIARIA' && !(Number(dados.valor_diaria) > 0)) {
+      throw new ValidationError('Informe o valor da diaria do colaborador.');
+    }
   }
 
   if (tipo === 'TROCA_OBRA') {
@@ -249,7 +257,7 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
     }
 
     // AFASTAMENTO: as duas datas, e nunca invertidas.
-    if (['ATESTADO', 'FERIAS', 'RETORNO_AFASTAMENTO'].includes(subtipoNormalizado)) {
+    if (['ATESTADO', 'FERIAS'].includes(subtipoNormalizado)) {
       if (!dados.data_inicial) throw new ValidationError('Informe a data inicial do afastamento.');
       if (!dados.data_final) throw new ValidationError('Informe a data final do afastamento.');
       const dias = diasDeAfastamento(dados.data_inicial, dados.data_final);
@@ -258,6 +266,9 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
           'A data final do afastamento nao pode ser anterior a inicial.'
         );
       }
+    }
+    if (subtipoNormalizado === 'RETORNO_AFASTAMENTO' && !dados.data_retorno) {
+      throw new ValidationError('Informe a data do retorno do colaborador.');
     }
 
     if (subtipoNormalizado === 'ALTERACAO_CARGO' && !dados.novo_cargo_id) {
@@ -271,6 +282,9 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
       if (!dados.data_vigencia) throw new ValidationError('Informe a partir de quando o novo salario vale.');
       if (!String(dados.motivo || '').trim()) {
         throw new ValidationError('Informe o motivo da alteracao salarial.');
+      }
+      if (dados.altera_funcao && !dados.novo_cargo_id) {
+        throw new ValidationError('Selecione o novo cargo quando a alteracao salarial tambem mudar a funcao.');
       }
     }
   }
@@ -355,6 +369,25 @@ function validarPedido(tipo, dados = {}, colaboradorId, subtipo = null) {
       throw new ValidationError('O evento recorrente precisa ser CREDITO ou DESCONTO.');
     }
     if (!(Number(dados.valor) > 0)) throw new ValidationError('Informe o valor do evento recorrente.');
+    const modoValor = String(dados.modo_valor || 'TOTAL').toUpperCase();
+    if (!['TOTAL', 'PARCELA'].includes(modoValor)) {
+      throw new ValidationError('Informe se o valor digitado e o total ou o valor de cada parcela.');
+    }
+    if (String(dados.codigo || '').toUpperCase() === 'PENSAO_ALIMENTICIA') {
+      const documento = String(dados.beneficiario_documento || '').replace(/\D+/g, '');
+      if (!String(dados.beneficiario_nome || '').trim()) {
+        throw new ValidationError('Informe o nome do beneficiario da pensao alimenticia.');
+      }
+      if (documento.length !== 11) {
+        throw new ValidationError('Informe o CPF do beneficiario da pensao alimenticia.');
+      }
+      if (!String(dados.beneficiario_chave_pix || '').trim()
+          && !(String(dados.beneficiario_banco || '').trim()
+            && String(dados.beneficiario_agencia || '').trim()
+            && String(dados.beneficiario_conta || '').trim())) {
+        throw new ValidationError('Informe a chave PIX ou os dados bancarios do beneficiario da pensao.');
+      }
+    }
   }
 }
 
@@ -415,6 +448,7 @@ async function abrirSolicitacao(payload = {}, contexto = {}) {
       },
       { transaction }
     );
+    await garantirCodigoRhSolicitacao(criada, transaction);
 
     await registrarHistorico(
       criada,
@@ -701,6 +735,11 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
         data_admissao: paraDataIso(dados.data_admissao) || hojeIso(),
         data_inicio: paraDataIso(dados.data_admissao) || hojeIso(),
         salario_base: dados.salario_base || null,
+        forma_calculo_gerencial: dados.forma_calculo_gerencial || 'MENSAL',
+        valor_diaria: dados.valor_diaria || null,
+        pagamento_automatico_40_60: dados.forma_calculo_gerencial === 'DIARIA'
+          ? false
+          : Boolean(dados.pagamento_automatico_40_60),
         /**
          * OS CAMPOS DO ITEM 8 QUE NASCEM COM O COLABORADOR.
          *
@@ -887,13 +926,32 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
         vigenciaInicio: dados.data_vigencia,
         motivo: 'ALTERACAO',
         solicitacaoId: solicitacao.id,
-        observacoes: solicitacao.justificativa || null,
+        observacoes: dados.motivo || null,
         criadoPor: contexto.usuarioId || null
       },
       transaction
     );
+    let cargoAlterado = null;
+    if (dados.altera_funcao) {
+      const colaborador = await RhColaborador.findByPk(solicitacao.colaborador_id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      const cargo = await RhCargo.findByPk(dados.novo_cargo_id, { transaction });
+      if (!colaborador) throw new ValidationError('Colaborador da solicitacao nao existe mais.', 404);
+      if (!cargo || !cargo.ativo) throw new ValidationError('O novo cargo nao existe ou esta inativo.');
+      cargoAlterado = {
+        anterior_id: colaborador.cargo_id || null,
+        novo_id: cargo.id,
+        novo_nome: cargo.nome
+      };
+      await colaborador.update(
+        { cargo_id: cargo.id, cargo: cargo.nome, atualizado_por: contexto.usuarioId || null },
+        { transaction }
+      );
+    }
 
-    return { salarioId: registro.id, novoSalario: registro.valor };
+    return { salarioId: registro.id, novoSalario: registro.valor, cargoAlterado };
   }
 
   // ------------------------------------------------------ item 9: alteracao de cargo
@@ -920,15 +978,35 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
   }
 
   /**
-   * AFASTAMENTOS — atestado, ferias e retorno — NAO mexem no cadastro, e isso e deliberado.
+   * AFASTAMENTOS — atestado e ferias — permanecem como eventos aprovados da competencia.
    *
    * O registro aprovado E o efeito: e ele que a apuracao le para descontar, e e ele que o alerta de
    * ferias vencidas da demissao consulta. Criar uma tabela `rh_afastamentos` seria guardar duas
    * vezes o que a solicitacao ja guarda, com as duas livres para divergir.
    *
-   * Os dias sao RECALCULADOS aqui, e nao lidos do que a tela mandou: numero enviado pelo cliente e
+   * O retorno e a excecao: a ciencia do DP reativa formalmente o colaborador. Os dias sao
+   * RECALCULADOS aqui, e nao lidos do que a tela mandou: numero enviado pelo cliente e
    * sugestao, nao verdade. Mesma razao de a parcela da apuracao ser derivada em vez de incrementada.
    */
+  if (efeito === 'MOVIMENTACAO_RETORNO_AFASTAMENTO') {
+    const colaborador = await RhColaborador.findByPk(solicitacao.colaborador_id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!colaborador) throw new ValidationError('Colaborador da solicitacao nao existe mais.', 404);
+    const statusAnterior = colaborador.status || 'AFASTADO';
+    await colaborador.update(
+      { status: 'ATIVO', atualizado_por: contexto.usuarioId || null },
+      { transaction }
+    );
+    return {
+      subtipo: solicitacao.subtipo,
+      dataRetorno: paraDataIso(dados.data_retorno),
+      statusAnterior,
+      statusNovo: 'ATIVO'
+    };
+  }
+
   if (efeito.startsWith('MOVIMENTACAO_')) {
     const dias = diasDeAfastamento(dados.data_inicial, dados.data_final);
     return {
@@ -1008,11 +1086,14 @@ async function aprovarSolicitacao(id, contexto = {}) {
       { transaction }
     );
 
+    const retornoAfastamento = String(solicitacao.subtipo || '').toUpperCase() === 'RETORNO_AFASTAMENTO';
     await registrarHistorico(
       solicitacao,
       {
-        acao: 'APROVACAO',
-        descricao: `Solicitacao de ${solicitacao.tipo} aprovada pelo DP.`,
+        acao: retornoAfastamento ? 'CIENCIA_RETORNO' : 'APROVACAO',
+        descricao: retornoAfastamento
+          ? 'Retorno de afastamento registrado pelo DP; colaborador reativado.'
+          : `Solicitacao de ${solicitacao.tipo} aprovada pelo DP.`,
         setor: contexto.setor,
         situacaoAnterior: SITUACOES.ABERTA,
         situacaoNova: SITUACOES.APROVADA,

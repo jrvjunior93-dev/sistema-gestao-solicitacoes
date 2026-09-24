@@ -230,6 +230,7 @@ function formularioVazio(tipo) {
     // MOVIMENTACAO (afastamentos e alteracao de cargo)
     data_inicial: '',
     data_final: '',
+    data_retorno: '',
     novo_cargo_id: '',
     // DEMISSAO (item 10)
     solicitado_por: '',
@@ -255,6 +256,9 @@ function formularioVazio(tipo) {
     tipo_vinculo: 'CLT',
     data_admissao: '',
     salario_base: '',
+    forma_calculo_gerencial: 'MENSAL',
+    valor_diaria: '',
+    pagamento_automatico_40_60: false,
     // TROCA_OBRA
     obra_destino_id: '',
     data_vigencia: '',
@@ -266,11 +270,20 @@ function formularioVazio(tipo) {
     codigo: 'VALE_ALIMENTACAO',
     natureza: 'CREDITO',
     valor: '',
+    modo_valor: 'TOTAL',
     competencia_inicio: '',
     parcelas_total: '',
+    beneficiario_nome: '',
+    beneficiario_documento: '',
+    beneficiario_banco: '',
+    beneficiario_agencia: '',
+    beneficiario_conta: '',
+    beneficiario_tipo_conta: '',
+    beneficiario_chave_pix: '',
     // ALTERACAO_SALARIAL
     novo_salario: '',
-    motivo: ''
+    motivo: '',
+    altera_funcao: false
   };
 }
 
@@ -389,7 +402,7 @@ export default function RhDpPessoal() {
     {
       id: 'jornada',
       rotulo: 'Pagamento de Mão de Obra',
-      apoio: 'A obra envia a jornada com dias trabalhados, faltas e horas extras; o DP confere e gera a apuração.'
+      apoio: 'A obra envia dias trabalhados, faltas e finais de semana/feriados; o DP confere e gera a apuração.'
     },
     ...(podeVerApuracao ? [{
       id: 'apuracao',
@@ -655,7 +668,14 @@ export default function RhDpPessoal() {
         ),
         tipo_vinculo: f.tipo_vinculo,
         data_admissao: f.data_admissao || undefined,
-        salario_base: normalizeCurrencyTyping(f.salario_base) || undefined
+        salario_base: normalizeCurrencyTyping(f.salario_base) || undefined,
+        forma_calculo_gerencial: f.forma_calculo_gerencial,
+        valor_diaria: f.forma_calculo_gerencial === 'DIARIA'
+          ? normalizeCurrencyTyping(f.valor_diaria) || undefined
+          : undefined,
+        pagamento_automatico_40_60: f.forma_calculo_gerencial === 'MENSAL'
+          ? Boolean(f.pagamento_automatico_40_60)
+          : false
       });
     }
     if (f.tipo === 'TROCA_OBRA') {
@@ -669,11 +689,15 @@ export default function RhDpPessoal() {
         obra_id: Number(f.obra_id) || undefined,
         data_inicial: f.data_inicial || undefined,
         data_final: f.data_final || undefined,
+        data_retorno: f.data_retorno || undefined,
         obra_destino_id: Number(f.obra_destino_id) || undefined,
         data_vigencia: f.data_vigencia || undefined,
-        novo_cargo_id: Number(f.novo_cargo_id) || undefined,
+        novo_cargo_id: f.subtipo === 'ALTERACAO_SALARIAL'
+          ? (f.altera_funcao ? Number(f.novo_cargo_id) || undefined : undefined)
+          : Number(f.novo_cargo_id) || undefined,
         novo_salario: normalizeCurrencyTyping(f.novo_salario) || undefined,
-        motivo: f.motivo || undefined
+        motivo: f.motivo || undefined,
+        altera_funcao: f.subtipo === 'ALTERACAO_SALARIAL' ? Boolean(f.altera_funcao) : undefined
       });
     }
     if (f.tipo === 'DEMISSAO') {
@@ -692,8 +716,18 @@ export default function RhDpPessoal() {
         codigo: f.codigo,
         natureza: f.natureza,
         valor: normalizeCurrencyTyping(f.valor),
+        modo_valor: f.modo_valor,
         competencia_inicio: f.competencia_inicio,
-        parcelas_total: f.parcelas_total ? Number(f.parcelas_total) : null
+        parcelas_total: f.parcelas_total ? Number(f.parcelas_total) : null,
+        beneficiario_nome: f.codigo === 'PENSAO_ALIMENTICIA' ? f.beneficiario_nome : undefined,
+        beneficiario_documento: f.codigo === 'PENSAO_ALIMENTICIA'
+          ? f.beneficiario_documento.replace(/\D/g, '')
+          : undefined,
+        beneficiario_banco: f.codigo === 'PENSAO_ALIMENTICIA' ? f.beneficiario_banco : undefined,
+        beneficiario_agencia: f.codigo === 'PENSAO_ALIMENTICIA' ? f.beneficiario_agencia : undefined,
+        beneficiario_conta: f.codigo === 'PENSAO_ALIMENTICIA' ? f.beneficiario_conta : undefined,
+        beneficiario_tipo_conta: f.codigo === 'PENSAO_ALIMENTICIA' ? f.beneficiario_tipo_conta : undefined,
+        beneficiario_chave_pix: f.codigo === 'PENSAO_ALIMENTICIA' ? f.beneficiario_chave_pix : undefined
       });
     }
     if (f.tipo === 'ALTERACAO_SALARIAL') {
@@ -1338,7 +1372,7 @@ export default function RhDpPessoal() {
                         */}
                         {pedido.tipo !== 'ALTERACAO_SALARIAL' || podeAprovarSalario ? (
                           <button type="button" className="btn btn-primary btn-sm" onClick={() => decidir(pedido, 'aprovar')}>
-                            Aprovar
+                      {pedido.subtipo === 'RETORNO_AFASTAMENTO' ? 'Registrar ciencia' : 'Aprovar'}
                           </button>
                         ) : (
                           <span className="text-sm opacity-70">Aguardando a Diretoria</span>
@@ -1490,6 +1524,35 @@ export default function RhDpPessoal() {
                   <input className="form-control" value={formulario.salario_base}
                     onChange={(e) => setFormulario({ ...formulario, salario_base: formatCurrencyInput(e.target.value) })} />
                 </label>
+
+                <label className="form-field">
+                  <span className="form-label form-label--required">Forma de calculo gerencial</span>
+                  <select className="form-control" value={formulario.forma_calculo_gerencial}
+                    onChange={(e) => setFormulario({
+                      ...formulario,
+                      forma_calculo_gerencial: e.target.value,
+                      pagamento_automatico_40_60: e.target.value === 'DIARIA'
+                        ? false
+                        : formulario.pagamento_automatico_40_60
+                    })}>
+                    <option value="MENSAL">Mensal</option>
+                    <option value="DIARIA">Por diaria</option>
+                  </select>
+                </label>
+
+                {formulario.forma_calculo_gerencial === 'DIARIA' ? (
+                  <label className="form-field">
+                    <span className="form-label form-label--required">Valor da diaria</span>
+                    <input className="form-control" required value={formulario.valor_diaria}
+                      onChange={(e) => setFormulario({ ...formulario, valor_diaria: formatCurrencyInput(e.target.value) })} />
+                  </label>
+                ) : (
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={formulario.pagamento_automatico_40_60}
+                      onChange={(e) => setFormulario({ ...formulario, pagamento_automatico_40_60: e.target.checked })} />
+                    Gerar automaticamente 40% no dia 15 e 60% no fim do mes
+                  </label>
+                )}
               </div>
               <div className="rh-colaboradores-filter-grid">
                 <label className="form-field">
@@ -1654,7 +1717,7 @@ export default function RhDpPessoal() {
                 </select>
                 </label>
 
-                {['ATESTADO', 'FERIAS', 'RETORNO_AFASTAMENTO'].includes(formulario.subtipo) ? (
+                {['ATESTADO', 'FERIAS'].includes(formulario.subtipo) ? (
                   <div className="rh-colaboradores-filter-grid">
                     <label className="form-field">
                       <span className="form-label form-label--required">Data inicial do afastamento</span>
@@ -1680,6 +1743,19 @@ export default function RhDpPessoal() {
                       <input className="form-control" readOnly tabIndex={-1}
                         value={diasEntre(formulario.data_inicial, formulario.data_final) ?? ''} />
                     </label>
+                  </div>
+                ) : null}
+
+                {formulario.subtipo === 'RETORNO_AFASTAMENTO' ? (
+                  <div className="rh-colaboradores-filter-grid">
+                    <label className="form-field">
+                      <span className="form-label form-label--required">Data do retorno</span>
+                      <DateInputBR className="form-control" required value={formulario.data_retorno || ''}
+                        onChange={(e) => setFormulario({ ...formulario, data_retorno: e.target.value })} />
+                    </label>
+                    <p className="text-sm opacity-80">
+                      O Departamento Pessoal registra ciencia e o colaborador volta formalmente para Ativo.
+                    </p>
                   </div>
                 ) : null}
 
@@ -1745,6 +1821,25 @@ export default function RhDpPessoal() {
                       <input className="form-control" required value={formulario.motivo || ''}
                         onChange={(e) => setFormulario({ ...formulario, motivo: e.target.value })} />
                     </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={formulario.altera_funcao}
+                        onChange={(e) => setFormulario({
+                          ...formulario,
+                          altera_funcao: e.target.checked,
+                          novo_cargo_id: e.target.checked ? formulario.novo_cargo_id : ''
+                        })} />
+                      A alteracao salarial tambem muda a funcao
+                    </label>
+                    {formulario.altera_funcao ? (
+                      <label className="form-field">
+                        <span className="form-label form-label--required">Novo cargo</span>
+                        <select className="form-control" required value={formulario.novo_cargo_id || ''}
+                          onChange={(e) => setFormulario({ ...formulario, novo_cargo_id: e.target.value })}>
+                          <option value="">Selecione</option>
+                          {cargos.map((cargo) => <option key={cargo.id} value={cargo.id}>{cargo.nome}</option>)}
+                        </select>
+                      </label>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -1931,11 +2026,69 @@ export default function RhDpPessoal() {
                 </label>
 
                 <label className="form-field">
+                  <span className="form-label form-label--required">Valor informado como</span>
+                  <select className="form-control" value={formulario.modo_valor}
+                    onChange={(e) => setFormulario({ ...formulario, modo_valor: e.target.value })}>
+                    <option value="TOTAL">Valor total a dividir</option>
+                    <option value="PARCELA">Valor de cada parcela</option>
+                  </select>
+                </label>
+
+                <label className="form-field">
                   <span className="form-label form-label--required">Competencia inicial</span>
                   <input className="form-control" placeholder="AAAA-MM"
                     value={formulario.competencia_inicio}
                     onChange={(e) => setFormulario({ ...formulario, competencia_inicio: e.target.value })} required />
                 </label>
+                {Number(formulario.parcelas_total) > 0 && Number(normalizeCurrencyTyping(formulario.valor)) > 0 ? (
+                  <p className="app-note">
+                    Valor estimado da parcela: {formatCurrencyInput(String(
+                      formulario.modo_valor === 'TOTAL'
+                        ? Number(normalizeCurrencyTyping(formulario.valor)) / Number(formulario.parcelas_total)
+                        : Number(normalizeCurrencyTyping(formulario.valor))
+                    ))}
+                  </p>
+                ) : null}
+
+                {formulario.codigo === 'PENSAO_ALIMENTICIA' ? (
+                  <>
+                    <label className="form-field">
+                      <span className="form-label form-label--required">Beneficiario</span>
+                      <input className="form-control" required value={formulario.beneficiario_nome}
+                        onChange={(e) => setFormulario({ ...formulario, beneficiario_nome: e.target.value })} />
+                    </label>
+                    <label className="form-field">
+                      <span className="form-label form-label--required">CPF do beneficiario</span>
+                      <input className="form-control" required value={formulario.beneficiario_documento}
+                        onChange={(e) => setFormulario({ ...formulario, beneficiario_documento: maskCpfCnpj(e.target.value) })} />
+                    </label>
+                    <label className="form-field"><span className="form-label">Banco</span>
+                      <input className="form-control" value={formulario.beneficiario_banco}
+                        onChange={(e) => setFormulario({ ...formulario, beneficiario_banco: e.target.value })} />
+                    </label>
+                    <label className="form-field"><span className="form-label">Agencia</span>
+                      <input className="form-control" value={formulario.beneficiario_agencia}
+                        onChange={(e) => setFormulario({ ...formulario, beneficiario_agencia: e.target.value })} />
+                    </label>
+                    <label className="form-field"><span className="form-label">Conta</span>
+                      <input className="form-control" value={formulario.beneficiario_conta}
+                        onChange={(e) => setFormulario({ ...formulario, beneficiario_conta: e.target.value })} />
+                    </label>
+                    <label className="form-field"><span className="form-label">Tipo de conta</span>
+                      <select className="form-control" value={formulario.beneficiario_tipo_conta}
+                        onChange={(e) => setFormulario({ ...formulario, beneficiario_tipo_conta: e.target.value })}>
+                        <option value="">Selecione</option>
+                        <option value="CORRENTE">Corrente</option>
+                        <option value="POUPANCA">Poupanca</option>
+                        <option value="SALARIO">Salario</option>
+                      </select>
+                    </label>
+                    <label className="form-field"><span className="form-label">Chave PIX</span>
+                      <input className="form-control" value={formulario.beneficiario_chave_pix}
+                        onChange={(e) => setFormulario({ ...formulario, beneficiario_chave_pix: e.target.value })} />
+                    </label>
+                  </>
+                ) : null}
 
                 <label className="form-field">
                   <span className="form-label">Parcelas</span>
@@ -1975,12 +2128,15 @@ export default function RhDpPessoal() {
               </div>
             ) : null}
 
+            {!(formulario.tipo === 'MOVIMENTACAO' && formulario.subtipo === 'ALTERACAO_SALARIAL')
+              && formulario.tipo !== 'ALTERACAO_SALARIAL' ? (
             <label className="form-field">
               <span className="form-label">Justificativa</span>
               <textarea className="form-control" rows={2}
                 value={formulario.justificativa}
                 onChange={(e) => setFormulario({ ...formulario, justificativa: e.target.value })} />
             </label>
+            ) : null}
 
 
             {/*

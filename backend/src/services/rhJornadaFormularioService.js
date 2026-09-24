@@ -16,6 +16,7 @@ const { ValidationError } = require('../middlewares/validation');
 const rhVinculoObraService = require('./rhVinculoObraService');
 const { diasVinculados } = require('./rhPessoalDomain');
 const { setorParaHistorico } = require('../utils/codigoDoSetor');
+const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
 
 /**
  * JORNADA PELO FORMULARIO, sem planilha (Fase 4 do modulo DP, 26/08).
@@ -208,6 +209,23 @@ async function registrarJornada(dados = {}, contexto = {}) {
       if (!porId.has(id)) throw new ValidationError(`Colaborador #${id} nao encontrado.`, 404);
     }
 
+    const vinculosDistribuicao = await RhColaboradorVinculo.findAll({
+      where: {
+        colaborador_id: { [Op.in]: Array.from(vistos) },
+        obra_id: { [Op.ne]: null },
+        vigencia_inicio: { [Op.lte]: periodo.fim },
+        [Op.or]: [{ vigencia_fim: null }, { vigencia_fim: { [Op.gte]: periodo.inicio } }]
+      },
+      attributes: ['colaborador_id', 'obra_id'],
+      transaction
+    });
+    const obrasPorColaborador = new Map();
+    vinculosDistribuicao.forEach((vinculo) => {
+      const colaboradorId = Number(vinculo.colaborador_id);
+      if (!obrasPorColaborador.has(colaboradorId)) obrasPorColaborador.set(colaboradorId, new Set());
+      obrasPorColaborador.get(colaboradorId).add(Number(vinculo.obra_id));
+    });
+
     /**
      * QUEM ESTAVA NESTA OBRA NESTA COMPETENCIA — usando o vinculo da Fase 1.
      *
@@ -320,11 +338,39 @@ async function registrarJornada(dados = {}, contexto = {}) {
       numero += 1;
       const colaboradorId = Number(linha.colaborador_id);
 
-      const dias = numeroNaoNegativo(linha.dias_trabalhados, 'Dias trabalhados', colaboradorId);
+      const colaborador = porId.get(colaboradorId);
+      const obrasDistribuicao = Array.from(obrasPorColaborador.get(colaboradorId) || []).sort((a, b) => a - b);
+      const marcouMultiplasObras = Boolean(linha.mais_de_uma_obra);
+      if (marcouMultiplasObras && obrasDistribuicao.length < 2) {
+        throw new ValidationError(
+          `${colaborador.nome} foi marcado em mais de uma obra, mas possui somente uma lotacao no periodo.`
+        );
+      }
+      const aprovacaoDistribuicao = marcouMultiplasObras
+        ? (!Array.isArray(contexto.obraIds)
+          || obrasDistribuicao.every((id) => contexto.obraIds.includes(id))
+          ? 'AUTOMATICA_MESMO_RESPONSAVEL'
+          : 'AGUARDANDO_RESPONSAVEIS')
+        : 'NAO_APLICAVEL';
+      const formaCalculo = String(colaborador.forma_calculo_gerencial || 'MENSAL').toUpperCase();
+      const finaisSemanaFeriados = numeroNaoNegativo(
+        linha.finais_semana_feriados,
+        'Finais de semana e feriados',
+        colaboradorId
+      );
       const faltas = numeroNaoNegativo(linha.faltas, 'Faltas', colaboradorId);
-      const limiteVinculo = diasVinculados(vinculosDaObra, porId.get(colaboradorId), periodo);
+      const limiteVinculo = diasVinculados(vinculosDaObra, colaborador, periodo);
+      if (finaisSemanaFeriados + faltas > limiteVinculo) {
+        throw new ValidationError(
+          `${colaborador.nome}: finais de semana/feriados mais faltas nao podem ultrapassar `
+          + `${limiteVinculo} dia(s) de vinculo no periodo.`
+        );
+      }
+      const dias = formaCalculo === 'DIARIA'
+        ? Math.max(0, limiteVinculo - finaisSemanaFeriados - faltas)
+        : numeroNaoNegativo(linha.dias_trabalhados, 'Dias trabalhados', colaboradorId);
       if (dias + faltas > limiteVinculo) {
-        throw new ValidationError(`${porId.get(colaboradorId).nome}: dias trabalhados mais faltas nao podem ultrapassar ${limiteVinculo} dia(s) de vinculo nesta obra no periodo.`);
+        throw new ValidationError(`${colaborador.nome}: dias trabalhados mais faltas nao podem ultrapassar ${limiteVinculo} dia(s) de vinculo nesta obra no periodo.`);
       }
 
       if (dias > diasBase) {
@@ -352,9 +398,16 @@ async function registrarJornada(dados = {}, contexto = {}) {
           // confirmada porque nao ha etapa de conferencia de arquivo para atravessar.
           status: 'CONFIRMADA',
           payload_json: {
+            mais_de_uma_obra: marcouMultiplasObras,
+            obras_distribuicao_ids: marcouMultiplasObras ? obrasDistribuicao : [obraId],
+            aprovacao_distribuicao: aprovacaoDistribuicao,
             dias_trabalhados: dias,
+            dias_corridos: limiteVinculo,
+            finais_semana_feriados: finaisSemanaFeriados,
             faltas,
-            horas_extras: numeroNaoNegativo(linha.horas_extras, 'Horas extras', colaboradorId),
+            // O campo antigo permanece apenas no historico. Novos formularios nao registram hora
+            // extra, conforme a regra operacional atual.
+            horas_extras: 0,
             /**
              * OS QUATRO ADICIONAIS SEPARADOS (Fase 12, item 11 do escopo).
              *
@@ -371,7 +424,11 @@ async function registrarJornada(dados = {}, contexto = {}) {
             // gravados antes desta fase. Somar as cinco e trabalho do calculo, nao do schema.
             adicionais: numeroNaoNegativo(linha.adicionais, 'Acrescimos', colaboradorId),
             descontos_informados: numeroNaoNegativo(linha.descontos, 'Descontos', colaboradorId),
-            valor_informado: numeroNaoNegativo(linha.valor_informado, 'Valor informado', colaboradorId),
+            valor_informado: formaCalculo === 'DIARIA'
+              ? Number((dias * Number(colaborador.valor_diaria || 0)).toFixed(2))
+              : numeroNaoNegativo(linha.valor_informado, 'Valor informado', colaboradorId),
+            forma_calculo_gerencial: formaCalculo,
+            valor_diaria: Number(colaborador.valor_diaria || 0),
             observacoes: linha.observacoes || null
           }
         },
@@ -435,6 +492,7 @@ async function registrarJornada(dados = {}, contexto = {}) {
         justificativa: dados.observacoes || null,
         criada_por: contexto.usuarioId || null
       }, { transaction });
+      await garantirCodigoRhSolicitacao(solicitacao, transaction);
       await RhSolicitacaoHistorico.create({
         solicitacao_id: solicitacao.id,
         usuario_id: contexto.usuarioId || null,
@@ -464,7 +522,7 @@ async function registrarPagamentoIndividual(dados = {}, contexto = {}) {
         colaborador_id: dados.colaborador_id,
         dias_trabalhados: dados.dias_trabalhados,
         faltas: dados.faltas,
-        horas_extras: dados.horas_extras,
+        finais_semana_feriados: dados.finais_semana_feriados,
         adicional_noturno: dados.adicional_noturno,
         adicional_insalubridade: dados.adicional_insalubridade,
         adicional_periculosidade: dados.adicional_periculosidade,
@@ -544,6 +602,9 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
     status: vinculo.colaborador.status,
     tipo_vinculo: vinculo.colaborador.tipo_vinculo,
     salario_base: vinculo.colaborador.salario_base,
+    forma_calculo_gerencial: vinculo.colaborador.forma_calculo_gerencial || 'MENSAL',
+    valor_diaria: vinculo.colaborador.valor_diaria,
+    pagamento_automatico_40_60: Boolean(vinculo.colaborador.pagamento_automatico_40_60),
     jornada_informada: porColaborador.get(Number(vinculo.colaborador_id))?.linha?.payload_json || null,
     jornada_linha_id: porColaborador.get(Number(vinculo.colaborador_id))?.linha?.id || null,
     edicao_jornada: porColaborador.get(Number(vinculo.colaborador_id))?.edicao || null,

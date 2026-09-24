@@ -104,6 +104,11 @@ function linhaVazia(colaborador) {
     nome: colaborador.nome,
     tipo_vinculo: colaborador.tipo_vinculo,
     salario_base: colaborador.salario_base,
+    forma_calculo_gerencial: colaborador.forma_calculo_gerencial || 'MENSAL',
+    valor_diaria: colaborador.valor_diaria,
+    pagamento_automatico_40_60: Boolean(colaborador.pagamento_automatico_40_60),
+    mais_de_uma_obra: Boolean(ja.mais_de_uma_obra),
+    aprovacao_distribuicao: ja.aprovacao_distribuicao || null,
     diasVinculados: Number(colaborador.dias_vinculados ?? 0),
     jaInformado: Boolean(colaborador.jornada_informada),
     jornadaLinhaId: colaborador.jornada_linha_id || null,
@@ -112,8 +117,8 @@ function linhaVazia(colaborador) {
     aindaNaoComecou: Boolean(colaborador.ainda_nao_comecou),
     comecaEm: colaborador.comeca_em || null,
     dias_trabalhados: ja.dias_trabalhados ?? '',
+    finais_semana_feriados: ja.finais_semana_feriados ?? '',
     faltas: ja.faltas ?? '',
-    horas_extras: ja.horas_extras ?? '',
     adicionais: ja.adicionais ? formatCurrencyInput(String(ja.adicionais)) : '',
     descontos: ja.descontos_informados ? formatCurrencyInput(String(ja.descontos_informados)) : '',
     observacoes: ja.observacoes || ''
@@ -415,7 +420,19 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   }, [obra, competencia, periodicidade, periodoInicio, periodoFim, avisar, limpar]);
 
   function alterar(indice, campo, valor) {
-    setLinhas((atuais) => atuais.map((linha, i) => (i === indice ? { ...linha, [campo]: valor } : linha)));
+    setLinhas((atuais) => atuais.map((linha, i) => {
+      if (i !== indice) return linha;
+      const proxima = { ...linha, [campo]: valor };
+      if (proxima.forma_calculo_gerencial === 'DIARIA'
+          && ['finais_semana_feriados', 'faltas'].includes(campo)) {
+        const limite = Math.min(Number(diasBase), Number(proxima.diasVinculados || 0));
+        proxima.dias_trabalhados = String(Math.max(
+          0,
+          limite - Number(proxima.finais_semana_feriados || 0) - Number(proxima.faltas || 0)
+        ));
+      }
+      return proxima;
+    }));
   }
 
   /** Preenche o período de uma vez — o caso comum é quase todo mundo ter trabalhado todos os dias. */
@@ -423,7 +440,15 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     setLinhas((atuais) => atuais.map((linha) => (
       linha.aindaNaoComecou || !podeEditarLinha(linha) ? linha : {
       ...linha,
-      dias_trabalhados: linha.dias_trabalhados === '' ? String(Math.max(0, Math.min(Number(diasBase), linha.diasVinculados) - Number(linha.faltas || 0))) : linha.dias_trabalhados,
+      finais_semana_feriados: linha.finais_semana_feriados === '' ? '0' : linha.finais_semana_feriados,
+      dias_trabalhados: linha.dias_trabalhados === '' || linha.forma_calculo_gerencial === 'DIARIA'
+        ? String(Math.max(
+          0,
+          Math.min(Number(diasBase), linha.diasVinculados)
+            - Number(linha.finais_semana_feriados || 0)
+            - Number(linha.faltas || 0)
+        ))
+        : linha.dias_trabalhados,
       faltas: linha.faltas === '' ? '0' : linha.faltas
       }
     )));
@@ -440,8 +465,12 @@ export default function RhDpJornada({ onAbrirApuracao }) {
 
   const comProblema = useMemo(() => linhas.filter((linha) => {
     const dias = Number(linha.dias_trabalhados || 0);
+    const finaisSemanaFeriados = Number(linha.finais_semana_feriados || 0);
     const faltas = Number(linha.faltas || 0);
-    return dias + faltas > Math.min(Number(diasBase), linha.diasVinculados);
+    const usado = linha.forma_calculo_gerencial === 'DIARIA'
+      ? finaisSemanaFeriados + faltas
+      : dias + faltas;
+    return usado > Math.min(Number(diasBase), linha.diasVinculados);
   }), [linhas, diasBase]);
 
   const dimensoesFiltro = useMemo(() => {
@@ -563,7 +592,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     const preenchidas = linhas
       .filter((l) => !l.aindaNaoComecou)
       .filter((l) => podeEditarLinha(l))
-      .filter((l) => l.dias_trabalhados !== '' || l.faltas !== '');
+      .filter((l) => l.dias_trabalhados !== '' || l.faltas !== '' || l.finais_semana_feriados !== '');
     if (!preenchidas.length) {
       avisar.erro('Informe a jornada de um colaborador novo ou solicite ao DP a edição de uma linha já enviada.');
       return;
@@ -571,7 +600,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
 
     if (comProblema.length) {
       avisar.erro(
-        'Dias trabalhados mais faltas ultrapassam o limite do vínculo no período: '
+        'A soma de dias informados, faltas e dias nao remuneraveis ultrapassa o limite do vinculo: '
         + `${comProblema.map((l) => `${l.nome} (máximo ${Math.min(Number(diasBase), l.diasVinculados)})`).join(', ')}.`
       );
       return;
@@ -601,9 +630,10 @@ export default function RhDpJornada({ onAbrirApuracao }) {
         dias_base: Number(diasBase),
         linhas: preenchidas.map((l) => ({
           colaborador_id: l.colaborador_id,
+          mais_de_uma_obra: Boolean(l.mais_de_uma_obra),
           dias_trabalhados: Number(l.dias_trabalhados || 0),
+          finais_semana_feriados: Number(l.finais_semana_feriados || 0),
           faltas: Number(l.faltas || 0),
-          horas_extras: Number(l.horas_extras || 0),
           adicionais: normalizeCurrencyTyping(l.adicionais) || 0,
           descontos: normalizeCurrencyTyping(l.descontos) || 0,
           observacoes: l.observacoes || undefined
@@ -954,7 +984,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       */}
       <BlocoConteudo
         titulo="Jornada da obra"
-        descricao="A obra informa dias trabalhados, faltas, horas extras, acréscimos e descontos. O sistema calcula o pagamento."
+        descricao="Informe os dias efetivamente trabalhados em cada obra, faltas, finais de semana/feriados e ajustes. Em transferências na mesma competência, envie a parte de cada obra: o sistema reunirá o pagamento em um único título e fará o rateio financeiro entre elas."
         variante={linhas.length ? undefined : 'primario'}
         cor={linhas.length ? undefined : 'var(--c-primary)'}
         acoes={(
@@ -1143,10 +1173,38 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                 },
                 { id: 'limiteVinculo', titulo: 'Dias na obra', tipo: 'numero', render: linha => linha.diasVinculados },
                 {
+                  id: 'multiplas_obras',
+                  titulo: 'Mais de uma obra',
+                  tipo: 'booleano',
+                  render: (linha) => (linha.aindaNaoComecou ? <span className="opacity-50">—</span> : (
+                    <div className="space-y-1 text-center">
+                      <label className="flex items-center justify-center gap-2" title="Marque quando os dias desta competência serão distribuídos entre mais de uma obra.">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(linha.mais_de_uma_obra)}
+                          disabled={!podeEditarLinha(linha)}
+                          onChange={(event) => alterar(linha.__indice, 'mais_de_uma_obra', event.target.checked)}
+                          aria-label={`Trabalhou em mais de uma obra: ${linha.nome}`}
+                        />
+                        <span className="app-note">Sim</span>
+                      </label>
+                      {linha.mais_de_uma_obra && linha.jaInformado ? (
+                        <span className="app-note block">
+                          {linha.aprovacao_distribuicao === 'AUTOMATICA_MESMO_RESPONSAVEL'
+                            ? 'Aprovação automática'
+                            : 'Validação pelas obras'}
+                        </span>
+                      ) : null}
+                    </div>
+                  ))
+                },
+                {
                   id: 'salario',
-                  titulo: 'Salário',
+                  titulo: 'Base de calculo',
                   tipo: 'valor',
-                  render: (linha) => (linha.salario_base ? formatCurrencyInput(String(linha.salario_base)) : '—')
+                  render: (linha) => (linha.forma_calculo_gerencial === 'DIARIA'
+                    ? `${formatCurrencyInput(String(linha.valor_diaria || 0))} / diaria`
+                    : (linha.salario_base ? formatCurrencyInput(String(linha.salario_base)) : '—'))
                 },
                 {
                   id: 'dias',
@@ -1163,7 +1221,25 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                       aria-label={`Dias trabalhados de ${linha.nome}`}
                       value={linha.dias_trabalhados}
                       disabled={!podeEditarLinha(linha)}
+                      readOnly={linha.forma_calculo_gerencial === 'DIARIA'}
                       onChange={(e) => alterar(linha.__indice, 'dias_trabalhados', e.target.value)}
+                    />
+                  ))
+                },
+                {
+                  id: 'finais_semana_feriados',
+                  titulo: 'Fim de semana / feriado',
+                  tipo: 'numero',
+                  render: (linha) => (linha.aindaNaoComecou ? <span className="opacity-50">—</span> : (
+                    <input
+                      className="form-control rh-jornada-numero"
+                      type="number"
+                      min="0"
+                      max={Math.min(Number(diasBase), linha.diasVinculados)}
+                      aria-label={`Finais de semana e feriados de ${linha.nome}`}
+                      value={linha.finais_semana_feriados}
+                      disabled={!podeEditarLinha(linha) || linha.forma_calculo_gerencial !== 'DIARIA'}
+                      onChange={(e) => alterar(linha.__indice, 'finais_semana_feriados', e.target.value)}
                     />
                   ))
                 },
@@ -1181,23 +1257,6 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                       value={linha.faltas}
                       disabled={!podeEditarLinha(linha)}
                       onChange={(e) => alterar(linha.__indice, 'faltas', e.target.value)}
-                    />
-                  ))
-                },
-                {
-                  id: 'horas',
-                  titulo: 'Horas extras',
-                  tipo: 'numero',
-                  render: (linha) => (linha.aindaNaoComecou ? <span className="opacity-50">—</span> : (
-                    <input
-                      className="form-control rh-jornada-numero"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      aria-label={`Horas extras de ${linha.nome}`}
-                      value={linha.horas_extras}
-                      disabled={!podeEditarLinha(linha)}
-                      onChange={(e) => alterar(linha.__indice, 'horas_extras', e.target.value)}
                     />
                   ))
                 },
@@ -1303,7 +1362,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
 
           {comProblema.length ? (
             <div className="app-alert app-alert--error">
-              Dias mais faltas ultrapassam o limite por vínculo: {comProblema.map((l) => `${l.nome} (máximo ${Math.min(Number(diasBase), l.diasVinculados)})`).join(', ')}.
+              Os dias informados ultrapassam o limite do vínculo: {comProblema.map((l) => `${l.nome} (máximo ${Math.min(Number(diasBase), l.diasVinculados)})`).join(', ')}.
             </div>
           ) : null}
 

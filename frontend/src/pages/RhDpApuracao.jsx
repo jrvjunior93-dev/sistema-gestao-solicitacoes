@@ -82,6 +82,20 @@ function getLastDayOfCompetencia(competencia) {
   return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 }
 
+function getCompetenciaDay(competencia, day) {
+  const [year, month] = String(competencia || '').split('-').map(Number);
+  if (!year || !month) return new Date().toISOString().slice(0, 10);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month - 1, Math.min(day, lastDay))).toISOString().slice(0, 10);
+}
+
+function anticipateWeekend(dateOnly) {
+  const date = new Date(`${dateOnly}T12:00:00Z`);
+  if (date.getUTCDay() === 6) date.setUTCDate(date.getUTCDate() - 1);
+  if (date.getUTCDay() === 0) date.setUTCDate(date.getUTCDate() - 2);
+  return date.toISOString().slice(0, 10);
+}
+
 // A pilula de status e do StatusBadge (dono unico, R16). O `kind` preserva as
 // MESMAS familias que as classes escritas a mao usavam: conferida = sucesso,
 // rascunho = atencao.
@@ -135,6 +149,12 @@ function getDefaultPixValue(item) {
   return getPixOptions(item)[0]?.value || '';
 }
 
+function getContaPagamentoLabel(item) {
+  const pagamento = item?.colaborador?.pagamento || {};
+  if (!pagamento.banco || !pagamento.agencia || !pagamento.conta) return '';
+  return `${pagamento.tipo_conta || 'Conta'} · ${pagamento.banco} · Ag. ${pagamento.agencia} · Cc. ${pagamento.conta}`;
+}
+
 function toEditState(item) {
   return {
     ajuste_credito_manual: item?.ajuste_credito_manual ?? '0',
@@ -143,6 +163,29 @@ function toEditState(item) {
     status: item?.status || 'PENDENTE',
     chave_pix_titulo: item?.detalhes_json?.pagamento?.chave_pix_titulo || getDefaultPixValue(item)
   };
+}
+
+function buildFechamentoAjustes(itens = []) {
+  return Object.fromEntries(
+    itens
+      .filter((item) => item?.colaborador?.forma_calculo_gerencial !== 'DIARIA'
+        && item?.colaborador?.pagamento_automatico_40_60)
+      .map((item) => {
+        const colaborador = item.colaborador || {};
+        const salarioBruto = String(colaborador.tipo_vinculo || '').toUpperCase() === 'CLT'
+          ? Number(colaborador.salario_base || colaborador.valor_contratual || item.valor_base_calculo || 0)
+          : Number(colaborador.valor_contratual || colaborador.salario_base || item.valor_base_calculo || 0);
+        const liquido = Number(item.valor_liquido || 0);
+        const baseProporcionalObra = Number(item.detalhes_json?.resumo?.valor_proporcional || salarioBruto);
+        const valor40 = Math.min(Number((baseProporcionalObra * 0.4).toFixed(2)), liquido);
+        return [item.id, {
+          valor_40: valor40.toFixed(2),
+          valor_60: Math.max(0, Number((liquido - valor40).toFixed(2))).toFixed(2),
+          observacao: '',
+          alterado: false
+        }];
+      })
+  );
 }
 
 /**
@@ -241,9 +284,11 @@ export default function RhDpApuracao() {
   }));
   const [fechamentoForm, setFechamentoForm] = useState({
     data_fechamento: new Date().toISOString().slice(0, 10),
-    data_vencimento: '',
+    data_vencimento_40: '',
+    data_vencimento_60: '',
     categoria_financeira_id: '',
-    observacoes: ''
+    observacoes: '',
+    ajustes_titulos: {}
   });
 
   useEffect(() => {
@@ -265,9 +310,11 @@ export default function RhDpApuracao() {
     setEdicoes(next);
     setFechamentoForm({
       data_fechamento: new Date().toISOString().slice(0, 10),
-      data_vencimento: getLastDayOfCompetencia(detalhe?.competencia),
+      data_vencimento_40: anticipateWeekend(getCompetenciaDay(detalhe?.competencia, 15)),
+      data_vencimento_60: anticipateWeekend(getLastDayOfCompetencia(detalhe?.competencia)),
       categoria_financeira_id: '',
-      observacoes: ''
+      observacoes: '',
+      ajustes_titulos: buildFechamentoAjustes(detalhe?.itens || [])
     });
   }, [detalhe]);
 
@@ -442,7 +489,16 @@ export default function RhDpApuracao() {
       setFechando(true);
       const data = await fecharRhApuracao(detalhe.id, {
         data_fechamento: fechamentoForm.data_fechamento || undefined,
-        data_vencimento: fechamentoForm.data_vencimento || undefined,
+        data_vencimento_40: fechamentoForm.data_vencimento_40 || undefined,
+        data_vencimento_60: fechamentoForm.data_vencimento_60 || undefined,
+        ajustes_titulos: Object.entries(fechamentoForm.ajustes_titulos || {})
+          .filter(([, ajuste]) => ajuste.alterado)
+          .map(([itemId, ajuste]) => ({
+            apuracao_evento_id: Number(itemId),
+            valor_40: Number(ajuste.valor_40 || 0),
+            valor_60: Number(ajuste.valor_60 || 0),
+            observacao: ajuste.observacao || undefined
+          })),
         categoria_financeira_id: fechamentoForm.categoria_financeira_id
           ? Number(fechamentoForm.categoria_financeira_id)
           : undefined,
@@ -863,11 +919,20 @@ export default function RhDpApuracao() {
                     />
                   </CampoForm>
 
-                  <CampoForm label="Data de vencimento">
+                  <CampoForm label="Vencimento do adiantamento (40%)">
                     <DateInputBR
                       className="input w-full"
-                      value={fechamentoForm.data_vencimento}
-                      onChange={(event) => setFechamentoForm((current) => ({ ...current, data_vencimento: event.target.value }))}
+                      value={fechamentoForm.data_vencimento_40}
+                      onChange={(event) => setFechamentoForm((current) => ({ ...current, data_vencimento_40: event.target.value }))}
+                      disabled={fechando}
+                    />
+                  </CampoForm>
+
+                  <CampoForm label="Vencimento do saldo (60%) e diárias">
+                    <DateInputBR
+                      className="input w-full"
+                      value={fechamentoForm.data_vencimento_60}
+                      onChange={(event) => setFechamentoForm((current) => ({ ...current, data_vencimento_60: event.target.value }))}
                       disabled={fechando}
                     />
                   </CampoForm>
@@ -875,7 +940,6 @@ export default function RhDpApuracao() {
                   <CampoForm
                     label="Categoria financeira"
                     obrigatorio
-                    span={2}
                     hint={!carregandoCategorias && !categoriasFinanceiras.length
                       ? 'Cadastre uma categoria PAGAR/AMBOS marcada para DRE e com grupo DRE antes de fechar.'
                       : undefined}
@@ -927,7 +991,7 @@ export default function RhDpApuracao() {
                 render: (item) => (
                   <CelulaDupla
                     principal={item.colaborador?.nome || '-'}
-                    sub={`${item.colaborador?.matricula || '-'} | ${item.colaborador?.cargo || '-'}`}
+                    sub={`${item.colaborador?.matricula || '-'} | ${item.colaborador?.cargo || '-'} | ${item.colaborador?.empresaGrupo?.nome || 'Empresa nao informada'}`}
                   />
                 )
               },
@@ -944,10 +1008,54 @@ export default function RhDpApuracao() {
                 render: (item) => formatNumber(item.dias_trabalhados)
               },
               {
-                id: 'horas_extras',
-                titulo: 'Horas extras',
-                tipo: 'numero',
-                render: (item) => formatNumber(item.horas_extras)
+                id: 'calculo',
+                titulo: 'Calculo',
+                tipo: 'badge',
+                render: (item) => item.colaborador?.forma_calculo_gerencial === 'DIARIA'
+                  ? `Diaria ${formatCurrency(item.colaborador?.valor_diaria || 0)}`
+                  : (item.colaborador?.pagamento_automatico_40_60 ? 'Mensal 40% / 60%' : 'Mensal')
+              },
+              {
+                id: 'parcelas_40_60',
+                sempreVisivel: true,
+                titulo: 'Distribuição dos títulos',
+                tipo: 'texto',
+                render: (item) => {
+                  const automatico = item.colaborador?.forma_calculo_gerencial !== 'DIARIA'
+                    && item.colaborador?.pagamento_automatico_40_60;
+                  if (!automatico) return 'Título único';
+                  const ajuste = fechamentoForm.ajustes_titulos?.[item.id];
+                  if (!ajuste) return '40% / 60%';
+                  const atualizar = (campo, valor) => setFechamentoForm((current) => ({
+                    ...current,
+                    ajustes_titulos: {
+                      ...current.ajustes_titulos,
+                      [item.id]: { ...current.ajustes_titulos[item.id], [campo]: valor, alterado: true }
+                    }
+                  }));
+                  const habilitado = detalhe.status === 'CONFERIDA' && !detalhe.fechamentoRh && podeFechar;
+                  return (
+                    <div className="space-y-1 min-w-[210px]">
+                      <div className="grid grid-cols-2 gap-1">
+                        <label className="app-note">
+                          40%
+                          <input className="input mt-1" type="number" min="0" step="0.01"
+                            value={ajuste.valor_40} disabled={!habilitado}
+                            onChange={(event) => atualizar('valor_40', event.target.value)} />
+                        </label>
+                        <label className="app-note">
+                          Saldo
+                          <input className="input mt-1" type="number" min="0" step="0.01"
+                            value={ajuste.valor_60} disabled={!habilitado}
+                            onChange={(event) => atualizar('valor_60', event.target.value)} />
+                        </label>
+                      </div>
+                      <input className="input" placeholder="Observação se alterar os valores"
+                        value={ajuste.observacao} disabled={!habilitado}
+                        onChange={(event) => atualizar('observacao', event.target.value)} />
+                    </div>
+                  );
+                }
               },
               {
                 id: 'bruto',
@@ -975,11 +1083,12 @@ export default function RhDpApuracao() {
               {
                 id: 'pix',
                 sempreVisivel: true,
-                titulo: 'PIX do título',
+                titulo: 'Conta de pagamento',
                 tipo: 'texto',
                 // Edicao inline: o controle mora no render da coluna.
                 render: (item) => {
                   const pixOptions = getPixOptions(item);
+                  const contaLabel = getContaPagamentoLabel(item);
                   return (
                     <>
                       <select
@@ -1006,7 +1115,9 @@ export default function RhDpApuracao() {
                           ))
                         )}
                       </select>
-                      <span className="app-note mt-1 block">Principal usada por padrão.</span>
+                      <span className="app-note mt-1 block">
+                        {pixOptions.length ? 'PIX principal usado por padrão.' : (contaLabel || 'Pagamento não configurado.')}
+                      </span>
                     </>
                   );
                 }

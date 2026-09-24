@@ -93,6 +93,22 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.DECIMAL(14, 2),
       allowNull: true
     },
+    // O vinculo trabalhista e a forma de calculo gerencial sao dimensoes diferentes: um CLT pode
+    // receber por diaria no controle interno, sem mudar a natureza formal do contrato.
+    forma_calculo_gerencial: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: 'MENSAL'
+    },
+    valor_diaria: {
+      type: DataTypes.DECIMAL(14, 2),
+      allowNull: true
+    },
+    pagamento_automatico_40_60: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
     observacoes: {
       type: DataTypes.TEXT,
       allowNull: true

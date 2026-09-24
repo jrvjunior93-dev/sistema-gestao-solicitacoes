@@ -2081,10 +2081,10 @@ db.RhFechamentoTitulo.belongsTo(db.RhFechamento, {
   as: 'fechamento'
 });
 
-db.RhApuracaoEvento.hasOne(db.RhFechamentoTitulo, {
-  foreignKey: 'apuracao_evento_id',
-  as: 'fechamentoTituloRh'
-});
+  db.RhApuracaoEvento.hasMany(db.RhFechamentoTitulo, {
+    foreignKey: 'apuracao_evento_id',
+    as: 'fechamentoTitulosRh'
+  });
 
 db.RhFechamentoTitulo.belongsTo(db.RhApuracaoEvento, {
   foreignKey: 'apuracao_evento_id',
@@ -2094,6 +2094,11 @@ db.RhFechamentoTitulo.belongsTo(db.RhApuracaoEvento, {
 db.TituloFinanceiro.hasOne(db.RhFechamentoTitulo, {
   foreignKey: 'titulo_financeiro_id',
   as: 'fechamentoRh'
+});
+
+db.TituloFinanceiro.hasMany(db.RhFechamentoTitulo, {
+  foreignKey: 'titulo_financeiro_id',
+  as: 'fechamentosRh'
 });
 
 db.RhFechamentoTitulo.belongsTo(db.TituloFinanceiro, {

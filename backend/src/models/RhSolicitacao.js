@@ -2,6 +2,7 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
   'RhSolicitacao',
   {
     id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+    codigo: { type: DataTypes.STRING(30), allowNull: true, unique: true },
     // Nulo na ADMISSAO: o colaborador so passa a existir quando o DP aprova.
     colaborador_id: { type: DataTypes.INTEGER, allowNull: true },
     // ADMISSAO | DEMISSAO | MOVIMENTACAO | PAGAMENTO_MAO_DE_OBRA | EVENTO_RECORRENTE | JORNADA

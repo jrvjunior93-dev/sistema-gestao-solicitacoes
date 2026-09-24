@@ -670,7 +670,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
                 <>
                   {s.tipo !== 'ALTERACAO_SALARIAL' || podeAprovarSalario ? (
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => decidir(s, 'aprovar')}>
-                      Aprovar
+                      {s.subtipo === 'RETORNO_AFASTAMENTO' ? 'Registrar ciencia' : 'Aprovar'}
                     </button>
                   ) : (
                     <span className="text-xs opacity-70">Aguardando a Diretoria</span>
@@ -709,7 +709,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
       */}
       {aberta ? (
         <OverlayModal
-          rotulo={`${ROTULO_TIPO[aberta.tipo] || aberta.tipo} #${aberta.id}`}
+          rotulo={`${ROTULO_TIPO[aberta.tipo] || aberta.tipo} ${aberta.codigo || `#${aberta.id}`}`}
           largura="1120px"
           onFechar={fecharDetalhe}
         >
@@ -718,7 +718,7 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
           <div className="app-page-header-row">
             <div>
               <h2 className="app-bloco-titulo">
-                {ROTULO_TIPO[aberta.tipo] || aberta.tipo} · #{aberta.id}
+                {ROTULO_TIPO[aberta.tipo] || aberta.tipo} · {aberta.codigo || `#${aberta.id}`}
               </h2>
               {/*
                 R5: era `page-subtitle` solto. Como esta aba NAO e pagina, o texto nao tem

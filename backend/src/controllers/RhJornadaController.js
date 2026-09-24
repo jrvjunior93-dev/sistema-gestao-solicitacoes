@@ -66,6 +66,7 @@ module.exports = {
     try {
       await exigirObraNoEscopoDoUsuario(req, req.body?.obra_id);
       const contexto = contextoDe(req);
+      contexto.obraIds = await getRhDpObraScopeIds(req.user);
       contexto.podeDecidir = await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.decidir']);
       const resultado = await importarJornadaPlanilha(req.body || {}, req.files?.planilha?.[0], contexto);
       const fichas = Array.isArray(req.files?.fichas) ? req.files.fichas : [];
@@ -110,6 +111,7 @@ module.exports = {
     try {
       await exigirObraNoEscopoDoUsuario(req, req.body?.obra_id);
       const contexto = contextoDe(req);
+      contexto.obraIds = await getRhDpObraScopeIds(req.user);
       contexto.podeDecidir = await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.decidir']);
       const dados = await registrarJornada(req.body || {}, contexto);
       return res.status(201).json(dados);
@@ -123,6 +125,7 @@ module.exports = {
     try {
       await exigirObraNoEscopoDoUsuario(req, req.body?.obra_id);
       const contexto = contextoDe(req);
+      contexto.obraIds = await getRhDpObraScopeIds(req.user);
       contexto.podeDecidir = await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.decidir']);
       const dados = await registrarPagamentoIndividual(req.body || {}, contexto);
       return res.status(201).json(dados);

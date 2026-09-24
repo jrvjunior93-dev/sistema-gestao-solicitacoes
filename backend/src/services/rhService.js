@@ -1056,6 +1056,9 @@ async function detalharColaboradorRh(id, options = {}) {
 
 async function criarColaboradorRh(data, user) {
   return sequelize.transaction(async (transaction) => {
+    if (data.forma_calculo_gerencial === 'DIARIA' && !(Number(data.valor_diaria) > 0)) {
+      throw new ValidationError('Informe o valor da diaria para colaboradores com calculo por diaria.');
+    }
     await ensureEmpresaGrupoExists(data.empresa_grupo_id, transaction);
     await ensureObraExists(data.obra_id, transaction);
     await ensureSetorExists(data.setor_id, transaction);
@@ -1066,6 +1069,9 @@ async function criarColaboradorRh(data, user) {
     const created = await RhColaborador.create(
       {
         ...data,
+        pagamento_automatico_40_60: data.forma_calculo_gerencial === 'DIARIA'
+          ? false
+          : Boolean(data.pagamento_automatico_40_60),
         data_inicio: data.data_inicio || data.data_admissao,
         parceiro_id: parceiro?.id || null,
         pagamento: undefined,
@@ -1190,10 +1196,26 @@ async function atualizarColaboradorRh(id, data, user) {
         status: data.status,
         salario_base: data.salario_base,
         valor_contratual: data.valor_contratual,
+        forma_calculo_gerencial: data.forma_calculo_gerencial,
+        valor_diaria: data.valor_diaria,
+        pagamento_automatico_40_60: data.pagamento_automatico_40_60,
         observacoes: data.observacoes,
         atualizado_por: user?.id || null
       }).filter(([, value]) => value !== undefined)
     );
+
+    const formaCalculoResultante = collaboratorPayload.forma_calculo_gerencial
+      || colaborador.forma_calculo_gerencial
+      || 'MENSAL';
+    const valorDiariaResultante = collaboratorPayload.valor_diaria !== undefined
+      ? collaboratorPayload.valor_diaria
+      : colaborador.valor_diaria;
+    if (formaCalculoResultante === 'DIARIA' && !(Number(valorDiariaResultante) > 0)) {
+      throw new ValidationError('Informe o valor da diaria para colaboradores com calculo por diaria.');
+    }
+    if (formaCalculoResultante === 'DIARIA') {
+      collaboratorPayload.pagamento_automatico_40_60 = false;
+    }
 
     await colaborador.update(collaboratorPayload, { transaction });
 

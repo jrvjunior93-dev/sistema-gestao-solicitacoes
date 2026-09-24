@@ -30,7 +30,12 @@ const APURACAO_ITEM_INCLUDE = [
       'status',
       'empresa_grupo_id',
       'obra_id',
-      'cargo'
+      'cargo',
+      'salario_base',
+      'valor_contratual',
+      'forma_calculo_gerencial',
+      'valor_diaria',
+      'pagamento_automatico_40_60'
     ],
     include: [
       {
@@ -227,6 +232,50 @@ async function resolveExistingDraft(data, transaction) {
   return draft;
 }
 
+async function validarDistribuicoesMultiobra(linhas, competencia, transaction) {
+  const marcadas = linhas.filter((linha) => (
+    linha.importacao?.tipo === 'JORNADA' && Boolean(linha.payload_json?.mais_de_uma_obra)
+  ));
+  if (!marcadas.length) return;
+
+  const colaboradorIds = [...new Set(marcadas.map((linha) => Number(linha.colaborador_id)).filter(Boolean))];
+  const todasAsPartes = await RhImportacaoLinha.findAll({
+    where: {
+      status: 'CONFIRMADA',
+      colaborador_id: { [Op.in]: colaboradorIds }
+    },
+    attributes: ['colaborador_id'],
+    include: [{
+      model: RhImportacao,
+      as: 'importacao',
+      required: true,
+      attributes: ['obra_id'],
+      where: { tipo: 'JORNADA', status: 'CONFIRMADA', competencia }
+    }],
+    transaction
+  });
+  const obrasConfirmadas = new Map();
+  todasAsPartes.forEach((linha) => {
+    const colaboradorId = Number(linha.colaborador_id);
+    if (!obrasConfirmadas.has(colaboradorId)) obrasConfirmadas.set(colaboradorId, new Set());
+    obrasConfirmadas.get(colaboradorId).add(Number(linha.importacao?.obra_id));
+  });
+
+  for (const linha of marcadas) {
+    const esperadas = (linha.payload_json?.obras_distribuicao_ids || []).map(Number).filter(Boolean);
+    const confirmadas = obrasConfirmadas.get(Number(linha.colaborador_id)) || new Set();
+    const pendentes = esperadas.filter((obraId) => !confirmadas.has(obraId));
+    if (pendentes.length) {
+      throw new ValidationError(
+        `${linha.colaborador?.nome || `Colaborador #${linha.colaborador_id}`}: a distribuicao da jornada `
+        + `ainda aguarda o envio do responsavel da(s) obra(s) ${pendentes.join(', ')}. `
+        + 'A apuracao so pode ser gerada quando todas as partes estiverem confirmadas.',
+        409
+      );
+    }
+  }
+}
+
 async function buildAgrupamentoImportacoes(data, transaction) {
   const importacaoWhere = {
     status: 'CONFIRMADA',
@@ -267,7 +316,10 @@ async function buildAgrupamentoImportacoes(data, transaction) {
           'salario_base',
           'valor_contratual',
           'empresa_grupo_id',
-          'obra_id'
+          'obra_id',
+          'forma_calculo_gerencial',
+          'valor_diaria',
+          'pagamento_automatico_40_60'
         ],
         include: [
           {
@@ -291,6 +343,8 @@ async function buildAgrupamentoImportacoes(data, transaction) {
     throw new ValidationError('Nao existem importacoes confirmadas para gerar a apuracao neste recorte.');
   }
 
+  await validarDistribuicoesMultiobra(linhas, data.competencia, transaction);
+
   const agrupados = new Map();
 
   linhas.forEach((linha) => {
@@ -308,8 +362,13 @@ async function buildAgrupamentoImportacoes(data, transaction) {
         jornada: {
           dias_trabalhados: 0,
           faltas: 0,
+          finais_semana_feriados: 0,
           horas_extras: 0,
           adicionais: 0,
+          adicional_noturno: 0,
+          adicional_insalubridade: 0,
+          adicional_periculosidade: 0,
+          bonificacoes: 0,
           descontos_informados: 0,
           valor_informado: 0
         },
@@ -326,8 +385,13 @@ async function buildAgrupamentoImportacoes(data, transaction) {
     if (linha.importacao?.tipo === 'JORNADA') {
       itemAtual.jornada.dias_trabalhados += Number(linha.payload_json?.dias_trabalhados || 0);
       itemAtual.jornada.faltas += Number(linha.payload_json?.faltas || 0);
-      itemAtual.jornada.horas_extras += Number(linha.payload_json?.horas_extras || 0);
+      itemAtual.jornada.finais_semana_feriados += Number(linha.payload_json?.finais_semana_feriados || 0);
+      itemAtual.jornada.horas_extras += 0;
       itemAtual.jornada.adicionais += Number(linha.payload_json?.adicionais || 0);
+      itemAtual.jornada.adicional_noturno += Number(linha.payload_json?.adicional_noturno || 0);
+      itemAtual.jornada.adicional_insalubridade += Number(linha.payload_json?.adicional_insalubridade || 0);
+      itemAtual.jornada.adicional_periculosidade += Number(linha.payload_json?.adicional_periculosidade || 0);
+      itemAtual.jornada.bonificacoes += Number(linha.payload_json?.bonificacoes || 0);
       itemAtual.jornada.descontos_informados += Number(linha.payload_json?.descontos_informados || 0);
       itemAtual.jornada.valor_informado += Number(linha.payload_json?.valor_informado || 0);
     } else {
@@ -404,15 +468,19 @@ async function listarRecortesImportacoesConfirmadas(data, transaction) {
 function calcularItemApuracao(agrupado, diasBase) {
   const colaborador = agrupado.colaborador;
   const tipoVinculo = String(colaborador?.tipo_vinculo || '').trim().toUpperCase();
+  const formaCalculo = String(colaborador?.forma_calculo_gerencial || 'MENSAL').trim().toUpperCase();
   const valorBaseCalculo =
-    tipoVinculo === 'CLT'
+    formaCalculo === 'DIARIA'
+      ? Number(colaborador?.valor_diaria || 0)
+      : tipoVinculo === 'CLT'
       ? Number(colaborador?.salario_base || 0)
       : Number(colaborador?.valor_contratual || colaborador?.salario_base || 0);
 
   const jornada = agrupado.jornada || {};
   const diasTrabalhados = Number(jornada.dias_trabalhados || 0);
   const faltas = Number(jornada.faltas || 0);
-  const horasExtras = Number(jornada.horas_extras || 0);
+  const finaisSemanaFeriados = Number(jornada.finais_semana_feriados || 0);
+  const horasExtras = 0;
   const adicionais = Number(jornada.adicionais || 0);
   /**
    * OS QUATRO ADICIONAIS DO ITEM 11 DO ESCOPO (Fase 12).
@@ -440,7 +508,15 @@ function calcularItemApuracao(agrupado, diasBase) {
   // bruto e um liquido e nao tem como contestar nenhum dos dois.
   const resumo = {};
 
-  if (tipoVinculo === 'CLT') {
+  if (formaCalculo === 'DIARIA') {
+    regraAplicada = 'DIARIA_DIAS_REMUNERADOS';
+    const baseDiaria = valorBaseCalculo * diasTrabalhados;
+    valorBruto = baseDiaria + totalAdicionais + creditos;
+    resumo.valor_diaria = formatCurrencyValue(valorBaseCalculo);
+    resumo.dias_remunerados = formatCurrencyValue(diasTrabalhados);
+    resumo.valor_proporcional = formatCurrencyValue(baseDiaria);
+    resumo.valor_horas_extras = 0;
+  } else if (tipoVinculo === 'CLT') {
     regraAplicada = 'CLT_SIMPLIFICADA';
     const salarioProporcional =
       diasTrabalhados > 0 && Number(diasBase || 0) > 0
@@ -512,11 +588,15 @@ function calcularItemApuracao(agrupado, diasBase) {
     detalhes_json: {
       importacao_ids: Array.from(agrupado.importacao_ids || []).sort((a, b) => a - b),
       tipo_vinculo: tipoVinculo,
+      forma_calculo_gerencial: formaCalculo,
+      salario_contratual_bruto: formatCurrencyValue(colaborador?.salario_base || 0),
+      pagamento_automatico_40_60: Boolean(colaborador?.pagamento_automatico_40_60),
       dias_base: Number(diasBase || 0),
       resumo,
       jornada: {
         dias_trabalhados: formatCurrencyValue(diasTrabalhados),
         faltas: formatCurrencyValue(faltas),
+        finais_semana_feriados: formatCurrencyValue(finaisSemanaFeriados),
         horas_extras: formatCurrencyValue(horasExtras),
         adicionais: formatCurrencyValue(adicionais),
         descontos_informados: formatCurrencyValue(descontosInformados),

@@ -571,6 +571,18 @@ export default function RhDpFechamentos({ comoAba = false }) {
                     render: (item) => item.itemApuracao?.colaborador?.tipo_vinculo || '-'
                   },
                   {
+                    id: 'tipo_titulo',
+                    titulo: 'Parcela',
+                    tipo: 'badge',
+                    render: (item) => ({
+                      ADIANTAMENTO_40: '40% dia 15',
+                      SALDO_60: '60% fim do mes',
+                      PENSAO_ALIMENTICIA: 'Pensao',
+                      DIARIAS: 'Diarias',
+                      INTEGRAL: 'Integral'
+                    }[item.tipo_titulo] || item.tipo_titulo || 'Integral')
+                  },
+                  {
                     id: 'titulo',
                     titulo: 'Título',
                     tipo: 'texto',

@@ -7,6 +7,7 @@ const { TIPOS_GERENCIAIS_EMPRESA_GRUPO } = require('../constants/empresaGrupo');
 const { onlyDigits, isValidCpf, isValidCnpj, isValidCpfCnpj } = require('../utils/cpfCnpj');
 
 const RH_TIPOS_VINCULO = ['CLT', 'NAO_CLT'];
+const RH_FORMAS_CALCULO_GERENCIAL = ['MENSAL', 'DIARIA'];
 const RH_STATUS_COLABORADOR = ['ATIVO', 'INATIVO', 'AFASTADO'];
 const RH_STATUS_DOCUMENTO = ['ENVIADO', 'CONFERIDO', 'REJEITADO', 'SUBSTITUIDO'];
 const RH_VALIDADE_STATUS = ['SEM_VALIDADE', 'VALIDO', 'A_VENCER', 'VENCIDO'];
@@ -319,7 +320,7 @@ function normalizePagamentoPayload(value) {
 
   return {
     favorecido_nome: parseOptionalText(value.favorecido_nome, 'Favorecido', 180),
-    favorecido_documento: parseCpfCnpj(value.favorecido_documento, 'Documento do favorecido'),
+    favorecido_documento: parseCpf(value.favorecido_documento, 'CPF do favorecido'),
     banco: parseOptionalText(value.banco, 'Banco', 80),
     agencia: parseOptionalText(value.agencia, 'Agencia', 30),
     conta: parseOptionalText(value.conta, 'Conta', 40),
@@ -399,6 +400,9 @@ function validateRhColaboradorCreateBody(body = {}) {
       'status',
       'salario_base',
       'valor_contratual',
+      'forma_calculo_gerencial',
+      'valor_diaria',
+      'pagamento_automatico_40_60',
       'observacoes',
       'pagamento'
     ],
@@ -424,6 +428,14 @@ function validateRhColaboradorCreateBody(body = {}) {
     status: parseEnum(body.status, 'Status', RH_STATUS_COLABORADOR) || 'ATIVO',
     salario_base: parseDecimal(body.salario_base, 'Salario base', { min: 0 }),
     valor_contratual: parseDecimal(body.valor_contratual, 'Valor contratual', { min: 0 }),
+    forma_calculo_gerencial: parseEnum(
+      body.forma_calculo_gerencial,
+      'Forma de calculo gerencial',
+      RH_FORMAS_CALCULO_GERENCIAL
+    ) || 'MENSAL',
+    valor_diaria: parseDecimal(body.valor_diaria, 'Valor da diaria', { min: 0 }),
+    pagamento_automatico_40_60: body.pagamento_automatico_40_60 === true
+      || String(body.pagamento_automatico_40_60 || '').toLowerCase() === 'true',
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
     pagamento: normalizePagamentoPayload(body.pagamento)
   };
@@ -451,6 +463,9 @@ function validateRhColaboradorUpdateBody(body = {}) {
       'status',
       'salario_base',
       'valor_contratual',
+      'forma_calculo_gerencial',
+      'valor_diaria',
+      'pagamento_automatico_40_60',
       'observacoes',
       'pagamento'
     ],
@@ -476,6 +491,16 @@ function validateRhColaboradorUpdateBody(body = {}) {
     status: parseEnum(body.status, 'Status', RH_STATUS_COLABORADOR),
     salario_base: parseDecimal(body.salario_base, 'Salario base', { min: 0 }),
     valor_contratual: parseDecimal(body.valor_contratual, 'Valor contratual', { min: 0 }),
+    forma_calculo_gerencial: parseEnum(
+      body.forma_calculo_gerencial,
+      'Forma de calculo gerencial',
+      RH_FORMAS_CALCULO_GERENCIAL
+    ),
+    valor_diaria: parseDecimal(body.valor_diaria, 'Valor da diaria', { min: 0 }),
+    pagamento_automatico_40_60: Object.prototype.hasOwnProperty.call(body, 'pagamento_automatico_40_60')
+      ? body.pagamento_automatico_40_60 === true
+        || String(body.pagamento_automatico_40_60 || '').toLowerCase() === 'true'
+      : undefined,
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
     pagamento: Object.prototype.hasOwnProperty.call(body, 'pagamento')
       ? normalizePagamentoPayload(body.pagamento)
@@ -703,13 +728,49 @@ function validateRhFechamentoQuery(query = {}) {
 function validateRhFecharApuracaoBody(body = {}) {
   ensureAllowedKeys(
     body,
-    ['data_fechamento', 'data_vencimento', 'categoria_financeira_id', 'observacoes'],
+    [
+      'data_fechamento',
+      'data_vencimento',
+      'data_vencimento_40',
+      'data_vencimento_60',
+      'ajustes_titulos',
+      'categoria_financeira_id',
+      'observacoes'
+    ],
     'Fechamento RH/DP'
   );
+
+  const ajustesTitulos = body.ajustes_titulos === undefined
+    ? undefined
+    : (() => {
+        if (!Array.isArray(body.ajustes_titulos) || body.ajustes_titulos.length > 500) {
+          throw new ValidationError('Ajustes dos titulos invalidos.');
+        }
+        const ids = new Set();
+        return body.ajustes_titulos.map((item, index) => {
+          ensureAllowedKeys(
+            item || {},
+            ['apuracao_evento_id', 'valor_40', 'valor_60', 'observacao'],
+            `Ajuste do titulo ${index + 1}`
+          );
+          const id = parseInteger(item?.apuracao_evento_id, 'Item da apuracao', { required: true });
+          if (ids.has(id)) throw new ValidationError(`O item #${id} foi informado mais de uma vez nos ajustes.`);
+          ids.add(id);
+          return {
+            apuracao_evento_id: id,
+            valor_40: parseDecimal(item?.valor_40, 'Valor de 40%', { required: true, min: 0 }),
+            valor_60: parseDecimal(item?.valor_60, 'Valor de 60%', { required: true, min: 0 }),
+            observacao: parseOptionalText(item?.observacao, 'Observacao do ajuste', 1000)
+          };
+        });
+      })();
 
   return {
     data_fechamento: parseDateOnly(body.data_fechamento, 'Data de fechamento'),
     data_vencimento: parseDateOnly(body.data_vencimento, 'Data de vencimento'),
+    data_vencimento_40: parseDateOnly(body.data_vencimento_40, 'Vencimento de 40%'),
+    data_vencimento_60: parseDateOnly(body.data_vencimento_60, 'Vencimento de 60%'),
+    ajustes_titulos: ajustesTitulos,
     categoria_financeira_id: parseInteger(body.categoria_financeira_id, 'Categoria financeira'),
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000)
   };
@@ -725,6 +786,7 @@ function validateRhReabrirFechamentoBody(body = {}) {
 
 module.exports = {
   RH_STATUS_COLABORADOR,
+  RH_FORMAS_CALCULO_GERENCIAL,
   RH_STATUS_DOCUMENTO,
   RH_STATUS_APURACAO,
   RH_STATUS_APURACAO_ITEM,

@@ -11,13 +11,16 @@ const {
   PagamentoManualFilaItem,
   RhApuracao,
   RhApuracaoEvento,
+  RhApuracaoEventoItem,
   RhColaborador,
   RhColaboradorPagamento,
   RhEmpresaGrupo,
+  RhEventoRecorrente,
   RhFechamento,
   RhFechamentoTitulo,
   Setor,
   TituloFinanceiro,
+  TituloFinanceiroRateio,
   User,
   sequelize
 } = require('../models');
@@ -133,6 +136,23 @@ function getLastDayOfCompetencia(competencia) {
   return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 }
 
+function getCompetenciaDate(competencia, day) {
+  const [year, month] = String(competencia || '').split('-').map(Number);
+  if (!year || !month) return getToday();
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month - 1, Math.min(Math.max(Number(day) || 1, 1), lastDay)))
+    .toISOString()
+    .slice(0, 10);
+}
+
+function anticipateWeekend(dateOnly) {
+  const date = new Date(`${dateOnly}T12:00:00Z`);
+  const weekDay = date.getUTCDay();
+  if (weekDay === 6) date.setUTCDate(date.getUTCDate() - 1);
+  if (weekDay === 0) date.setUTCDate(date.getUTCDate() - 2);
+  return date.toISOString().slice(0, 10);
+}
+
 function normalizeDigits(value) {
   return String(value || '').replace(/\D+/g, '');
 }
@@ -170,6 +190,10 @@ function normalizePixChaveForType(tipoChave, chavePix) {
     return raw.toLowerCase();
   }
   return raw;
+}
+
+function buildRhNumeroDocumento(competencia, colaboradorId, sufixo) {
+  return `RHDP-${competencia}-COL-${colaboradorId}${sufixo ? `-${sufixo}` : ''}`.slice(0, 120);
 }
 
 function getPixKeyOptions(pagamento = {}) {
@@ -254,6 +278,11 @@ async function carregarApuracaoParaFechamento(apuracaoId, transaction) {
               'status',
               'empresa_grupo_id',
               'obra_id',
+              'forma_calculo_gerencial',
+              'valor_diaria',
+              'pagamento_automatico_40_60',
+              'salario_base',
+              'valor_contratual',
               'telefone',
               'email'
             ],
@@ -266,6 +295,18 @@ async function carregarApuracaoParaFechamento(apuracaoId, transaction) {
                 model: Obra,
                 as: 'obra',
                 attributes: ['id', 'codigo', 'nome']
+              }
+            ]
+          },
+          {
+            model: RhApuracaoEventoItem,
+            as: 'itens',
+            required: false,
+            include: [
+              {
+                model: RhEventoRecorrente,
+                as: 'regra',
+                required: false
               }
             ]
           }
@@ -300,6 +341,11 @@ function validarItemElegivelParaFechamento(item, apuracao) {
   const favorecidoNome = String(pagamento.favorecido_nome || colaborador.nome || '').trim();
   const favorecidoDocumento = normalizeDigits(pagamento.favorecido_documento || colaborador.cpf);
   const chavePix = resolvePixKeyForItem(item, pagamento);
+  const possuiConta = Boolean(
+    String(pagamento.banco || '').trim() &&
+    String(pagamento.agencia || '').trim() &&
+    String(pagamento.conta || '').trim()
+  );
   const obraId = Number(apuracao.obra_id || 0);
   const empresaId = Number(colaborador.empresa_grupo_id || 0);
 
@@ -319,14 +365,18 @@ function validarItemElegivelParaFechamento(item, apuracao) {
     throw new ValidationError(`O colaborador ${colaborador.nome} nao possui empresa do grupo vinculada para gerar titulo financeiro.`);
   }
 
-  if (!chavePix) {
-    throw new ValidationError(`O colaborador ${colaborador.nome} nao possui chave PIX definida para gerar favorecido bancario.`);
+  if (!chavePix && !possuiConta) {
+    throw new ValidationError(`O colaborador ${colaborador.nome} precisa ter chave PIX ou conta bancaria definida para pagamento.`);
   }
 
   return {
     favorecidoNome,
     favorecidoDocumento,
     chavePix,
+    banco: pagamento.banco || null,
+    agencia: pagamento.agencia || null,
+    conta: pagamento.conta || null,
+    tipoConta: pagamento.tipo_conta || null,
     obraId,
     empresaId,
     email: pagamento.email || colaborador.email || null,
@@ -390,10 +440,17 @@ async function syncFavorecidoBancarioRh({
   favorecidoNome,
   favorecidoDocumento,
   chavePix,
+  banco,
+  agencia,
+  conta,
+  tipoConta,
   usuarioId
 }, transaction) {
-  const pixTipoChave = inferPixTipoChave(chavePix, favorecidoDocumento);
-  const pixChave = normalizePixChaveForType(pixTipoChave, chavePix);
+  const possuiPix = Boolean(String(chavePix || '').trim());
+  const pixTipoChave = possuiPix ? inferPixTipoChave(chavePix, favorecidoDocumento) : 'DADOS_BANCARIOS';
+  const pixChave = possuiPix
+    ? normalizePixChaveForType(pixTipoChave, chavePix)
+    : [banco, agencia, conta].map((value) => String(value || '').trim()).filter(Boolean).join(':').slice(0, 255);
 
   if (!pixTipoChave || !pixChave) {
     throw new ValidationError('Chave PIX invalida para gerar favorecido bancario RH/DP.');
@@ -412,9 +469,13 @@ async function syncFavorecidoBancarioRh({
     parceiro_id: parceiro.id,
     nome: favorecidoNome,
     cpf_cnpj: normalizeDigits(favorecidoDocumento),
-    metodo_preferencial: 'PIX_CHAVE',
+    metodo_preferencial: possuiPix ? 'PIX_CHAVE' : 'CONTA_BANCARIA',
     pix_tipo_chave: pixTipoChave,
     pix_chave: pixChave,
+    banco_codigo: banco ? String(banco).trim().slice(0, 10) : null,
+    agencia: agencia ? String(agencia).trim().slice(0, 20) : null,
+    conta: conta ? String(conta).trim().slice(0, 30) : null,
+    tipo_conta: tipoConta ? String(tipoConta).trim().slice(0, 30) : null,
     ativo: true,
     updated_by: usuarioId || null
   };
@@ -433,7 +494,21 @@ async function syncFavorecidoBancarioRh({
   );
 }
 
-function buildTituloRhPayload({ apuracao, item, parceiro, dataVencimento, categoriaFinanceiraId, empresaId, usuarioId }) {
+function buildTituloRhPayload({
+  apuracao,
+  item,
+  parceiro,
+  dataVencimento,
+  categoriaFinanceiraId,
+  empresaId,
+  usuarioId,
+  valor,
+  tipoTitulo = 'INTEGRAL',
+  descricaoFavorecido = null,
+  numeroSufixo = null,
+  observacaoAdicional = null,
+  paymentBeneficiaryId = null
+}) {
   if (!Number.isInteger(Number(empresaId)) || Number(empresaId) <= 0) {
     throw new ValidationError('Empresa do colaborador RH/DP e obrigatoria para gerar titulo financeiro.');
   }
@@ -441,22 +516,33 @@ function buildTituloRhPayload({ apuracao, item, parceiro, dataVencimento, catego
   const colaborador = item.colaborador;
   const competencia = apuracao.competencia;
   const competenciaData = getLastDayOfCompetencia(competencia);
+  const empresaNome = apuracao.empresaGrupo?.nome || apuracao.empresaGrupo?.codigo || `Empresa ${empresaId}`;
+  const rotulo = tipoTitulo === 'ADIANTAMENTO_40'
+    ? 'Adiantamento 40%'
+    : tipoTitulo === 'SALDO_60'
+      ? 'Saldo 60%'
+      : tipoTitulo === 'PENSAO_ALIMENTICIA'
+        ? 'Pensao alimenticia'
+        : 'Folha';
+  const valorTitulo = roundCurrency(valor);
 
   return {
     solicitacao_id: null,
     obra_id: Number(apuracao.obra_id),
     empresa_id: Number(empresaId),
     parceiro_id: parceiro.id,
+    payment_beneficiary_id: paymentBeneficiaryId || null,
+    possui_rateio: true,
     categoria_financeira_id: categoriaFinanceiraId,
     competencia_data: competenciaData,
     considera_dre: true,
     origem_titulo: 'RH_DP',
     tipo: 'PAGAR',
     status: 'ABERTO',
-    descricao: `Folha RH/DP ${competencia} - ${colaborador.nome}`.slice(0, 255),
-    numero_documento: `RHDP-${competencia}-${item.id}`.slice(0, 120),
-    valor_original: roundCurrency(item.valor_liquido),
-    valor_saldo: roundCurrency(item.valor_liquido),
+    descricao: `${rotulo} RH/DP ${competencia} - ${descricaoFavorecido || colaborador.nome} - ${empresaNome}`.slice(0, 255),
+    numero_documento: buildRhNumeroDocumento(competencia, colaborador.id, numeroSufixo),
+    valor_original: valorTitulo,
+    valor_saldo: valorTitulo,
     valor_baixado: 0,
     data_emissao: getToday(),
     data_vencimento: dataVencimento,
@@ -464,6 +550,9 @@ function buildTituloRhPayload({ apuracao, item, parceiro, dataVencimento, catego
     observacoes: [
       `Origem: RH/DP`,
       `Competencia: ${competencia}`,
+      `Empresa do colaborador: ${empresaNome}`,
+      `Tipo do titulo: ${rotulo}`,
+      observacaoAdicional,
       item.observacoes ? `Apuracao: ${item.observacoes}` : null
     ].filter(Boolean).join(' | ').slice(0, 2000),
     forma_cobranca: null,
@@ -477,6 +566,169 @@ function buildTituloRhPayload({ apuracao, item, parceiro, dataVencimento, catego
     criado_por: usuarioId || null,
     atualizado_por: usuarioId || null
   };
+}
+
+async function criarOuAcumularTituloRh(payload, { obraId, valor, usuarioId, transaction }) {
+  let titulo = await TituloFinanceiro.findOne({
+    where: {
+      numero_documento: payload.numero_documento,
+      origem_titulo: 'RH_DP',
+      tipo: 'PAGAR',
+      status: 'ABERTO',
+      valor_baixado: 0,
+      parceiro_id: payload.parceiro_id,
+      empresa_id: payload.empresa_id
+    },
+    transaction,
+    lock: transaction.LOCK.UPDATE
+  });
+
+  if (titulo) {
+    const novoValor = roundCurrency(Number(titulo.valor_original || 0) + Number(valor || 0));
+    await titulo.update({
+      valor_original: novoValor,
+      valor_saldo: novoValor,
+      payment_beneficiary_id: payload.payment_beneficiary_id || titulo.payment_beneficiary_id || null,
+      observacoes: appendAuditText(
+        titulo.observacoes,
+        `Rateio acrescentado para a obra #${obraId}: R$ ${roundCurrency(valor).toFixed(2)}`
+      ),
+      atualizado_por: usuarioId || null
+    }, { transaction });
+  } else {
+    titulo = await TituloFinanceiro.create(payload, { transaction });
+  }
+
+  const rateio = await TituloFinanceiroRateio.findOne({
+    where: { titulo_financeiro_id: titulo.id, obra_id: obraId },
+    transaction,
+    lock: transaction.LOCK.UPDATE
+  });
+  const valorRateio = roundCurrency(Number(rateio?.valor_rateio || 0) + Number(valor || 0));
+  const percentual = Number(titulo.valor_original || 0) > 0
+    ? Number(((valorRateio / Number(titulo.valor_original)) * 100).toFixed(6))
+    : 0;
+
+  if (rateio) {
+    await rateio.update({
+      tipo_rateio: 'VALOR',
+      valor_rateio: valorRateio,
+      percentual,
+      atualizado_por: usuarioId || null
+    }, { transaction });
+  } else {
+    await TituloFinanceiroRateio.create({
+      titulo_financeiro_id: titulo.id,
+      obra_id: obraId,
+      apropriacao_id: null,
+      tipo_rateio: 'VALOR',
+      valor_rateio: roundCurrency(valor),
+      percentual,
+      observacoes: 'Rateio gerado automaticamente pelo fechamento RH/DP.',
+      criado_por: usuarioId || null,
+      atualizado_por: usuarioId || null
+    }, { transaction });
+  }
+
+  const rateios = await TituloFinanceiroRateio.findAll({
+    where: { titulo_financeiro_id: titulo.id },
+    transaction,
+    lock: transaction.LOCK.UPDATE
+  });
+  const totalTitulo = Number(titulo.valor_original || 0);
+  for (const itemRateio of rateios) {
+    const percentualAtualizado = totalTitulo > 0
+      ? Number(((Number(itemRateio.valor_rateio || 0) / totalTitulo) * 100).toFixed(6))
+      : 0;
+    // eslint-disable-next-line no-await-in-loop
+    await itemRateio.update({ percentual: percentualAtualizado }, { transaction });
+  }
+
+  return titulo;
+}
+
+function buildParcelasColaborador(item, apuracao, data = {}, ajuste = null) {
+  const colaborador = item.colaborador || {};
+  const valorLiquido = roundCurrency(item.valor_liquido);
+  const formaCalculo = String(colaborador.forma_calculo_gerencial || 'MENSAL').toUpperCase();
+  const automatico4060 = formaCalculo === 'MENSAL' && Boolean(colaborador.pagamento_automatico_40_60);
+  const vencimentoIntegral = data.data_vencimento || anticipateWeekend(getLastDayOfCompetencia(apuracao.competencia));
+
+  if (!automatico4060) {
+    if (ajuste) {
+      throw new ValidationError(`O colaborador ${colaborador.nome} nao utiliza a distribuicao automatica 40%/60%.`);
+    }
+    return [{
+      tipoTitulo: formaCalculo === 'DIARIA' ? 'DIARIAS' : 'INTEGRAL',
+      valor: valorLiquido,
+      dataVencimento: vencimentoIntegral,
+      numeroSufixo: formaCalculo === 'DIARIA' ? 'DIARIA' : 'INTEGRAL'
+    }];
+  }
+
+  const salarioBruto = roundCurrency(
+    String(colaborador.tipo_vinculo || '').toUpperCase() === 'CLT'
+      ? colaborador.salario_base || colaborador.valor_contratual || item.valor_base_calculo
+      : colaborador.valor_contratual || colaborador.salario_base || item.valor_base_calculo
+  );
+  const baseProporcionalObra = roundCurrency(
+    item.detalhes_json?.resumo?.valor_proporcional || salarioBruto
+  );
+  const valor40Calculado = roundCurrency(baseProporcionalObra * 0.4);
+  let valor40 = Math.min(valor40Calculado, valorLiquido);
+  let valor60 = roundCurrency(valorLiquido - valor40);
+
+  if (ajuste) {
+    const valor40Informado = roundCurrency(ajuste.valor_40);
+    const valor60Informado = roundCurrency(ajuste.valor_60);
+    if (Math.abs(roundCurrency(valor40Informado + valor60Informado) - valorLiquido) > 0.01) {
+      throw new ValidationError(
+        `A distribuicao 40%/60% de ${colaborador.nome} deve totalizar o liquido de ${valorLiquido.toFixed(2)}.`
+      );
+    }
+    const alterouCalculo = Math.abs(valor40Informado - valor40) > 0.01 || Math.abs(valor60Informado - valor60) > 0.01;
+    if (alterouCalculo && !String(ajuste.observacao || '').trim()) {
+      throw new ValidationError(`Informe a observacao para alterar a distribuicao 40%/60% de ${colaborador.nome}.`);
+    }
+    valor40 = valor40Informado;
+    valor60 = valor60Informado;
+  }
+  const parcelas = [];
+
+  if (valor40 > 0) {
+    parcelas.push({
+      tipoTitulo: 'ADIANTAMENTO_40',
+      valor: valor40,
+      dataVencimento: data.data_vencimento_40 || anticipateWeekend(getCompetenciaDate(apuracao.competencia, 15)),
+      numeroSufixo: '40',
+      observacaoAdicional: [
+        `Salario bruto: ${salarioBruto.toFixed(2)} | Base proporcional da obra: ${baseProporcionalObra.toFixed(2)} | Percentual calculado: 40%`,
+        ajuste?.observacao ? `Ajuste informado: ${ajuste.observacao}` : null
+      ].filter(Boolean).join(' | ')
+    });
+  }
+  if (valor60 > 0) {
+    parcelas.push({
+      tipoTitulo: 'SALDO_60',
+      valor: valor60,
+      dataVencimento: data.data_vencimento_60 || vencimentoIntegral,
+      numeroSufixo: '60',
+      observacaoAdicional: [
+        `Base salarial bruta: ${salarioBruto.toFixed(2)} | Saldo liquido apos eventos e pensao`,
+        ajuste?.observacao ? `Ajuste informado: ${ajuste.observacao}` : null
+      ].filter(Boolean).join(' | ')
+    });
+  }
+
+  return parcelas;
+}
+
+function getPensoesDoItem(item) {
+  return (item.itens || []).filter((eventoItem) => (
+    String(eventoItem.codigo || eventoItem.regra?.codigo || '').trim().toUpperCase() === 'PENSAO_ALIMENTICIA' &&
+    String(eventoItem.natureza || '').trim().toUpperCase() === 'DESCONTO' &&
+    Number(eventoItem.valor || 0) > 0
+  ));
 }
 
 async function listarFechamentosRh(filters = {}) {
@@ -779,7 +1031,7 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
 
     const categoria = await ensureCategoriaFinanceiraPagar(data.categoria_financeira_id, transaction);
     const dataFechamento = data.data_fechamento || getToday();
-    const dataVencimento = data.data_vencimento || getLastDayOfCompetencia(apuracao.competencia);
+    const dataVencimento = data.data_vencimento_60 || data.data_vencimento || anticipateWeekend(getLastDayOfCompetencia(apuracao.competencia));
     const fechamento = await RhFechamento.create(
       {
         apuracao_id: apuracao.id,
@@ -798,8 +1050,18 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
 
     let totalTitulos = 0;
     let totalValor = 0;
+    const ajustesTitulos = new Map(
+      (data.ajustes_titulos || []).map((ajuste) => [Number(ajuste.apuracao_evento_id), ajuste])
+    );
 
     for (const item of itens) {
+      // Serializa fechamentos simultaneos do mesmo colaborador em obras diferentes. Assim ambos
+      // enxergam o mesmo titulo aberto e o segundo apenas acrescenta seu rateio.
+      await RhColaborador.findByPk(item.colaborador_id, {
+        attributes: ['id'],
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
       const dadosFechamento = validarItemElegivelParaFechamento(item, apuracao);
       const parceiro = await syncParceiroFavorecido(
         {
@@ -812,43 +1074,190 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
         transaction
       );
 
-      await syncFavorecidoBancarioRh(
+      const favorecidoBancario = await syncFavorecidoBancarioRh(
         {
           parceiro,
           favorecidoNome: dadosFechamento.favorecidoNome,
           favorecidoDocumento: dadosFechamento.favorecidoDocumento,
           chavePix: dadosFechamento.chavePix,
+          banco: dadosFechamento.banco,
+          agencia: dadosFechamento.agencia,
+          conta: dadosFechamento.conta,
+          tipoConta: dadosFechamento.tipoConta,
           usuarioId: user?.id || null
         },
         transaction
       );
 
-      const titulo = await TituloFinanceiro.create(
-        buildTituloRhPayload({
-          apuracao,
-          item,
-          parceiro,
-          dataVencimento,
-          categoriaFinanceiraId: categoria?.id || null,
-          empresaId: dadosFechamento.empresaId,
-          usuarioId: user?.id || null
-        }),
-        { transaction }
-      );
+      const pensoesPlanejadas = [];
+      let descontoPensaoDuplicado = 0;
+      for (const pensaoItem of getPensoesDoItem(item)) {
+        const sufixoPensao = `PENSAO-${pensaoItem.evento_recorrente_id || pensaoItem.id}`;
+        // Se o colaborador passou por mais de uma obra na competencia, a regra recorrente pode
+        // aparecer nas duas apuracoes. Financeiramente ela deve ser paga e descontada uma vez.
+        // eslint-disable-next-line no-await-in-loop
+        const tituloPensaoExistente = await TituloFinanceiro.findOne({
+          where: {
+            numero_documento: buildRhNumeroDocumento(
+              apuracao.competencia,
+              item.colaborador.id,
+              sufixoPensao
+            ),
+            origem_titulo: 'RH_DP',
+            tipo: 'PAGAR',
+            status: 'ABERTO',
+            valor_baixado: 0,
+            empresa_id: dadosFechamento.empresaId
+          },
+          transaction,
+          lock: transaction.LOCK.UPDATE
+        });
+        const valorEvento = roundCurrency(pensaoItem.valor);
+        const restante = Math.max(0, roundCurrency(valorEvento - Number(tituloPensaoExistente?.valor_original || 0)));
+        const valorParaGerar = Math.min(valorEvento, restante);
+        descontoPensaoDuplicado += roundCurrency(valorEvento - valorParaGerar);
+        pensoesPlanejadas.push({ pensaoItem, valorParaGerar, sufixoPensao });
+      }
 
-      await RhFechamentoTitulo.create(
-        {
-          fechamento_id: fechamento.id,
-          apuracao_evento_id: item.id,
-          titulo_financeiro_id: titulo.id,
-          parceiro_id: parceiro.id,
-          valor_gerado: roundCurrency(item.valor_liquido)
-        },
-        { transaction }
+      const itemParaTitulos = descontoPensaoDuplicado > 0
+        ? {
+            ...item.get({ plain: true }),
+            colaborador: item.colaborador,
+            valor_liquido: roundCurrency(Number(item.valor_liquido || 0) + descontoPensaoDuplicado)
+          }
+        : item;
+      const parcelasColaborador = buildParcelasColaborador(
+        itemParaTitulos,
+        apuracao,
+        data,
+        ajustesTitulos.get(Number(item.id)) || null
       );
+      for (const parcela of parcelasColaborador) {
+        // eslint-disable-next-line no-await-in-loop
+        const tituloPayload =
+          buildTituloRhPayload({
+            apuracao,
+            item,
+            parceiro,
+            dataVencimento: parcela.dataVencimento,
+            categoriaFinanceiraId: categoria?.id || null,
+            empresaId: dadosFechamento.empresaId,
+            usuarioId: user?.id || null,
+            valor: parcela.valor,
+            tipoTitulo: parcela.tipoTitulo,
+            numeroSufixo: parcela.numeroSufixo,
+            observacaoAdicional: parcela.observacaoAdicional,
+            paymentBeneficiaryId: favorecidoBancario.id
+          });
+        // Um colaborador transferido dentro da competencia conserva um unico titulo por parcela.
+        // Cada fechamento de obra acrescenta apenas o seu valor ao rateio do titulo ainda aberto.
+        // eslint-disable-next-line no-await-in-loop
+        const titulo = await criarOuAcumularTituloRh(tituloPayload, {
+          obraId: dadosFechamento.obraId,
+          valor: parcela.valor,
+          usuarioId: user?.id || null,
+          transaction
+        });
 
-      totalTitulos += 1;
-      totalValor += Number(item.valor_liquido || 0);
+        // eslint-disable-next-line no-await-in-loop
+        await RhFechamentoTitulo.create(
+          {
+            fechamento_id: fechamento.id,
+            apuracao_evento_id: item.id,
+            titulo_financeiro_id: titulo.id,
+            parceiro_id: parceiro.id,
+            tipo_titulo: parcela.tipoTitulo,
+            evento_recorrente_id: null,
+            valor_gerado: roundCurrency(parcela.valor)
+          },
+          { transaction }
+        );
+
+        totalTitulos += 1;
+        totalValor += Number(parcela.valor || 0);
+      }
+
+      for (const planoPensao of pensoesPlanejadas) {
+        const { pensaoItem, valorParaGerar, sufixoPensao } = planoPensao;
+        if (!(valorParaGerar > 0)) continue;
+        const regra = pensaoItem.regra || {};
+        const beneficiarioNome = String(regra.beneficiario_nome || '').trim();
+        const beneficiarioDocumento = normalizeDigits(regra.beneficiario_documento);
+        if (!beneficiarioNome || beneficiarioDocumento.length !== 11) {
+          throw new ValidationError(`A pensao de ${item.colaborador.nome} nao possui beneficiario com nome e CPF validos.`);
+        }
+
+        // eslint-disable-next-line no-await-in-loop
+        const parceiroPensao = await syncParceiroFavorecido(
+          {
+            colaborador: { nome: beneficiarioNome },
+            favorecidoNome: beneficiarioNome,
+            favorecidoDocumento: beneficiarioDocumento,
+            email: null,
+            telefone: null
+          },
+          transaction
+        );
+
+        // eslint-disable-next-line no-await-in-loop
+        const favorecidoBancarioPensao = await syncFavorecidoBancarioRh(
+          {
+            parceiro: parceiroPensao,
+            favorecidoNome: beneficiarioNome,
+            favorecidoDocumento: beneficiarioDocumento,
+            chavePix: regra.beneficiario_chave_pix,
+            banco: regra.beneficiario_banco,
+            agencia: regra.beneficiario_agencia,
+            conta: regra.beneficiario_conta,
+            tipoConta: regra.beneficiario_tipo_conta,
+            usuarioId: user?.id || null
+          },
+          transaction
+        );
+
+        const valorPensao = roundCurrency(valorParaGerar);
+        // eslint-disable-next-line no-await-in-loop
+        const tituloPensaoPayload =
+          buildTituloRhPayload({
+            apuracao,
+            item,
+            parceiro: parceiroPensao,
+            dataVencimento,
+            categoriaFinanceiraId: categoria?.id || null,
+            empresaId: dadosFechamento.empresaId,
+            usuarioId: user?.id || null,
+            valor: valorPensao,
+            tipoTitulo: 'PENSAO_ALIMENTICIA',
+            descricaoFavorecido: beneficiarioNome,
+            numeroSufixo: sufixoPensao,
+            observacaoAdicional: `Beneficiario da pensao de ${item.colaborador.nome}`,
+            paymentBeneficiaryId: favorecidoBancarioPensao.id
+          });
+        // eslint-disable-next-line no-await-in-loop
+        const tituloPensao = await criarOuAcumularTituloRh(tituloPensaoPayload, {
+          obraId: dadosFechamento.obraId,
+          valor: valorPensao,
+          usuarioId: user?.id || null,
+          transaction
+        });
+
+        // eslint-disable-next-line no-await-in-loop
+        await RhFechamentoTitulo.create(
+          {
+            fechamento_id: fechamento.id,
+            apuracao_evento_id: item.id,
+            titulo_financeiro_id: tituloPensao.id,
+            parceiro_id: parceiroPensao.id,
+            tipo_titulo: 'PENSAO_ALIMENTICIA',
+            evento_recorrente_id: pensaoItem.evento_recorrente_id || null,
+            valor_gerado: valorPensao
+          },
+          { transaction }
+        );
+
+        totalTitulos += 1;
+        totalValor += valorPensao;
+      }
     }
 
     await fechamento.update(
@@ -860,7 +1269,9 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
           total_titulos: totalTitulos,
           total_valor: roundCurrency(totalValor),
           categoria_financeira_id: categoria?.id || null,
-          data_vencimento: dataVencimento
+          data_vencimento: dataVencimento,
+          data_vencimento_40: data.data_vencimento_40 || anticipateWeekend(getCompetenciaDate(apuracao.competencia, 15)),
+          data_vencimento_60: dataVencimento
         },
         atualizado_por: user?.id || null
       },
@@ -976,6 +1387,71 @@ async function reabrirFechamentoRh(fechamentoId, data, user) {
       const titulo = item.tituloFinanceiro;
       if (!titulo?.id) continue;
 
+      const outrosVinculosAtivos = await RhFechamentoTitulo.findAll({
+        where: {
+          titulo_financeiro_id: titulo.id,
+          fechamento_id: { [Op.ne]: fechamento.id }
+        },
+        include: [{
+          model: RhFechamento,
+          as: 'fechamento',
+          required: true,
+          where: { status: 'FECHADO' },
+          attributes: ['id']
+        }],
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+
+      if (outrosVinculosAtivos.length) {
+        const valorRemovido = roundCurrency(item.valor_gerado);
+        const novoValor = roundCurrency(Number(titulo.valor_original || 0) - valorRemovido);
+        if (novoValor <= 0) {
+          throw new ValidationError(`O rateio do titulo #${titulo.id} ficou inconsistente ao estornar o fechamento.`);
+        }
+        await titulo.update({
+          valor_original: novoValor,
+          valor_saldo: novoValor,
+          observacoes: appendAuditText(titulo.observacoes, auditLine),
+          atualizado_por: user?.id || null
+        }, { transaction });
+
+        const rateio = await TituloFinanceiroRateio.findOne({
+          where: {
+            titulo_financeiro_id: titulo.id,
+            obra_id: fechamento.apuracao.obra_id
+          },
+          transaction,
+          lock: transaction.LOCK.UPDATE
+        });
+        if (rateio) {
+          const novoRateio = roundCurrency(Number(rateio.valor_rateio || 0) - valorRemovido);
+          if (novoRateio <= 0) {
+            await rateio.destroy({ transaction });
+          } else {
+            await rateio.update({
+              valor_rateio: novoRateio,
+              percentual: Number(((novoRateio / novoValor) * 100).toFixed(6)),
+              atualizado_por: user?.id || null
+            }, { transaction });
+          }
+        }
+
+        const rateiosRestantes = await TituloFinanceiroRateio.findAll({
+          where: { titulo_financeiro_id: titulo.id },
+          transaction,
+          lock: transaction.LOCK.UPDATE
+        });
+        for (const itemRateio of rateiosRestantes) {
+          // eslint-disable-next-line no-await-in-loop
+          await itemRateio.update({
+            percentual: Number(((Number(itemRateio.valor_rateio || 0) / novoValor) * 100).toFixed(6)),
+            atualizado_por: user?.id || null
+          }, { transaction });
+        }
+        continue;
+      }
+
       await titulo.update(
         {
           status: 'CANCELADO',
@@ -1046,3 +1522,13 @@ module.exports = {
   reabrirFechamentoRh,
   obterComprovanteFechamentoRh
 };
+
+if (process.env.NODE_ENV === 'test') {
+  module.exports.__test = {
+    anticipateWeekend,
+    buildParcelasColaborador,
+    getCompetenciaDate,
+    getLastDayOfCompetencia,
+    roundCurrency
+  };
+}

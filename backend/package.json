@@ -76,6 +76,7 @@
     "test:tipos-solicitacao-destino": "node scripts/validarTiposSolicitacaoPorDestino.js",
     "test:rhdp-escopo-obra": "node scripts/validarEscopoRhDpUsuarioObra.js",
     "test:rhdp-jornada-periodos": "node scripts/validarJornadaPeriodosEdicao.js",
+    "test:rhdp-regras-pagamento": "node scripts/validarRhDpRegrasPagamento.js",
     "test:filtro-valor-titulos": "node scripts/validarFiltroValorTitulos.js",
     "test:intercompany-cartoes": "node scripts/validarIntercompanyCartoesMultiplasEmpresas.js",
     "test:live-updates": "node scripts/validarLiveUpdates.js",

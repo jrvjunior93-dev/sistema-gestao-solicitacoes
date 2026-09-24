@@ -12,9 +12,10 @@ const COLUNAS = [
   { header: 'Matricula', key: 'matricula', width: 18, protegida: true },
   { header: 'CPF', key: 'cpf', width: 18, protegida: true },
   { header: 'Nome', key: 'nome', width: 36, protegida: true },
+  { header: 'Mais_de_uma_obra_Sim_Nao', key: 'mais_de_uma_obra', width: 26 },
   { header: 'Dias_Trabalhados', key: 'dias_trabalhados', width: 20 },
+  { header: 'Finais_Semana_Feriados', key: 'finais_semana_feriados', width: 26 },
   { header: 'Faltas', key: 'faltas', width: 12 },
-  { header: 'Horas_Extras', key: 'horas_extras', width: 16 },
   { header: 'Adicional_Noturno', key: 'adicional_noturno', width: 20 },
   { header: 'Adicional_Insalubridade', key: 'adicional_insalubridade', width: 24 },
   { header: 'Adicional_Periculosidade', key: 'adicional_periculosidade', width: 26 },
@@ -26,7 +27,7 @@ const COLUNAS = [
 ];
 
 const CAMPOS_EDITAVEIS = COLUNAS.filter((coluna) => !coluna.protegida).map((coluna) => coluna.key);
-const CAMPOS_NUMERICOS = CAMPOS_EDITAVEIS.filter((campo) => campo !== 'observacoes');
+const CAMPOS_NUMERICOS = CAMPOS_EDITAVEIS.filter((campo) => !['observacoes', 'mais_de_uma_obra'].includes(campo));
 
 function normalizarTexto(valor) {
   return String(valor ?? '')
@@ -72,6 +73,10 @@ function numeroDaPlanilha(valor, campo, nome) {
   return numero;
 }
 
+function booleanoDaPlanilha(valor) {
+  return ['SIM', 'S', 'TRUE', '1'].includes(normalizarTexto(valor));
+}
+
 async function colaboradoresAtivosDoPeriodo(dados) {
   const lista = await colaboradoresParaJornada(
     Number(dados.obra_id),
@@ -93,7 +98,8 @@ async function gerarModeloJornada(dados = {}) {
   const worksheet = workbook.addWorksheet('Jornada');
   worksheet.columns = COLUNAS.map(({ header, key, width }) => ({ header, key, width }));
   worksheet.views = [{ state: 'frozen', ySplit: 1 }];
-  worksheet.autoFilter = { from: 'A1', to: `N${Math.max(1, colaboradores.length + 1)}` };
+  const ultimaColuna = worksheet.getColumn(COLUNAS.length).letter;
+  worksheet.autoFilter = { from: 'A1', to: `${ultimaColuna}${Math.max(1, colaboradores.length + 1)}` };
 
   const cabecalho = worksheet.getRow(1);
   cabecalho.height = 24;
@@ -173,7 +179,10 @@ async function importarJornadaPlanilha(dados = {}, arquivo, contexto = {}) {
     }
     usadas.add(Number(colaborador.colaborador_id));
 
-    const payload = { colaborador_id: Number(colaborador.colaborador_id) };
+    const payload = {
+      colaborador_id: Number(colaborador.colaborador_id),
+      mais_de_uma_obra: booleanoDaPlanilha(valorDaLinha(linha, 'mais_de_uma_obra'))
+    };
     CAMPOS_NUMERICOS.forEach((campo) => {
       payload[campo] = numeroDaPlanilha(valorDaLinha(linha, campo), campo.replace(/_/g, ' '), colaborador.nome);
     });

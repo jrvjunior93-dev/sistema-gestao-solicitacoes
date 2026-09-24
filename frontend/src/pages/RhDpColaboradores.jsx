@@ -65,6 +65,9 @@ function emptyForm() {
     status: 'ATIVO',
     salario_base: '',
     valor_contratual: '',
+    forma_calculo_gerencial: 'MENSAL',
+    valor_diaria: '',
+    pagamento_automatico_40_60: false,
     observacoes: '',
     pagamento: {
       favorecido_nome: '',
@@ -153,6 +156,9 @@ function toFormData(data) {
     status: data?.status || 'ATIVO',
     salario_base: formatCurrencyInput(data?.salario_base),
     valor_contratual: formatCurrencyInput(data?.valor_contratual),
+    forma_calculo_gerencial: data?.forma_calculo_gerencial || 'MENSAL',
+    valor_diaria: formatCurrencyInput(data?.valor_diaria),
+    pagamento_automatico_40_60: Boolean(data?.pagamento_automatico_40_60),
     observacoes: data?.observacoes || '',
     pagamento: {
       favorecido_nome: data?.pagamento?.favorecido_nome || '',
@@ -189,6 +195,13 @@ function buildPayload(form) {
     status: form.status,
     salario_base: form.salario_base === '' ? undefined : form.salario_base,
     valor_contratual: form.valor_contratual === '' ? undefined : form.valor_contratual,
+    forma_calculo_gerencial: form.forma_calculo_gerencial,
+    valor_diaria: form.forma_calculo_gerencial === 'DIARIA' && form.valor_diaria !== ''
+      ? form.valor_diaria
+      : undefined,
+    pagamento_automatico_40_60: form.forma_calculo_gerencial === 'MENSAL'
+      ? Boolean(form.pagamento_automatico_40_60)
+      : false,
     observacoes: form.observacoes || undefined,
     pagamento: {
       favorecido_nome: form.pagamento.favorecido_nome || undefined,
@@ -576,7 +589,8 @@ export default function RhDpColaboradores() {
       return;
     }
     const favorecidoErro = getCpfCnpjError(form.pagamento?.favorecido_documento, {
-      label: 'CPF/CNPJ do favorecido'
+      label: 'CPF do favorecido',
+      type: 'cpf'
     });
     if (favorecidoErro) {
       avisar.erro(favorecidoErro);
@@ -966,7 +980,7 @@ export default function RhDpColaboradores() {
             {faixaAvisos}
 
             <form id="rh-colaborador-form" className="space-y-4" onSubmit={salvar}>
-              <FormSecao colunas={2}>
+              <FormSecao legenda="Dados do colaborador" colunas={3}>
                 <CampoForm label="Empresa do grupo" obrigatorio>
                   <select
                     className="form-control"
@@ -1105,7 +1119,7 @@ export default function RhDpColaboradores() {
                 </CampoForm>
               </FormSecao>
 
-              <FormSecao colunas={2}>
+              <FormSecao legenda="Contato, contrato e calculo gerencial" colunas={2}>
                 <CampoForm label="Telefone">
                   <input
                     className="form-control"
@@ -1144,6 +1158,48 @@ export default function RhDpColaboradores() {
                     disabled={!podeEditar}
                   />
                 </CampoForm>
+                <CampoForm label="Forma de calculo">
+                  <select
+                    className="form-control"
+                    value={form.forma_calculo_gerencial}
+                    onChange={(e) => setForm((prev) => ({
+                      ...prev,
+                      forma_calculo_gerencial: e.target.value,
+                      pagamento_automatico_40_60: e.target.value === 'DIARIA'
+                        ? false
+                        : prev.pagamento_automatico_40_60
+                    }))}
+                    disabled={!podeEditar}
+                  >
+                    <option value="MENSAL">Mensal</option>
+                    <option value="DIARIA">Por diaria</option>
+                  </select>
+                </CampoForm>
+                {form.forma_calculo_gerencial === 'DIARIA' ? (
+                  <CampoForm label="Valor da diaria" obrigatorio>
+                    <input
+                      className="form-control"
+                      inputMode="decimal"
+                      value={form.valor_diaria}
+                      onChange={(e) => setForm((prev) => ({ ...prev, valor_diaria: normalizeCurrencyTyping(e.target.value) }))}
+                      onBlur={(e) => setForm((prev) => ({ ...prev, valor_diaria: formatCurrencyInput(e.target.value) }))}
+                      disabled={!podeEditar}
+                      required
+                    />
+                  </CampoForm>
+                ) : (
+                  <CampoForm label="Parcelamento mensal">
+                    <label className="flex items-center gap-2 min-h-10">
+                      <input
+                        type="checkbox"
+                        checked={form.pagamento_automatico_40_60}
+                        onChange={(e) => setForm((prev) => ({ ...prev, pagamento_automatico_40_60: e.target.checked }))}
+                        disabled={!podeEditar}
+                      />
+                      40% no dia 15 e 60% no fim do mes
+                    </label>
+                  </CampoForm>
+                )}
               </FormSecao>
 
               <FormSecao legenda="Dados de pagamento" colunas={2}>
@@ -1155,7 +1211,7 @@ export default function RhDpColaboradores() {
                     disabled={!podeEditar}
                   />
                 </CampoForm>
-                <CampoForm label="Documento do favorecido">
+                <CampoForm label="CPF do favorecido">
                   <input
                     className="form-control"
                     value={form.pagamento.favorecido_documento}
@@ -1190,12 +1246,17 @@ export default function RhDpColaboradores() {
                   />
                 </CampoForm>
                 <CampoForm label="Tipo de conta">
-                  <input
+                  <select
                     className="form-control"
                     value={form.pagamento.tipo_conta}
                     onChange={(e) => setForm((prev) => ({ ...prev, pagamento: { ...prev.pagamento, tipo_conta: e.target.value } }))}
                     disabled={!podeEditar}
-                  />
+                  >
+                    <option value="">Selecione</option>
+                    <option value="CORRENTE">Conta corrente</option>
+                    <option value="POUPANCA">Conta poupanca</option>
+                    <option value="SALARIO">Conta salario</option>
+                  </select>
                 </CampoForm>
 
                 <div className="form-grid form-grid--3 form-campo--linha">

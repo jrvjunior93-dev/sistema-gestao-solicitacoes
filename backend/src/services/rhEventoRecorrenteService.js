@@ -59,6 +59,12 @@ function paraCentavos(valor) {
   return Math.round(Number(valor || 0) * 100);
 }
 
+function dividirEmParcelas(valorTotal, parcelas) {
+  const totalCentavos = paraCentavos(valorTotal);
+  if (!parcelas) return totalCentavos / 100;
+  return Math.floor(totalCentavos / parcelas) / 100;
+}
+
 /**
  * Cria a regra. Normalmente vem da aprovacao de um pedido do tipo EVENTO_RECORRENTE — "a Obra
  * solicita e o DP valida e confirma", conforme o cliente definiu em 25/08.
@@ -105,6 +111,34 @@ async function criarEventoRecorrente(dados = {}, contexto = {}, transaction = nu
       throw new ValidationError('O numero de parcelas precisa ser um inteiro maior que zero.');
     }
 
+    const modoValor = String(dados.modo_valor || 'TOTAL').trim().toUpperCase();
+    if (!['TOTAL', 'PARCELA'].includes(modoValor)) {
+      throw new ValidationError('Informe se o valor digitado e o total ou o valor de cada parcela.');
+    }
+    const valorInformado = Number(dados.valor);
+    const valorParcela = modoValor === 'PARCELA'
+      ? valorInformado
+      : dividirEmParcelas(valorInformado, parcelas);
+    const valorTotal = modoValor === 'TOTAL'
+      ? valorInformado
+      : (parcelas ? valorInformado * parcelas : null);
+    if (!(valorParcela > 0)) {
+      throw new ValidationError('O valor calculado da parcela precisa ser maior que zero.');
+    }
+
+    const documentoBeneficiario = String(dados.beneficiario_documento || '').replace(/\D+/g, '');
+    if (codigo === 'PENSAO_ALIMENTICIA') {
+      if (!String(dados.beneficiario_nome || '').trim() || documentoBeneficiario.length !== 11) {
+        throw new ValidationError('Informe o nome e o CPF do beneficiario da pensao alimenticia.');
+      }
+      if (!String(dados.beneficiario_chave_pix || '').trim()
+          && !(String(dados.beneficiario_banco || '').trim()
+            && String(dados.beneficiario_agencia || '').trim()
+            && String(dados.beneficiario_conta || '').trim())) {
+        throw new ValidationError('Informe a chave PIX ou a conta bancaria do beneficiario da pensao.');
+      }
+    }
+
     /**
      * `entra_no_liquido` tem PADRAO POR TIPO, e nao um `true` cego.
      *
@@ -124,11 +158,21 @@ async function criarEventoRecorrente(dados = {}, contexto = {}, transaction = nu
         descricao: dados.descricao || null,
         natureza,
         forma: 'VALOR_FIXO',
-        valor: Number(dados.valor).toFixed(2),
+        valor: Number(valorParcela).toFixed(2),
+        modo_valor: modoValor,
+        valor_total: valorTotal === null ? null : Number(valorTotal).toFixed(2),
+        valor_parcela: Number(valorParcela).toFixed(2),
         entra_no_liquido: entraNoLiquido,
         competencia_inicio: inicio,
         competencia_fim: fim,
         parcelas_total: parcelas,
+        beneficiario_nome: dados.beneficiario_nome || null,
+        beneficiario_documento: documentoBeneficiario || null,
+        beneficiario_banco: dados.beneficiario_banco || null,
+        beneficiario_agencia: dados.beneficiario_agencia || null,
+        beneficiario_conta: dados.beneficiario_conta || null,
+        beneficiario_tipo_conta: dados.beneficiario_tipo_conta || null,
+        beneficiario_chave_pix: dados.beneficiario_chave_pix || null,
         ativo: true,
         solicitacao_id: dados.solicitacao_id || null,
         observacoes: dados.observacoes || null,
@@ -237,7 +281,14 @@ async function aplicarRecorrentes(apuracaoEvento, competencia, transaction = nul
       // Parcelamento terminado: para sozinho, sem ninguem precisar desligar.
       if (evento.parcelas_total && parcela > evento.parcelas_total) continue;
 
-      const centavos = paraCentavos(evento.valor);
+      let valorAplicado = Number(evento.valor_parcela || evento.valor || 0);
+      if (evento.modo_valor === 'TOTAL' && evento.parcelas_total && parcela === evento.parcelas_total) {
+        const totalCentavos = paraCentavos(evento.valor_total || 0);
+        const anterioresCentavos = paraCentavos(evento.valor_parcela || evento.valor || 0)
+          * (evento.parcelas_total - 1);
+        valorAplicado = Math.max(0, totalCentavos - anterioresCentavos) / 100;
+      }
+      const centavos = paraCentavos(valorAplicado);
 
       // eslint-disable-next-line no-await-in-loop
       const item = await RhApuracaoEventoItem.create(
@@ -248,7 +299,7 @@ async function aplicarRecorrentes(apuracaoEvento, competencia, transaction = nul
           descricao: evento.descricao || evento.codigo,
           natureza: evento.natureza,
           // COPIADO: folha fechada nao muda quando a regra muda.
-          valor: Number(evento.valor).toFixed(2),
+          valor: Number(valorAplicado).toFixed(2),
           entra_no_liquido: evento.entra_no_liquido,
           parcela_numero: evento.parcelas_total ? parcela : null,
           parcelas_total: evento.parcelas_total,
