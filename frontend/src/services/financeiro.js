@@ -742,10 +742,14 @@ export async function getCaixaFinanceiro(id) {
 }
 
 export async function abrirCaixaFinanceiro(data) {
+  const body = new FormData();
+  Object.entries(data || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') body.append(key, value);
+  });
   const response = await fetch(`${API_URL}/financeiro/caixas/abrir`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(data)
+    headers: authHeaders(),
+    body
   });
 
   return parseJson(response, 'Erro ao abrir caixa financeiro');
@@ -780,10 +784,14 @@ export async function decidirDivergenciaCaixaFinanceiro(id, data) {
 }
 
 export async function registrarMovimentoCaixaFinanceiro(id, data) {
+  const body = new FormData();
+  Object.entries(data || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') body.append(key, value);
+  });
   const response = await fetch(`${API_URL}/financeiro/caixas/${id}/movimentos`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(data)
+    headers: authHeaders(),
+    body
   });
 
   return parseJson(response, 'Erro ao registrar movimento de caixa');

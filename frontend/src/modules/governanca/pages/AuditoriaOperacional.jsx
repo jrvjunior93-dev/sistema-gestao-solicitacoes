@@ -75,7 +75,8 @@ const EVENT_LABELS = {
   PAGE_VIEW: 'Acesso', CREATE: 'Criacao', UPDATE: 'Alteracao', DELETE: 'Exclusao',
   STATUS_CHANGE: 'Mudanca de status', APPROVE: 'Aprovacao', REJECT: 'Recusa', REOPEN: 'Reabertura',
   CLOSE: 'Encerramento', ASSIGN: 'Delegacao', COMMENT: 'Interacao', IMPORT: 'Importacao', EXPORT: 'Exportacao',
-  UPLOAD: 'Envio de arquivo', DOWNLOAD: 'Download', RECONCILE: 'Conciliacao', REVERSE: 'Estorno', ACTION: 'Acao'
+  UPLOAD: 'Envio de arquivo', DOWNLOAD: 'Download', RECONCILE: 'Conciliacao', REVERSE: 'Estorno', ACTION: 'Acao',
+  CASH_DIVERGENCE_OPENING: 'Divergência na abertura', CASH_DIVERGENCE_CLOSING: 'Divergência no fechamento'
 };
 
 const RESULTADO_LABELS = { SUCCESS: 'Sucesso', FAILED: 'Falha', DENIED: 'Bloqueado' };
@@ -571,6 +572,18 @@ export default function AuditoriaOperacional() {
               />
             </StatGrid>
           </div>
+        </BlocoConteudo>
+
+        <BlocoConteudo
+          titulo="Divergências de caixa"
+          descricao="Ajustes de abertura e diferenças apuradas no fechamento, preservados na trilha operacional."
+          variante="secundario"
+        >
+          <StatGrid colunas={3}>
+            <StatTile label="Ajustes na abertura" valor={Number(summary.divergencias_caixa?.abertura || 0).toLocaleString('pt-BR')} tom={summary.divergencias_caixa?.abertura ? 'warning' : undefined} />
+            <StatTile label="Diferenças no fechamento" valor={Number(summary.divergencias_caixa?.fechamento || 0).toLocaleString('pt-BR')} tom={summary.divergencias_caixa?.fechamento ? 'warning' : undefined} />
+            <StatTile label="Total registrado" valor={Number(summary.divergencias_caixa?.total || 0).toLocaleString('pt-BR')} tom={summary.divergencias_caixa?.total ? 'info' : undefined} />
+          </StatGrid>
         </BlocoConteudo>
 
         <BlocoConteudo

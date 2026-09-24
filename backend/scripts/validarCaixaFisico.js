@@ -65,6 +65,8 @@ function validateBackendContracts() {
     'FINANCIAL_CASH_MOVEMENT_CREATED',
     'FINANCIAL_CASH_MOVEMENT_REVERSED',
     'FINANCIAL_CASH_DIVERGENCE_REQUESTED',
+    'CASH_DIVERGENCE_OPENING',
+    'CASH_DIVERGENCE_CLOSING',
     'FINANCIAL_CASH_DIVERGENCE_APPROVED',
     'Quem informou a divergencia nao pode aprovar ou rejeitar a propria solicitacao'
   ].forEach((contract) => assert(service.includes(contract), `Regra do caixa fisico ausente: ${contract}`));
@@ -81,9 +83,13 @@ function validateBackendContracts() {
   assert(!service.includes("Nenhum lancamento foi mantido"), 'Releitura de apresentacao nao deve provocar rollback de um INSERT valido.');
   assert(service.includes("...sessao.get({ plain: true })"), 'Detalhe do caixa deve ser serializado explicitamente para o frontend.');
   assert(service.includes('total_entradas: totalEntradas'), 'Resumo persistido deve acompanhar atomicamente o movimento criado.');
+  assert(service.includes("natureza === 'SAIDA' && !comprovante"), 'Saidas manuais devem exigir comprovante no backend.');
+  assert(service.includes('saldoContado - saldoPadrao'), 'A abertura deve cruzar o valor contado com o fechamento anterior.');
+  assert(service.includes('AJUSTE_ABERTURA'), 'Divergencia de abertura deve gerar movimento de ajuste rastreavel.');
   assert(sessionHelper.includes('Number(valorConfigurado) === 1'), 'Flag numerica do controle diario deve ser interpretada corretamente.');
   assert(sessionHelper.includes(".trim().toLowerCase() === 'true'"), 'Flag textual do controle diario deve aceitar somente true explicito.');
   assert(routes.includes("'/financeiro/caixas/:id/movimentos'"), 'Rota de movimento manual ausente.');
+  assert(routes.includes("uploadComprovantes.single('comprovante')"), 'Rotas de caixa devem receber comprovante protegido.');
   assert(routes.includes("'/financeiro/caixas/:id/movimentos/:movimentoId/estornar'"), 'Rota de estorno manual ausente.');
   assert(routes.includes("'/financeiro/caixas/:id/decidir-divergencia'"), 'Rota de decisao da divergencia ausente.');
   assert(routes.includes("'/financeiro/caixas-painel-diario'"), 'Rota do painel diario consolidado ausente.');
@@ -122,7 +128,9 @@ function validateFrontendContracts() {
     'Conferir e fechar caixa',
     'Divergências ficam registradas com justificativa',
     'Visao consolidada do dia',
-    'Decidir divergencia'
+    'Decidir divergencia',
+    'Saldo esperado do fechamento anterior',
+    'Preparar '
   ].forEach((contract) => assert(page.includes(contract), `Contrato de interface ausente: ${contract}`));
 
   assert(
@@ -137,6 +145,7 @@ function validateFrontendContracts() {
   assert(page.includes("tipo_operacional || '').toUpperCase() === 'CAIXA_INTERNO'"), 'Interface deve distinguir caixa fisico de conta bancaria.');
   assert(page.includes('min={dataMinimaFechamento}'), 'Interface deve impedir a selecao de data de fechamento retroativa.');
   assert(api.includes('registrarMovimentoCaixaFinanceiro'), 'Cliente da API de movimento manual ausente.');
+  assert(api.includes('new FormData()'), 'Abertura e movimentos devem enviar comprovantes por multipart/form-data.');
   assert(api.includes('estornarMovimentoCaixaFinanceiro'), 'Cliente da API de estorno manual ausente.');
 }
 

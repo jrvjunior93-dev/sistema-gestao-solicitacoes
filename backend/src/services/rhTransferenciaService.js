@@ -11,9 +11,10 @@ const { vinculoAberto, registrarVinculo } = require('./rhVinculoObraService');
 const { comAtividade, marcarLida, marcarListaLida: registrarListaLida } = require('./rhSolicitacaoAtividadeService');
 const { criarNotificacaoDireta } = require('./notificacoes');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
+const { TIPO_CENTRO_CUSTO_OBRA, isObraCentroCusto } = require('../constants/centroCusto');
 
 const camposColaborador = ['id', 'nome', 'matricula', 'cargo', 'obra_id'];
-const camposObra = ['id', 'nome', 'codigo'];
+const camposObra = ['id', 'nome', 'codigo', 'tipo_centro_custo'];
 const tiposTransferencia = { [Op.or]: [{ tipo: 'TROCA_OBRA' }, { tipo: 'MOVIMENTACAO', subtipo: 'TRANSFERENCIA_OBRA' }] };
 const SITUACOES_PENDENTES = ['RASCUNHO', 'ABERTA'];
 const SITUACOES_RESOLVIDAS = ['APROVADA', 'REJEITADA', 'CANCELADA'];
@@ -36,7 +37,7 @@ async function responsaveis(usuarioId, transaction) {
 async function obrasResponsavel(user, transaction) {
   if (isSuperadmin(user)) {
     const obras = await Obra.findAll({
-      where: { ativo: true },
+      where: { ativo: true, tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA },
       attributes: ['id'],
       transaction
     });
@@ -54,10 +55,15 @@ async function podeLerGlobalmente(user) {
 
 async function configuracao(user) {
   const ids = await obrasResponsavel(user);
-  const obras = await Obra.findAll({ where: { ativo: true }, attributes: camposObra, order: [['nome', 'ASC']] });
+  const obras = await Obra.findAll({
+    where: { ativo: true, tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA },
+    attributes: camposObra,
+    order: [['nome', 'ASC']]
+  });
+  const obrasDisponiveis = new Set(obras.map((obra) => Number(obra.id)));
   return {
     obras: obras.map(o => o.get({ plain: true })),
-    obras_responsavel_ids: ids,
+    obras_responsavel_ids: ids.filter((id) => obrasDisponiveis.has(Number(id))),
     acesso_global: await podeLerGlobalmente(user)
   };
 }
@@ -257,6 +263,9 @@ async function efetivarTransferencia(s, user, transaction) {
   }
   const destino = await Obra.findByPk(d.obra_destino_id, { transaction });
   if (!destino?.ativo) throw new ValidationError('A obra de destino nao esta ativa.');
+  if (!isObraCentroCusto(destino.tipo_centro_custo)) {
+    throw new ValidationError('O destino da transferencia precisa ser um cadastro do tipo Obra.');
+  }
   const aberto = await vinculoAberto(colaborador.id, transaction);
   const hoje = hojeLocal();
   if (!aberto || Number(aberto.obra_id) !== Number(s.obra_id) || dataIso(aberto.vigencia_inicio) > hoje
@@ -291,8 +300,17 @@ async function abrir(user, payload) {
     }
     const ids = await obrasResponsavel(user, transaction);
     const fluxo = resolverFluxoTransferencia(origem, destino, ids);
-    const obras = await Obra.findAll({ where: { id: [origem, destino], ativo: true }, transaction });
-    if (obras.length !== 2) throw new ValidationError('As duas obras precisam estar ativas.');
+    const obras = await Obra.findAll({
+      where: {
+        id: [origem, destino],
+        ativo: true,
+        tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA
+      },
+      transaction
+    });
+    if (obras.length !== 2) {
+      throw new ValidationError('A origem e o destino precisam ser cadastros ativos do tipo Obra.');
+    }
     if (!fluxo.aprovacaoAutomatica) {
       const ativos = await responsaveis(null, transaction);
       if (!ativos.some(r => Number(r.obra_id) === fluxo.obraAprovadoraId && Number(r.user_id) !== Number(user.id))) {

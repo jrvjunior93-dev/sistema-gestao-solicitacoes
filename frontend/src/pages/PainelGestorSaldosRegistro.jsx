@@ -52,7 +52,8 @@ export default function PainelGestorSaldosRegistro() {
     return () => { active = false; };
   }, [avisar, data]);
 
-  const filled = useMemo(() => contas.filter((item) => String(values[item.id] || '').trim()), [contas, values]);
+  const contasManuais = useMemo(() => contas.filter((item) => !item.saldo_automatico), [contas]);
+  const filled = useMemo(() => contasManuais.filter((item) => String(values[item.id] || '').trim()), [contasManuais, values]);
 
   async function submit(event) {
     event.preventDefault();
@@ -81,18 +82,18 @@ export default function PainelGestorSaldosRegistro() {
 
   return (
     <Pagina>
-      <PageHeader titulo="Informar saldos disponíveis" contagem={`${filled.length} de ${contas.length} conta(s)`} descricao="Fotografia financeira do momento. Este lançamento não altera conciliação, caixa ou movimentos financeiros." />
+      <PageHeader titulo="Informar saldos disponíveis" contagem={`${filled.length} de ${contasManuais.length} conta(s) manual(is)`} descricao="Contas com controle diário usam o saldo do sistema; as demais recebem a posição informada nesta tela." />
       <Avisos avisos={avisos} aoFechar={fechar} />
       <BlocoConteudo titulo="Data de referência" descricao="A consulta e o consolidado usam somente os saldos registrados nesta data.">
         <div className="pg-register-date"><label><span>Data</span><DateInputBR value={data} max={localDate()} onChange={(event) => setData(event.target.value)} /></label>{isPast ? <p data-alert="true">Correção retroativa: justificativa obrigatória e histórico preservado.</p> : <p>Os valores podem ser atualizados durante o dia e cada alteração ficará registrada.</p>}</div>
       </BlocoConteudo>
       <form onSubmit={submit} className="pg-register-form">
-        <BlocoConteudo titulo="Contas do seu escopo" descricao="Preencha apenas as contas conferidas. Campos vazios não aparecem no painel do dia." variante="primario" cor="var(--module-financeiro)">
+        <BlocoConteudo titulo="Contas do seu escopo" descricao="Preencha apenas as contas manuais conferidas. Contas automáticas são exibidas apenas para conferência." variante="primario" cor="var(--module-financeiro)">
           {loading ? <div className="app-empty-card">Carregando contas...</div> : contas.length ? <div className="pg-register-list">{contas.map((item) => (
             <label className="pg-register-row" key={item.id}>
               <span className="pg-register-row__identity"><HiOutlineWallet /><span><strong>{item.nome}</strong><small>{item.empresa?.nome || 'Sem empresa vinculada'} · {item.tipo_operacional === 'CAIXA_INTERNO' ? 'Caixa interno' : item.banco || 'Conta bancária'}</small></span></span>
-              <span className="pg-register-row__value"><span>Saldo disponível</span><input inputMode="decimal" placeholder="R$ 0,00" value={values[item.id] || ''} onChange={(event) => setValues((current) => ({ ...current, [item.id]: normalizeBalanceTyping(event.target.value) }))} /></span>
-              <span className="pg-register-row__status">{item.saldo ? <><HiOutlineCheckCircle /> Já informado</> : 'Pendente'}</span>
+              <span className="pg-register-row__value"><span>{item.saldo_automatico ? 'Saldo automático' : 'Saldo disponível'}</span><input inputMode="decimal" placeholder="R$ 0,00" value={values[item.id] || ''} onChange={(event) => setValues((current) => ({ ...current, [item.id]: normalizeBalanceTyping(event.target.value) }))} disabled={item.saldo_automatico} /></span>
+              <span className="pg-register-row__status">{item.saldo_automatico ? <><HiOutlineCheckCircle /> Sistema</> : item.saldo ? <><HiOutlineCheckCircle /> Já informado</> : 'Pendente'}</span>
             </label>
           ))}</div> : <div className="app-empty-card">Nenhuma conta ativa encontrada no seu escopo.</div>}
         </BlocoConteudo>

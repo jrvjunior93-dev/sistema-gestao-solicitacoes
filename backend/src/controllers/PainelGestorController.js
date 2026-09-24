@@ -64,7 +64,7 @@ module.exports = {
   async saldos(req, res) {
     try {
       await assertPermission(req.user, PERMISSIONS.SALDOS_VIEW);
-      return res.json(await carregarSaldosDaData(req.user, req.query.data));
+      return res.json(await carregarSaldosDaData(req.user, req.query.data, { incluirPendentes: true }));
     } catch (error) {
       return respondError(res, error, 'Erro ao consultar saldos diarios');
     }

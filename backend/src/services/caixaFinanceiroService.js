@@ -13,6 +13,8 @@ const {
 } = require('../models');
 const { canAccessFinanceiro } = require('./authorizationService');
 const { registrarEventoSeguranca } = require('./securityLogService');
+const { uploadToS3 } = require('./s3');
+const { recordEvent } = require('../modules/governanca/services/auditoriaOperacionalService');
 const {
   obterCaixaDiarioConfig,
   usuarioEstaSujeitoAoBloqueio,
@@ -517,6 +519,17 @@ async function obterPainelDiarioCaixas(req, dataReferencia = today()) {
         where: { conta_bancaria_id: { [Op.in]: contaIds }, data_referencia: dataConciliacao }
       })
     : [];
+  const ultimosFechamentos = contaIds.length > 0
+    ? await CaixaFinanceiroSessao.findAll({
+        where: {
+          conta_bancaria_id: { [Op.in]: contaIds },
+          status: 'FECHADO',
+          data_fechamento: { [Op.lte]: data }
+        },
+        attributes: ['id', 'conta_bancaria_id', 'data_fechamento', 'saldo_sistema', 'saldo_informado'],
+        order: [['conta_bancaria_id', 'ASC'], ['data_fechamento', 'DESC'], ['id', 'DESC']]
+      })
+    : [];
   const sessaoPorConta = new Map();
   sessoes.forEach((sessao) => {
     const key = Number(sessao.conta_bancaria_id);
@@ -526,6 +539,11 @@ async function obterPainelDiarioCaixas(req, dataReferencia = today()) {
     if (!atual || (sessaoAtiva && !atualAtiva)) sessaoPorConta.set(key, sessao);
   });
   const confirmacaoPorConta = new Map(confirmacoes.map((item) => [Number(item.conta_bancaria_id), item]));
+  const ultimoFechamentoPorConta = new Map();
+  ultimosFechamentos.forEach((item) => {
+    const contaId = Number(item.conta_bancaria_id);
+    if (!ultimoFechamentoPorConta.has(contaId)) ultimoFechamentoPorConta.set(contaId, item);
+  });
 
   const itens = await Promise.all(contas.map(async (conta) => {
     const sessao = sessaoPorConta.get(Number(conta.id)) || null;
@@ -533,6 +551,10 @@ async function obterPainelDiarioCaixas(req, dataReferencia = today()) {
     const caixaFisico = contaEhCaixaFisico(conta);
     const resumoOfx = caixaFisico ? null : await obterResumoConciliacaoDia(conta.id, dataConciliacao);
     const confirmacao = confirmacaoPorConta.get(Number(conta.id)) || null;
+    const ultimoFechamento = ultimoFechamentoPorConta.get(Number(conta.id)) || null;
+    const saldoAberturaEsperado = ultimoFechamento
+      ? roundCurrency(ultimoFechamento.saldo_informado ?? ultimoFechamento.saldo_sistema)
+      : roundCurrency(conta.saldo_inicial || 0);
     let situacao = 'PENDENTE_ABERTURA';
     if (sessao?.status === 'AGUARDANDO_APROVACAO') situacao = 'DIVERGENCIA_PENDENTE';
     else if (sessao?.status === 'ABERTO' && String(sessao.data_abertura) === data) situacao = 'PRONTO';
@@ -547,6 +569,12 @@ async function obterPainelDiarioCaixas(req, dataReferencia = today()) {
       data_conciliacao: dataConciliacao,
       conciliacao_confirmada: caixaFisico || Boolean(confirmacao),
       conciliacao: resumoOfx,
+      saldo_abertura_esperado: saldoAberturaEsperado,
+      ultimo_fechamento: ultimoFechamento ? {
+        id: ultimoFechamento.id,
+        data: ultimoFechamento.data_fechamento,
+        saldo: saldoAberturaEsperado
+      } : null,
       saldo_atual: Number(resumo?.saldo_sistema ?? sessao?.saldo_sistema ?? conta.saldo_inicial ?? 0)
     };
   }));
@@ -576,13 +604,15 @@ async function obterPainelDiarioCaixas(req, dataReferencia = today()) {
   };
 }
 
-async function abrirSessaoCaixa(req, payload = {}) {
+async function abrirSessaoCaixa(req, payload = {}, comprovante = null) {
   await assertFinanceAccess(req);
   await assertCaixaOperator(req);
   const dataAbertura = parseDate(payload.data_abertura, 'Data de abertura', today());
   const dataConciliacaoObrigatoria = addDays(dataAbertura, -1);
   let contaAudit = null;
   let saldoAberturaAudit = 0;
+  let ajusteAudit = null;
+  let comprovanteUrl = null;
 
   const sessaoId = await sequelize.transaction(async (transaction) => {
     const conta = await carregarConta(payload.conta_bancaria_id, {
@@ -609,8 +639,22 @@ async function abrirSessaoCaixa(req, payload = {}) {
     const saldoPadrao = ultimaFechada
       ? roundCurrency(ultimaFechada.saldo_informado ?? ultimaFechada.saldo_sistema)
       : roundCurrency(conta.saldo_inicial || 0);
-    const saldoAbertura = parseMoney(payload.saldo_abertura, 'Saldo de abertura') ?? saldoPadrao;
-    saldoAberturaAudit = saldoAbertura;
+    const saldoContado = parseMoney(payload.saldo_abertura, 'Saldo de abertura') ?? saldoPadrao;
+    const diferencaAbertura = roundCurrency(saldoContado - saldoPadrao);
+    const naturezaAjuste = diferencaAbertura > 0 ? 'ENTRADA' : 'SAIDA';
+    const descricaoAjuste = String(payload.ajuste_descricao || '').trim();
+    if (Math.abs(diferencaAbertura) > 0.009 && descricaoAjuste.length < 10) {
+      throw createHttpError(400, 'Informe o motivo do ajuste com pelo menos 10 caracteres para abrir com saldo divergente.');
+    }
+    if (diferencaAbertura < -0.009 && !comprovanteUrl) {
+      if (comprovante) {
+        comprovanteUrl = await uploadToS3(comprovante, 'financeiro/caixas/ajustes-abertura');
+      }
+    }
+    if (diferencaAbertura < -0.009 && !comprovanteUrl) {
+      throw createHttpError(400, 'Anexe o comprovante da saida usada para ajustar o saldo de abertura.');
+    }
+    saldoAberturaAudit = saldoPadrao;
 
     // Caixa fisico tem conferencia propria no fechamento e nao depende de arquivo OFX.
     if (!contaEhCaixaFisico(conta)) {
@@ -631,11 +675,34 @@ async function abrirSessaoCaixa(req, payload = {}) {
       conta_bancaria_id: conta.id,
       data_abertura: dataAbertura,
       status: 'ABERTO',
-      saldo_abertura: saldoAbertura,
-      saldo_sistema: saldoAbertura,
+      saldo_abertura: saldoPadrao,
+      saldo_sistema: saldoContado,
       observacoes_abertura: payload.observacoes || null,
       aberto_por: req.user?.id || null
     }, { transaction });
+    if (Math.abs(diferencaAbertura) > 0.009) {
+      const valorAjuste = Math.abs(diferencaAbertura);
+      const movimento = await MovimentoFinanceiro.create({
+        titulo_financeiro_id: null,
+        conta_bancaria_id: conta.id,
+        empresa_id: Number(conta.empresa_id),
+        caixa_sessao_id: sessao.id,
+        tipo_movimento: naturezaAjuste === 'ENTRADA' ? 'CAIXA_ENTRADA_MANUAL' : 'CAIXA_SAIDA_MANUAL',
+        status: 'ATIVO',
+        valor: valorAjuste,
+        juros: 0,
+        multa: 0,
+        desconto: 0,
+        valor_quitacao: valorAjuste,
+        data_movimento: dataAbertura,
+        documento_referencia: 'AJUSTE_ABERTURA',
+        comprovante_url: naturezaAjuste === 'SAIDA' ? comprovanteUrl : null,
+        comprovante_nome: naturezaAjuste === 'SAIDA' ? String(comprovante?.originalname || '').slice(0, 255) : null,
+        observacoes: descricaoAjuste,
+        criado_por: req.user?.id || null
+      }, { transaction });
+      ajusteAudit = { movimento_id: movimento.id, natureza: naturezaAjuste, valor: valorAjuste, saldo_contado: saldoContado };
+    }
     return sessao.id;
   });
 
@@ -654,6 +721,29 @@ async function abrirSessaoCaixa(req, payload = {}) {
       tipo_operacional: contaAudit.tipo_operacional
     }
   });
+  if (ajusteAudit) {
+    await recordEvent({
+      usuario_id: req.user?.id || null,
+      setor_id: req.user?.setor_id || null,
+      perfil_snapshot: req.user?.perfil || null,
+      categoria: 'OPERACAO',
+      tipo_evento: 'CASH_DIVERGENCE_OPENING',
+      modulo: 'FINANCEIRO',
+      recurso_tipo: 'CAIXA_FINANCEIRO',
+      recurso_id: String(sessaoId),
+      empresa_id: Number(contaAudit.empresa_id) || null,
+      resumo: `Divergencia de abertura ajustada por ${ajusteAudit.natureza.toLowerCase()}`,
+      resultado: 'SUCCESS',
+      metadata: {
+        conta_bancaria_id: contaAudit.id,
+        natureza: ajusteAudit.natureza,
+        valor: ajusteAudit.valor,
+        saldo_anterior: saldoAberturaAudit,
+        saldo_contado: ajusteAudit.saldo_contado,
+        movimento_id: ajusteAudit.movimento_id
+      }
+    });
+  }
 
   return CaixaFinanceiroSessao.findByPk(sessaoId, { include: includeSessao() });
 }
@@ -739,6 +829,26 @@ async function fecharSessaoCaixa(req, sessaoId, payload = {}) {
       ...fechamentoAudit
     }
   });
+  if (Math.abs(Number(fechamentoAudit?.diferenca || 0)) > 0.009) {
+    await recordEvent({
+      usuario_id: req.user?.id || null,
+      setor_id: req.user?.setor_id || null,
+      perfil_snapshot: req.user?.perfil || null,
+      categoria: 'OPERACAO',
+      tipo_evento: 'CASH_DIVERGENCE_CLOSING',
+      modulo: 'FINANCEIRO',
+      recurso_tipo: 'CAIXA_FINANCEIRO',
+      recurso_id: String(id),
+      empresa_id: fechamentoAudit.empresa_id || null,
+      resumo: 'Fechamento de caixa com divergencia enviado para aprovacao',
+      resultado: 'SUCCESS',
+      metadata: {
+        saldo_sistema: fechamentoAudit.saldo_sistema,
+        saldo_informado: fechamentoAudit.saldo_informado,
+        diferenca: fechamentoAudit.diferenca
+      }
+    });
+  }
 
   return CaixaFinanceiroSessao.findByPk(id, { include: includeSessao() });
 }
@@ -764,7 +874,7 @@ async function carregarSessaoParaMovimento(sessaoId, transaction) {
   return sessao;
 }
 
-async function registrarMovimentoCaixa(req, sessaoId, payload = {}) {
+async function registrarMovimentoCaixa(req, sessaoId, payload = {}, comprovante = null) {
   await assertFinanceAccess(req);
   await assertCaixaOperator(req);
   const natureza = String(payload.natureza || '').trim().toUpperCase();
@@ -781,6 +891,12 @@ async function registrarMovimentoCaixa(req, sessaoId, payload = {}) {
   if (dataMovimento > today()) {
     throw createHttpError(400, 'A data do movimento nao pode ser futura.');
   }
+  if (natureza === 'SAIDA' && !comprovante) {
+    throw createHttpError(400, 'Anexe o comprovante para registrar uma saida de caixa.');
+  }
+  const comprovanteUrl = comprovante
+    ? await uploadToS3(comprovante, `financeiro/caixas/${sessaoId}/comprovantes`)
+    : null;
   let movimentoId = null;
   let sessaoAudit = null;
   let detalheAtualizado = null;
@@ -810,6 +926,8 @@ async function registrarMovimentoCaixa(req, sessaoId, payload = {}) {
       valor_quitacao: valor,
       data_movimento: dataMovimento,
       documento_referencia: String(payload.documento_referencia || '').trim().slice(0, 120) || null,
+      comprovante_url: comprovanteUrl,
+      comprovante_nome: comprovante ? String(comprovante.originalname || '').slice(0, 255) : null,
       observacoes: descricao,
       criado_por: req.user?.id || null
     }, { transaction });
@@ -929,6 +1047,10 @@ function serializarMovimentoSessao(movimento, sessao) {
     valor: Math.abs(Number(movimento.valor_quitacao || movimento.valor || 0)),
     descricao: movimento.observacoes || movimento.titulo?.descricao || movimento.titulo?.codigo || 'Movimento financeiro',
     documento: movimento.documento_referencia || movimento.titulo?.codigo || null,
+    comprovante: movimento.comprovante_url ? {
+      url: movimento.comprovante_url,
+      nome: movimento.comprovante_nome || 'Comprovante'
+    } : null,
     titulo: movimento.titulo || null,
     usuario: movimento.criadoPor || null,
     estornavel: sessao.status === 'ABERTO' && manual && movimento.status === 'ATIVO'

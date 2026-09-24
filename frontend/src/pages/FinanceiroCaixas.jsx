@@ -121,8 +121,10 @@ export default function FinanceiroCaixas() {
   */
   const { avisos, avisar, fechar: fecharAviso, limpar: limparAvisos } = useAvisos();
   const carregamentoIdRef = useRef(0);
-  const [abrirForm, setAbrirForm] = useState({ data_abertura: today(), saldo_abertura: '', observacoes: '' });
-  const [movimentoForm, setMovimentoForm] = useState({ natureza: 'SAIDA', data_movimento: today(), valor: '', descricao: '', documento_referencia: '' });
+  const comprovanteAberturaRef = useRef(null);
+  const comprovanteMovimentoRef = useRef(null);
+  const [abrirForm, setAbrirForm] = useState({ data_abertura: today(), saldo_abertura: '', observacoes: '', ajuste_descricao: '', comprovante: null });
+  const [movimentoForm, setMovimentoForm] = useState({ natureza: 'SAIDA', data_movimento: today(), valor: '', descricao: '', documento_referencia: '', comprovante: null });
   const [fecharForm, setFecharForm] = useState({ data_fechamento: today(), saldo_informado: '', observacoes: '' });
   const [estorno, setEstorno] = useState({ movimento: null, motivo: '' });
 
@@ -256,6 +258,23 @@ export default function FinanceiroCaixas() {
   const sessaoPendente = useMemo(() => sessoes.find((sessao) => sessao.status === 'AGUARDANDO_APROVACAO') || null, [sessoes]);
   const sessaoAtiva = sessaoAberta || sessaoPendente;
   const sessoesFechadas = useMemo(() => sessoes.filter((sessao) => sessao.status === 'FECHADO'), [sessoes]);
+  const contaPainel = useMemo(() => (
+    painel?.contas?.find((item) => Number(item.conta?.id) === Number(contaSelecionadaId)) || null
+  ), [contaSelecionadaId, painel?.contas]);
+  const saldoAberturaEsperado = Number(
+    contaPainel?.saldo_abertura_esperado
+      ?? sessoesFechadas[0]?.saldo_informado
+      ?? sessoesFechadas[0]?.saldo_sistema
+      ?? contaSelecionada?.saldo_inicial
+      ?? 0
+  );
+  const saldoAberturaContado = abrirForm.saldo_abertura === ''
+    ? saldoAberturaEsperado
+    : parseCurrencyInput(abrirForm.saldo_abertura);
+  const diferencaAbertura = Number.isFinite(saldoAberturaContado)
+    ? saldoAberturaContado - saldoAberturaEsperado
+    : 0;
+  const aberturaDivergente = Math.abs(diferencaAbertura) > 0.009;
   const resumo = sessaoDetalhe?.resumo_atual || sessaoAberta?.resumo_atual || {};
   const movimentos = Array.isArray(sessaoDetalhe?.movimentos_detalhados) ? sessaoDetalhe.movimentos_detalhados : [];
   const dataMinimaFechamento = useMemo(() => {
@@ -315,10 +334,19 @@ export default function FinanceiroCaixas() {
 
   async function handleAbrir(event) {
     event.preventDefault();
+    if (aberturaDivergente && abrirForm.ajuste_descricao.trim().length < 10) {
+      avisar.alerta('Informe o motivo do ajuste de abertura com pelo menos 10 caracteres.');
+      return;
+    }
+    if (diferencaAbertura < -0.009 && !abrirForm.comprovante) {
+      avisar.alerta('Anexe o comprovante da saída usada para ajustar o saldo de abertura.');
+      return;
+    }
     await executar(async () => {
-      await abrirCaixaFinanceiro({ conta_bancaria_id: contaSelecionadaId, data_abertura: abrirForm.data_abertura, saldo_abertura: abrirForm.saldo_abertura === '' ? undefined : abrirForm.saldo_abertura, observacoes: abrirForm.observacoes });
+      await abrirCaixaFinanceiro({ conta_bancaria_id: contaSelecionadaId, ...abrirForm, saldo_abertura: saldoAberturaContado });
       avisar.sucesso('Caixa aberto com sucesso.');
-      setAbrirForm({ data_abertura: today(), saldo_abertura: '', observacoes: '' });
+      setAbrirForm({ data_abertura: today(), saldo_abertura: '', observacoes: '', ajuste_descricao: '', comprovante: null });
+      if (comprovanteAberturaRef.current) comprovanteAberturaRef.current.value = '';
     }, 'Erro ao abrir o caixa.');
   }
 
@@ -340,6 +368,10 @@ export default function FinanceiroCaixas() {
       avisar.alerta('Informe um valor maior que zero para registrar o movimento.');
       return;
     }
+    if (movimentoForm.natureza === 'SAIDA' && !movimentoForm.comprovante) {
+      avisar.alerta('Anexe o comprovante para registrar a saída.');
+      return;
+    }
     await executar(async () => {
       const detalhe = await registrarMovimentoCaixaFinanceiro(sessaoAberta.id, {
         ...movimentoForm,
@@ -347,7 +379,8 @@ export default function FinanceiroCaixas() {
       });
       const estadoAplicado = aplicarSessaoAtualizada(detalhe);
       avisar.sucesso(`${movimentoForm.natureza === 'ENTRADA' ? 'Entrada' : 'Saída'} registrada com sucesso.`);
-      setMovimentoForm({ natureza: movimentoForm.natureza, data_movimento: today(), valor: '', descricao: '', documento_referencia: '' });
+      setMovimentoForm({ natureza: movimentoForm.natureza, data_movimento: today(), valor: '', descricao: '', documento_referencia: '', comprovante: null });
+      if (comprovanteMovimentoRef.current) comprovanteMovimentoRef.current.value = '';
       return { estadoAplicado };
     }, 'Erro ao registrar o movimento.');
   }
@@ -406,6 +439,20 @@ export default function FinanceiroCaixas() {
   }
 
   const diferencaRelevante = Math.abs(diferencaFechamento) > 0.009;
+
+  function prepararAjusteFechamento() {
+    if (!diferencaRelevante) return;
+    const natureza = diferencaFechamento > 0 ? 'ENTRADA' : 'SAIDA';
+    setMovimentoForm({
+      natureza,
+      data_movimento: fecharForm.data_fechamento || today(),
+      valor: formatCurrencyInput(Math.abs(diferencaFechamento), { emptyZero: false }),
+      descricao: `Ajuste da conferência para fechamento do caixa em ${formatDate(fecharForm.data_fechamento)}`,
+      documento_referencia: 'AJUSTE_FECHAMENTO',
+      comprovante: null
+    });
+    window.requestAnimationFrame(() => document.getElementById('caixa-movimento-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }
 
   return (
     <Pagina>
@@ -559,6 +606,14 @@ export default function FinanceiroCaixas() {
             {/* D3: os dois pesos visíveis — "Abrir caixa" é a primária sólida,
                 "Confirmar OFX" a secundária em contorno. */}
             <div className="flex flex-wrap justify-end gap-2 sm:col-span-2 xl:col-span-2">{!caixaFisico ? <button type="button" className="btn btn-outline" onClick={handleConfirmarOfx} disabled={saving}>Confirmar OFX</button> : null}<button type="submit" className="btn btn-primary" disabled={saving}>Abrir caixa</button></div>
+            <div className="sm:col-span-2 xl:col-span-12 rounded-xl border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[var(--c-muted)]">Saldo esperado do fechamento anterior</span><strong>{formatCurrency(saldoAberturaEsperado)}</strong></div>
+              {aberturaDivergente ? <div className="mt-3 grid gap-3 border-t border-[var(--c-border)] pt-3 sm:grid-cols-2">
+                <p className="sm:col-span-2 text-[var(--sem-warning)]"><strong>{diferencaAbertura > 0 ? 'Entrada' : 'Saída'} de ajuste: {formatCurrency(Math.abs(diferencaAbertura))}.</strong> O lançamento será criado junto com a abertura e ficará na auditoria.</p>
+                <label className="sol-filter-field"><span className="sol-filter-label">Motivo do ajuste *</span><input className="input w-full" minLength={10} maxLength={1000} value={abrirForm.ajuste_descricao} onChange={(event) => setAbrirForm((current) => ({ ...current, ajuste_descricao: event.target.value }))} required /></label>
+                {diferencaAbertura < 0 ? <label className="sol-filter-field"><span className="sol-filter-label">Comprovante da saída *</span><input ref={comprovanteAberturaRef} className="input w-full" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={(event) => setAbrirForm((current) => ({ ...current, comprovante: event.target.files?.[0] || null }))} required /></label> : null}
+              </div> : null}
+            </div>
           </form>
         </BlocoConteudo>
       ) : null}
@@ -620,13 +675,14 @@ export default function FinanceiroCaixas() {
             titulo="Registrar entrada ou saída"
             descricao="Use para dinheiro físico ainda não registrado por outro fluxo financeiro."
           >
-            <form className="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-12" onSubmit={handleMovimento}>
+            <form id="caixa-movimento-form" className="grid items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-12" onSubmit={handleMovimento}>
               {/* R12: select de FORMULÁRIO (entrada de dado do lançamento). */}
-              <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Natureza *</span><select className="input mt-auto w-full" value={movimentoForm.natureza} onChange={(event) => setMovimentoForm((current) => ({ ...current, natureza: event.target.value }))}><option value="ENTRADA">Entrada</option><option value="SAIDA">Saída</option></select></label>
+              <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Natureza *</span><select className="input mt-auto w-full" value={movimentoForm.natureza} onChange={(event) => { if (comprovanteMovimentoRef.current) comprovanteMovimentoRef.current.value = ''; setMovimentoForm((current) => ({ ...current, natureza: event.target.value, comprovante: null })); }}><option value="ENTRADA">Entrada</option><option value="SAIDA">Saída</option></select></label>
               <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Data *</span><DateInputBR className="input mt-auto w-full" value={movimentoForm.data_movimento} onChange={(event) => setMovimentoForm((current) => ({ ...current, data_movimento: event.target.value }))} required /></label>
               <label className="sol-filter-field h-full xl:col-span-2"><span className="sol-filter-label">Valor *</span><input className="input input-moeda mt-auto w-full" type="text" inputMode="decimal" value={movimentoForm.valor} onChange={(event) => setMovimentoForm((current) => ({ ...current, valor: normalizeCurrencyTyping(event.target.value) }))} placeholder="R$ 0,00" required /></label>
               <label className="sol-filter-field h-full sm:col-span-2 xl:col-span-3"><span className="sol-filter-label">Descrição *</span><input className="input mt-auto w-full" minLength={3} maxLength={4000} placeholder="Ex.: compra emergencial de material" value={movimentoForm.descricao} onChange={(event) => setMovimentoForm((current) => ({ ...current, descricao: event.target.value }))} required /></label>
               <label className="sol-filter-field h-full sm:col-span-2 xl:col-span-2"><span className="sol-filter-label">Documento / referência</span><input className="input mt-auto w-full" maxLength={120} placeholder="Recibo, NF ou controle" value={movimentoForm.documento_referencia} onChange={(event) => setMovimentoForm((current) => ({ ...current, documento_referencia: event.target.value }))} /></label>
+              {movimentoForm.natureza === 'SAIDA' ? <label className="sol-filter-field h-full sm:col-span-2 xl:col-span-3"><span className="sol-filter-label">Comprovante da saída *</span><input ref={comprovanteMovimentoRef} className="input mt-auto w-full" type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" onChange={(event) => setMovimentoForm((current) => ({ ...current, comprovante: event.target.files?.[0] || null }))} required /></label> : null}
               <div className="flex items-center justify-end sm:col-span-2 xl:col-span-1">
                 <button type="submit" className="btn btn-primary" disabled={saving} title="Registrar entrada ou saída">
                   <HiOutlinePlus className="h-4 w-4" aria-hidden="true" />
@@ -722,6 +778,7 @@ export default function FinanceiroCaixas() {
                 Fechar caixa
               </button>
             </div>
+            {diferencaRelevante ? <div className="sm:col-span-2 xl:col-span-12 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--sem-warning)] bg-[var(--ui-surface-soft)] p-3 text-sm"><span>Você pode justificar e enviar a diferença para aprovação ou registrar o lançamento correspondente antes de fechar.</span>{caixaFisico ? <button type="button" className="btn btn-outline" onClick={prepararAjusteFechamento}>Preparar {diferencaFechamento > 0 ? 'entrada' : 'saída'} de ajuste</button> : null}</div> : null}
           </form>
         </BlocoConteudo> : null}
       </> : null}

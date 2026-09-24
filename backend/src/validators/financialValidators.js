@@ -1966,7 +1966,7 @@ function validateFinanceCaixaQuery(query = {}) {
 function validateFinanceCaixaAberturaBody(body = {}) {
   ensureAllowedKeys(
     body,
-    ['conta_bancaria_id', 'data_abertura', 'saldo_abertura', 'observacoes'],
+    ['conta_bancaria_id', 'data_abertura', 'saldo_abertura', 'observacoes', 'ajuste_descricao'],
     'Abertura de caixa'
   );
 
@@ -1974,7 +1974,8 @@ function validateFinanceCaixaAberturaBody(body = {}) {
     conta_bancaria_id: parseInteger(body.conta_bancaria_id, 'Conta financeira', { required: true }),
     data_abertura: parseDateOnly(body.data_abertura, 'Data de abertura'),
     saldo_abertura: parseDecimal(body.saldo_abertura, 'Saldo de abertura'),
-    observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000)
+    observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
+    ajuste_descricao: parseOptionalText(body.ajuste_descricao, 'Motivo do ajuste', 1000)
   };
 }
 

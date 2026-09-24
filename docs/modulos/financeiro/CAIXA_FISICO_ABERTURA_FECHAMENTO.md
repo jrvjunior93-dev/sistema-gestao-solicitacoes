@@ -12,11 +12,18 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 - abertura, entrada, saida, estorno e fechamento exigem acesso financeiro e, depois
   da primeira configuracao, vinculacao como responsavel pelo controle diario;
 - entradas e saidas manuais exigem valor positivo, descricao e natureza validos;
+- toda saida manual exige comprovante anexado, validado tambem pelo backend;
+- o saldo informado na abertura e comparado ao ultimo fechamento (ou ao saldo
+  inicial da conta quando ainda nao existe fechamento); uma diferenca gera entrada
+  ou saida de ajuste na propria sessao, com motivo obrigatorio e comprovante quando
+  o ajuste for uma saida;
 - o estorno exige justificativa e so pode atingir lancamentos manuais ativos;
 - cada inclusao e estorno atualiza o resumo da sessao na mesma transacao;
 - o fechamento nao aceita data retroativa ao dia atual nem ao movimento mais recente;
 - divergencias entre saldo contado e saldo calculado congelam a sessao e exigem
   decisao de outro usuario configurado como aprovador;
+- antes de enviar uma divergencia de fechamento para aprovacao, a interface permite
+  preparar o lancamento correspondente para que o operador corrija o livro;
 - a aprovacao gera um movimento de ajuste auditavel e fecha a sessao; a rejeicao
   reabre a sessao para correcao;
 - a conciliacao de transferencia de um OFX historico continua exigindo que o caixa
@@ -24,6 +31,8 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
   a transferencia fica registrada sem vinculo com essa sessao, evitando descontar
   novamente do saldo operacional que ja foi conferido na abertura;
 - a trilha de auditoria preserva usuario, data, valor, documento e motivo.
+- divergencias de abertura e fechamento tambem aparecem em card proprio na
+  Auditoria Operacional.
 
 ## Controle diario consolidado
 
@@ -43,9 +52,11 @@ seus saldos sao formados pelos movimentos manuais e financeiros vinculados a ses
 
 | Cenario | Resultado esperado |
 | --- | --- |
-| Abrir uma conta `CAIXA_INTERNO` | Sessao aberta com saldo inicial e data registrados |
+| Abrir sem diferenca do fechamento anterior | Sessao aberta com a continuidade do saldo preservada |
+| Abrir com valor maior | Entrada de ajuste e auditoria criadas na mesma operacao |
+| Abrir com valor menor sem comprovante | Operacao bloqueada |
 | Registrar entrada manual | Livro e total de entradas aumentam uma unica vez |
-| Registrar saida manual | Livro e total de saidas aumentam uma unica vez |
+| Registrar saida manual com comprovante | Livro e total de saidas aumentam uma unica vez |
 | Repetir envio protegido | Nenhum movimento duplicado e criado |
 | Estornar movimento manual | Movimento original fica estornado e o resumo e recalculado |
 | Tentar estornar movimento nao manual | Operacao bloqueada |

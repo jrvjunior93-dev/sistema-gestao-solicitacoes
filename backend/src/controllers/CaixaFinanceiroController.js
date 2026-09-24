@@ -41,7 +41,7 @@ module.exports = {
 
   async abrir(req, res) {
     try {
-      const sessao = await abrirSessaoCaixa(req, req.body || {});
+      const sessao = await abrirSessaoCaixa(req, req.body || {}, req.file || null);
       return res.status(201).json(sessao);
     } catch (error) {
       console.error(error);
@@ -60,7 +60,7 @@ module.exports = {
 
   async registrarMovimento(req, res) {
     try {
-      const resultado = await registrarMovimentoCaixa(req, req.params.id, req.body || {});
+      const resultado = await registrarMovimentoCaixa(req, req.params.id, req.body || {}, req.file || null);
       return res.status(201).json(resultado);
     } catch (error) {
       console.error(error);

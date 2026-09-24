@@ -28,7 +28,10 @@ export default function RhDpTransferencias({ onNotificacoesLidas }) {
   const trava = useRef(false);
   const versaoBusca = useRef(0);
   const paginaTransferencias = useRef(1);
-  const minhas = config.obras.filter(o => config.obras_responsavel_ids.includes(Number(o.id)));
+  const obrasTransferiveis = config.obras.filter((obra) => (
+    String(obra?.tipo_centro_custo || 'OBRA').trim().toUpperCase() === 'OBRA'
+  ));
+  const minhas = obrasTransferiveis.filter(o => config.obras_responsavel_ids.includes(Number(o.id)));
   const nomeObra = id => config.obras.find(o => Number(o.id) === Number(id))?.nome || `Obra #${id}`;
 
   const fluxoDoFormulario = formulario => {
@@ -238,7 +241,7 @@ export default function RhDpTransferencias({ onNotificacoesLidas }) {
           <select className="form-control" aria-label="Obra de destino" required value={form.obra_destino_id}
             onChange={e => setForm(f => ({ ...f, obra_destino_id: e.target.value }))}>
             <option value="">Selecione</option>
-            {config.obras.filter(o => Number(o.id) !== Number(form.colaborador.obra_id)).map(o => {
+            {obrasTransferiveis.filter(o => Number(o.id) !== Number(form.colaborador.obra_id)).map(o => {
               const habilitada = fluxoForm?.responsavelOrigem || config.obras_responsavel_ids.includes(Number(o.id));
               return <option key={o.id} value={o.id} disabled={!habilitada}>
                 {o.codigo} · {o.nome}{habilitada ? '' : ' · sem responsabilidade atribuída'}

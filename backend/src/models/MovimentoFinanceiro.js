@@ -102,6 +102,14 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.STRING(120),
       allowNull: true
     },
+    comprovante_url: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    comprovante_nome: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
     cheque_numero: { type: DataTypes.STRING(60), allowNull: true },
     cheque_emitente: { type: DataTypes.STRING(160), allowNull: true },
     cheque_titular_documento: { type: DataTypes.STRING(40), allowNull: true },

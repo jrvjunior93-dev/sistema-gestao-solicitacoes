@@ -6,6 +6,7 @@ const db = require('../src/models');
 const originalPermissionResolver = authorizationService.getAreaPermissionStateForUser;
 const originalObraFindAll = db.Obra.findAll;
 const originalUsuarioObraFindAll = db.UsuarioObra.findAll;
+const originalContaFindAll = db.ContaBancaria.findAll;
 
 let permissionState = { bypass: false, permissions: [] };
 authorizationService.getAreaPermissionStateForUser = async () => permissionState;
@@ -37,11 +38,18 @@ async function validar() {
     assert.strictEqual(consultaObras.include[0].as, 'empresaGrupo');
     assert.strictEqual(consultaObras.include[0].required, false);
 
+    const painelServiceSource = require('fs').readFileSync(require('path').resolve(__dirname, '../src/services/painelGestorService.js'), 'utf8');
+    assert(painelServiceSource.includes('contaPossuiSaldoAutomatico'), 'Contas controladas devem usar saldo automatico no Painel do Gestor.');
+    assert(painelServiceSource.includes('PAINEL_GESTOR_SALDO_AUTOMATICO'), 'Backend deve bloquear informacao manual para conta automatica.');
+    const painelPageSource = require('fs').readFileSync(require('path').resolve(__dirname, '../../frontend/src/pages/PainelGestor.jsx'), 'utf8');
+    assert(painelPageSource.includes('Detalhar por conta'), 'Resumo principal deve expandir o detalhe de todas as contas.');
+
     console.log('Contrato de obras do Painel do Gestor validado com sucesso.');
   } finally {
     authorizationService.getAreaPermissionStateForUser = originalPermissionResolver;
     db.Obra.findAll = originalObraFindAll;
     db.UsuarioObra.findAll = originalUsuarioObraFindAll;
+    db.ContaBancaria.findAll = originalContaFindAll;
   }
 }
 

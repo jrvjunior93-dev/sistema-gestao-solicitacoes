@@ -138,10 +138,17 @@ async function executar() {
   assert.strictEqual(middlewareLiberou, true, 'SUPERADMIN deve passar pelo middleware central');
 
   const originalObraFindAll = Obra.findAll;
-  Obra.findAll = async () => [
-    { id: 12, get: () => ({ id: 12, nome: 'Obra A', codigo: 'A' }) },
-    { id: 35, get: () => ({ id: 35, nome: 'Obra B', codigo: 'B' }) }
-  ];
+  Obra.findAll = async ({ where }) => {
+    assert.strictEqual(
+      where.tipo_centro_custo,
+      'OBRA',
+      'a configuracao da transferencia nao deve consultar centros de custo'
+    );
+    return [
+      { id: 12, get: () => ({ id: 12, nome: 'Obra A', codigo: 'A', tipo_centro_custo: 'OBRA' }) },
+      { id: 35, get: () => ({ id: 35, nome: 'Obra B', codigo: 'B', tipo_centro_custo: 'OBRA' }) }
+    ];
+  };
 
   try {
     const configuracao = await rhTransferenciaService.configuracao(superadmin);
@@ -211,8 +218,18 @@ async function executar() {
     { obra_id: 12, user_id: 44 },
     { obra_id: 35, user_id: 44 }
   ];
-  Obra.findAll = async () => [{ id: 12, ativo: true }, { id: 35, ativo: true }];
-  Obra.findByPk = async () => ({ id: 35, ativo: true });
+  Obra.findAll = async ({ where }) => {
+    assert.strictEqual(
+      where.tipo_centro_custo,
+      'OBRA',
+      'a abertura deve validar que origem e destino sao do tipo Obra'
+    );
+    return [
+      { id: 12, ativo: true, tipo_centro_custo: 'OBRA' },
+      { id: 35, ativo: true, tipo_centro_custo: 'OBRA' }
+    ];
+  };
+  Obra.findByPk = async () => ({ id: 35, ativo: true, tipo_centro_custo: 'OBRA' });
   RhSolicitacao.findOne = async () => null;
   RhSolicitacao.create = async (dados) => {
     solicitacaoAutomatica = {

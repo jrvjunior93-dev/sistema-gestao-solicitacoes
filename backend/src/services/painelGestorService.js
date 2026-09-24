@@ -127,14 +127,22 @@ async function listarContasNoEscopo(user, transaction = null) {
   }
   return db.ContaBancaria.findAll({
     where,
-    attributes: ['id', 'nome', 'empresa_id', 'tipo_operacional', 'banco', 'agencia', 'conta'],
+    attributes: ['id', 'nome', 'empresa_id', 'tipo_operacional', 'banco', 'agencia', 'conta', 'saldo_inicial', 'exige_abertura_fechamento'],
     include: [{ model: db.EmpresaGrupo, as: 'empresa', attributes: ['id', 'nome'] }],
     order: [[{ model: db.EmpresaGrupo, as: 'empresa' }, 'nome', 'ASC'], ['nome', 'ASC']],
     transaction
   });
 }
 
-function serializeConta(conta, saldo = null) {
+function contaPossuiSaldoAutomatico(conta) {
+  const configurada = conta?.exige_abertura_fechamento;
+  return configurada === true
+    || Number(configurada) === 1
+    || String(configurada || '').trim().toLowerCase() === 'true'
+    || String(conta?.tipo_operacional || '').toUpperCase() === 'CAIXA_INTERNO';
+}
+
+function serializeConta(conta, saldo = null, saldoAutomatico = null) {
   const plain = conta?.toJSON ? conta.toJSON() : conta;
   const saldoPlain = saldo?.toJSON ? saldo.toJSON() : saldo;
   return {
@@ -144,11 +152,25 @@ function serializeConta(conta, saldo = null) {
     banco: plain.banco,
     agencia: plain.agencia,
     conta: plain.conta,
+    saldo_automatico: contaPossuiSaldoAutomatico(plain),
     empresa: plain.empresa || null,
-    saldo: saldoPlain ? {
+    saldo: saldoAutomatico ? {
+      id: null,
+      valor: Number(saldoAutomatico.valor || 0),
+      corrigido: false,
+      automatico: true,
+      origem: 'SISTEMA',
+      informado_em: saldoAutomatico.atualizado_em || null,
+      atualizado_em: saldoAutomatico.atualizado_em || null,
+      informado_por: null,
+      atualizado_por: null,
+      status_caixa: saldoAutomatico.status || null
+    } : saldoPlain ? {
       id: saldoPlain.id,
       valor: Number(saldoPlain.saldo_disponivel || 0),
       corrigido: Boolean(saldoPlain.corrigido),
+      automatico: false,
+      origem: 'MANUAL',
       informado_em: saldoPlain.createdAt,
       atualizado_em: saldoPlain.updatedAt,
       informado_por: saldoPlain.informadoPor || null,
@@ -169,6 +191,35 @@ async function carregarSaldosDaData(user, dataValue, { incluirPendentes = false 
     ],
     order: [['updatedAt', 'DESC']]
   }) : [];
+  const contasAutomaticas = contas.filter(contaPossuiSaldoAutomatico);
+  const idsAutomaticos = contasAutomaticas.map((item) => Number(item.id));
+  const sessoesAutomaticas = idsAutomaticos.length ? await db.CaixaFinanceiroSessao.findAll({
+    where: {
+      conta_bancaria_id: { [Op.in]: idsAutomaticos },
+      data_abertura: { [Op.lte]: data }
+    },
+    attributes: [
+      'id', 'conta_bancaria_id', 'status', 'data_abertura', 'data_fechamento',
+      'saldo_abertura', 'saldo_sistema', 'saldo_informado', 'updatedAt'
+    ],
+    order: [['conta_bancaria_id', 'ASC'], ['data_abertura', 'DESC'], ['id', 'DESC']]
+  }) : [];
+  const sessaoAutomaticaPorConta = new Map();
+  sessoesAutomaticas.forEach((sessao) => {
+    const contaId = Number(sessao.conta_bancaria_id);
+    if (!sessaoAutomaticaPorConta.has(contaId)) sessaoAutomaticaPorConta.set(contaId, sessao);
+  });
+  const saldoAutomaticoPorConta = new Map(contasAutomaticas.map((conta) => {
+    const sessao = sessaoAutomaticaPorConta.get(Number(conta.id));
+    const encerradaAteAData = sessao?.status === 'FECHADO' && String(sessao.data_fechamento || '') <= data;
+    return [Number(conta.id), {
+      valor: sessao
+        ? Number(encerradaAteAData ? (sessao.saldo_informado ?? sessao.saldo_sistema) : sessao.saldo_sistema)
+        : Number(conta.saldo_inicial || 0),
+      atualizado_em: sessao?.updatedAt || null,
+      status: sessao?.status || 'SEM_SESSAO'
+    }];
+  }));
   const saldoIds = saldos.map((item) => Number(item.id));
   const historico = saldoIds.length ? await db.PainelGestorSaldoHistorico.findAll({
     where: { saldo_diario_id: { [Op.in]: saldoIds } },
@@ -189,7 +240,11 @@ async function carregarSaldosDaData(user, dataValue, { incluirPendentes = false 
   const saldoPorConta = new Map(saldos.map((item) => [Number(item.conta_bancaria_id), item]));
   const contaPorId = new Map(contas.map((item) => [Number(item.id), item]));
   const contasSerializadas = contas
-    .map((conta) => serializeConta(conta, saldoPorConta.get(Number(conta.id))))
+    .map((conta) => serializeConta(
+      conta,
+      saldoPorConta.get(Number(conta.id)),
+      saldoAutomaticoPorConta.get(Number(conta.id))
+    ))
     .filter((item) => incluirPendentes || item.saldo);
   const informadas = contasSerializadas.filter((item) => item.saldo);
   const total = informadas.reduce((sum, item) => sum + Number(item.saldo.valor || 0), 0);
@@ -216,7 +271,11 @@ async function carregarSaldosDaData(user, dataValue, { incluirPendentes = false 
       contas_total: contas.length,
       contas_pendentes: Math.max(contas.length - informadas.length, 0),
       completo: contas.length > 0 && informadas.length === contas.length,
-      ultima_atualizacao: saldos[0]?.updatedAt || null
+      ultima_atualizacao: informadas
+        .map((item) => item.saldo?.atualizado_em)
+        .filter(Boolean)
+        .sort()
+        .at(-1) || null
     },
     empresas: [...empresaMap.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
     contas: contasSerializadas,
@@ -265,6 +324,13 @@ async function salvarSaldos(user, payload = {}) {
       const contaMap = new Map(contas.map((item) => [Number(item.id), item]));
       if (ids.some((id) => !contaMap.has(id))) {
         throw businessError(403, 'PAINEL_GESTOR_CONTA_FORA_ESCOPO', 'Uma ou mais contas nao pertencem ao seu escopo.');
+      }
+      if (ids.some((id) => contaPossuiSaldoAutomatico(contaMap.get(id)))) {
+        throw businessError(
+          422,
+          'PAINEL_GESTOR_SALDO_AUTOMATICO',
+          'Contas com abertura e fechamento usam o saldo automatico do sistema e nao aceitam informacao manual.'
+        );
       }
 
       let criados = 0;

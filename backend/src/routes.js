@@ -2132,9 +2132,9 @@ router.post('/financeiro/conciliacoes/:id/confirmar-credito-rotativo', allowFina
 router.get('/financeiro/caixas', allowFinanceiro, validateRequest({ query: validateFinanceCaixaQuery }), CaixaFinanceiroController.index);
 router.get('/financeiro/caixas-painel-diario', allowFinanceiro, CaixaFinanceiroController.painelDiario);
 router.post('/financeiro/caixas/confirmar-conciliacao-dia', allowFinanceiro, criticalRateLimit, CaixaFinanceiroController.confirmarConciliacaoDia);
-router.post('/financeiro/caixas/abrir', allowFinanceiro, criticalRateLimit, validateRequest({ body: validateFinanceCaixaAberturaBody }), CaixaFinanceiroController.abrir);
+router.post('/financeiro/caixas/abrir', allowFinanceiro, criticalRateLimit, uploadRateLimit, uploadComprovantes.single('comprovante'), validateRequest({ body: validateFinanceCaixaAberturaBody }), CaixaFinanceiroController.abrir);
 router.get('/financeiro/caixas/:id', allowFinanceiro, validateRequest({ params: validateNumericIdParam('id', 'Caixa financeiro') }), CaixaFinanceiroController.show);
-router.post('/financeiro/caixas/:id/movimentos', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Caixa financeiro'), body: validateFinanceCaixaMovimentoBody }), CaixaFinanceiroController.registrarMovimento);
+router.post('/financeiro/caixas/:id/movimentos', allowFinanceiro, criticalRateLimit, uploadRateLimit, uploadComprovantes.single('comprovante'), validateRequest({ params: validateNumericIdParam('id', 'Caixa financeiro'), body: validateFinanceCaixaMovimentoBody }), CaixaFinanceiroController.registrarMovimento);
 router.post('/financeiro/caixas/:id/movimentos/:movimentoId/estornar', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateFinanceCaixaMovimentoParams, body: validateFinanceCaixaMovimentoEstornoBody }), CaixaFinanceiroController.estornarMovimento);
 router.post('/financeiro/caixas/:id/fechar', allowFinanceiro, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Caixa financeiro'), body: validateFinanceCaixaFechamentoBody }), CaixaFinanceiroController.fechar);
 router.post('/financeiro/caixas/:id/decidir-divergencia', allowFinanceiro, criticalRateLimit, CaixaFinanceiroController.decidirDivergencia);
