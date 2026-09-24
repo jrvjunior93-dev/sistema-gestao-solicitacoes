@@ -87,7 +87,7 @@ export default function RhDpEventosRecorrentes({ podeDecidir }) {
     limpar();
     try {
       await atualizarEventoRecorrenteRh(edicao.evento.id, {
-        modo_valor: edicao.formulario.modo_valor,
+        modo_valor: Number(edicao.formulario.parcelas_total) > 0 ? 'TOTAL' : 'PARCELA',
         valor: parseCurrencyInput(edicao.formulario.valor),
         competencia_inicio: edicao.formulario.competencia_inicio,
         parcelas_total: edicao.formulario.parcelas_total

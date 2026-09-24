@@ -116,7 +116,6 @@ const ROTULO_DADO = {
   codigo: 'Evento',
   natureza: 'Natureza',
   valor: 'Valor',
-  modo_valor: 'Forma do valor',
   competencia_inicio: 'Competência inicial',
   parcelas_total: 'Parcelas',
   parcelas_valores: 'Valores das parcelas',

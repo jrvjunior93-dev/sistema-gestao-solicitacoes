@@ -22,12 +22,6 @@ export function gerarValoresParcelasEvento(formulario) {
   if (!Number.isInteger(quantidade) || !quantidade) return [];
   const valorCentavos = Math.round(parseCurrencyInput(formulario.valor) * 100);
   if (!(valorCentavos > 0)) return Array.from({ length: quantidade }, () => '');
-  if (formulario.modo_valor === 'PARCELA') {
-    return Array.from(
-      { length: quantidade },
-      () => formatCurrencyInput(String(valorCentavos / 100), { emptyZero: false })
-    );
-  }
   const base = Math.floor(valorCentavos / quantidade);
   const resto = valorCentavos - (base * quantidade);
   return Array.from({ length: quantidade }, (_, index) => formatCurrencyInput(
@@ -42,13 +36,16 @@ export function normalizarFormularioEvento(evento = {}) {
     : Array.isArray(evento.parcelas_valores)
       ? evento.parcelas_valores
       : [];
-  const modo = String(evento.modo_valor || 'TOTAL').toUpperCase();
-  const valorBase = modo === 'TOTAL'
-    ? (evento.valor_total ?? evento.valor ?? '')
+  const quantidade = Number(evento.parcelas_total || 0);
+  const somaArmazenada = parcelasArmazenadas.reduce((total, valor) => total + Number(valor || 0), 0);
+  const valorBase = quantidade
+    ? (evento.valor_total ?? (somaArmazenada > 0
+      ? somaArmazenada
+      : Number(evento.valor_parcela || evento.valor || 0) * quantidade))
     : (evento.valor_parcela ?? evento.valor ?? '');
   const formulario = {
     ...evento,
-    modo_valor: modo,
+    modo_valor: quantidade ? 'TOTAL' : 'PARCELA',
     valor: valorBase === '' ? '' : formatCurrencyInput(String(valorBase), { emptyZero: false }),
     parcelas_total: evento.parcelas_total ? String(evento.parcelas_total) : '',
     parcelas_valores: []
@@ -77,19 +74,14 @@ export function valoresParcelasParaPayload(formulario) {
 
 export function validarParcelasEvento(formulario) {
   const quantidade = Number(formulario.parcelas_total || 0);
-  if (formulario.modo_valor === 'TOTAL' && !quantidade) {
-    return 'Informe a quantidade de parcelas para dividir o valor total.';
-  }
   if (!quantidade) return '';
   const valores = valoresParcelasParaPayload(formulario) || [];
   if (valores.length !== quantidade || valores.some((valor) => !(valor > 0))) {
     return `Informe os valores das ${quantidade} parcelas.`;
   }
-  if (formulario.modo_valor === 'TOTAL') {
-    const soma = valores.reduce((total, valor) => total + Math.round(valor * 100), 0);
-    const total = Math.round(parseCurrencyInput(formulario.valor) * 100);
-    if (soma !== total) return 'A soma das parcelas precisa ser igual ao valor total informado.';
-  }
+  const soma = valores.reduce((total, valor) => total + Math.round(valor * 100), 0);
+  const total = Math.round(parseCurrencyInput(formulario.valor) * 100);
+  if (soma !== total) return 'A soma das parcelas precisa ser igual ao valor total informado.';
   return '';
 }
 
@@ -111,41 +103,41 @@ export default function ParcelasEventoEditor({ valor, onChange, parcelasBloquead
     0
   );
   const totalCentavos = Math.round(parseCurrencyInput(valor.valor) * 100);
-  const diferencaCentavos = valor.modo_valor === 'TOTAL' ? totalCentavos - somaCentavos : 0;
+  const diferencaCentavos = totalCentavos - somaCentavos;
 
   function alterarBase(alteracoes) {
     onChange(regenerarParcelas(valor, alteracoes, parcelasBloqueadas));
   }
 
+  function alterarQuantidade(proximaQuantidadeTexto) {
+    const quantidadeAtual = Number(valor.parcelas_total || 0);
+    const proximaQuantidade = Number(proximaQuantidadeTexto || 0);
+    let proximoValor = valor.valor;
+
+    // Ao alternar entre recorrencia mensal e parcelamento, preserva o valor economico mensal que
+    // a pessoa ja informou. Entre duas quantidades finitas, o total permanece e so e redistribuido.
+    if (!quantidadeAtual && proximaQuantidade > 0) {
+      proximoValor = formatCurrencyInput(
+        String(parseCurrencyInput(valor.valor) * proximaQuantidade),
+        { emptyZero: false }
+      );
+    } else if (quantidadeAtual > 0 && !proximaQuantidade) {
+      proximoValor = parcelas[0] || formatCurrencyInput(
+        String(parseCurrencyInput(valor.valor) / quantidadeAtual),
+        { emptyZero: false }
+      );
+    }
+
+    alterarBase({
+      parcelas_total: proximaQuantidadeTexto,
+      valor: proximoValor,
+      modo_valor: proximaQuantidadeTexto ? 'TOTAL' : 'PARCELA'
+    });
+  }
+
   return (
     <div className="space-y-3" style={{ gridColumn: '1 / -1' }}>
       <div className="rh-colaboradores-filter-grid">
-        <label className="form-field">
-          <span className="form-label form-label--required">Valor informado como</span>
-          <select
-            className="form-control"
-            value={valor.modo_valor}
-            onChange={(event) => alterarBase({ modo_valor: event.target.value })}
-          >
-            <option value="TOTAL">Total a dividir em parcelas</option>
-            <option value="PARCELA">Valor de cada parcela</option>
-          </select>
-        </label>
-
-        <label className="form-field">
-          <span className="form-label form-label--required">
-            {valor.modo_valor === 'TOTAL' ? 'Valor total' : 'Valor de cada parcela'}
-          </span>
-          <input
-            className="form-control"
-            inputMode="decimal"
-            value={valor.valor}
-            onChange={(event) => alterarBase({ valor: normalizeCurrencyTyping(event.target.value) })}
-            onBlur={(event) => alterarBase({ valor: formatCurrencyInput(event.target.value) })}
-            required
-          />
-        </label>
-
         <label className="form-field">
           <span className="form-label form-label--required">Competência inicial</span>
           <CompetenciaInputBR
@@ -161,18 +153,29 @@ export default function ParcelasEventoEditor({ valor, onChange, parcelasBloquead
         </label>
 
         <label className="form-field">
-          <span className={valor.modo_valor === 'TOTAL' ? 'form-label form-label--required' : 'form-label'}>
-            Quantidade de parcelas
-          </span>
+          <span className="form-label">Quantidade de parcelas</span>
           <input
             className="form-control"
             type="number"
             min={Math.max(1, parcelasBloqueadas)}
             max="240"
-            placeholder={valor.modo_valor === 'PARCELA' ? 'Vazio = sem término' : undefined}
+            placeholder="Vazio = sem término"
             value={valor.parcelas_total}
-            onChange={(event) => alterarBase({ parcelas_total: event.target.value })}
-            required={valor.modo_valor === 'TOTAL'}
+            onChange={(event) => alterarQuantidade(event.target.value)}
+          />
+        </label>
+
+        <label className="form-field">
+          <span className="form-label form-label--required">
+            {quantidade > 0 ? 'Valor total' : 'Valor mensal'}
+          </span>
+          <input
+            className="form-control"
+            inputMode="decimal"
+            value={valor.valor}
+            onChange={(event) => alterarBase({ valor: normalizeCurrencyTyping(event.target.value) })}
+            onBlur={(event) => alterarBase({ valor: formatCurrencyInput(event.target.value) })}
+            required
           />
         </label>
       </div>
@@ -224,18 +227,14 @@ export default function ParcelasEventoEditor({ valor, onChange, parcelasBloquead
         </div>
       ) : (
         <p className="app-note">
-          {valor.modo_valor === 'TOTAL'
-            ? 'Informe a quantidade para gerar as parcelas e seus vencimentos por competência.'
-            : 'Sem quantidade, o valor informado será repetido mensalmente até o evento ser cancelado.'}
+          Sem quantidade, o valor mensal será repetido até o evento ser cancelado.
         </p>
       )}
 
       {quantidade > 0 ? (
         <p className="app-note">
           Soma das parcelas: <strong>{formatCurrencyBRL(somaCentavos / 100)}</strong>
-          {valor.modo_valor === 'TOTAL' ? (
-            <> · Diferença: <strong>{formatCurrencyBRL(diferencaCentavos / 100)}</strong></>
-          ) : null}
+          <> · Diferença: <strong>{formatCurrencyBRL(diferencaCentavos / 100)}</strong></>
         </p>
       ) : null}
     </div>
