@@ -23,11 +23,11 @@ function formatPercent(value) {
   return `${Number(value).toFixed(1)}%`;
 }
 
-function classificacaoObra(obra) {
+export function classificacaoObra(obra) {
   return String(obra?.classificacao || '').trim().toUpperCase();
 }
 
-function valorTotalObra(obra) {
+export function valorTotalObra(obra) {
   const classificacao = classificacaoObra(obra);
   if (classificacao === 'PRIVADA') {
     return Number(obra?.valor_total_resultado ?? obra?.valor_referencia_resultado ?? obra?.vgv_efetivo ?? obra?.vgv ?? 0);
@@ -38,6 +38,25 @@ function valorTotalObra(obra) {
     return Number(obra?.valor_referencia_resultado ?? obra?.planilha_geral ?? 0);
   }
   return 0;
+}
+
+export function contextoValorTotalObras(obras = []) {
+  const temObraPrivada = obras.some((obra) => classificacaoObra(obra) === 'PRIVADA');
+  const temObraPublica = obras.some((obra) => classificacaoObra(obra) === 'PUBLICA');
+
+  if (temObraPrivada && temObraPublica) {
+    return {
+      rotulo: 'Volume financeiro total',
+      apoio: 'VGV das privadas + planilhas das públicas'
+    };
+  }
+  if (temObraPrivada) {
+    return { rotulo: 'VGV total', apoio: 'VGV das obras privadas' };
+  }
+  if (temObraPublica) {
+    return { rotulo: 'Valor total das planilhas', apoio: 'Valor integral das planilhas públicas' };
+  }
+  return { rotulo: 'Volume financeiro total', apoio: undefined };
 }
 
 /* O consolidado preserva a comparação prevista x realizada do sistema. Os cartões detalhados
@@ -284,20 +303,9 @@ export default function FinanceiroResultadoObras() {
   const temObraPublica = useMemo(() => obrasFiltradas.some(
     (obra) => classificacaoObra(obra) === 'PUBLICA'
   ), [obrasFiltradas]);
-  const rotuloValorTotal = temObraPrivada && temObraPublica
-    ? 'Volume financeiro total'
-    : temObraPrivada
-      ? 'VGV total'
-      : temObraPublica
-        ? 'Valor total das planilhas'
-        : 'Volume financeiro total';
-  const apoioValorTotalBase = temObraPrivada && temObraPublica
-    ? 'VGV das privadas + planilhas das públicas'
-    : temObraPrivada
-      ? 'VGV das obras privadas'
-      : temObraPublica
-        ? 'Valor integral das planilhas públicas'
-        : undefined;
+  const contextoValorTotal = useMemo(() => contextoValorTotalObras(obrasFiltradas), [obrasFiltradas]);
+  const rotuloValorTotal = contextoValorTotal.rotulo;
+  const apoioValorTotalBase = contextoValorTotal.apoio;
   const tipoValorBaseAusente = temObraPrivada && temObraPublica
     ? 'VGV ou planilha'
     : temObraPrivada

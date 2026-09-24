@@ -25,7 +25,12 @@ import {
 } from '../components/padrao';
 import DateInputBR from '../components/DateInputBR';
 import ObraAutocomplete from '../components/ui/ObraAutocomplete';
-import { ObraBloco, formatCurrency } from './FinanceiroResultadoObras';
+import {
+  ObraBloco,
+  contextoValorTotalObras,
+  formatCurrency,
+  valorTotalObra
+} from './FinanceiroResultadoObras';
 import CrDashboardView from '../modules/custosRecebiveis/components/CrDashboardView';
 import CrExecutiveFilters from '../modules/custosRecebiveis/components/CrExecutiveFilters';
 import {
@@ -101,13 +106,14 @@ function ResultadoObrasTab({ avisar }) {
   }, [applied, avisar]);
 
   const resumo = useMemo(() => dados.reduce((acc, obra) => {
-    acc.orcamento += Number(obra.orcamento || 0);
+    acc.valorTotalObras += valorTotalObra(obra);
     acc.executado += Number(obra.pagar?.executado || 0);
     acc.recebido += Number(obra.receber?.recebido || 0);
     acc.faltaReceber += Number(obra.falta_receber || 0);
     acc.resultado += Number(obra.lucro_prejuizo || 0);
     return acc;
-  }, { orcamento: 0, executado: 0, recebido: 0, faltaReceber: 0, resultado: 0 }), [dados]);
+  }, { valorTotalObras: 0, executado: 0, recebido: 0, faltaReceber: 0, resultado: 0 }), [dados]);
+  const contextoValorTotal = useMemo(() => contextoValorTotalObras(dados), [dados]);
 
   function apply(event) {
     event.preventDefault();
@@ -145,7 +151,12 @@ function ResultadoObrasTab({ avisar }) {
 
       <BlocoConteudo titulo="Consolidado do período" descricao={`${formatDate(applied.data_inicial)} a ${formatDate(applied.data_final)} · ${dados.length} obra(s)`} variante="primario" cor="var(--module-financeiro)">
         <StatGrid colunas={3}>
-          <StatTile label="Orçamento atual" valor={formatCurrency(resumo.orcamento)} tom="info" />
+          <StatTile
+            label={contextoValorTotal.rotulo}
+            valor={formatCurrency(resumo.valorTotalObras)}
+            sub={contextoValorTotal.apoio}
+            tom="info"
+          />
           <StatTile label="Executado no período" valor={formatCurrency(resumo.executado)} tom="info" />
           <StatTile label="Recebido no período" valor={formatCurrency(resumo.recebido)} tom="success" />
           <StatTile label="Falta receber" valor={formatCurrency(resumo.faltaReceber)} sub="Posição acumulada até a data final" tom="warning" />
