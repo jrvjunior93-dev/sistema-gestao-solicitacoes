@@ -9,6 +9,7 @@ const { hasSetorCapability } = require('../setorCapabilityService');
 
 const CHAVE_APROVACAO_SOLICITACAO_POR_TIPO = 'APROVACAO_SOLICITACAO_POR_TIPO';
 const CODIGO_SOLICITACAO_COMPRA = 'SOLICITACAO_DE_COMPRA';
+const CODIGO_TICKET_COLABORADORES = 'TICKET_COLABORADORES';
 const REGRA_PADRAO_SOLICITACAO_COMPRA = Object.freeze({
   setor_destino: 'COMPRAS',
   status_destino: 'LIBERADO'
@@ -214,8 +215,44 @@ async function tipoEhSolicitacaoCompra(tipoSolicitacaoId) {
 
 async function resolverContextoAprovacaoPorTipo(solicitacao, options = {}) {
   const regras = options.regras || await obterRegrasAprovacaoSolicitacaoPorTipo();
-  const regra = obterRegraAprovacaoPorTipo(solicitacao?.tipo_solicitacao_id, regras);
-  if (!regra) return { configurada: false, valida: false, regra: null };
+  let regra = obterRegraAprovacaoPorTipo(solicitacao?.tipo_solicitacao_id, regras);
+  if (!regra) {
+    const tipo = await TipoSolicitacao.findByPk(solicitacao?.tipo_solicitacao_id, {
+      attributes: ['id', 'nome', 'codigo_interno'],
+      transaction: options.transaction
+    });
+    const codigo = normalizeTipoSolicitacaoCodigo(tipo?.codigo_interno, tipo?.nome);
+    if (codigo !== CODIGO_TICKET_COLABORADORES) {
+      return { configurada: false, valida: false, regra: null };
+    }
+
+    // O ticket e criado pelo proprio sistema e precisa nascer operacional sem exigir uma
+    // configuracao manual por ambiente. O GEO continua sendo o aprovador; usamos o primeiro
+    // status ativo desta lista de preferencia e mantemos a solicitacao no proprio GEO.
+    const setorGeo = await obterSetorGeoAtivo(options);
+    if (!setorGeo) {
+      return { configurada: true, valida: false, regra: null, erro: 'Setor GEO inativo ou inexistente.' };
+    }
+    const tokensGeo = new Set([setorGeo.codigo, setorGeo.nome].map(normalizarToken).filter(Boolean));
+    const etapasGeo = await EtapaSetor.findAll({
+      where: { ativo: true },
+      attributes: ['setor', 'nome'],
+      transaction: options.transaction
+    });
+    const preferencia = ['LIBERADO', 'APROVADA', 'APROVADO'];
+    const disponiveis = etapasGeo.filter((etapa) => tokensGeo.has(normalizarToken(etapa.setor)));
+    const etapa = preferencia
+      .map((status) => disponiveis.find((item) => normalizarToken(item.nome) === status))
+      .find(Boolean) || disponiveis[0];
+    if (!etapa) {
+      return { configurada: true, valida: false, regra: null, erro: 'O setor GEO nao possui status ativo para aprovar o ticket.' };
+    }
+    regra = {
+      tipo_solicitacao_id: Number(tipo.id),
+      setor_destino: String(setorGeo.codigo || setorGeo.nome).trim(),
+      status_destino: normalizarToken(etapa.nome)
+    };
+  }
 
   const setores = await Setor.findAll({
     where: { ativo: true },
@@ -290,6 +327,7 @@ async function resolverContextoAprovacaoPorTipo(solicitacao, options = {}) {
 module.exports = {
   CHAVE_APROVACAO_SOLICITACAO_POR_TIPO,
   CODIGO_SOLICITACAO_COMPRA,
+  CODIGO_TICKET_COLABORADORES,
   REGRA_PADRAO_SOLICITACAO_COMPRA,
   normalizarToken,
   normalizarRegrasAprovacao,

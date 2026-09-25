@@ -402,6 +402,7 @@ function validateRhColaboradorCreateBody(body = {}) {
       'valor_contratual',
       'forma_calculo_gerencial',
       'valor_diaria',
+      'valor_ticket',
       'pagamento_automatico_40_60',
       'observacoes',
       'pagamento'
@@ -434,6 +435,7 @@ function validateRhColaboradorCreateBody(body = {}) {
       RH_FORMAS_CALCULO_GERENCIAL
     ) || 'MENSAL',
     valor_diaria: parseDecimal(body.valor_diaria, 'Valor da diaria', { min: 0 }),
+    valor_ticket: parseDecimal(body.valor_ticket, 'Valor do ticket', { min: 0 }),
     pagamento_automatico_40_60: body.pagamento_automatico_40_60 === true
       || String(body.pagamento_automatico_40_60 || '').toLowerCase() === 'true',
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
@@ -465,6 +467,7 @@ function validateRhColaboradorUpdateBody(body = {}) {
       'valor_contratual',
       'forma_calculo_gerencial',
       'valor_diaria',
+      'valor_ticket',
       'pagamento_automatico_40_60',
       'observacoes',
       'pagamento'
@@ -497,6 +500,7 @@ function validateRhColaboradorUpdateBody(body = {}) {
       RH_FORMAS_CALCULO_GERENCIAL
     ),
     valor_diaria: parseDecimal(body.valor_diaria, 'Valor da diaria', { min: 0 }),
+    valor_ticket: parseDecimal(body.valor_ticket, 'Valor do ticket', { min: 0 }),
     pagamento_automatico_40_60: Object.prototype.hasOwnProperty.call(body, 'pagamento_automatico_40_60')
       ? body.pagamento_automatico_40_60 === true
         || String(body.pagamento_automatico_40_60 || '').toLowerCase() === 'true'

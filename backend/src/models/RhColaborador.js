@@ -104,6 +104,10 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.DECIMAL(14, 2),
       allowNull: true
     },
+    valor_ticket: {
+      type: DataTypes.DECIMAL(14, 2),
+      allowNull: true
+    },
     pagamento_automatico_40_60: {
       type: DataTypes.BOOLEAN,
       allowNull: false,

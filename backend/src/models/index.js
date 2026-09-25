@@ -78,6 +78,8 @@ db.RhJornadaEdicao = require('./RhJornadaEdicao')(sequelize, Sequelize);
 db.RhApuracao = require('./RhApuracao')(sequelize, Sequelize);
 db.RhApuracaoEvento = require('./RhApuracaoEvento')(sequelize, Sequelize);
 db.RhFechamento = require('./RhFechamento')(sequelize, Sequelize);
+db.RhTicketLote = require('./RhTicketLote')(sequelize, Sequelize);
+db.RhTicketLoteItem = require('./RhTicketLoteItem')(sequelize, Sequelize);
 db.RhFechamentoTitulo = require('./RhFechamentoTitulo')(sequelize, Sequelize);
 db.IntegracaoSiengeConfig = require('./IntegracaoSiengeConfig')(sequelize, Sequelize);
 db.IntegracaoSiengeFila = require('./IntegracaoSiengeFila')(sequelize, Sequelize);
@@ -1671,6 +1673,19 @@ db.RhColaborador.belongsTo(db.Parceiro, {
   foreignKey: 'parceiro_id',
   as: 'parceiro'
 });
+
+db.RhTicketLote.hasMany(db.RhTicketLoteItem, {
+  foreignKey: 'lote_id',
+  as: 'itens',
+  onDelete: 'CASCADE'
+});
+db.RhTicketLoteItem.belongsTo(db.RhTicketLote, { foreignKey: 'lote_id', as: 'lote' });
+db.RhTicketLoteItem.belongsTo(db.RhColaborador, { foreignKey: 'colaborador_id', as: 'colaborador' });
+db.RhTicketLoteItem.belongsTo(db.Obra, { foreignKey: 'obra_id', as: 'obra', constraints: false });
+db.RhTicketLote.belongsTo(db.RhEmpresaGrupo, { foreignKey: 'empresa_grupo_id', as: 'empresaGrupo' });
+db.RhTicketLote.belongsTo(db.Parceiro, { foreignKey: 'parceiro_id', as: 'parceiro' });
+db.RhTicketLote.belongsTo(db.Solicitacao, { foreignKey: 'solicitacao_id', as: 'solicitacao' });
+db.RhTicketLote.belongsTo(db.TituloFinanceiro, { foreignKey: 'titulo_financeiro_id', as: 'titulo' });
 
 db.RhColaborador.hasOne(db.RhColaboradorPagamento, {
   foreignKey: 'colaborador_id',

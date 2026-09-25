@@ -1205,6 +1205,7 @@ async function atualizarColaboradorRh(id, data, user) {
         valor_contratual: data.valor_contratual,
         forma_calculo_gerencial: data.forma_calculo_gerencial,
         valor_diaria: data.valor_diaria,
+        valor_ticket: data.valor_ticket,
         pagamento_automatico_40_60: data.pagamento_automatico_40_60,
         observacoes: data.observacoes,
         atualizado_por: user?.id || null
@@ -1578,6 +1579,20 @@ async function importarColaboradoresRh(file, user) {
           pickImportValue(row, ['valor_contratual', 'valor_contrato']),
           'Valor contratual'
         ) || undefined,
+        forma_calculo_gerencial: normalizeToken(
+          pickImportValue(row, ['forma_calculo_gerencial', 'forma_calculo', 'calculo'])
+        ) || 'MENSAL',
+        valor_diaria: parseImportDecimal(
+          pickImportValue(row, ['valor_diaria', 'diaria']),
+          'Valor da diaria'
+        ) || undefined,
+        pagamento_automatico_40_60: ['SIM', 'S', 'TRUE', '1'].includes(normalizeToken(
+          pickImportValue(row, ['pagamento_automatico_40_60', 'automatico_40_60', '40_60'])
+        )),
+        valor_ticket: parseImportDecimal(
+          pickImportValue(row, ['valor_ticket', 'ticket']),
+          'Valor do ticket'
+        ) || undefined,
         observacoes: String(pickImportValue(row, ['observacoes']) || '').trim() || undefined,
         pagamento: {
           favorecido_nome: String(
@@ -1611,6 +1626,12 @@ async function importarColaboradoresRh(file, user) {
       }
       if (!['ATIVO', 'INATIVO', 'AFASTADO'].includes(payload.status)) {
         throw new ValidationError('Status invalido.');
+      }
+      if (!['MENSAL', 'DIARIA'].includes(payload.forma_calculo_gerencial)) {
+        throw new ValidationError('Forma de calculo gerencial invalida. Use MENSAL ou DIARIA.');
+      }
+      if (payload.valor_ticket !== undefined && Number(payload.valor_ticket) < 0) {
+        throw new ValidationError('Valor do ticket nao pode ser negativo.');
       }
 
       await criarColaboradorRh(payload, user);

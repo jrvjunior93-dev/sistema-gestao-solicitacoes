@@ -916,6 +916,7 @@ const MODULO_PERMISSION_GROUPS = [
         label: 'Fechamentos',
         permissoes: [
           { key: 'rh_dp.fechamento.executar', label: 'Fechar competencia', descricao: 'Fechar competencia e gerar titulos no financeiro.' },
+          { key: 'rh_dp.ticket.gerar', label: 'Gerar lote de ticket', descricao: 'Selecionar colaboradores e gerar solicitacao e titulo rateado do beneficio.' },
           { key: 'rh_dp.fechamento.reabrir', label: 'Reabrir fechamento', descricao: 'Reabrir competencias fechadas quando necessario.' },
           { key: 'rh_dp.obrigacoes.visualizar', label: 'Visualizar obrigacoes', descricao: 'Acessar fechamentos e titulos gerados.' }
         ]

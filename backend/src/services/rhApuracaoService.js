@@ -316,6 +316,7 @@ async function buildAgrupamentoImportacoes(data, transaction) {
           'obra_id',
           'forma_calculo_gerencial',
           'valor_diaria',
+          'data_nascimento',
           'pagamento_automatico_40_60'
         ],
         include: [
@@ -342,6 +343,36 @@ async function buildAgrupamentoImportacoes(data, transaction) {
 
   await validarDistribuicoesMultiobra(linhas, data.competencia, transaction);
 
+  /*
+   * O mensalista recebe o salario integral quando trabalhou em uma unica obra, mesmo que haja
+   * faltas informadas. Quando passou por mais de uma obra, entretanto, cada recorte precisa levar
+   * somente sua participacao para que o titulo unico seja rateado sem duplicar o salario. A base
+   * desse rateio e a proporcao dos dias efetivamente informados entre as obras da competencia.
+   */
+  const colaboradorIds = [...new Set(linhas.map((linha) => Number(linha.colaborador_id)).filter(Boolean))];
+  const jornadasDaCompetencia = colaboradorIds.length
+    ? await RhImportacaoLinha.findAll({
+        where: { status: 'CONFIRMADA', colaborador_id: { [Op.in]: colaboradorIds } },
+        attributes: ['colaborador_id', 'payload_json'],
+        include: [{
+          model: RhImportacao,
+          as: 'importacao',
+          required: true,
+          attributes: ['obra_id'],
+          where: { status: 'CONFIRMADA', competencia: data.competencia, tipo: 'JORNADA' }
+        }],
+        transaction
+      })
+    : [];
+  const distribuicaoMensal = new Map();
+  jornadasDaCompetencia.forEach((linha) => {
+    const colaboradorId = Number(linha.colaborador_id);
+    const atual = distribuicaoMensal.get(colaboradorId) || { dias: 0, obras: new Set() };
+    atual.dias += Number(linha.payload_json?.dias_trabalhados || 0);
+    if (linha.importacao?.obra_id) atual.obras.add(Number(linha.importacao.obra_id));
+    distribuicaoMensal.set(colaboradorId, atual);
+  });
+
   const agrupados = new Map();
 
   linhas.forEach((linha) => {
@@ -367,6 +398,12 @@ async function buildAgrupamentoImportacoes(data, transaction) {
           adicional_periculosidade: 0,
           bonificacoes: 0,
           descontos_informados: 0,
+          decimo_terceiro: 0,
+          valor_empreitada: 0,
+          regime_pagamento: 'NORMAL',
+          servicos_executados: [],
+          total_dias_competencia: Number(distribuicaoMensal.get(colaboradorId)?.dias || 0),
+          total_obras_competencia: Number(distribuicaoMensal.get(colaboradorId)?.obras?.size || 0),
           valor_informado: 0
         },
         creditos: 0,
@@ -390,6 +427,14 @@ async function buildAgrupamentoImportacoes(data, transaction) {
       itemAtual.jornada.adicional_periculosidade += Number(linha.payload_json?.adicional_periculosidade || 0);
       itemAtual.jornada.bonificacoes += Number(linha.payload_json?.bonificacoes || 0);
       itemAtual.jornada.descontos_informados += Number(linha.payload_json?.descontos_informados || 0);
+      itemAtual.jornada.decimo_terceiro += Number(linha.payload_json?.decimo_terceiro || 0);
+      itemAtual.jornada.valor_empreitada += Number(linha.payload_json?.valor_empreitada || 0);
+      if (String(linha.payload_json?.regime_pagamento || '').toUpperCase() === 'EMPREITADA') {
+        itemAtual.jornada.regime_pagamento = 'EMPREITADA';
+        if (linha.payload_json?.servico_executado) {
+          itemAtual.jornada.servicos_executados.push(String(linha.payload_json.servico_executado));
+        }
+      }
       itemAtual.jornada.valor_informado += Number(linha.payload_json?.valor_informado || 0);
     } else {
       const valorEvento = Number(linha.payload_json?.valor || 0);
@@ -520,6 +565,9 @@ function calcularItemApuracao(agrupado, diasBase) {
   const totalAdicionais =
     adicionais + adicionalNoturno + adicionalInsalubridade + adicionalPericulosidade + bonificacoes;
   const descontosInformados = Number(jornada.descontos_informados || 0);
+  const decimoTerceiro = Number(jornada.decimo_terceiro || 0);
+  const valorEmpreitada = Number(jornada.valor_empreitada || 0);
+  const regimePagamento = String(jornada.regime_pagamento || 'NORMAL').toUpperCase();
   const valorInformado = Number(jornada.valor_informado || 0);
   const creditos = Number(agrupado.creditos || 0);
   const debitos = Number(agrupado.debitos || 0);
@@ -532,24 +580,35 @@ function calcularItemApuracao(agrupado, diasBase) {
   // bruto e um liquido e nao tem como contestar nenhum dos dois.
   const resumo = {};
 
-  if (formaCalculo === 'DIARIA') {
+  if (regimePagamento === 'EMPREITADA') {
+    regraAplicada = 'EMPREITADA';
+    valorBruto = valorEmpreitada + decimoTerceiro + totalAdicionais + creditos;
+    resumo.valor_empreitada = formatCurrencyValue(valorEmpreitada);
+    resumo.servicos_executados = jornada.servicos_executados || [];
+    resumo.valor_proporcional = formatCurrencyValue(valorEmpreitada);
+    resumo.valor_horas_extras = 0;
+  } else if (formaCalculo === 'DIARIA') {
     regraAplicada = 'DIARIA_DIAS_REMUNERADOS';
     const baseDiaria = valorBaseCalculo * diasTrabalhados;
-    valorBruto = baseDiaria + totalAdicionais + creditos;
+    valorBruto = baseDiaria + decimoTerceiro + totalAdicionais + creditos;
     resumo.valor_diaria = formatCurrencyValue(valorBaseCalculo);
     resumo.dias_remunerados = formatCurrencyValue(diasTrabalhados);
     resumo.valor_proporcional = formatCurrencyValue(baseDiaria);
     resumo.valor_horas_extras = 0;
-  } else if (tipoVinculo === 'CLT') {
-    regraAplicada = 'CLT_SIMPLIFICADA';
-    const salarioProporcional =
-      diasTrabalhados > 0 && Number(diasBase || 0) > 0
-        ? valorBaseCalculo * (diasTrabalhados / Number(diasBase))
-        : valorBaseCalculo;
+  } else if (formaCalculo === 'MENSAL') {
+    regraAplicada = tipoVinculo === 'CLT' ? 'CLT_SIMPLIFICADA' : 'MENSAL_SIMPLIFICADA';
+    const totalDiasCompetencia = Number(jornada.total_dias_competencia || 0);
+    const totalObrasCompetencia = Number(jornada.total_obras_competencia || 0);
+    const salarioProporcional = totalObrasCompetencia > 1 && totalDiasCompetencia > 0
+      ? valorBaseCalculo * (diasTrabalhados / totalDiasCompetencia)
+      : valorBaseCalculo;
     const valorHora = calculateValorHoraReferencia(valorBaseCalculo);
     const valorHorasExtras = horasExtras * valorHora * 1.5;
-    valorBruto = salarioProporcional + valorHorasExtras + totalAdicionais + creditos;
+    valorBruto = salarioProporcional + decimoTerceiro + valorHorasExtras + totalAdicionais + creditos;
     resumo.valor_proporcional = formatCurrencyValue(salarioProporcional);
+    resumo.rateio_multiobra = totalObrasCompetencia > 1;
+    resumo.total_dias_competencia = formatCurrencyValue(totalDiasCompetencia);
+    resumo.total_obras_competencia = totalObrasCompetencia;
     resumo.valor_hora = formatCurrencyValue(valorHora);
     resumo.valor_horas_extras = formatCurrencyValue(valorHorasExtras);
   } else {
@@ -560,25 +619,16 @@ function calcularItemApuracao(agrupado, diasBase) {
         : diasTrabalhados > 0 && Number(diasBase || 0) > 0
           ? valorBaseCalculo * (diasTrabalhados / Number(diasBase))
           : valorBaseCalculo;
-    valorBruto = baseNaoClt + totalAdicionais + creditos;
+    valorBruto = baseNaoClt + decimoTerceiro + totalAdicionais + creditos;
     resumo.valor_proporcional = formatCurrencyValue(baseNaoClt);
     resumo.valor_horas_extras = 0;
   }
 
-  /**
-   * DESCONTO POR FALTAS — o escopo pede o numero, mas ele NAO E SUBTRAIDO DE NOVO.
-   *
-   * O salario proporcional ja e calculado sobre os DIAS TRABALHADOS, entao o dia de falta ja deixou
-   * de ser pago ali. Subtrair outra vez cobraria a falta em dobro do colaborador.
-   *
-   * O valor existe aqui como MEMORIA DE CALCULO: e a resposta a pergunta "quanto essas faltas
-   * custaram", que e o que o conferente quer ver na planilha. Por isso ele mora em `resumo`, e nao
-   * em `valor_descontos`.
-   */
-  resumo.desconto_faltas = formatCurrencyValue(
-    Number(diasBase || 0) > 0 ? valorBaseCalculo * (faltas / Number(diasBase)) : 0
-  );
-  resumo.desconto_faltas_ja_no_proporcional = true;
+  // Faltas sao apenas informativas. Para mensalistas, os dias so distribuem o salario entre obras;
+  // nunca reduzem o total devido ao colaborador.
+  resumo.desconto_faltas = 0;
+  resumo.faltas_apenas_informativas = true;
+  resumo.decimo_terceiro = formatCurrencyValue(decimoTerceiro);
   resumo.adicionais = {
     noturno: formatCurrencyValue(adicionalNoturno),
     insalubridade: formatCurrencyValue(adicionalInsalubridade),
@@ -624,6 +674,10 @@ function calcularItemApuracao(agrupado, diasBase) {
         horas_extras: formatCurrencyValue(horasExtras),
         adicionais: formatCurrencyValue(adicionais),
         descontos_informados: formatCurrencyValue(descontosInformados),
+        decimo_terceiro: formatCurrencyValue(decimoTerceiro),
+        regime_pagamento: regimePagamento,
+        valor_empreitada: formatCurrencyValue(valorEmpreitada),
+        servicos_executados: jornada.servicos_executados || [],
         valor_informado: formatCurrencyValue(valorInformado)
       },
       creditos_evento: formatCurrencyValue(creditos),

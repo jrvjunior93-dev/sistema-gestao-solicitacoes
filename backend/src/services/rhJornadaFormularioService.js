@@ -353,24 +353,19 @@ async function registrarJornada(dados = {}, contexto = {}) {
           : 'AGUARDANDO_RESPONSAVEIS')
         : 'NAO_APLICAVEL';
       const formaCalculo = String(colaborador.forma_calculo_gerencial || 'MENSAL').toUpperCase();
-      const finaisSemanaFeriados = numeroNaoNegativo(
-        linha.finais_semana_feriados,
-        'Finais de semana e feriados',
-        colaboradorId
-      );
+      const regimePagamento = String(linha.regime_pagamento || 'NORMAL').trim().toUpperCase();
+      if (!['NORMAL', 'EMPREITADA'].includes(regimePagamento)) {
+        throw new ValidationError(`${colaborador.nome}: regime de pagamento invalido.`);
+      }
+      const finaisSemanaFeriados = 0;
       const faltas = numeroNaoNegativo(linha.faltas, 'Faltas', colaboradorId);
       const limiteVinculo = diasVinculados(vinculosDaObra, colaborador, periodo);
-      if (finaisSemanaFeriados + faltas > limiteVinculo) {
-        throw new ValidationError(
-          `${colaborador.nome}: finais de semana/feriados mais faltas nao podem ultrapassar `
-          + `${limiteVinculo} dia(s) de vinculo no periodo.`
-        );
+      const dias = numeroNaoNegativo(linha.dias_trabalhados, 'Dias trabalhados', colaboradorId);
+      if (dias > limiteVinculo) {
+        throw new ValidationError(`${colaborador.nome}: dias trabalhados nao podem ultrapassar ${limiteVinculo} dia(s) de vinculo nesta obra no periodo.`);
       }
-      const dias = formaCalculo === 'DIARIA'
-        ? Math.max(0, limiteVinculo - finaisSemanaFeriados - faltas)
-        : numeroNaoNegativo(linha.dias_trabalhados, 'Dias trabalhados', colaboradorId);
-      if (dias + faltas > limiteVinculo) {
-        throw new ValidationError(`${colaborador.nome}: dias trabalhados mais faltas nao podem ultrapassar ${limiteVinculo} dia(s) de vinculo nesta obra no periodo.`);
+      if (faltas > limiteVinculo) {
+        throw new ValidationError(`${colaborador.nome}: faltas nao podem ultrapassar ${limiteVinculo} dia(s) de vinculo nesta obra no periodo.`);
       }
 
       if (dias > diasBase) {
@@ -378,11 +373,16 @@ async function registrarJornada(dados = {}, contexto = {}) {
           `Dias trabalhados (${dias}) do colaborador #${colaboradorId} passam da base do periodo (${diasBase}).`
         );
       }
-      if (dias + faltas > diasBase) {
-        throw new ValidationError(
-          `Dias trabalhados (${dias}) mais faltas (${faltas}) do colaborador #${colaboradorId} `
-          + `passam da base do periodo (${diasBase}).`
-        );
+      const adicionais = numeroNaoNegativo(linha.adicionais, 'Acrescimos', colaboradorId);
+      const descontos = numeroNaoNegativo(linha.descontos, 'Descontos', colaboradorId);
+      const observacoes = String(linha.observacoes || '').trim();
+      if (regimePagamento === 'NORMAL' && formaCalculo === 'MENSAL' && (adicionais > 0 || descontos > 0) && !observacoes) {
+        throw new ValidationError(`${colaborador.nome}: informe a observacao ao lancar acrescimo ou desconto.`);
+      }
+      const valorEmpreitada = numeroNaoNegativo(linha.valor_empreitada, 'Valor da empreitada', colaboradorId);
+      const servicoExecutado = String(linha.servico_executado || '').trim();
+      if (regimePagamento === 'EMPREITADA' && (!servicoExecutado || valorEmpreitada <= 0)) {
+        throw new ValidationError(`${colaborador.nome}: informe o servico executado e o valor da empreitada.`);
       }
 
       // eslint-disable-next-line no-await-in-loop
@@ -422,14 +422,20 @@ async function registrarJornada(dados = {}, contexto = {}) {
             bonificacoes: numeroNaoNegativo(linha.bonificacoes, 'Bonificacoes', colaboradorId),
             // `adicionais` continua existindo para o que nao cabe nos quatro, e para os registros
             // gravados antes desta fase. Somar as cinco e trabalho do calculo, nao do schema.
-            adicionais: numeroNaoNegativo(linha.adicionais, 'Acrescimos', colaboradorId),
-            descontos_informados: numeroNaoNegativo(linha.descontos, 'Descontos', colaboradorId),
-            valor_informado: formaCalculo === 'DIARIA'
+            adicionais,
+            descontos_informados: descontos,
+            decimo_terceiro: numeroNaoNegativo(linha.decimo_terceiro, 'Decimo terceiro', colaboradorId),
+            regime_pagamento: regimePagamento,
+            servico_executado: regimePagamento === 'EMPREITADA' ? servicoExecutado : null,
+            valor_empreitada: regimePagamento === 'EMPREITADA' ? valorEmpreitada : 0,
+            valor_informado: regimePagamento === 'EMPREITADA'
+              ? valorEmpreitada
+              : formaCalculo === 'DIARIA'
               ? Number((dias * Number(colaborador.valor_diaria || 0)).toFixed(2))
               : numeroNaoNegativo(linha.valor_informado, 'Valor informado', colaboradorId),
             forma_calculo_gerencial: formaCalculo,
             valor_diaria: Number(colaborador.valor_diaria || 0),
-            observacoes: linha.observacoes || null
+            observacoes: observacoes || null
           }
         },
         { transaction }
@@ -600,6 +606,8 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
     matricula: vinculo.colaborador.matricula,
     cpf: vinculo.colaborador.cpf,
     status: vinculo.colaborador.status,
+    empresa_grupo_id: vinculo.colaborador.empresa_grupo_id,
+    cargo: vinculo.colaborador.cargo,
     tipo_vinculo: vinculo.colaborador.tipo_vinculo,
     salario_base: vinculo.colaborador.salario_base,
     forma_calculo_gerencial: vinculo.colaborador.forma_calculo_gerencial || 'MENSAL',

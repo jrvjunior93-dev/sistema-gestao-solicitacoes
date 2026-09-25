@@ -592,6 +592,25 @@ export async function historicoSalarioDoColaborador(id) {
   return parseJson(response, 'Erro ao listar o historico de salario');
 }
 
+export async function getRhTicketStatus(competencia, colaboradorIds = []) {
+  const query = buildQuery({ competencia, colaborador_ids: colaboradorIds.join(',') });
+  const response = await fetch(`${API_URL}/rh/tickets/status?${query}`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao consultar os tickets dos colaboradores');
+}
+
+export async function gerarLoteRhTicket({ competencia, parceiro_id, categoria_financeira_id, data_vencimento, colaborador_ids, boleto, idempotency_key }) {
+  const formData = new FormData();
+  formData.append('competencia', competencia);
+  formData.append('parceiro_id', parceiro_id);
+  formData.append('categoria_financeira_id', categoria_financeira_id);
+  formData.append('data_vencimento', data_vencimento);
+  formData.append('colaborador_ids', JSON.stringify(colaborador_ids));
+  formData.append('idempotency_key', idempotency_key);
+  formData.append('boleto', boleto);
+  const response = await fetch(`${API_URL}/rh/tickets`, { method: 'POST', headers: authHeaders(), body: formData });
+  return parseJson(response, 'Erro ao gerar o lote de ticket');
+}
+
 
 export async function getRhDocumentoTiposParaAnexo() {
   const response = await fetch(`${API_URL}/rh/documentos/tipos`, { headers: authHeaders() });

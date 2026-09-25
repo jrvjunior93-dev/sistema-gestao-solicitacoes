@@ -1140,6 +1140,7 @@ const RH_DP_AREA_PERMISSION_KEYS = [
   'rh_dp.apuracao.editar',
   'rh_dp.fechamento.executar',
   'rh_dp.fechamento.reabrir',
+  'rh_dp.ticket.gerar',
   'rh_dp.obrigacoes.visualizar',
   'rh_dp.relatorios.visualizar'
 ];
@@ -1155,6 +1156,7 @@ const RH_DP_LEGACY_TO_AREA = {
   rh_dp_apuracao_edit: ['rh_dp.apuracao.editar'],
   rh_dp_fechamento_execute: ['rh_dp.fechamento.executar'],
   rh_dp_fechamento_reopen: ['rh_dp.fechamento.reabrir'],
+  rh_dp_ticket_generate: ['rh_dp.ticket.gerar'],
   rh_dp_obrigacoes_view: ['rh_dp.obrigacoes.visualizar']
 };
 
@@ -1281,6 +1283,11 @@ export function canExecuteRhDpFechamento(user) {
 export function canReopenRhDpFechamento(user) {
   if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
   return canAccessRhDp(user) && hasRhDpCapability(user, 'rh_dp_fechamento_reopen');
+}
+
+export function canGenerateRhDpTicket(user) {
+  if (userHasSetorCapability(user, 'eh_setor_obra') && !isBusinessAdmin(user)) return false;
+  return canAccessRhDp(user) && hasRhDpCapability(user, 'rh_dp_ticket_generate');
 }
 
 export function canViewProvisionamentos(user) {

@@ -13,6 +13,7 @@ const RH_DP_PERMISSION_GROUPS = [
       'rh_dp_apuracao_edit',
       'rh_dp_fechamento_execute',
       'rh_dp_fechamento_reopen',
+      'rh_dp_ticket_generate',
       'rh_dp_obrigacoes_view'
     ]
   }

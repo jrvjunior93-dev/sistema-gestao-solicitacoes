@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { HiOutlineEye, HiOutlinePencilSquare } from 'react-icons/hi2';
+import { HiOutlineEye, HiOutlinePencilSquare, HiOutlineTicket } from 'react-icons/hi2';
 import {
   Avisos,
   BarraFiltros,
@@ -32,6 +32,9 @@ import {
   getRhDocumentos,
   getRhDocumentoTipos,
   getRhEmpresasGrupo,
+  getRhCategoriasFinanceiras,
+  getRhTicketStatus,
+  gerarLoteRhTicket,
   importarRhColaboradores,
   substituirRhDocumento,
   uploadRhDocumento
@@ -39,8 +42,11 @@ import {
 import { getSetores } from '../services/setores';
 import {
   canManageRhDpColaboradores,
-  canManageRhDpDocumentos
+  canManageRhDpDocumentos,
+  canGenerateRhDpTicket
 } from '../utils/acessoProduto';
+import ParceiroBuscaRemota from '../components/solicitacoes/ParceiroBuscaRemota';
+import CategoriaFinanceiraAutocomplete from '../components/ui/CategoriaFinanceiraAutocomplete';
 import { formatCurrencyInput, getCpfCnpjError, maskCpfCnpj, maskPhone, normalizeCurrencyTyping, onlyDigits } from '../utils/formatters';
 import DateInputBR from '../components/DateInputBR';
 
@@ -67,6 +73,7 @@ function emptyForm() {
     valor_contratual: '',
     forma_calculo_gerencial: 'MENSAL',
     valor_diaria: '',
+    valor_ticket: '',
     pagamento_automatico_40_60: false,
     observacoes: '',
     pagamento: {
@@ -122,6 +129,13 @@ function formatDate(value) {
   return date.toLocaleDateString('pt-BR');
 }
 
+function vencimentoTicket(competencia) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(competencia || ''))) return '';
+  const data = new Date(`${competencia}-10T12:00:00Z`);
+  while ([0, 6].includes(data.getUTCDay())) data.setUTCDate(data.getUTCDate() - 1);
+  return data.toISOString().slice(0, 10);
+}
+
 function validadeLabel(status) {
   switch (status) {
     case 'VENCIDO':
@@ -158,6 +172,7 @@ function toFormData(data) {
     valor_contratual: formatCurrencyInput(data?.valor_contratual),
     forma_calculo_gerencial: data?.forma_calculo_gerencial || 'MENSAL',
     valor_diaria: formatCurrencyInput(data?.valor_diaria),
+    valor_ticket: formatCurrencyInput(data?.valor_ticket),
     pagamento_automatico_40_60: Boolean(data?.pagamento_automatico_40_60),
     observacoes: data?.observacoes || '',
     pagamento: {
@@ -199,6 +214,7 @@ function buildPayload(form) {
     valor_diaria: form.forma_calculo_gerencial === 'DIARIA' && form.valor_diaria !== ''
       ? form.valor_diaria
       : undefined,
+    valor_ticket: form.valor_ticket === '' ? undefined : form.valor_ticket,
     pagamento_automatico_40_60: form.forma_calculo_gerencial === 'MENSAL'
       ? Boolean(form.pagamento_automatico_40_60)
       : false,
@@ -234,6 +250,10 @@ function downloadModeloColaboradores() {
       'Status',
       'Salario_Base',
       'Valor_Contratual',
+      'Forma_Calculo_Gerencial',
+      'Valor_Diaria',
+      'Pagamento_Automatico_40_60',
+      'Valor_Ticket',
       'Banco',
       'Agencia',
       'Conta',
@@ -261,6 +281,10 @@ function downloadModeloColaboradores() {
       'ATIVO',
       '3500,00',
       '',
+      'MENSAL',
+      '',
+      'SIM',
+      '450,00',
       'Banco Exemplo',
       '1234',
       '98765-0',
@@ -342,6 +366,7 @@ export default function RhDpColaboradores() {
   const [searchParams, setSearchParams] = useSearchParams();
   const podeEditar = canManageRhDpColaboradores(user);
   const podeGerirDocumentos = canManageRhDpDocumentos(user);
+  const podeGerarTicket = canGenerateRhDpTicket(user);
   // R3: aviso e confirmação do SISTEMA — nenhuma caixa do navegador.
   const { avisos, avisar, fechar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
@@ -357,6 +382,15 @@ export default function RhDpColaboradores() {
   const [carregandoDossie, setCarregandoDossie] = useState(false);
   const [salvandoDocumento, setSalvandoDocumento] = useState(false);
   const [substituindoDocumentoId, setSubstituindoDocumentoId] = useState(null);
+  const [selecionadosTicket, setSelecionadosTicket] = useState(new Set());
+  const [statusTicket, setStatusTicket] = useState(new Map());
+  const [modalTicketAberto, setModalTicketAberto] = useState(false);
+  const [gerandoTicket, setGerandoTicket] = useState(false);
+  const [categoriasTicket, setCategoriasTicket] = useState([]);
+  const [ticketForm, setTicketForm] = useState(() => {
+    const competencia = new Date().toISOString().slice(0, 7);
+    return { competencia, parceiro: null, categoria_financeira_id: '', data_vencimento: vencimentoTicket(competencia), boleto: null, idempotency_key: crypto.randomUUID() };
+  });
   const [form, setForm] = useState(emptyForm());
   // R1 da DoD: o cadastro abre em MODAL — antes o formulário nascia abaixo
   // de uma tabela de centenas de linhas e clicar em "editar" não parecia
@@ -524,7 +558,80 @@ export default function RhDpColaboradores() {
       status: valorUnico(marcados.status)
     });
     if (consultaId !== ultimaConsultaColaboradoresRef.current) return;
-    setColaboradores(Array.isArray(data) ? data : []);
+    const lista = Array.isArray(data) ? data : [];
+    setColaboradores(lista);
+    const idsVisiveis = new Set(lista.map((item) => Number(item.id)));
+    setSelecionadosTicket((atuais) => new Set([...atuais].filter((id) => idsVisiveis.has(Number(id)))));
+    if (podeGerarTicket && lista.length) {
+      const competencia = ticketForm.competencia;
+      try {
+        const status = await getRhTicketStatus(competencia, lista.map((item) => item.id));
+        if (consultaId === ultimaConsultaColaboradoresRef.current) {
+          setStatusTicket(new Map((status || []).map((item) => [Number(item.colaborador_id), item])));
+        }
+      } catch (error) {
+        console.warn('Não foi possível carregar o status dos tickets.', error);
+        if (consultaId === ultimaConsultaColaboradoresRef.current) setStatusTicket(new Map());
+      }
+    }
+  }
+
+  function alternarSelecionadoTicket(item) {
+    if (item.status !== 'ATIVO' || !(Number(item.valor_ticket) > 0) || statusTicket.has(Number(item.id))) return;
+    setSelecionadosTicket((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(Number(item.id))) proximo.delete(Number(item.id));
+      else proximo.add(Number(item.id));
+      return proximo;
+    });
+  }
+
+  async function abrirModalTicket() {
+    const itens = colaboradores.filter((item) => selecionadosTicket.has(Number(item.id)));
+    if (!itens.length) {
+      avisar.alerta('Selecione ao menos um colaborador com valor de ticket configurado.');
+      return;
+    }
+    if (new Set(itens.map((item) => Number(item.empresa_grupo_id))).size > 1) {
+      avisar.alerta('Selecione colaboradores da mesma empresa para gerar o boleto.');
+      return;
+    }
+    try {
+      const categorias = await getRhCategoriasFinanceiras();
+      setCategoriasTicket(Array.isArray(categorias) ? categorias : []);
+      setTicketForm((prev) => ({ ...prev, idempotency_key: crypto.randomUUID(), boleto: null }));
+      setModalTicketAberto(true);
+    } catch (error) {
+      avisar.erro(error?.message || 'Erro ao carregar categorias financeiras.');
+    }
+  }
+
+  async function gerarTicket(event) {
+    event.preventDefault();
+    if (!ticketForm.parceiro || !ticketForm.categoria_financeira_id || !ticketForm.boleto) {
+      avisar.erro('Informe fornecedor, categoria financeira e boleto.');
+      return;
+    }
+    try {
+      setGerandoTicket(true);
+      const resultado = await gerarLoteRhTicket({
+        competencia: ticketForm.competencia,
+        parceiro_id: ticketForm.parceiro.id,
+        categoria_financeira_id: ticketForm.categoria_financeira_id,
+        data_vencimento: ticketForm.data_vencimento,
+        colaborador_ids: [...selecionadosTicket],
+        boleto: ticketForm.boleto,
+        idempotency_key: ticketForm.idempotency_key
+      });
+      setModalTicketAberto(false);
+      setSelecionadosTicket(new Set());
+      await recarregarColaboradores();
+      avisar.sucesso(`Lote criado na solicitação ${resultado?.solicitacao?.codigo || resultado?.solicitacao?.id}. O título ficará em previsão até a liberação do GEO.`);
+    } catch (error) {
+      avisar.erro(error?.message || 'Erro ao gerar lote de ticket.');
+    } finally {
+      setGerandoTicket(false);
+    }
   }
 
   async function recarregarColaboradores() {
@@ -811,14 +918,22 @@ export default function RhDpColaboradores() {
         acaoPrincipal={podeEditar ? { rotulo: 'Novo colaborador', onClick: abrirNovoColaborador } : undefined}
         /* Saíram do "⋯" (removido do sistema em 07/09) e viraram botões
            visíveis: três na faixa, uma linha só a 1920 e a 1366. */
-        secundarias={podeEditar ? [
-          { rotulo: 'Baixar modelo', onClick: downloadModeloColaboradores },
-          {
-            rotulo: importando ? 'Importando massa...' : 'Importar massa',
-            onClick: () => inputImportacaoRef.current?.click(),
-            desabilitada: importando
-          }
-        ] : []}
+        secundarias={[
+          ...(podeGerarTicket ? [{
+            rotulo: `Gerar lote de ticket${selecionadosTicket.size ? ` (${selecionadosTicket.size})` : ''}`,
+            onClick: abrirModalTicket,
+            desabilitada: !selecionadosTicket.size,
+            icone: <HiOutlineTicket aria-hidden="true" />
+          }] : []),
+          ...(podeEditar ? [
+            { rotulo: 'Baixar modelo', onClick: downloadModeloColaboradores },
+            {
+              rotulo: importando ? 'Importando massa...' : 'Importar massa',
+              onClick: () => inputImportacaoRef.current?.click(),
+              desabilitada: importando
+            }
+          ] : [])
+        ]}
       />
 
       {!formAberto && faixaAvisos}
@@ -891,6 +1006,30 @@ export default function RhDpColaboradores() {
 
         <TabelaPadrao
           colunas={[
+            ...(podeGerarTicket ? [{
+              id: 'selecionar_ticket',
+              titulo: 'Ticket',
+              tipo: 'booleano',
+              render: (item) => {
+                const atual = statusTicket.get(Number(item.id));
+                const habilitado = item.status === 'ATIVO' && Number(item.valor_ticket) > 0 && !atual;
+                return (
+                  <label className="flex items-center gap-2" title={atual ? `Ticket ${atual.status.toLowerCase()}` : 'Selecionar para o lote de ticket'}>
+                    <input
+                      type="checkbox"
+                      checked={selecionadosTicket.has(Number(item.id))}
+                      disabled={!habilitado}
+                      onChange={() => alternarSelecionadoTicket(item)}
+                      aria-label={`Selecionar ticket de ${item.nome}`}
+                    />
+                    <span className="text-xs leading-tight">
+                      <strong className="block">{Number(item.valor_ticket) > 0 ? formatCurrencyInput(item.valor_ticket) : 'Sem valor'}</strong>
+                      <span className="app-note">{atual?.status?.replaceAll('_', ' ') || 'Não solicitado'}</span>
+                    </span>
+                  </label>
+                );
+              }
+            }] : []),
             {
               id: 'nome',
               titulo: 'Nome',
@@ -957,6 +1096,79 @@ export default function RhDpColaboradores() {
           larguraAcoes={96}
         />
       </BlocoConteudo>
+
+      {modalTicketAberto && (
+        <OverlayModal
+          aberto
+          largura="min(760px, calc(100vw - 32px))"
+          rotulo="Gerar lote de ticket"
+          onFechar={() => !gerandoTicket && setModalTicketAberto(false)}
+        >
+          <form className="space-y-4 p-4" onSubmit={gerarTicket}>
+            <div>
+              <h2 className="text-lg font-semibold">Gerar lote de ticket</h2>
+              <p className="app-bloco-lead">
+                {selecionadosTicket.size} colaborador(es). O custo será rateado pela obra atual e o título ficará em previsão até o GEO liberar a solicitação.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <CampoForm label="Competência" obrigatorio>
+                <input
+                  className="form-control"
+                  type="month"
+                  value={ticketForm.competencia}
+                  onChange={(e) => {
+                    const competencia = e.target.value;
+                    setTicketForm((prev) => ({ ...prev, competencia, data_vencimento: vencimentoTicket(competencia) }));
+                  }}
+                  required
+                />
+              </CampoForm>
+              <CampoForm label="Vencimento" obrigatorio>
+                <DateInputBR
+                  className="form-control"
+                  value={ticketForm.data_vencimento}
+                  onChange={(e) => setTicketForm((prev) => ({ ...prev, data_vencimento: e.target.value }))}
+                />
+                <span className="app-note">Dia 10, antecipado automaticamente no fim de semana. Ajuste aqui quando houver feriado informado.</span>
+              </CampoForm>
+              <ParceiroBuscaRemota
+                label="Fornecedor do ticket"
+                selecionado={ticketForm.parceiro}
+                onSelecionar={(parceiro) => setTicketForm((prev) => ({ ...prev, parceiro }))}
+                somenteFornecedor
+                obrigatorio
+              />
+              <CategoriaFinanceiraAutocomplete
+                value={ticketForm.categoria_financeira_id}
+                options={categoriasTicket}
+                onChange={(categoria_financeira_id) => setTicketForm((prev) => ({ ...prev, categoria_financeira_id }))}
+              />
+              <CampoForm label="Boleto" obrigatorio>
+                <input
+                  className="form-control"
+                  type="file"
+                  accept=".pdf,image/*"
+                  onChange={(e) => setTicketForm((prev) => ({ ...prev, boleto: e.target.files?.[0] || null }))}
+                  required
+                />
+              </CampoForm>
+              <div className="rounded-lg border p-3" style={{ borderColor: 'var(--c-border)' }}>
+                <span className="app-note block">Valor total calculado</span>
+                <strong>
+                  {formatCurrencyInput(String(colaboradores
+                    .filter((item) => selecionadosTicket.has(Number(item.id)))
+                    .reduce((soma, item) => soma + Number(item.valor_ticket || 0), 0)))}
+                </strong>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t pt-3" style={{ borderColor: 'var(--c-border)' }}>
+              <button type="button" className="btn btn-outline" disabled={gerandoTicket} onClick={() => setModalTicketAberto(false)}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" disabled={gerandoTicket}>{gerandoTicket ? 'Gerando...' : 'Gerar solicitação e título'}</button>
+            </div>
+          </form>
+        </OverlayModal>
+      )}
 
       {/* R1 da DoD / R9: cadastro abre em MODAL. Mesmos campos, mesma
           validação, mesmo salvar, mesmo limpar — só a moldura mudou. */}
@@ -1205,6 +1417,17 @@ export default function RhDpColaboradores() {
                     </label>
                   </CampoForm>
                 )}
+                <CampoForm label="Valor mensal do ticket">
+                  <input
+                    className="form-control"
+                    inputMode="decimal"
+                    value={form.valor_ticket}
+                    onChange={(e) => setForm((prev) => ({ ...prev, valor_ticket: normalizeCurrencyTyping(e.target.value) }))}
+                    onBlur={(e) => setForm((prev) => ({ ...prev, valor_ticket: formatCurrencyInput(e.target.value) }))}
+                    disabled={!podeEditar}
+                    placeholder="R$ 0,00"
+                  />
+                </CampoForm>
               </FormSecao>
 
               <FormSecao legenda="Dados de pagamento" colunas={2}>

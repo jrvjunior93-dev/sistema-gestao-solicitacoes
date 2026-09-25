@@ -110,6 +110,7 @@ const {
   sincronizarTituloComStatusSolicitacao,
   tipoEhRecargaCartao
 } = require('../services/recargaCartaoService');
+const { sincronizarTicketComSolicitacao } = require('../services/rhTicketService');
 const {
   canEditarApropriacoesSolicitacao,
   isBusinessAdmin,
@@ -4544,6 +4545,7 @@ module.exports = {
       await solicitacao.update({ status_global: status });
 
       await sincronizarTituloComStatusSolicitacao(solicitacao.id, status, usuarioId);
+      await sincronizarTicketComSolicitacao(solicitacao.id, status, usuarioId);
 
       await Historico.create({
         solicitacao_id: id,
@@ -5625,6 +5627,12 @@ module.exports = {
       // status de chegada. Assim a configuracao pode usar qualquer status ativo do GEO.
       await liberarTituloRecargaAposAprovacao(
         solicitacao.id,
+        req.user.id,
+        transaction
+      );
+      await sincronizarTicketComSolicitacao(
+        solicitacao.id,
+        'APROVADA',
         req.user.id,
         transaction
       );

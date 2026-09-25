@@ -280,6 +280,7 @@ async function carregarApuracaoParaFechamento(apuracaoId, transaction) {
               'obra_id',
               'forma_calculo_gerencial',
               'valor_diaria',
+              'data_nascimento',
               'pagamento_automatico_40_60',
               'salario_base',
               'valor_contratual',
@@ -674,9 +675,15 @@ function buildParcelasColaborador(item, apuracao, data = {}, ajuste = null) {
   const baseProporcionalObra = roundCurrency(
     item.detalhes_json?.resumo?.valor_proporcional || salarioBruto
   );
+  const decimoTerceiro = roundCurrency(item.detalhes_json?.jornada?.decimo_terceiro || 0);
+  const diaNascimento = Number(String(colaborador.data_nascimento || '').slice(8, 10));
+  const decimoNoAdiantamento = decimoTerceiro > 0 && diaNascimento >= 1 && diaNascimento <= 15;
+  const valorLiquidoSemDecimo = roundCurrency(Math.max(0, valorLiquido - decimoTerceiro));
   const valor40Calculado = roundCurrency(baseProporcionalObra * 0.4);
-  let valor40 = Math.min(valor40Calculado, valorLiquido);
-  let valor60 = roundCurrency(valorLiquido - valor40);
+  let valor40 = Math.min(valor40Calculado, valorLiquidoSemDecimo);
+  let valor60 = roundCurrency(valorLiquidoSemDecimo - valor40);
+  if (decimoNoAdiantamento) valor40 = roundCurrency(valor40 + decimoTerceiro);
+  else valor60 = roundCurrency(valor60 + decimoTerceiro);
 
   if (ajuste) {
     const valor40Informado = roundCurrency(ajuste.valor_40);
@@ -702,7 +709,8 @@ function buildParcelasColaborador(item, apuracao, data = {}, ajuste = null) {
       dataVencimento: data.data_vencimento_40 || anticipateWeekend(getCompetenciaDate(apuracao.competencia, 15)),
       numeroSufixo: '40',
       observacaoAdicional: [
-        `Salario bruto: ${salarioBruto.toFixed(2)} | Base proporcional da obra: ${baseProporcionalObra.toFixed(2)} | Percentual calculado: 40%`,
+        `Salario bruto: ${salarioBruto.toFixed(2)} | Base da obra: ${baseProporcionalObra.toFixed(2)} | Percentual calculado: 40%`,
+        decimoNoAdiantamento ? `13o salario: ${decimoTerceiro.toFixed(2)}` : null,
         ajuste?.observacao ? `Ajuste informado: ${ajuste.observacao}` : null
       ].filter(Boolean).join(' | ')
     });
@@ -715,6 +723,7 @@ function buildParcelasColaborador(item, apuracao, data = {}, ajuste = null) {
       numeroSufixo: '60',
       observacaoAdicional: [
         `Base salarial bruta: ${salarioBruto.toFixed(2)} | Saldo liquido apos eventos e pensao`,
+        !decimoNoAdiantamento && decimoTerceiro > 0 ? `13o salario: ${decimoTerceiro.toFixed(2)}` : null,
         ajuste?.observacao ? `Ajuste informado: ${ajuste.observacao}` : null
       ].filter(Boolean).join(' | ')
     });

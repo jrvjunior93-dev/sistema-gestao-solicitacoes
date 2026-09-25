@@ -615,6 +615,7 @@ const RH_DP_AREA_PERMISSION_KEYS = [
   'rh_dp.apuracao.editar',
   'rh_dp.fechamento.executar',
   'rh_dp.fechamento.reabrir',
+  'rh_dp.ticket.gerar',
   'rh_dp.obrigacoes.visualizar',
   'rh_dp.relatorios.visualizar'
 ];
@@ -2389,6 +2390,7 @@ async function canAccessRhDp(user) {
     'rh_dp_apuracao_edit',
     'rh_dp_fechamento_execute',
     'rh_dp_fechamento_reopen',
+    'rh_dp_ticket_generate',
     'rh_dp_obrigacoes_view',
     'rh_dp.relatorios.visualizar'
   ]);

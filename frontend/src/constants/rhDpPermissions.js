@@ -49,6 +49,11 @@ export const RH_DP_PERMISSION_GROUPS = [
         description: 'Permite fechar a competencia e gerar titulos no financeiro.'
       },
       {
+        key: 'rh_dp_ticket_generate',
+        label: 'Gerar lote de ticket',
+        description: 'Permite selecionar colaboradores e gerar o pagamento rateado do beneficio.'
+      },
+      {
         key: 'rh_dp_obrigacoes_view',
         label: 'Ver obrigações geradas',
         description: 'Permite acessar fechamentos e titulos gerados no financeiro.'

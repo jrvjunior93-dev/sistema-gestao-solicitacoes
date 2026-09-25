@@ -102,6 +102,8 @@ function linhaVazia(colaborador) {
   return {
     colaborador_id: colaborador.colaborador_id,
     nome: colaborador.nome,
+    empresa_grupo_id: colaborador.empresa_grupo_id,
+    cargo: colaborador.cargo || '',
     tipo_vinculo: colaborador.tipo_vinculo,
     salario_base: colaborador.salario_base,
     forma_calculo_gerencial: colaborador.forma_calculo_gerencial || 'MENSAL',
@@ -117,10 +119,13 @@ function linhaVazia(colaborador) {
     aindaNaoComecou: Boolean(colaborador.ainda_nao_comecou),
     comecaEm: colaborador.comeca_em || null,
     dias_trabalhados: ja.dias_trabalhados ?? '',
-    finais_semana_feriados: ja.finais_semana_feriados ?? '',
     faltas: ja.faltas ?? '',
     adicionais: ja.adicionais ? formatCurrencyInput(String(ja.adicionais)) : '',
     descontos: ja.descontos_informados ? formatCurrencyInput(String(ja.descontos_informados)) : '',
+    decimo_terceiro: ja.decimo_terceiro ? formatCurrencyInput(String(ja.decimo_terceiro)) : '',
+    regime_pagamento: ja.regime_pagamento || 'NORMAL',
+    servico_executado: ja.servico_executado || '',
+    valor_empreitada: ja.valor_empreitada ? formatCurrencyInput(String(ja.valor_empreitada)) : '',
     observacoes: ja.observacoes || ''
   };
 }
@@ -422,16 +427,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   function alterar(indice, campo, valor) {
     setLinhas((atuais) => atuais.map((linha, i) => {
       if (i !== indice) return linha;
-      const proxima = { ...linha, [campo]: valor };
-      if (proxima.forma_calculo_gerencial === 'DIARIA'
-          && ['finais_semana_feriados', 'faltas'].includes(campo)) {
-        const limite = Math.min(Number(diasBase), Number(proxima.diasVinculados || 0));
-        proxima.dias_trabalhados = String(Math.max(
-          0,
-          limite - Number(proxima.finais_semana_feriados || 0) - Number(proxima.faltas || 0)
-        ));
-      }
-      return proxima;
+      return { ...linha, [campo]: valor };
     }));
   }
 
@@ -440,14 +436,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     setLinhas((atuais) => atuais.map((linha) => (
       linha.aindaNaoComecou || !podeEditarLinha(linha) ? linha : {
       ...linha,
-      finais_semana_feriados: linha.finais_semana_feriados === '' ? '0' : linha.finais_semana_feriados,
-      dias_trabalhados: linha.dias_trabalhados === '' || linha.forma_calculo_gerencial === 'DIARIA'
-        ? String(Math.max(
-          0,
-          Math.min(Number(diasBase), linha.diasVinculados)
-            - Number(linha.finais_semana_feriados || 0)
-            - Number(linha.faltas || 0)
-        ))
+      dias_trabalhados: linha.dias_trabalhados === ''
+        ? String(Math.min(Number(diasBase), linha.diasVinculados))
         : linha.dias_trabalhados,
       faltas: linha.faltas === '' ? '0' : linha.faltas
       }
@@ -465,12 +455,9 @@ export default function RhDpJornada({ onAbrirApuracao }) {
 
   const comProblema = useMemo(() => linhas.filter((linha) => {
     const dias = Number(linha.dias_trabalhados || 0);
-    const finaisSemanaFeriados = Number(linha.finais_semana_feriados || 0);
     const faltas = Number(linha.faltas || 0);
-    const usado = linha.forma_calculo_gerencial === 'DIARIA'
-      ? finaisSemanaFeriados + faltas
-      : dias + faltas;
-    return usado > Math.min(Number(diasBase), linha.diasVinculados);
+    const limite = Math.min(Number(diasBase), linha.diasVinculados);
+    return dias > limite || faltas > limite;
   }), [linhas, diasBase]);
 
   const dimensoesFiltro = useMemo(() => {
@@ -592,7 +579,14 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     const preenchidas = linhas
       .filter((l) => !l.aindaNaoComecou)
       .filter((l) => podeEditarLinha(l))
-      .filter((l) => l.dias_trabalhados !== '' || l.faltas !== '' || l.finais_semana_feriados !== '');
+      .filter((l) => (
+        l.dias_trabalhados !== ''
+        || l.faltas !== ''
+        || Number(normalizeCurrencyTyping(l.adicionais) || 0) > 0
+        || Number(normalizeCurrencyTyping(l.descontos) || 0) > 0
+        || Number(normalizeCurrencyTyping(l.decimo_terceiro) || 0) > 0
+        || l.regime_pagamento === 'EMPREITADA'
+      ));
     if (!preenchidas.length) {
       avisar.erro('Informe a jornada de um colaborador novo ou solicite ao DP a edição de uma linha já enviada.');
       return;
@@ -600,9 +594,30 @@ export default function RhDpJornada({ onAbrirApuracao }) {
 
     if (comProblema.length) {
       avisar.erro(
-        'A soma de dias informados, faltas e dias nao remuneraveis ultrapassa o limite do vinculo: '
+        'Os dias informados ou as faltas ultrapassam o limite do vinculo: '
         + `${comProblema.map((l) => `${l.nome} (máximo ${Math.min(Number(diasBase), l.diasVinculados)})`).join(', ')}.`
       );
+      return;
+    }
+
+    const ajusteSemObservacao = preenchidas.find((linha) => (
+      linha.regime_pagamento !== 'EMPREITADA'
+      && linha.forma_calculo_gerencial === 'MENSAL'
+      && (Number(normalizeCurrencyTyping(linha.adicionais) || 0) > 0
+        || Number(normalizeCurrencyTyping(linha.descontos) || 0) > 0)
+      && !String(linha.observacoes || '').trim()
+    ));
+    if (ajusteSemObservacao) {
+      avisar.erro(`Informe a observação do acréscimo ou desconto de ${ajusteSemObservacao.nome}.`);
+      return;
+    }
+    const empreitadaIncompleta = preenchidas.find((linha) => (
+      linha.regime_pagamento === 'EMPREITADA'
+      && (!String(linha.servico_executado || '').trim()
+        || Number(normalizeCurrencyTyping(linha.valor_empreitada) || 0) <= 0)
+    ));
+    if (empreitadaIncompleta) {
+      avisar.erro(`Informe o serviço executado e o valor da empreitada de ${empreitadaIncompleta.nome}.`);
       return;
     }
 
@@ -632,10 +647,16 @@ export default function RhDpJornada({ onAbrirApuracao }) {
           colaborador_id: l.colaborador_id,
           mais_de_uma_obra: Boolean(l.mais_de_uma_obra),
           dias_trabalhados: Number(l.dias_trabalhados || 0),
-          finais_semana_feriados: Number(l.finais_semana_feriados || 0),
+          finais_semana_feriados: 0,
           faltas: Number(l.faltas || 0),
           adicionais: normalizeCurrencyTyping(l.adicionais) || 0,
           descontos: normalizeCurrencyTyping(l.descontos) || 0,
+          decimo_terceiro: normalizeCurrencyTyping(l.decimo_terceiro) || 0,
+          regime_pagamento: l.regime_pagamento,
+          servico_executado: l.regime_pagamento === 'EMPREITADA' ? l.servico_executado : undefined,
+          valor_empreitada: l.regime_pagamento === 'EMPREITADA'
+            ? (normalizeCurrencyTyping(l.valor_empreitada) || 0)
+            : 0,
           observacoes: l.observacoes || undefined
         }))
       });
@@ -660,7 +681,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     }
   }
 
-  async function anexarFichasAssinadas(evento) {
+  async function anexarComprovantesDaJornada(evento) {
     const arquivos = Array.from(evento.target.files || []);
     evento.target.value = '';
     if (!jornadaEnviada?.id || !arquivos.length || anexandoFichas) return;
@@ -675,13 +696,13 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       }
       avisar.sucesso(
         `${enviados} arquivo(s) anexado(s) à Jornada #${jornadaEnviada.id}. `
-        + 'As fichas já estão disponíveis no detalhe da solicitação.'
+        + 'As fichas e fotos da empreitada já estão disponíveis no detalhe da solicitação.'
       );
     } catch (error) {
       avisar.erro(
         enviados
           ? `${enviados} arquivo(s) foram anexados, mas o envio não foi concluído: ${error.message}`
-          : (error.message || 'Não foi possível anexar as fichas assinadas.')
+          : (error.message || 'Não foi possível anexar os comprovantes da jornada.')
       );
     } finally {
       setAnexandoFichas(false);
@@ -984,7 +1005,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       */}
       <BlocoConteudo
         titulo="Jornada da obra"
-        descricao="Informe os dias efetivamente trabalhados em cada obra, faltas, finais de semana/feriados e ajustes. Em transferências na mesma competência, envie a parte de cada obra: o sistema reunirá o pagamento em um único título e fará o rateio financeiro entre elas."
+        descricao="Informe dias trabalhados, faltas apenas para registro, acréscimos, descontos e 13º. Para empreitada, selecione o regime e registre o serviço e o valor; anexos podem ser enviados após a jornada."
         variante={linhas.length ? undefined : 'primario'}
         cor={linhas.length ? undefined : 'var(--c-primary)'}
         acoes={(
@@ -1171,6 +1192,13 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                   tipo: 'badge',
                   render: (linha) => linha.tipo_vinculo
                 },
+                {
+                  id: 'empresa',
+                  titulo: 'Empresa',
+                  tipo: 'texto',
+                  render: (linha) => empresas.find((item) => Number(item.id) === Number(linha.empresa_grupo_id))?.nome || '—'
+                },
+                { id: 'cargo', titulo: 'Cargo', tipo: 'texto', render: (linha) => linha.cargo || '—' },
                 { id: 'limiteVinculo', titulo: 'Dias na obra', tipo: 'numero', render: linha => linha.diasVinculados },
                 {
                   id: 'multiplas_obras',
@@ -1221,25 +1249,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                       aria-label={`Dias trabalhados de ${linha.nome}`}
                       value={linha.dias_trabalhados}
                       disabled={!podeEditarLinha(linha)}
-                      readOnly={linha.forma_calculo_gerencial === 'DIARIA'}
                       onChange={(e) => alterar(linha.__indice, 'dias_trabalhados', e.target.value)}
-                    />
-                  ))
-                },
-                {
-                  id: 'finais_semana_feriados',
-                  titulo: 'Fim de semana / feriado',
-                  tipo: 'numero',
-                  render: (linha) => (linha.aindaNaoComecou ? <span className="opacity-50">—</span> : (
-                    <input
-                      className="form-control rh-jornada-numero"
-                      type="number"
-                      min="0"
-                      max={Math.min(Number(diasBase), linha.diasVinculados)}
-                      aria-label={`Finais de semana e feriados de ${linha.nome}`}
-                      value={linha.finais_semana_feriados}
-                      disabled={!podeEditarLinha(linha) || linha.forma_calculo_gerencial !== 'DIARIA'}
-                      onChange={(e) => alterar(linha.__indice, 'finais_semana_feriados', e.target.value)}
                     />
                   ))
                 },
@@ -1261,6 +1271,49 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                   ))
                 },
                 {
+                  id: 'regime_pagamento',
+                  titulo: 'Pagamento',
+                  tipo: 'texto',
+                  render: (linha) => (linha.aindaNaoComecou ? '—' : (
+                    <select
+                      className="form-control min-w-36"
+                      value={linha.regime_pagamento}
+                      disabled={!podeEditarLinha(linha)}
+                      onChange={(e) => alterar(linha.__indice, 'regime_pagamento', e.target.value)}
+                    >
+                      <option value="NORMAL">Salário / diária</option>
+                      <option value="EMPREITADA">Empreitada</option>
+                    </select>
+                  ))
+                },
+                {
+                  id: 'servico_executado',
+                  titulo: 'Serviço executado',
+                  tipo: 'texto',
+                  render: (linha) => (linha.regime_pagamento !== 'EMPREITADA' ? '—' : (
+                    <input
+                      className="form-control min-w-56"
+                      value={linha.servico_executado}
+                      disabled={!podeEditarLinha(linha)}
+                      onChange={(e) => alterar(linha.__indice, 'servico_executado', e.target.value)}
+                    />
+                  ))
+                },
+                {
+                  id: 'valor_empreitada',
+                  titulo: 'Valor empreitada',
+                  tipo: 'valor',
+                  render: (linha) => (linha.regime_pagamento !== 'EMPREITADA' ? '—' : (
+                    <input
+                      className="form-control rh-jornada-numero"
+                      value={linha.valor_empreitada}
+                      disabled={!podeEditarLinha(linha)}
+                      onChange={(e) => alterar(linha.__indice, 'valor_empreitada', normalizeCurrencyTyping(e.target.value))}
+                      onBlur={(e) => alterar(linha.__indice, 'valor_empreitada', formatCurrencyInput(e.target.value))}
+                    />
+                  ))
+                },
+                {
                   id: 'acrescimos',
                   titulo: 'Acréscimos',
                   tipo: 'valor',
@@ -1272,6 +1325,20 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                       disabled={!podeEditarLinha(linha)}
                       onChange={(e) => alterar(linha.__indice, 'adicionais', normalizeCurrencyTyping(e.target.value))}
                       onBlur={(e) => alterar(linha.__indice, 'adicionais', formatCurrencyInput(e.target.value))}
+                    />
+                  ))
+                },
+                {
+                  id: 'decimo_terceiro',
+                  titulo: '13º salário',
+                  tipo: 'valor',
+                  render: (linha) => (linha.aindaNaoComecou ? '—' : (
+                    <input
+                      className="form-control rh-jornada-numero"
+                      value={linha.decimo_terceiro}
+                      disabled={!podeEditarLinha(linha)}
+                      onChange={(e) => alterar(linha.__indice, 'decimo_terceiro', normalizeCurrencyTyping(e.target.value))}
+                      onBlur={(e) => alterar(linha.__indice, 'decimo_terceiro', formatCurrencyInput(e.target.value))}
                     />
                   ))
                 },
@@ -1355,7 +1422,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
               // A tarja substitui as classes de linha do markup antigo: dias +
               // faltas acima da base é erro; quem ainda nao comecou é aviso.
               urgencia={(linha) => {
-                if (Number(linha.dias_trabalhados || 0) + Number(linha.faltas || 0) > Math.min(Number(diasBase), linha.diasVinculados)) return 'danger';
+                if (Number(linha.dias_trabalhados || 0) > Math.min(Number(diasBase), linha.diasVinculados)
+                  || Number(linha.faltas || 0) > Math.min(Number(diasBase), linha.diasVinculados)) return 'danger';
                 return linha.aindaNaoComecou ? 'warning' : null;
               }}
               vazio="Nenhum colaborador nesta obra e período."
@@ -1378,20 +1446,21 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                   ref={inputFichasRef}
                   type="file"
                   multiple
+                  accept="image/*,.pdf"
                   className="sr-only"
-                  aria-label="Selecionar fichas assinadas da jornada"
-                  onChange={anexarFichasAssinadas}
+                  aria-label="Selecionar fichas ou fotos da empreitada"
+                  onChange={anexarComprovantesDaJornada}
                 />
                 <button
                   type="button"
                   className="btn btn-outline"
                   disabled={!jornadaEnviada?.id || anexandoFichas}
                   title={jornadaEnviada?.id
-                    ? `Anexar fichas à Jornada #${jornadaEnviada.id}`
-                    : 'Envie a jornada antes de anexar as fichas assinadas.'}
+                    ? `Anexar fichas ou fotos à Jornada #${jornadaEnviada.id}`
+                    : 'Envie a jornada antes de anexar fichas ou fotos da empreitada.'}
                   onClick={() => inputFichasRef.current?.click()}
                 >
-                  {anexandoFichas ? 'Anexando...' : 'Anexar fichas assinadas'}
+                  {anexandoFichas ? 'Anexando...' : 'Anexar fichas ou fotos'}
                 </button>
                 {jornadaEnviada?.id ? (
                   <span className="app-bloco-lead">Arquivos serão vinculados à Jornada #{jornadaEnviada.id}.</span>

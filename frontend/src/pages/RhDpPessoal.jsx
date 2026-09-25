@@ -425,7 +425,7 @@ export default function RhDpPessoal() {
     {
       id: 'jornada',
       rotulo: 'Pagamento de Mão de Obra',
-      apoio: 'A obra envia dias trabalhados, faltas e finais de semana/feriados; o DP confere e gera a apuração.'
+      apoio: 'A obra informa dias trabalhados, faltas, ajustes, 13º e empreitadas; o DP confere e gera a apuração.'
     },
     ...(podeVerApuracao ? [{
       id: 'apuracao',

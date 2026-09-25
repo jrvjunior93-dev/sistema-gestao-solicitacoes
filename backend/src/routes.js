@@ -285,6 +285,7 @@ const {
   canImportarComprovantesFilaPagamentos,
   canImportComercialContratos,
   userHasAreaPermission,
+  userHasAnyRhDpCapability,
   canViewSolicitacaoFinanceiro,
   canAccessTreinamento,
   canAccessComprovantes,
@@ -452,6 +453,7 @@ const RhColaboradorController = require('./controllers/RhColaboradorController')
 const RhSolicitacaoController = require('./controllers/RhSolicitacaoController');
 const RhTransferenciaController = require('./controllers/RhTransferenciaController');
 const RhJornadaController = require('./controllers/RhJornadaController');
+const RhTicketController = require('./controllers/RhTicketController');
 const RhDocumentoController = require('./controllers/RhDocumentoController');
 const RhImportacaoController = require('./controllers/RhImportacaoController');
 const RhApuracaoController = require('./controllers/RhApuracaoController');
@@ -1642,6 +1644,24 @@ const allowRhDpFechamentoReopen = permit({
       : 'Acesso negado para reabrir fechamento do RH/DP'
   )
 });
+const allowRhDpTicketManage = permit({
+  resource: 'RH_DP_TICKETS',
+  custom: async (req) => (
+    (await userHasAreaPermission(req.user, ['rh_dp.ticket.gerar']))
+    || (await userHasAnyRhDpCapability(req.user, ['rh_dp_ticket_generate']))
+      ? true
+      : 'Acesso negado para gerar lotes de ticket do RH/DP'
+  )
+});
+const allowRhDpFinanceCategoryRead = permit({
+  resource: 'RH_DP_FINANCEIRO_CATEGORIAS',
+  custom: async (req) => (
+    (await canExecuteRhDpFechamento(req.user))
+    || (await userHasAreaPermission(req.user, ['rh_dp.ticket.gerar']))
+    || (await userHasAnyRhDpCapability(req.user, ['rh_dp_ticket_generate']))
+    || 'Acesso negado para categorias financeiras do RH/DP'
+  )
+});
 const allowIntegracaoSiengeRead = permit({
   resource: 'INTEGRACAO_SIENGE',
   custom: async (req) => (
@@ -2029,6 +2049,9 @@ router.post('/rh/jornada', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJorna
 router.post('/rh/jornada/individual', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.pagamentoIndividual);
 router.post('/rh/jornada/edicoes/solicitar', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhJornadaController.solicitarEdicao);
 router.post('/rh/jornada/edicoes/:id/decidir', allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de edicao da jornada') }), RhJornadaController.decidirEdicao);
+router.get('/rh/tickets/status', allowRhDpTicketManage, RhTicketController.status);
+router.get('/rh/tickets/vencimento', allowRhDpTicketManage, RhTicketController.vencimento);
+router.post('/rh/tickets', requireEnabledModule('FINANCEIRO'), allowRhDpTicketManage, uploadRateLimit, criticalRateLimit, uploadComprovantes.single('boleto'), RhTicketController.create);
 router.get('/rh/colaboradores/:id/eventos-recorrentes', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.eventosDoColaborador);
 router.get('/rh/eventos-recorrentes', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoVer, RhJornadaController.listarEventos);
 router.patch('/rh/eventos-recorrentes/:id', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.atualizarEvento);
@@ -2049,7 +2072,7 @@ router.get('/rh/importacoes', allowRhDpImportacoes, validateRequest({ query: val
 router.get('/rh/importacoes/:id', allowRhDpImportacoes, validateRequest({ params: validateNumericIdParam('id', 'Importacao RH/DP') }), RhImportacaoController.show);
 router.post('/rh/importacoes/preview', allowRhDpImportacoes, uploadRateLimit, uploadComprovantes.single('file'), validateRequest({ body: validateRhImportacaoCreateBody }), RhImportacaoController.createPreview);
 router.post('/rh/importacoes/:id/confirmar', allowRhDpImportacoes, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Importacao RH/DP') }), RhImportacaoController.confirmar);
-router.get('/rh/apuracoes/categorias-financeiras', requireEnabledModule('FINANCEIRO'), allowRhDpFechamentoExecute, RhApuracaoController.categoriasFinanceiras);
+router.get('/rh/apuracoes/categorias-financeiras', requireEnabledModule('FINANCEIRO'), allowRhDpFinanceCategoryRead, RhApuracaoController.categoriasFinanceiras);
 router.get('/rh/apuracoes', allowRhDpApuracaoRead, validateRequest({ query: validateRhApuracaoQuery }), RhApuracaoController.index);
 router.get('/rh/apuracoes/:id', allowRhDpApuracaoRead, validateRequest({ params: validateNumericIdParam('id', 'Apuracao RH/DP') }), RhApuracaoController.show);
 router.post('/rh/apuracoes', allowRhDpApuracaoWrite, criticalRateLimit, validateRequest({ body: validateRhApuracaoCreateBody }), RhApuracaoController.create);
