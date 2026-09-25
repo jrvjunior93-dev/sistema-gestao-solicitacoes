@@ -28,6 +28,7 @@ module.exports = {
           codigo: destinoInicial.areaResponsavel,
           nome: destinoInicial.setor.nome
         },
+        tipo_automatico: catalogo.tipo_automatico === true,
         tipos: catalogo.tipos
       });
     } catch (error) {

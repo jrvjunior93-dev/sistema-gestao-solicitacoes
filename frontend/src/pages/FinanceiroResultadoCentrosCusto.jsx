@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Pagina,
   PageHeader,
@@ -133,6 +134,12 @@ export default function FinanceiroResultadoCentrosCusto() {
       />
 
       <Avisos avisos={avisos} aoFechar={fechar} />
+
+      <div className="app-actionbar">
+        <Link className="btn btn-outline btn-sm" to="/financeiro/relatorios/centros-custo/distribuicao-obras">
+          Ver distribuição gerencial por obra
+        </Link>
+      </div>
 
       {/*
         B2 — UM bloco primario, e e ele que responde a pergunta da tela:

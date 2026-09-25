@@ -1555,6 +1555,17 @@ export async function getResultadoCentrosCusto() {
   return parseJson(response, 'Erro ao buscar resultado de centros de custo');
 }
 
+export async function getDistribuicaoCentrosCusto(params = {}) {
+  const query = new URLSearchParams(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  ).toString();
+  const response = await fetch(
+    `${API_URL}/financeiro/relatorios/centros-custo/distribuicao-obras${query ? `?${query}` : ''}`,
+    { headers: authHeaders() }
+  );
+  return parseJson(response, 'Erro ao buscar a distribuicao gerencial dos centros de custo');
+}
+
 export async function getDreFinanceira(params = {}) {
   const query = new URLSearchParams(
     Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')

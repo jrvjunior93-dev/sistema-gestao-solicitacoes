@@ -156,6 +156,15 @@ export async function createSolicitacao(data, options = {}) {
   return res.json();
 }
 
+export async function getObrasDistribuicaoCentroCusto(centroCustoId) {
+  const response = await fetch(`${API_URL}/solicitacoes/centros-custo/${centroCustoId}/obras-distribuicao`, {
+    headers: authHeaders()
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error || 'Erro ao carregar obras para distribuicao do centro de custo.');
+  return data;
+}
+
 export async function getSolicitacaoById(id) {
   const res = await fetch(`${API_URL}/solicitacoes/${id}`, {
     headers: authHeaders()

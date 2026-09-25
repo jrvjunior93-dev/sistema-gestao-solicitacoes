@@ -19,6 +19,7 @@ db.ParceiroCategoria = require('./ParceiroCategoria')(sequelize, Sequelize);
 db.ParceiroCategoriaItem = require('./ParceiroCategoriaItem')(sequelize, Sequelize);
 db.Solicitacao = require('./Solicitacao')(sequelize, Sequelize);
 db.SolicitacaoApropriacao = require('./SolicitacaoApropriacao')(sequelize, Sequelize);
+db.SolicitacaoCentroCustoDistribuicao = require('./SolicitacaoCentroCustoDistribuicao')(sequelize, Sequelize);
 db.SolicitacaoPagamento = require('./SolicitacaoPagamento')(sequelize, Sequelize);
 db.PrioridadeLote = require('./PrioridadeLote')(sequelize, Sequelize);
 db.PrioridadeLoteItem = require('./PrioridadeLoteItem')(sequelize, Sequelize);
@@ -560,6 +561,27 @@ db.Obra.hasMany(db.Solicitacao, {
 db.Solicitacao.belongsTo(db.Obra, {
   foreignKey: 'obra_id',
   as: 'obra'
+});
+
+/* Rateio gerencial de Centro de Custo. Nao alimenta titulos nem custos reais das obras. */
+db.Solicitacao.hasMany(db.SolicitacaoCentroCustoDistribuicao, {
+  foreignKey: 'solicitacao_id',
+  as: 'distribuicoesCentroCusto'
+});
+
+db.SolicitacaoCentroCustoDistribuicao.belongsTo(db.Solicitacao, {
+  foreignKey: 'solicitacao_id',
+  as: 'solicitacao'
+});
+
+db.SolicitacaoCentroCustoDistribuicao.belongsTo(db.Obra, {
+  foreignKey: 'centro_custo_id',
+  as: 'centroCusto'
+});
+
+db.SolicitacaoCentroCustoDistribuicao.belongsTo(db.Obra, {
+  foreignKey: 'obra_id',
+  as: 'obraGerencial'
 });
 
 db.Apropriacao.hasMany(db.Solicitacao, {

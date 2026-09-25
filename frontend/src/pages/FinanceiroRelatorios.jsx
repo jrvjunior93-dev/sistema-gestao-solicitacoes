@@ -31,6 +31,7 @@ const FinanceiroRelatorioAnalitico = lazy(() => import('./FinanceiroRelatorioAna
 const FinanceiroObras = lazy(() => import('./FinanceiroObras'));
 const FinanceiroResultadoObras = lazy(() => import('./FinanceiroResultadoObras'));
 const FinanceiroResultadoCentrosCusto = lazy(() => import('./FinanceiroResultadoCentrosCusto'));
+const FinanceiroDistribuicaoCentrosCusto = lazy(() => import('./FinanceiroDistribuicaoCentrosCusto'));
 
 const DEFAULT_FILTERS = {
   periodo: '30_DIAS',
@@ -1425,6 +1426,16 @@ const REPORT_CATALOG = [
     permissionKey: 'financeiro.relatorios.centros_custo',
     visibilityKey: 'relatorios.financeiro.centros_custo',
     component: FinanceiroResultadoCentrosCusto
+  },
+  {
+    id: 'centros-custo-distribuicao',
+    title: 'Distribuição dos Centros de Custo',
+    group: 'Obras',
+    description: 'Visão gerencial dos gastos dos centros nas obras, sem apropriação real.',
+    route: '/financeiro/relatorios/centros-custo/distribuicao-obras',
+    permissionKey: 'financeiro.relatorios.centros_custo',
+    visibilityKey: 'relatorios.financeiro.centros_custo',
+    component: FinanceiroDistribuicaoCentrosCusto
   }
 ];
 

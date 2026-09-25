@@ -5,13 +5,20 @@ const {
   normalizeTipoSolicitacaoCodigo,
   serializeTipoSolicitacaoBehavior
 } = require('../services/tipoSolicitacaoBehaviorService');
+const { garantirTiposAutomaticosCentroCusto } = require('../services/tipoSolicitacaoDisponibilidadeService');
 
 module.exports = {
   async index(req, res) {
-    const tipos = await TipoSolicitacao.findAll({
-      order: [['nome', 'ASC']]
-    });
-    return res.json(tipos.map(enrichTipoSolicitacao));
+    try {
+      await garantirTiposAutomaticosCentroCusto();
+      const tipos = await TipoSolicitacao.findAll({
+        order: [['nome', 'ASC']]
+      });
+      return res.json(tipos.map(enrichTipoSolicitacao));
+    } catch (error) {
+      console.error('Erro ao listar tipos:', error);
+      return res.status(500).json({ error: 'Erro ao listar tipos de solicitacao' });
+    }
   },
 
   async create(req, res) {

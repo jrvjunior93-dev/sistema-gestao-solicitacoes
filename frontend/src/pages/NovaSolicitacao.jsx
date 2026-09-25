@@ -13,7 +13,7 @@ import {
 } from '../components/padrao';
 import { getMinhasObras } from '../services/obras';
 import { getTiposSolicitacaoDisponiveis } from '../services/tiposSolicitacao';
-import { createSolicitacao, getApropriacaoPadraoSolicitacao, getSaldoDespesaEventual, solicitarRetornoSolicitacao } from '../services/solicitacoes';
+import { createSolicitacao, getApropriacaoPadraoSolicitacao, getObrasDistribuicaoCentroCusto, getSaldoDespesaEventual, solicitarRetornoSolicitacao } from '../services/solicitacoes';
 import { uploadArquivos } from '../services/uploads';
 import { getTiposSubContrato } from '../services/tiposSubContrato';
 import { getContratos, criarContratoFluxoNovo, getFormasPagamentoFluxos, getLimiteJuridico, uploadContratoAnexos, uploadNegociacaoContrato, uploadDocumentacaoJuridicaContrato } from '../services/contratos';
@@ -160,7 +160,7 @@ export default function NovaSolicitacao() {
   const [obraBusca, setObraBusca] = useState('');
   const [obraBuscaAtiva, setObraBuscaAtiva] = useState(false);
   const [tipos, setTipos] = useState([]);
-  const [catalogoDestino, setCatalogoDestino] = useState({ status: 'idle', contexto: null, destino: null, erro: '' });
+  const [catalogoDestino, setCatalogoDestino] = useState({ status: 'idle', contexto: null, destino: null, tipoAutomatico: false, erro: '' });
   const [camposNovaSolicitacaoConfig, setCamposNovaSolicitacaoConfig] = useState({ regras: {} });
   const [automacaoDestinoConfig, setAutomacaoDestinoConfig] = useState({ destinos_disponiveis: [], regras: {} });
   const [tiposSub, setTiposSub] = useState([]);
@@ -220,6 +220,15 @@ export default function NovaSolicitacao() {
   const [recargaCartaoContexto, setRecargaCartaoContexto] = useState(null);
   const [criandoSolicitacao, setCriandoSolicitacao] = useState(false);
   const [valorTexto, setValorTexto] = useState('');
+  const [distribuicaoCentroCusto, setDistribuicaoCentroCusto] = useState({
+    status: 'idle',
+    regra: null,
+    obras: [],
+    criterio: 'PERCENTUAL',
+    todas: false,
+    linhas: [],
+    erro: ''
+  });
   const [contratoNovoDados, setContratoNovoDados] = useState(null);
   // Rateio da apropriacao do CONTRATO (19/08): varias apropriacoes, por % ou por R$.
   // Comeca com uma linha vazia — o caso de uma apropriacao so continua sendo o normal.
@@ -333,7 +342,7 @@ export default function NovaSolicitacao() {
   useEffect(() => {
     if (!form.obra_id) {
       setTipos([]);
-      setCatalogoDestino({ status: 'idle', contexto: null, destino: null, erro: '' });
+      setCatalogoDestino({ status: 'idle', contexto: null, destino: null, tipoAutomatico: false, erro: '' });
       setForm((atual) => ({
         ...atual,
         area_responsavel: '',
@@ -344,7 +353,7 @@ export default function NovaSolicitacao() {
     }
 
     let cancelado = false;
-    setCatalogoDestino({ status: 'loading', contexto: null, destino: null, erro: '' });
+    setCatalogoDestino({ status: 'loading', contexto: null, destino: null, tipoAutomatico: false, erro: '' });
     getTiposSolicitacaoDisponiveis(form.obra_id)
       .then((data) => {
         if (cancelado) return;
@@ -355,14 +364,18 @@ export default function NovaSolicitacao() {
           status: 'success',
           contexto: data?.contexto || null,
           destino: data?.destino_inicial || null,
+          tipoAutomatico: data?.tipo_automatico === true,
           erro: ''
         });
+        const tipoAutomaticoId = data?.tipo_automatico === true && tiposDisponiveis.length === 1
+          ? String(tiposDisponiveis[0].id)
+          : '';
         setForm((atual) => ({
           ...atual,
           area_responsavel: data?.destino_inicial?.codigo || '',
           tipo_solicitacao_id: idsDisponiveis.has(String(atual.tipo_solicitacao_id))
             ? atual.tipo_solicitacao_id
-            : '',
+            : tipoAutomaticoId,
           tipo_sub_id: idsDisponiveis.has(String(atual.tipo_solicitacao_id))
             ? atual.tipo_sub_id
             : ''
@@ -375,6 +388,7 @@ export default function NovaSolicitacao() {
           status: 'error',
           contexto: null,
           destino: null,
+          tipoAutomatico: false,
           erro: error?.message || 'Não foi possível carregar os tipos disponíveis.'
         });
         setForm((atual) => ({
@@ -387,6 +401,39 @@ export default function NovaSolicitacao() {
 
     return () => { cancelado = true; };
   }, [form.obra_id]);
+
+  useEffect(() => {
+    if (!form.obra_id || obraSelecionadaEhObra) {
+      setDistribuicaoCentroCusto({
+        status: 'idle', regra: null, obras: [], criterio: 'PERCENTUAL', todas: false, linhas: [], erro: ''
+      });
+      return undefined;
+    }
+
+    let cancelado = false;
+    setDistribuicaoCentroCusto((atual) => ({ ...atual, status: 'loading', obras: [], todas: false, linhas: [], erro: '' }));
+    getObrasDistribuicaoCentroCusto(form.obra_id)
+      .then((data) => {
+        if (cancelado) return;
+        setDistribuicaoCentroCusto({
+          status: 'success',
+          regra: data?.regra || null,
+          obras: Array.isArray(data?.obras) ? data.obras : [],
+          criterio: 'PERCENTUAL',
+          todas: false,
+          linhas: [],
+          erro: ''
+        });
+      })
+      .catch((error) => {
+        if (cancelado) return;
+        setDistribuicaoCentroCusto({
+          status: 'error', regra: null, obras: [], criterio: 'PERCENTUAL', todas: false, linhas: [],
+          erro: error?.message || 'Nao foi possivel carregar as obras para distribuicao.'
+        });
+      });
+    return () => { cancelado = true; };
+  }, [form.obra_id, obraSelecionadaEhObra]);
 
   useEffect(() => {
     if (!form.tipo_solicitacao_id) {
@@ -516,6 +563,64 @@ export default function NovaSolicitacao() {
     setForm((atual) => ({ ...atual, [name]: value }));
   }
 
+  function ratearIgualmente(ids, criterio = distribuicaoCentroCusto.criterio) {
+    const obrasIds = [...new Set(ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+    if (obrasIds.length === 0) return [];
+    if (criterio === 'VALOR') {
+      const totalCentavos = Math.round(Number(form.valor || 0) * 100);
+      const base = Math.floor(totalCentavos / obrasIds.length);
+      let alocado = 0;
+      return obrasIds.map((obraId, index) => {
+        const centavos = index === obrasIds.length - 1 ? totalCentavos - alocado : base;
+        alocado += centavos;
+        return { obra_id: obraId, percentual: '', valor: (centavos / 100).toFixed(2) };
+      });
+    }
+    const totalMicros = 100000000;
+    const base = Math.floor(totalMicros / obrasIds.length);
+    let alocado = 0;
+    return obrasIds.map((obraId, index) => {
+      const micros = index === obrasIds.length - 1 ? totalMicros - alocado : base;
+      alocado += micros;
+      return { obra_id: obraId, percentual: String(Number((micros / 1000000).toFixed(6))), valor: '' };
+    });
+  }
+
+  function alternarObraDistribuicao(obraId) {
+    limparErroCampo('distribuicao_centro_custo');
+    setDistribuicaoCentroCusto((atual) => {
+      const selecionadas = atual.linhas.map((linha) => Number(linha.obra_id));
+      const proxima = selecionadas.includes(Number(obraId))
+        ? selecionadas.filter((id) => id !== Number(obraId))
+        : [...selecionadas, Number(obraId)];
+      return { ...atual, todas: false, linhas: ratearIgualmente(proxima, atual.criterio) };
+    });
+  }
+
+  function alterarCriterioDistribuicao(criterio) {
+    limparErroCampo('distribuicao_centro_custo');
+    setDistribuicaoCentroCusto((atual) => ({
+      ...atual,
+      criterio,
+      linhas: ratearIgualmente(atual.linhas.map((linha) => linha.obra_id), criterio)
+    }));
+  }
+
+  function alterarValorDistribuicao(obraId, campo, valorCampo) {
+    limparErroCampo('distribuicao_centro_custo');
+    setDistribuicaoCentroCusto((atual) => ({
+      ...atual,
+      linhas: atual.linhas.map((linha) => Number(linha.obra_id) === Number(obraId)
+        ? { ...linha, [campo]: valorCampo }
+        : linha)
+    }));
+  }
+
+  function selecionarTodasComoClassificacao() {
+    limparErroCampo('distribuicao_centro_custo');
+    setDistribuicaoCentroCusto((atual) => ({ ...atual, todas: true, linhas: [] }));
+  }
+
   function normalizarDocumento(valor) {
     return onlyDigits(valor);
   }
@@ -624,7 +729,7 @@ export default function NovaSolicitacao() {
 
   function limparSelecaoObraERegras() {
     setTipos([]);
-    setCatalogoDestino({ status: 'idle', contexto: null, destino: null, erro: '' });
+    setCatalogoDestino({ status: 'idle', contexto: null, destino: null, tipoAutomatico: false, erro: '' });
     setForm(prev => ({
       ...prev,
       obra_id: '',
@@ -1496,6 +1601,41 @@ export default function NovaSolicitacao() {
       reprovarCampo('valor', 'Informe o valor da solicitação.');
       return;
     }
+    if (!obraSelecionadaEhObra) {
+      if (distribuicaoCentroCusto.status !== 'success') {
+        reprovarCampo(
+          'distribuicao_centro_custo',
+          distribuicaoCentroCusto.erro || 'Aguarde o carregamento das obras para a distribuição gerencial.'
+        );
+        return;
+      }
+      if (!distribuicaoCentroCusto.todas && distribuicaoCentroCusto.linhas.length === 0) {
+        reprovarCampo('distribuicao_centro_custo', 'Selecione TODAS ou ao menos uma obra para a distribuição gerencial.');
+        return;
+      }
+      if (!distribuicaoCentroCusto.todas && distribuicaoCentroCusto.criterio === 'PERCENTUAL') {
+        const total = distribuicaoCentroCusto.linhas.reduce(
+          (soma, linha) => soma + Number(numeroDoCampo(linha.percentual) || 0),
+          0
+        );
+        if (distribuicaoCentroCusto.linhas.some((linha) => Number(numeroDoCampo(linha.percentual) || 0) <= 0)
+          || Math.abs(total - 100) > 0.000001) {
+          reprovarCampo('distribuicao_centro_custo', 'A soma da distribuição deve ser exatamente 100%.');
+          return;
+        }
+      }
+      if (!distribuicaoCentroCusto.todas && distribuicaoCentroCusto.criterio === 'VALOR') {
+        const total = arredondarCentavos(distribuicaoCentroCusto.linhas.reduce(
+          (soma, linha) => soma + Number(numeroDoCampo(linha.valor) || 0),
+          0
+        ));
+        if (distribuicaoCentroCusto.linhas.some((linha) => Number(numeroDoCampo(linha.valor) || 0) <= 0)
+          || total !== arredondarCentavos(Number(form.valor || 0))) {
+          reprovarCampo('distribuicao_centro_custo', 'A soma da distribuição deve ser igual ao valor total da solicitação.');
+          return;
+        }
+      }
+    }
     if (medicaoObrigatoria && (!form.data_inicio_medicao || !form.data_fim_medicao)) {
       // O par de datas mora nesta tela no fluxo antigo e dentro do
       // BlocoMedicaoContrato no fluxo novo — lá não há entrada de erro.
@@ -1977,7 +2117,15 @@ export default function NovaSolicitacao() {
             valor_rateio: String(item.valor_rateio || '').trim() || null,
             observacao: String(item.observacao || '').trim() || null
           }))
-        : []
+        : [],
+      distribuicao_centro_custo: !obraSelecionadaEhObra
+        ? {
+            criterio: distribuicaoCentroCusto.criterio,
+            abrangencia: distribuicaoCentroCusto.todas ? 'TODAS' : 'OBRA',
+            todas: distribuicaoCentroCusto.todas,
+            itens: distribuicaoCentroCusto.todas ? [] : distribuicaoCentroCusto.linhas
+          }
+        : undefined
     };
 
     try {
@@ -2073,8 +2221,8 @@ export default function NovaSolicitacao() {
   // mandar outro.
   //
   // Contrato LEGADO nao entra em nada disto — a medicao dele cria solicitacao propria.
-  const exibirValor = !tipoSemValor && !usaMedicaoFluxoNovo;
-  const valorObrigatorio = exibirValor && !tipoSemValor;
+  const exibirValor = (!obraSelecionadaEhObra || !tipoSemValor) && !usaMedicaoFluxoNovo;
+  const valorObrigatorio = exibirValor && (!obraSelecionadaEhObra || !tipoSemValor);
   const exibirCampoDescricao = exibirDescricao && !usaMedicaoFluxoNovo;
   const descricaoExigida = descricaoObrigatoria && !usaMedicaoFluxoNovo;
   const exibirCampoDataVencimento = exibirDataVencimento && !usaMedicaoFluxoNovo;
@@ -2558,7 +2706,7 @@ export default function NovaSolicitacao() {
                 className="input input-sm"
                 required
                 value={form.tipo_solicitacao_id}
-                disabled={!form.obra_id || catalogoDestino.status !== 'success'}
+                disabled={!form.obra_id || catalogoDestino.status !== 'success' || catalogoDestino.tipoAutomatico}
               >
                 <option value="">
                   {!form.obra_id
@@ -2573,6 +2721,9 @@ export default function NovaSolicitacao() {
                   <option key={t.id} value={t.id}>{t.nome}</option>
                 ))}
               </select>
+              {catalogoDestino.tipoAutomatico && tiposDisponiveis.length === 1 ? (
+                <span className="form-hint">Tipo definido automaticamente para este centro de custo.</span>
+              ) : null}
             </CampoForm>
 
             {catalogoDestino.status === 'error' && (
@@ -3229,6 +3380,152 @@ export default function NovaSolicitacao() {
                 </CampoForm>
               )}
             </FormSecao>
+          </BlocoConteudo>
+        )}
+
+        {!obraSelecionadaEhObra && form.obra_id && (
+          <BlocoConteudo
+            titulo="Distribuição gerencial por obra"
+            descricao="Classificação exclusiva do relatório do centro de custo. Estes valores não compõem o custo real das obras."
+          >
+            {distribuicaoCentroCusto.status === 'loading' ? (
+              <p className="text-sm text-[var(--c-muted)]">Carregando obras disponíveis...</p>
+            ) : distribuicaoCentroCusto.status === 'error' ? (
+              <p className="form-error" role="alert">{distribuicaoCentroCusto.erro}</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="inline-flex rounded-lg border border-[var(--c-border)] bg-[var(--ui-surface-soft)] p-1">
+                    {['PERCENTUAL', 'VALOR'].map((criterio) => (
+                      <button
+                        key={criterio}
+                        type="button"
+                        className={`btn btn-sm ${distribuicaoCentroCusto.criterio === criterio ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => alterarCriterioDistribuicao(criterio)}
+                        disabled={distribuicaoCentroCusto.todas}
+                      >
+                        {criterio === 'PERCENTUAL' ? 'Percentual' : 'Valor em R$'}
+                      </button>
+                    ))}
+                  </div>
+                  {!distribuicaoCentroCusto.todas && distribuicaoCentroCusto.linhas.length > 0 ? (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={() => setDistribuicaoCentroCusto((atual) => ({
+                        ...atual,
+                        linhas: ratearIgualmente(atual.linhas.map((linha) => linha.obra_id), atual.criterio)
+                      }))}
+                    >
+                      Distribuir igualmente
+                    </button>
+                  ) : null}
+                  <span className="text-xs text-[var(--c-muted)]">
+                    {distribuicaoCentroCusto.regra === 'TODAS_PRIVADAS'
+                      ? 'Marketing/Comercial: obras privadas disponíveis.'
+                      : distribuicaoCentroCusto.regra === 'VINCULADAS_USUARIO'
+                        ? 'Somente obras vinculadas ao seu usuário.'
+                        : 'Obras ativas disponíveis.'}
+                  </span>
+                </div>
+
+                <div className="rounded-lg border border-[var(--c-border)] bg-[var(--c-surface)]">
+                  <label className="flex cursor-pointer items-start gap-3 border-b border-[var(--c-border)] px-3 py-3">
+                    <input
+                      type="radio"
+                      name="abrangencia_distribuicao_centro_custo"
+                      checked={distribuicaoCentroCusto.todas}
+                      onChange={selecionarTodasComoClassificacao}
+                    />
+                    <span>
+                      <strong className="block text-sm text-[var(--c-text)]">TODAS</strong>
+                      <span className="text-xs text-[var(--c-muted)]">
+                        Mantém o valor integral na classificação TODAS, sem distribuí-lo entre obras.
+                      </span>
+                    </span>
+                  </label>
+
+                  <label className="flex cursor-pointer items-start gap-3 border-b border-[var(--c-border)] px-3 py-3">
+                    <input
+                      type="radio"
+                      name="abrangencia_distribuicao_centro_custo"
+                      checked={!distribuicaoCentroCusto.todas}
+                      onChange={() => setDistribuicaoCentroCusto((atual) => ({ ...atual, todas: false }))}
+                    />
+                    <span>
+                      <strong className="block text-sm text-[var(--c-text)]">Obras selecionadas</strong>
+                      <span className="text-xs text-[var(--c-muted)]">
+                        Registra quanto do custo do centro foi destinado gerencialmente a cada obra, sem lançar custo nelas.
+                      </span>
+                    </span>
+                  </label>
+
+                  <div className="max-h-56 overflow-auto p-2">
+                    {distribuicaoCentroCusto.obras.length === 0 ? (
+                      <p className="px-2 py-3 text-sm text-[var(--c-muted)]">Nenhuma obra individual disponível para este usuário.</p>
+                    ) : distribuicaoCentroCusto.obras.map((obra) => {
+                      const selecionada = distribuicaoCentroCusto.linhas.some(
+                        (linha) => Number(linha.obra_id) === Number(obra.id)
+                      );
+                      return (
+                        <label key={obra.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-[var(--ui-surface-soft)]">
+                          <input
+                            type="checkbox"
+                            checked={selecionada}
+                            onChange={() => alternarObraDistribuicao(obra.id)}
+                          />
+                          <span className="min-w-0 flex-1 text-sm">
+                            <strong>{obra.codigo || 'Sem código'}</strong> · {obra.nome}
+                          </span>
+                          <span className="text-xs text-[var(--c-muted)]">{obra.classificacao || 'Sem classificação'}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {!distribuicaoCentroCusto.todas && distribuicaoCentroCusto.linhas.length > 0 && (
+                  <div className="overflow-x-auto rounded-lg border border-[var(--c-border)]">
+                    <table className="app-table min-w-[640px]">
+                      <thead>
+                        <tr>
+                          <th>Obra</th>
+                          <th className="w-52">{distribuicaoCentroCusto.criterio === 'PERCENTUAL' ? 'Percentual' : 'Valor'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {distribuicaoCentroCusto.linhas.map((linha) => {
+                          const obra = distribuicaoCentroCusto.obras.find((item) => Number(item.id) === Number(linha.obra_id));
+                          const campo = distribuicaoCentroCusto.criterio === 'PERCENTUAL' ? 'percentual' : 'valor';
+                          return (
+                            <tr key={linha.obra_id}>
+                              <td><strong>{obra?.codigo || '—'}</strong> · {obra?.nome || 'Obra'}</td>
+                              <td>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    className="input input-sm input-moeda"
+                                    inputMode="decimal"
+                                    value={linha[campo]}
+                                    onChange={(event) => alterarValorDistribuicao(linha.obra_id, campo, event.target.value)}
+                                  />
+                                  <span className="text-xs font-semibold text-[var(--c-muted)]">
+                                    {campo === 'percentual' ? '%' : 'R$'}
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {errosCampo.distribuicao_centro_custo ? (
+                  <p className="form-error" role="alert">{errosCampo.distribuicao_centro_custo}</p>
+                ) : null}
+              </div>
+            )}
           </BlocoConteudo>
         )}
 

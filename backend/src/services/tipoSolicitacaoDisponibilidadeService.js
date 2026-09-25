@@ -9,7 +9,17 @@ const {
   sequelize
 } = require('../models');
 const { isObraCentroCusto } = require('../constants/centroCusto');
-const { enrichTipoSolicitacao, normalizeTipoSolicitacaoBehavior } = require('./tipoSolicitacaoBehaviorService');
+const {
+  enrichTipoSolicitacao,
+  normalizeTipoSolicitacaoBehavior,
+  serializeTipoSolicitacaoBehavior
+} = require('./tipoSolicitacaoBehaviorService');
+
+const TIPOS_AUTOMATICOS_CENTRO_CUSTO = Object.freeze([
+  { chave: 'MARKETING', codigo: 'DESPESA_DE_MARKETING', nome: 'DESPESA DE MARKETING' },
+  { chave: 'COMERCIAL', codigo: 'DESPESA_COMERCIAL', nome: 'DESPESA COMERCIAL' },
+  { chave: 'ADMINISTRATIVO', codigo: 'DESPESA_ADMINISTRATIVA', nome: 'DESPESA ADMINISTRATIVA' }
+]);
 
 function erroNegocio(mensagem, statusCode = 400) {
   return Object.assign(new Error(mensagem), { statusCode });
@@ -19,6 +29,81 @@ function normalizarIds(valores) {
   return [...new Set((Array.isArray(valores) ? valores : [])
     .map(Number)
     .filter((id) => Number.isInteger(id) && id > 0))];
+}
+
+function normalizarToken(valor) {
+  return String(valor || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function obterDefinicaoTipoAutomatico(destino) {
+  if (!destino || isObraCentroCusto(destino.tipo_centro_custo)) return null;
+  const tokens = new Set([
+    normalizarToken(destino.codigo),
+    normalizarToken(destino.nome)
+  ].filter(Boolean).flatMap((token) => [token, ...token.split('_')]));
+  if (tokens.has('MARKETING')) return TIPOS_AUTOMATICOS_CENTRO_CUSTO[0];
+  if (tokens.has('COMERCIAL')) return TIPOS_AUTOMATICOS_CENTRO_CUSTO[1];
+  if (tokens.has('ADMINISTRATIVO') || tokens.has('ESCRITORIO')) return TIPOS_AUTOMATICOS_CENTRO_CUSTO[2];
+  return null;
+}
+
+async function garantirTiposAutomaticosCentroCusto({ transaction = null } = {}) {
+  const tipos = [];
+  for (const definicao of TIPOS_AUTOMATICOS_CENTRO_CUSTO) {
+    let tipo = await TipoSolicitacao.findOne({
+      where: {
+        [Op.or]: [
+          { codigo_interno: definicao.codigo },
+          { nome: definicao.nome }
+        ]
+      },
+      transaction
+    });
+    if (!tipo) {
+      tipo = await TipoSolicitacao.create({
+        nome: definicao.nome,
+        codigo_interno: definicao.codigo,
+        disponivel_para_obras: false,
+        ativo: true,
+        comportamento: serializeTipoSolicitacaoBehavior({
+          mostrar_subtipo: true,
+          exige_subtipo: false
+        })
+      }, { transaction });
+    } else {
+      const atualizacoes = {};
+      if (tipo.nome !== definicao.nome) atualizacoes.nome = definicao.nome;
+      if (tipo.codigo_interno !== definicao.codigo) atualizacoes.codigo_interno = definicao.codigo;
+      if (tipo.ativo === false) atualizacoes.ativo = true;
+      if (tipo.disponivel_para_obras !== false && Number(tipo.disponivel_para_obras) !== 0) {
+        atualizacoes.disponivel_para_obras = false;
+      }
+      const comportamento = normalizeTipoSolicitacaoBehavior(tipo);
+      if (comportamento.mostrar_subtipo !== true) {
+        atualizacoes.comportamento = serializeTipoSolicitacaoBehavior({
+          ...comportamento,
+          mostrar_subtipo: true,
+          exige_subtipo: false
+        });
+      }
+      if (Object.keys(atualizacoes).length) await tipo.update(atualizacoes, { transaction });
+    }
+    tipos.push({ definicao, tipo });
+  }
+  return tipos;
+}
+
+async function obterTipoAutomaticoDestino(destino, transaction = null) {
+  const definicao = obterDefinicaoTipoAutomatico(destino);
+  if (!definicao) return null;
+  const tipos = await garantirTiposAutomaticosCentroCusto({ transaction });
+  return tipos.find((item) => item.definicao.codigo === definicao.codigo)?.tipo || null;
 }
 
 async function carregarDestino(destinoId, transaction = null) {
@@ -53,9 +138,22 @@ function enriquecerTipoComSubtipos(tipo) {
 async function listarTiposDisponiveis(destinoId, { transaction = null } = {}) {
   const destino = await carregarDestino(destinoId, transaction);
   const ehObra = isObraCentroCusto(destino.tipo_centro_custo);
+  const tipoAutomatico = ehObra ? null : await obterTipoAutomaticoDestino(destino, transaction);
   let tipos;
 
-  if (ehObra) {
+  if (tipoAutomatico) {
+    tipos = await TipoSolicitacao.findAll({
+      where: { id: tipoAutomatico.id, ativo: true },
+      include: [{
+        model: TipoSubContrato,
+        as: 'subtiposVinculados',
+        required: false,
+        where: { ativo: true },
+        attributes: ['id', 'nome', 'tipo_macro_id', 'ativo']
+      }],
+      transaction
+    });
+  } else if (ehObra) {
     tipos = await TipoSolicitacao.findAll({
       where: { ativo: true, disponivel_para_obras: true },
       include: [{
@@ -92,6 +190,7 @@ async function listarTiposDisponiveis(destinoId, { transaction = null } = {}) {
   return {
     destino: destino.get({ plain: true }),
     contexto: ehObra ? 'OBRA' : 'CENTRO_CUSTO',
+    tipo_automatico: Boolean(tipoAutomatico),
     tipos: tipos.filter(tipoPodeSerAbertoManualmente).map(enriquecerTipoComSubtipos)
   };
 }
@@ -111,6 +210,14 @@ async function assertTipoDisponivelNoDestino(destino, tipo, { transaction = null
     return true;
   }
 
+  const tipoAutomatico = await obterTipoAutomaticoDestino(destino, transaction);
+  if (tipoAutomatico) {
+    if (Number(tipoAutomatico.id) !== Number(tipo.id)) {
+      throw erroNegocio('Este Centro de Custo aceita somente o tipo automatico configurado para ele.', 403);
+    }
+    return true;
+  }
+
   const vinculo = await CentroCustoTipoSolicitacao.findOne({
     where: {
       centro_custo_id: destino.id,
@@ -125,6 +232,7 @@ async function assertTipoDisponivelNoDestino(destino, tipo, { transaction = null
 }
 
 async function obterConfiguracao() {
+  await garantirTiposAutomaticosCentroCusto();
   const [tipos, centrosCusto, vinculos] = await Promise.all([
     TipoSolicitacao.findAll({ order: [['nome', 'ASC']] }),
     Obra.findAll({
@@ -146,13 +254,25 @@ async function obterConfiguracao() {
     tiposPorCentroCusto[chave].push(Number(item.tipo_solicitacao_id));
   });
 
+  const tiposAutomaticosPorCentroCusto = {};
+  const tipoPorCodigo = new Map(tiposConfiguraveis.map((tipo) => [normalizarToken(tipo.codigo_interno), Number(tipo.id)]));
+  centrosCusto.forEach((centro) => {
+    const definicao = obterDefinicaoTipoAutomatico(centro);
+    if (!definicao) return;
+    const tipoId = tipoPorCodigo.get(definicao.codigo);
+    if (!tipoId) return;
+    tiposPorCentroCusto[String(centro.id)] = [tipoId];
+    tiposAutomaticosPorCentroCusto[String(centro.id)] = tipoId;
+  });
+
   return {
     tipos: tiposConfiguraveis.map(enrichTipoSolicitacao),
     centros_custo: centrosCusto,
     tipos_obras: tiposConfiguraveis
       .filter((tipo) => tipo.disponivel_para_obras === true || Number(tipo.disponivel_para_obras) === 1)
       .map((tipo) => Number(tipo.id)),
-    tipos_por_centro_custo: tiposPorCentroCusto
+    tipos_por_centro_custo: tiposPorCentroCusto,
+    tipos_automaticos_por_centro_custo: tiposAutomaticosPorCentroCusto
   };
 }
 
@@ -196,6 +316,13 @@ async function salvarConfiguracao({ escopo, centroCustoId, tipos, usuarioId }) {
       throw erroNegocio('O destino selecionado e uma Obra, nao um Centro de Custo.');
     }
 
+    const tipoAutomatico = await obterTipoAutomaticoDestino(centroCusto, transaction);
+    if (tipoAutomatico) {
+      if (ids.length !== 1 || Number(ids[0]) !== Number(tipoAutomatico.id)) {
+        throw erroNegocio('Este Centro de Custo possui um tipo automatico e unico, que nao pode ser substituido.');
+      }
+    }
+
     await CentroCustoTipoSolicitacao.update(
       { ativo: false, atualizado_por: usuarioId || null },
       { where: { centro_custo_id: centroCusto.id }, transaction }
@@ -224,6 +351,7 @@ async function salvarConfiguracao({ escopo, centroCustoId, tipos, usuarioId }) {
 
 module.exports = {
   assertTipoDisponivelNoDestino,
+  garantirTiposAutomaticosCentroCusto,
   listarTiposDisponiveis,
   obterConfiguracao,
   salvarConfiguracao

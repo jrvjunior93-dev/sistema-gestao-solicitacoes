@@ -1768,6 +1768,7 @@ function validateSolicitacaoCreateBody(body = {}) {
       'itens_apropriacao',
       'ref_contrato_abertura',
       'apropriacoes_rateio',
+      'distribuicao_centro_custo',
       // Wireframe 2: parcelas do contrato do fluxo novo consumidas por esta medicao.
       'medicao_parcelas',
       // Dados de pagamento DA MEDICAO (itens 5 e 9, 23/08): favorecido, chave PIX, forma, contato e
@@ -1817,6 +1818,22 @@ function validateSolicitacaoCreateBody(body = {}) {
     itens_apropriacao: parseOptionalText(body.itens_apropriacao, 'Itens de apropriacao', 5000),
     ref_contrato_abertura: parseOptionalText(body.ref_contrato_abertura, 'Ref. do contrato', 255),
     apropriacoes_rateio: Array.isArray(body.apropriacoes_rateio) ? body.apropriacoes_rateio : undefined,
+    distribuicao_centro_custo: (() => {
+      const distribuicao = body.distribuicao_centro_custo;
+      if (!distribuicao || typeof distribuicao !== 'object' || Array.isArray(distribuicao)) return undefined;
+      const itens = Array.isArray(distribuicao.itens) ? distribuicao.itens : [];
+      if (itens.length > 500) throw new ValidationError('A distribuicao do centro de custo excede o limite permitido.');
+      return {
+        criterio: parseOptionalText(distribuicao.criterio, 'Criterio da distribuicao', 20),
+        abrangencia: parseOptionalText(distribuicao.abrangencia, 'Abrangencia da distribuicao', 20),
+        todas: distribuicao.todas === true,
+        itens: itens.map((item) => ({
+          obra_id: parseInteger(item?.obra_id, 'Obra da distribuicao'),
+          percentual: item?.percentual,
+          valor: item?.valor
+        }))
+      };
+    })(),
     medicao_parcelas: Array.isArray(body.medicao_parcelas) ? body.medicao_parcelas : undefined,
     // Repassado como veio: quem valida campo a campo e `validarDadosDePagamento`, no servico, junto
     // da regra de negocio. Duplicar a validacao aqui criaria duas versoes da mesma exigencia.

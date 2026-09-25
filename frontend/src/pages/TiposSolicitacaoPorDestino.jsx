@@ -34,7 +34,8 @@ export default function TiposSolicitacaoPorDestino() {
     tipos: [],
     centros_custo: [],
     tipos_obras: [],
-    tipos_por_centro_custo: {}
+    tipos_por_centro_custo: {},
+    tipos_automaticos_por_centro_custo: {}
   });
   const [escopo, setEscopo] = useState('OBRA');
   const [centroCustoId, setCentroCustoId] = useState('');
@@ -58,6 +59,10 @@ export default function TiposSolicitacaoPorDestino() {
         tipos_obras: idsValidos(data?.tipos_obras),
         tipos_por_centro_custo: data?.tipos_por_centro_custo && typeof data.tipos_por_centro_custo === 'object'
           ? data.tipos_por_centro_custo
+          : {},
+        tipos_automaticos_por_centro_custo: data?.tipos_automaticos_por_centro_custo
+          && typeof data.tipos_automaticos_por_centro_custo === 'object'
+          ? data.tipos_automaticos_por_centro_custo
           : {}
       };
       setConfiguracao(normalizada);
@@ -87,8 +92,11 @@ export default function TiposSolicitacaoPorDestino() {
       return textoBusca(`${tipo.nome} ${tipo.codigo_interno}`).includes(termo);
     });
   }, [busca, configuracao.tipos]);
+  const centroCustoAutomatico = escopo === 'CENTRO_CUSTO'
+    && Boolean(configuracao.tipos_automaticos_por_centro_custo?.[String(centroCustoId)]);
 
   function alternarTipo(tipoId) {
+    if (centroCustoAutomatico) return;
     const id = Number(tipoId);
     setSelecionados((atual) => {
       const proximo = new Set(atual);
@@ -99,6 +107,7 @@ export default function TiposSolicitacaoPorDestino() {
   }
 
   function marcarVisiveis(valor) {
+    if (centroCustoAutomatico) return;
     setSelecionados((atual) => {
       const proximo = new Set(atual);
       tiposVisiveis.forEach((tipo) => {
@@ -184,13 +193,13 @@ export default function TiposSolicitacaoPorDestino() {
         acaoPrincipal={{
           rotulo: salvando ? 'Salvando...' : 'Salvar configuração',
           onClick: salvar,
-          desabilitada: salvando || carregando || (escopo === 'CENTRO_CUSTO' && !centroCustoId)
+          desabilitada: salvando || carregando || centroCustoAutomatico || (escopo === 'CENTRO_CUSTO' && !centroCustoId)
         }}
         secundarias={[{
           rotulo: 'Criar tipo',
           icone: <HiOutlinePlus className="h-4 w-4" aria-hidden="true" />,
           onClick: () => setModalNovoTipoAberto(true),
-          desabilitada: carregando || (escopo === 'CENTRO_CUSTO' && !centroCustoId),
+          desabilitada: carregando || centroCustoAutomatico || (escopo === 'CENTRO_CUSTO' && !centroCustoId),
           title: 'Criar um tipo reutilizável e adicioná-lo ao escopo atual'
         }]}
       />
@@ -229,6 +238,12 @@ export default function TiposSolicitacaoPorDestino() {
             </CampoForm>
           )}
 
+          {centroCustoAutomatico && (
+            <p className="app-note">
+              Este Centro de Custo possui um tipo automático e único. O tipo permanece no cadastro global para permitir a criação e o vínculo de subtipos.
+            </p>
+          )}
+
           <div className="flex flex-col gap-2 border-y border-[var(--c-border)] py-3 md:flex-row md:items-center">
             <input
               className="input input-sm min-w-0 flex-1"
@@ -237,8 +252,8 @@ export default function TiposSolicitacaoPorDestino() {
               onChange={(e) => setBusca(e.target.value)}
             />
             <div className="flex gap-2">
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => marcarVisiveis(true)}>Marcar visíveis</button>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => marcarVisiveis(false)}>Desmarcar visíveis</button>
+              <button type="button" className="btn btn-outline btn-sm" disabled={centroCustoAutomatico} onClick={() => marcarVisiveis(true)}>Marcar visíveis</button>
+              <button type="button" className="btn btn-outline btn-sm" disabled={centroCustoAutomatico} onClick={() => marcarVisiveis(false)}>Desmarcar visíveis</button>
             </div>
           </div>
 
@@ -256,7 +271,7 @@ export default function TiposSolicitacaoPorDestino() {
                       type="checkbox"
                       className="mt-1"
                       checked={selecionados.has(Number(tipo.id))}
-                      disabled={!ativo}
+                      disabled={!ativo || centroCustoAutomatico}
                       onChange={() => alternarTipo(tipo.id)}
                     />
                     <span className="min-w-0 flex-1">

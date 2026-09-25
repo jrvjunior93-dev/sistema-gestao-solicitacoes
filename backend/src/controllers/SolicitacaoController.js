@@ -14,6 +14,7 @@ const {
   ContratoApropriacao,
   ContratoCredor,
   SolicitacaoApropriacao,
+  SolicitacaoCentroCustoDistribuicao,
   TipoSubContrato,
   Anexo,
   MensagemSetor,
@@ -128,6 +129,7 @@ const {
 } = require('../services/setoresVisiveisUsuarioService');
 const { resolverDestinoInicialNovaSolicitacao } = require('../services/novaSolicitacaoDestinoService');
 const { assertTipoDisponivelNoDestino } = require('../services/tipoSolicitacaoDisponibilidadeService');
+const { validarDistribuicaoCentroCusto } = require('../services/centroCustoDistribuicaoService');
 const {
   aplicarVencimentoEfetivoSolicitacao,
   sqlVencimentoEfetivoSolicitacao,
@@ -3124,6 +3126,7 @@ module.exports = {
         data_fim_medicao,
         itens_apropriacao,
         apropriacoes_rateio,
+        distribuicao_centro_custo: distribuicaoCentroCusto,
         ref_contrato_abertura,
         // Wireframe 2: parcelas do contrato do fluxo novo que esta medicao consome.
         medicao_parcelas: medicaoParcelas,
@@ -3874,6 +3877,20 @@ module.exports = {
         ? null
         : (valor === '' || valor === undefined ? null : valor);
 
+      let distribuicaoCentroCustoValidada = null;
+      if (!registroSelecionadoEhObra) {
+        distribuicaoCentroCustoValidada = await validarDistribuicaoCentroCusto({
+          centroCustoId: obra_id,
+          usuario: req.user,
+          valorTotal: valorPersistido,
+          distribuicao: distribuicaoCentroCusto
+        });
+      } else if (distribuicaoCentroCusto) {
+        return res.status(400).json({
+          error: 'A distribuicao gerencial por obras e exclusiva para solicitacoes de Centro de Custo.'
+        });
+      }
+
       if (rateioApropriacoesDetalhado.length > 0) {
         const valorTotalSolicitacao = arredondarCentavos(parseDecimalOpcionalSolicitacao(valorPersistido));
         if (!valorTotalSolicitacao || valorTotalSolicitacao <= 0) {
@@ -3955,6 +3972,24 @@ module.exports = {
         status_global: 'PENDENTE'
       };
 
+      const criarSolicitacaoComDistribuicao = async () => sequelize.transaction(async (transaction) => {
+        const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
+        await SolicitacaoCentroCustoDistribuicao.bulkCreate(
+          distribuicaoCentroCustoValidada.linhas.map((item) => ({
+            solicitacao_id: resultado.id,
+            centro_custo_id: Number(obra_id),
+            obra_id: item.obra_id,
+            abrangencia: item.abrangencia,
+            criterio: item.criterio,
+            percentual: item.percentual,
+            valor_distribuido: item.valor_distribuido,
+            criado_por: usuarioId
+          })),
+          { transaction }
+        );
+        return { resultado, saldo: null };
+      });
+
       const criacao = usaFluxoRecargaCartao
         ? await executarCriacaoRecargaComControle({
             cartaoId: cartao_recarga_id,
@@ -3968,8 +4003,28 @@ module.exports = {
             valor: valorPersistido,
             criar: () => Solicitacao.create(dadosSolicitacao)
           })
-          : { resultado: await Solicitacao.create(dadosSolicitacao), saldo: null };
+          : distribuicaoCentroCustoValidada
+            ? await criarSolicitacaoComDistribuicao()
+            : { resultado: await Solicitacao.create(dadosSolicitacao), saldo: null };
       const solicitacao = criacao.resultado;
+
+      // Fluxos especiais possuem controle transacional proprio. Se algum deles for futuramente
+      // liberado para Centro de Custo, a classificacao gerencial ainda e persistida sem tocar nos
+      // titulos ou nos custos reais das obras.
+      if (distribuicaoCentroCustoValidada && (usaFluxoRecargaCartao || usaFluxoDespesaEventual)) {
+        await SolicitacaoCentroCustoDistribuicao.bulkCreate(
+          distribuicaoCentroCustoValidada.linhas.map((item) => ({
+            solicitacao_id: solicitacao.id,
+            centro_custo_id: Number(obra_id),
+            obra_id: item.obra_id,
+            abrangencia: item.abrangencia,
+            criterio: item.criterio,
+            percentual: item.percentual,
+            valor_distribuido: item.valor_distribuido,
+            criado_por: usuarioId
+          }))
+        );
+      }
 
       if (rateioApropriacoesDetalhado.length > 0) {
         await SolicitacaoApropriacao.bulkCreate(
@@ -4005,7 +4060,16 @@ module.exports = {
           despesa_eventual_saldo: criacao.saldo,
           cartao_recarga_id: usaFluxoRecargaCartao ? Number(cartao_recarga_id) : null,
           apropriacao_id: apropriacao?.id || null,
-          apropriacao_origem: usaApropriacaoAutomaticaObra ? 'PADRAO_OBRA_TIPO' : 'INFORMADA'
+          apropriacao_origem: usaApropriacaoAutomaticaObra ? 'PADRAO_OBRA_TIPO' : 'INFORMADA',
+          distribuicao_centro_custo: distribuicaoCentroCustoValidada
+            ? distribuicaoCentroCustoValidada.linhas.map((item) => ({
+              obra_id: item.obra_id,
+              abrangencia: item.abrangencia,
+              criterio: item.criterio,
+              percentual: item.percentual,
+              valor_distribuido: item.valor_distribuido
+            }))
+            : null
         }
       });
 
@@ -4044,6 +4108,15 @@ module.exports = {
       }
       if (campoVisivel('ref_contrato_abertura') && ref_contrato_abertura) {
         metadata.ref_contrato_abertura = String(ref_contrato_abertura).trim();
+      }
+      if (distribuicaoCentroCustoValidada) {
+        metadata.distribuicao_centro_custo = distribuicaoCentroCustoValidada.linhas.map((item) => ({
+          obra_id: item.obra_id,
+          abrangencia: item.abrangencia,
+          criterio: item.criterio,
+          percentual: item.percentual,
+          valor_distribuido: item.valor_distribuido
+        }));
       }
       await Historico.create({
         solicitacao_id: solicitacao.id,
@@ -4235,6 +4308,19 @@ module.exports = {
                 model: Apropriacao,
                 as: 'apropriacao',
                 attributes: ['id', 'codigo', 'descricao', 'obra_id']
+              }
+            ]
+          },
+          {
+            model: SolicitacaoCentroCustoDistribuicao,
+            as: 'distribuicoesCentroCusto',
+            required: false,
+            include: [
+              {
+                model: Obra,
+                as: 'obraGerencial',
+                required: false,
+                attributes: ['id', 'codigo', 'nome', 'classificacao']
               }
             ]
           },

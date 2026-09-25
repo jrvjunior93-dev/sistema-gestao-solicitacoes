@@ -479,6 +479,8 @@ const TransferenciaFinanceiraController = require('./controllers/TransferenciaFi
 const TarifaBancariaConfigController = require('./controllers/TarifaBancariaConfigController');
 const ResultadoObrasController = require('./controllers/ResultadoObrasController');
 const ResultadoCentrosCustoController = require('./controllers/ResultadoCentrosCustoController');
+const DistribuicaoCentroCustoRelatorioController = require('./controllers/DistribuicaoCentroCustoRelatorioController');
+const SolicitacaoCentroCustoDistribuicaoController = require('./controllers/SolicitacaoCentroCustoDistribuicaoController');
 const PainelGestorController = require('./controllers/PainelGestorController');
 const PermissoesAreasController = require('./controllers/PermissoesAreasController');
 const BoletoController = require('./controllers/BoletoController');
@@ -1695,6 +1697,7 @@ const allowIntegracaoSiengeConfigManage = permit({
 // -------------------------------------------------------------------
 
 router.post('/solicitacoes', validateRequest({ body: validateSolicitacaoCreateBody }), SolicitacaoController.create);
+router.get('/solicitacoes/centros-custo/:id/obras-distribuicao', validateRequest({ params: validateNumericIdParam('id', 'Centro de custo') }), SolicitacaoCentroCustoDistribuicaoController.obrasElegiveis);
 router.get('/recargas-cartao/meus-cartoes', RecargaCartaoController.meusCartoes);
 router.get('/recargas-cartao/cartoes/:id/contexto', validateRequest({ params: validateNumericIdParam('id', 'Cartao de recarga') }), RecargaCartaoController.contextoCartao);
 router.get('/recargas-cartao/solicitacoes/:id', validateRequest({ params: validateNumericIdParam('id', 'Solicitacao') }), RecargaCartaoController.contextoSolicitacao);
@@ -2218,6 +2221,7 @@ router.get('/financeiro/relatorios/movimentacao-contas', allowFinanceiroRelatori
 router.get('/financeiro/relatorios/conciliacao-contas', allowFinanceiroRelatorio(['financeiro.relatorios.conciliacao_contas']), validateRequest({ query: validateFinanceRelatorioConciliacaoQuery }), RelatorioFinanceiroController.conciliacaoContas);
 router.get('/financeiro/relatorios/resultado-obras', allowFinanceiroRelatorio(['financeiro.relatorios.resultado_obras']), ResultadoObrasController.index);
 router.get('/financeiro/relatorios/centros-custo', allowFinanceiroRelatorio(['financeiro.relatorios.centros_custo']), ResultadoCentrosCustoController.index);
+router.get('/financeiro/relatorios/centros-custo/distribuicao-obras', allowFinanceiroRelatorio(['financeiro.relatorios.centros_custo']), DistribuicaoCentroCustoRelatorioController.index);
 router.get('/painel-gestor/obras', PainelGestorController.obras);
 router.get('/painel-gestor/resultado-obras', PainelGestorController.resultadoObras);
 router.get('/painel-gestor/custos-recebiveis', PainelGestorController.custosRecebiveis);
