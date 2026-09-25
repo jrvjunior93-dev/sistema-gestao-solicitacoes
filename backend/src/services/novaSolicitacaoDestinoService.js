@@ -21,4 +21,15 @@ async function resolverDestinoInicialNovaSolicitacao(transaction = null) {
   };
 }
 
-module.exports = { resolverDestinoInicialNovaSolicitacao };
+function obterAreasConfiguracaoCamposDestinoInicial(destinoInicial) {
+  return [...new Set([
+    destinoInicial?.setor?.codigo,
+    destinoInicial?.setor?.nome,
+    destinoInicial?.areaResponsavel
+  ].map((area) => String(area || '').trim()).filter(Boolean))];
+}
+
+module.exports = {
+  obterAreasConfiguracaoCamposDestinoInicial,
+  resolverDestinoInicialNovaSolicitacao
+};

@@ -7,6 +7,9 @@ const {
 const {
   obterAreasConfiguracaoCamposDestino
 } = require('../src/services/tipoSolicitacaoDisponibilidadeService');
+const {
+  obterAreasConfiguracaoCamposDestinoInicial
+} = require('../src/services/novaSolicitacaoDestinoService');
 
 function ler(...partes) {
   return fs.readFileSync(path.join(__dirname, '..', ...partes), 'utf8');
@@ -41,6 +44,10 @@ assert(migration.includes("addColumn('tipo_solicitacao', 'disponivel_para_obras'
 assert(migration.includes("createTable('centro_custo_tipos_solicitacao'"));
 assert(disponibilidade.includes('isObraCentroCusto(destino.tipo_centro_custo)'));
 assert(disponibilidade.includes('CentroCustoTipoSolicitacao.findOne'));
+assert(
+  disponibilidade.includes("codigosAlternativos: ['DESPESAS_DE_MARKETING']"),
+  'O tipo automatico de Marketing deve reutilizar o cadastro legado no plural.'
+);
 assert(destinoInicial.includes("findSetorByCapability('eh_setor_geo'"));
 assert(solicitacoes.includes('resolverDestinoInicialNovaSolicitacao()'));
 assert(solicitacoes.includes('assertTipoDisponivelNoDestino(obraSelecionada, tipoSelecionado)'));
@@ -63,7 +70,7 @@ assert(telaSubtipos.includes('tipo_solicitacao_ids'), 'A tela deve enviar múlti
 const tipoAutomaticoId = 999;
 const configCampos = {
   regras: {
-    MARKETING: {
+    GERENCIA_PROCESSOS: {
       tipos: {
         [tipoAutomaticoId]: {
           campos: {
@@ -84,13 +91,20 @@ const configCampos = {
   }
 };
 const camposMarketing = resolverCamposNovaSolicitacao({}, configCampos, tipoAutomaticoId, {
-  areaResponsavel: ['MARKETING', 'GEO']
+  areaResponsavel: ['MARKETING', 'GERENCIA_PROCESSOS', 'GERENCIA DE PROCESSOS', 'GEO']
 });
 assert.strictEqual(camposMarketing.forma_pagamento.visivel, true);
 assert.strictEqual(camposMarketing.forma_pagamento.obrigatorio, true);
 assert.deepStrictEqual(
   obterAreasConfiguracaoCamposDestino({ codigo: '111', nome: 'MARKETING', tipo_centro_custo: 'CENTRO_CUSTO' }),
   ['MARKETING']
+);
+assert.deepStrictEqual(
+  obterAreasConfiguracaoCamposDestinoInicial({
+    setor: { codigo: 'GERENCIA_PROCESSOS', nome: 'GERENCIA DE PROCESSOS' },
+    areaResponsavel: 'GEO'
+  }),
+  ['GERENCIA_PROCESSOS', 'GERENCIA DE PROCESSOS', 'GEO']
 );
 
 console.log('Catalogo de tipos por Obra/Centro de Custo validado com sucesso.');

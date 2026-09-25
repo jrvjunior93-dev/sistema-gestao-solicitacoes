@@ -1,6 +1,9 @@
 'use strict';
 
-const { resolverDestinoInicialNovaSolicitacao } = require('../services/novaSolicitacaoDestinoService');
+const {
+  obterAreasConfiguracaoCamposDestinoInicial,
+  resolverDestinoInicialNovaSolicitacao
+} = require('../services/novaSolicitacaoDestinoService');
 const {
   listarTiposDisponiveis,
   obterConfiguracao,
@@ -29,7 +32,10 @@ module.exports = {
           nome: destinoInicial.setor.nome
         },
         tipo_automatico: catalogo.tipo_automatico === true,
-        areas_configuracao_campos: catalogo.areas_configuracao_campos,
+        areas_configuracao_campos: [...new Set([
+          ...catalogo.areas_configuracao_campos,
+          ...obterAreasConfiguracaoCamposDestinoInicial(destinoInicial)
+        ])],
         tipos: catalogo.tipos
       });
     } catch (error) {

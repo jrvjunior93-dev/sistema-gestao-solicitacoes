@@ -127,7 +127,10 @@ const { publishComprasRealtimeEventSafe } = require('../services/comprasRealtime
 const {
   obterRegrasSetoresVisiveisPorUsuario
 } = require('../services/setoresVisiveisUsuarioService');
-const { resolverDestinoInicialNovaSolicitacao } = require('../services/novaSolicitacaoDestinoService');
+const {
+  obterAreasConfiguracaoCamposDestinoInicial,
+  resolverDestinoInicialNovaSolicitacao
+} = require('../services/novaSolicitacaoDestinoService');
 const {
   assertTipoDisponivelNoDestino,
   obterAreasConfiguracaoCamposDestino
@@ -3164,7 +3167,7 @@ module.exports = {
       const registroSelecionadoEhObra = isObraCentroCusto(obraSelecionada.tipo_centro_custo);
       const areasConfiguracaoCampos = [
         ...obterAreasConfiguracaoCamposDestino(obraSelecionada),
-        areaResponsavelPersistida
+        ...obterAreasConfiguracaoCamposDestinoInicial(destinoInicial)
       ];
 
       const areaUsuario = await obterAreaUsuario(req);

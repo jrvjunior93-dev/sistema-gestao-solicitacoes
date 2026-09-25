@@ -20,18 +20,24 @@ const TIPOS_AUTOMATICOS_CENTRO_CUSTO = Object.freeze([
     chave: 'MARKETING',
     codigo: 'DESPESA_DE_MARKETING',
     nome: 'DESPESA DE MARKETING',
+    codigosAlternativos: ['DESPESAS_DE_MARKETING'],
+    nomesAlternativos: ['DESPESAS DE MARKETING'],
     areasConfiguracaoCampos: ['MARKETING']
   },
   {
     chave: 'COMERCIAL',
     codigo: 'DESPESA_COMERCIAL',
     nome: 'DESPESA COMERCIAL',
+    codigosAlternativos: ['DESPESAS_COMERCIAIS', 'DESPESA_DE_COMERCIAL'],
+    nomesAlternativos: ['DESPESAS COMERCIAIS', 'DESPESA DE COMERCIAL'],
     areasConfiguracaoCampos: ['COMERCIAL']
   },
   {
     chave: 'ADMINISTRATIVO',
     codigo: 'DESPESA_ADMINISTRATIVA',
     nome: 'DESPESA ADMINISTRATIVA',
+    codigosAlternativos: ['DESPESAS_ADMINISTRATIVAS', 'DESPESA_ADMINISTRATIVO'],
+    nomesAlternativos: ['DESPESAS ADMINISTRATIVAS', 'DESPESA ADMINISTRATIVO'],
     areasConfiguracaoCampos: ['ADMINISTRATIVO', 'ESCRITORIO', 'ADMINISTRATIVO/ESCRITORIO']
   }
 ]);
@@ -76,15 +82,23 @@ function obterAreasConfiguracaoCamposDestino(destino) {
 async function garantirTiposAutomaticosCentroCusto({ transaction = null } = {}) {
   const tipos = [];
   for (const definicao of TIPOS_AUTOMATICOS_CENTRO_CUSTO) {
-    let tipo = await TipoSolicitacao.findOne({
+    const codigosReconhecidos = [definicao.codigo, ...(definicao.codigosAlternativos || [])];
+    const nomesReconhecidos = [definicao.nome, ...(definicao.nomesAlternativos || [])];
+    const tiposReconhecidos = await TipoSolicitacao.findAll({
       where: {
         [Op.or]: [
-          { codigo_interno: definicao.codigo },
-          { nome: definicao.nome }
+          { codigo_interno: { [Op.in]: codigosReconhecidos } },
+          { nome: { [Op.in]: nomesReconhecidos } }
         ]
       },
+      order: [['id', 'ASC']],
       transaction
     });
+    // Instalacoes anteriores podem ter o nome no plural. O primeiro cadastro e
+    // preservado para manter o mesmo ID usado nas regras de Campos da Nova Solicitacao.
+    // Se uma versao recente chegou a criar o tipo canonico em duplicidade, ele nao toma o
+    // lugar do cadastro antigo que o usuario configurou.
+    let tipo = tiposReconhecidos[0] || null;
     if (!tipo) {
       tipo = await TipoSolicitacao.create({
         nome: definicao.nome,
@@ -98,8 +112,12 @@ async function garantirTiposAutomaticosCentroCusto({ transaction = null } = {}) 
       }, { transaction });
     } else {
       const atualizacoes = {};
-      if (tipo.nome !== definicao.nome) atualizacoes.nome = definicao.nome;
-      if (tipo.codigo_interno !== definicao.codigo) atualizacoes.codigo_interno = definicao.codigo;
+      const existeOutroCanonico = tiposReconhecidos.some((item) => (
+        Number(item.id) !== Number(tipo.id)
+        && (item.codigo_interno === definicao.codigo || item.nome === definicao.nome)
+      ));
+      if (!existeOutroCanonico && tipo.nome !== definicao.nome) atualizacoes.nome = definicao.nome;
+      if (!existeOutroCanonico && tipo.codigo_interno !== definicao.codigo) atualizacoes.codigo_interno = definicao.codigo;
       if (tipo.ativo === false) atualizacoes.ativo = true;
       if (tipo.disponivel_para_obras !== false && Number(tipo.disponivel_para_obras) !== 0) {
         atualizacoes.disponivel_para_obras = false;

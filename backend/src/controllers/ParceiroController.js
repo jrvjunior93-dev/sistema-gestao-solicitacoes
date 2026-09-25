@@ -19,14 +19,22 @@ const { createWorkbookBuffer, sheetToJsonRows } = require('../utils/excelWorkboo
 const {
   obterAreasConfiguracaoCamposDestino
 } = require('../services/tipoSolicitacaoDisponibilidadeService');
+const {
+  obterAreasConfiguracaoCamposDestinoInicial,
+  resolverDestinoInicialNovaSolicitacao
+} = require('../services/novaSolicitacaoDestinoService');
 
 async function obterAreasConfiguracaoCampos(body = {}) {
   const obraId = Number(body.obra_id);
-  const destino = Number.isInteger(obraId) && obraId > 0
-    ? await Obra.findByPk(obraId, { attributes: ['id', 'codigo', 'nome', 'tipo_centro_custo'] })
-    : null;
+  const [destino, destinoInicial] = await Promise.all([
+    Number.isInteger(obraId) && obraId > 0
+      ? Obra.findByPk(obraId, { attributes: ['id', 'codigo', 'nome', 'tipo_centro_custo'] })
+      : Promise.resolve(null),
+    resolverDestinoInicialNovaSolicitacao()
+  ]);
   return [...new Set([
     ...obterAreasConfiguracaoCamposDestino(destino),
+    ...obterAreasConfiguracaoCamposDestinoInicial(destinoInicial),
     body.area_responsavel
   ].map((area) => String(area || '').trim()).filter(Boolean))];
 }
