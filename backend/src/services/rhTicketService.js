@@ -44,6 +44,40 @@ function statusDoLote(lote) {
   return 'SOLICITADO';
 }
 
+async function garantirTipoSolicitacaoTicket(transaction) {
+  const chaveLock = 'fluxy_rh_dp_tipo_ticket';
+  const [locks] = await sequelize.query(
+    'SELECT GET_LOCK(:chave, 10) AS adquirido',
+    { replacements: { chave: chaveLock }, transaction }
+  );
+  if (Number(locks?.[0]?.adquirido) !== 1) {
+    throw new ValidationError('Nao foi possivel preparar o tipo de solicitacao do ticket. Tente novamente.', 409);
+  }
+
+  try {
+    const existente = await TipoSolicitacao.findOne({
+      where: { codigo_interno: 'TICKET_COLABORADORES' },
+      transaction
+    });
+    if (existente) {
+      if (!existente.ativo) await existente.update({ ativo: true }, { transaction });
+      return existente;
+    }
+    return TipoSolicitacao.create({
+      nome: 'TICKET DE COLABORADORES',
+      codigo_interno: 'TICKET_COLABORADORES',
+      comportamento: JSON.stringify({ somente_sistema: true, fluxo: 'RH_DP_TICKET' }),
+      disponivel_para_obras: false,
+      ativo: true
+    }, { transaction });
+  } finally {
+    await sequelize.query(
+      'SELECT RELEASE_LOCK(:chave) AS liberado',
+      { replacements: { chave: chaveLock }, transaction }
+    );
+  }
+}
+
 async function listarStatusTicket({ competencia, colaboradorIds = [] }) {
   if (!competenciaValida(competencia)) throw new ValidationError('Informe a competencia no formato AAAA-MM.');
   const whereItem = {};
@@ -108,7 +142,7 @@ async function criarLoteTicket(dados, arquivo, usuario) {
   const arquivoUrl = await uploadToS3(arquivo, `rh/tickets/${competencia}`);
   try {
     return await sequelize.transaction(async (transaction) => {
-    const [colaboradores, parceiro, categoria, tipo] = await Promise.all([
+    const [colaboradores, parceiro, categoria] = await Promise.all([
       RhColaborador.findAll({
         where: { id: { [Op.in]: colaboradorIds }, status: 'ATIVO' },
         order: [['id', 'ASC']],
@@ -116,13 +150,12 @@ async function criarLoteTicket(dados, arquivo, usuario) {
         lock: transaction.LOCK.UPDATE
       }),
       Parceiro.findByPk(parceiroId, { transaction }),
-      CategoriaFinanceira.findByPk(categoriaId, { transaction }),
-      TipoSolicitacao.findOne({ where: { codigo_interno: 'TICKET_COLABORADORES', ativo: true }, transaction })
+      CategoriaFinanceira.findByPk(categoriaId, { transaction })
     ]);
     if (colaboradores.length !== colaboradorIds.length) throw new ValidationError('Um ou mais colaboradores nao estao ativos ou nao foram encontrados.');
     if (!parceiro) throw new ValidationError('Fornecedor do ticket nao encontrado.');
     if (!categoria) throw new ValidationError('Categoria financeira nao encontrada.');
-    if (!tipo) throw new ValidationError('Tipo de solicitacao do ticket nao configurado. Execute a migration desta entrega.');
+    const tipo = await garantirTipoSolicitacaoTicket(transaction);
     const empresaIds = [...new Set(colaboradores.map((c) => Number(c.empresa_grupo_id)))];
     if (empresaIds.length !== 1) throw new ValidationError('Gere um lote de ticket por empresa.');
     if (colaboradores.some((c) => !c.obra_id)) throw new ValidationError('Todos os colaboradores selecionados precisam estar lotados em uma obra.');

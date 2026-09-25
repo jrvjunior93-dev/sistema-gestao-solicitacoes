@@ -46,21 +46,6 @@ module.exports = {
         name: 'uq_rh_ticket_lote_colaborador', unique: true, transaction
       });
 
-      const [tipos] = await queryInterface.sequelize.query(
-        "SELECT id FROM tipo_solicitacao WHERE codigo_interno = 'TICKET_COLABORADORES' LIMIT 1",
-        { transaction }
-      );
-      if (!tipos.length) {
-        await queryInterface.bulkInsert('tipo_solicitacao', [{ 
-          nome: 'TICKET DE COLABORADORES',
-          codigo_interno: 'TICKET_COLABORADORES',
-          comportamento: JSON.stringify({ somente_sistema: true, fluxo: 'RH_DP_TICKET' }),
-          disponivel_para_obras: false,
-          ativo: true,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        }], { transaction });
-      }
       await transaction.commit();
     } catch (error) {
       await transaction.rollback();
@@ -71,10 +56,6 @@ module.exports = {
   async down(queryInterface) {
     const transaction = await queryInterface.sequelize.transaction();
     try {
-      await queryInterface.sequelize.query(
-        "DELETE FROM tipo_solicitacao WHERE codigo_interno = 'TICKET_COLABORADORES'",
-        { transaction }
-      );
       await queryInterface.dropTable('rh_ticket_lote_itens', { transaction });
       await queryInterface.dropTable('rh_ticket_lotes', { transaction });
       const colaboradores = await queryInterface.describeTable('rh_colaboradores');
