@@ -138,9 +138,11 @@ const {
 } = require('./validators/commercialValidators');
 const {
   validateRhApuracaoCreateBody,
+  validateRhApuracaoMultiobraBody,
   validateRhApuracaoItemParams,
   validateRhApuracaoItemUpdateBody,
   validateRhApuracaoQuery,
+  validateRhJornadasMultiobraQuery,
   validateRhColaboradorCreateBody,
   validateRhColaboradorQuery,
   validateRhColaboradorUpdateBody,
@@ -2073,6 +2075,8 @@ router.get('/rh/importacoes/:id', allowRhDpImportacoes, validateRequest({ params
 router.post('/rh/importacoes/preview', allowRhDpImportacoes, uploadRateLimit, uploadComprovantes.single('file'), validateRequest({ body: validateRhImportacaoCreateBody }), RhImportacaoController.createPreview);
 router.post('/rh/importacoes/:id/confirmar', allowRhDpImportacoes, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Importacao RH/DP') }), RhImportacaoController.confirmar);
 router.get('/rh/apuracoes/categorias-financeiras', requireEnabledModule('FINANCEIRO'), allowRhDpFinanceCategoryRead, RhApuracaoController.categoriasFinanceiras);
+router.get('/rh/apuracoes/multiobra', allowRhDpApuracaoRead, validateRequest({ query: validateRhJornadasMultiobraQuery }), RhApuracaoController.jornadasMultiobra);
+router.post('/rh/apuracoes/multiobra/consolidar', allowRhDpApuracaoWrite, criticalRateLimit, validateRequest({ body: validateRhApuracaoMultiobraBody }), RhApuracaoController.consolidarMultiobra);
 router.get('/rh/apuracoes', allowRhDpApuracaoRead, validateRequest({ query: validateRhApuracaoQuery }), RhApuracaoController.index);
 router.get('/rh/apuracoes/:id', allowRhDpApuracaoRead, validateRequest({ params: validateNumericIdParam('id', 'Apuracao RH/DP') }), RhApuracaoController.show);
 router.post('/rh/apuracoes', allowRhDpApuracaoWrite, criticalRateLimit, validateRequest({ body: validateRhApuracaoCreateBody }), RhApuracaoController.create);

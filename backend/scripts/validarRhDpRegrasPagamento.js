@@ -114,6 +114,52 @@ assert.strictEqual(Number(mensalRateadoEntreObras.valor_liquido), 1200,
   'o salario mensal deve ser rateado pelos dias entre obras, sem virar desconto por falta');
 assert.strictEqual(mensalRateadoEntreObras.detalhes_json.resumo.rateio_multiobra, true);
 
+assert.deepStrictEqual(
+  __test.ratearValorEntreObras(3000, [
+    { obraId: 10, peso: 1000 },
+    { obraId: 20, peso: 2000 }
+  ], 10),
+  [
+    { obraId: 10, valor: 1000 },
+    { obraId: 20, valor: 2000 }
+  ],
+  'o titulo unico deve preservar o valor calculado em cada obra'
+);
+assert.strictEqual(
+  __test.ratearValorEntreObras(100, [
+    { obraId: 10, peso: 1 },
+    { obraId: 20, peso: 1 },
+    { obraId: 30, peso: 1 }
+  ], 10).reduce((total, parte) => total + Math.round(parte.valor * 100), 0),
+  10000,
+  'o rateio em centavos nao pode perder nem criar valor'
+);
+
+const consolidadoMultiobra = apuracaoTest.combinarItensMultiobra([
+  {
+    obra: { id: 10, codigo: 'A', nome: 'Obra A' },
+    item: mensalRateadoEntreObras
+  },
+  {
+    obra: { id: 20, codigo: 'B', nome: 'Obra B' },
+    item: {
+      ...mensalRateadoEntreObras,
+      dias_trabalhados: 15,
+      valor_bruto: 1800,
+      valor_liquido: 1800,
+      detalhes_json: {
+        ...mensalRateadoEntreObras.detalhes_json,
+        importacao_ids: [2],
+        resumo: { ...mensalRateadoEntreObras.detalhes_json.resumo, valor_proporcional: 1800 }
+      }
+    }
+  }
+], colaboradorMensal);
+assert.strictEqual(consolidadoMultiobra.regra_aplicada, 'MULTIOBRA_CONSOLIDADA');
+assert.strictEqual(Number(consolidadoMultiobra.valor_liquido), 3000);
+assert.strictEqual(consolidadoMultiobra.detalhes_json.distribuicao_obras.length, 2);
+assert.deepStrictEqual(consolidadoMultiobra.detalhes_json.importacao_ids, [1, 2]);
+
 const mensalNaoClt = apuracaoService.calcularItemApuracaoParaTeste(agrupadoParaCalculo({
   colaborador: {
     ...colaboradorMensal,

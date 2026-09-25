@@ -12,7 +12,6 @@ const COLUNAS = [
   { header: 'Matricula', key: 'matricula', width: 18, protegida: true },
   { header: 'CPF', key: 'cpf', width: 18, protegida: true },
   { header: 'Nome', key: 'nome', width: 36, protegida: true },
-  { header: 'Mais_de_uma_obra_Sim_Nao', key: 'mais_de_uma_obra', width: 26 },
   { header: 'Dias_Trabalhados', key: 'dias_trabalhados', width: 20 },
   { header: 'Finais_Semana_Feriados', key: 'finais_semana_feriados', width: 26 },
   { header: 'Faltas', key: 'faltas', width: 12 },
@@ -27,7 +26,7 @@ const COLUNAS = [
 ];
 
 const CAMPOS_EDITAVEIS = COLUNAS.filter((coluna) => !coluna.protegida).map((coluna) => coluna.key);
-const CAMPOS_NUMERICOS = CAMPOS_EDITAVEIS.filter((campo) => !['observacoes', 'mais_de_uma_obra'].includes(campo));
+const CAMPOS_NUMERICOS = CAMPOS_EDITAVEIS.filter((campo) => campo !== 'observacoes');
 
 function normalizarTexto(valor) {
   return String(valor ?? '')
@@ -71,10 +70,6 @@ function numeroDaPlanilha(valor, campo, nome) {
     throw new ValidationError(`${campo} de ${nome} precisa ser um numero maior ou igual a zero.`);
   }
   return numero;
-}
-
-function booleanoDaPlanilha(valor) {
-  return ['SIM', 'S', 'TRUE', '1'].includes(normalizarTexto(valor));
 }
 
 async function colaboradoresAtivosDoPeriodo(dados) {
@@ -179,10 +174,7 @@ async function importarJornadaPlanilha(dados = {}, arquivo, contexto = {}) {
     }
     usadas.add(Number(colaborador.colaborador_id));
 
-    const payload = {
-      colaborador_id: Number(colaborador.colaborador_id),
-      mais_de_uma_obra: booleanoDaPlanilha(valorDaLinha(linha, 'mais_de_uma_obra'))
-    };
+    const payload = { colaborador_id: Number(colaborador.colaborador_id) };
     CAMPOS_NUMERICOS.forEach((campo) => {
       payload[campo] = numeroDaPlanilha(valorDaLinha(linha, campo), campo.replace(/_/g, ' '), colaborador.nome);
     });

@@ -347,7 +347,15 @@ function validarItemElegivelParaFechamento(item, apuracao) {
     String(pagamento.agencia || '').trim() &&
     String(pagamento.conta || '').trim()
   );
-  const obraId = Number(apuracao.obra_id || 0);
+  const distribuicoesMultiobra = Array.isArray(item.detalhes_json?.distribuicao_obras)
+    ? item.detalhes_json.distribuicao_obras
+        .map((parte) => ({
+          obraId: Number(parte.obra_id),
+          peso: Number(parte.valor_liquido || parte.valor_bruto || parte.dias_trabalhados || 0)
+        }))
+        .filter((parte) => Number.isInteger(parte.obraId) && parte.obraId > 0)
+    : [];
+  const obraId = Number(apuracao.obra_id || distribuicoesMultiobra[0]?.obraId || 0);
   const empresaId = Number(colaborador.empresa_grupo_id || 0);
 
   if (!favorecidoNome) {
@@ -381,7 +389,8 @@ function validarItemElegivelParaFechamento(item, apuracao) {
     obraId,
     empresaId,
     email: pagamento.email || colaborador.email || null,
-    telefone: colaborador.telefone || null
+    telefone: colaborador.telefone || null,
+    distribuicoesMultiobra
   };
 }
 
@@ -645,6 +654,55 @@ async function criarOuAcumularTituloRh(payload, { obraId, valor, usuarioId, tran
     await itemRateio.update({ percentual: percentualAtualizado }, { transaction });
   }
 
+  return titulo;
+}
+
+function ratearValorEntreObras(valorTotal, distribuicoes = [], obraPadrao) {
+  const totalCentavos = Math.round(roundCurrency(valorTotal) * 100);
+  const partes = (Array.isArray(distribuicoes) && distribuicoes.length
+    ? distribuicoes
+    : [{ obraId: obraPadrao, peso: 1 }])
+    .map((parte) => ({ obraId: Number(parte.obraId), peso: Math.max(0, Number(parte.peso || 0)) }))
+    .filter((parte) => Number.isInteger(parte.obraId) && parte.obraId > 0);
+  if (!partes.length) throw new ValidationError('Nao foi possivel identificar as obras do rateio RH/DP.');
+
+  const somaPesos = partes.reduce((total, parte) => total + parte.peso, 0);
+  const pesos = somaPesos > 0 ? partes : partes.map((parte) => ({ ...parte, peso: 1 }));
+  const denominador = pesos.reduce((total, parte) => total + parte.peso, 0);
+  let distribuido = 0;
+  return pesos.map((parte, indice) => {
+    const centavos = indice === pesos.length - 1
+      ? totalCentavos - distribuido
+      : Math.floor((totalCentavos * parte.peso) / denominador);
+    distribuido += centavos;
+    return { obraId: parte.obraId, valor: centavos / 100 };
+  }).filter((parte) => parte.valor > 0);
+}
+
+async function criarTituloRhRateado(payload, {
+  distribuicoes,
+  obraPadrao,
+  valor,
+  usuarioId,
+  transaction
+}) {
+  const partes = ratearValorEntreObras(valor, distribuicoes, obraPadrao);
+  let titulo = null;
+  for (const parte of partes) {
+    const payloadParte = {
+      ...payload,
+      obra_id: parte.obraId,
+      valor_original: roundCurrency(parte.valor),
+      valor_saldo: roundCurrency(parte.valor)
+    };
+    // eslint-disable-next-line no-await-in-loop
+    titulo = await criarOuAcumularTituloRh(payloadParte, {
+      obraId: parte.obraId,
+      valor: parte.valor,
+      usuarioId,
+      transaction
+    });
+  }
   return titulo;
 }
 
@@ -1161,8 +1219,9 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
         // Um colaborador transferido dentro da competencia conserva um unico titulo por parcela.
         // Cada fechamento de obra acrescenta apenas o seu valor ao rateio do titulo ainda aberto.
         // eslint-disable-next-line no-await-in-loop
-        const titulo = await criarOuAcumularTituloRh(tituloPayload, {
-          obraId: dadosFechamento.obraId,
+        const titulo = await criarTituloRhRateado(tituloPayload, {
+          distribuicoes: dadosFechamento.distribuicoesMultiobra,
+          obraPadrao: dadosFechamento.obraId,
           valor: parcela.valor,
           usuarioId: user?.id || null,
           transaction
@@ -1243,8 +1302,9 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
             paymentBeneficiaryId: favorecidoBancarioPensao.id
           });
         // eslint-disable-next-line no-await-in-loop
-        const tituloPensao = await criarOuAcumularTituloRh(tituloPensaoPayload, {
-          obraId: dadosFechamento.obraId,
+        const tituloPensao = await criarTituloRhRateado(tituloPensaoPayload, {
+          distribuicoes: dadosFechamento.distribuicoesMultiobra,
+          obraPadrao: dadosFechamento.obraId,
           valor: valorPensao,
           usuarioId: user?.id || null,
           transaction
@@ -1538,6 +1598,7 @@ if (process.env.NODE_ENV === 'test') {
     buildParcelasColaborador,
     getCompetenciaDate,
     getLastDayOfCompetencia,
+    ratearValorEntreObras,
     roundCurrency
   };
 }

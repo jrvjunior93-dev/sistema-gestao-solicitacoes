@@ -1,7 +1,9 @@
 const {
   conferirApuracaoRh,
   detalharApuracaoRh,
+  gerarApuracaoMultiobraRh,
   gerarApuracaoRh,
+  listarJornadasMultiobraRh,
   listarApuracoesRh,
   atualizarItemApuracaoRh
 } = require('../services/rhApuracaoService');
@@ -46,6 +48,25 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao gerar apuracao RH/DP');
+    }
+  },
+
+  async jornadasMultiobra(req, res) {
+    try {
+      return res.json(await listarJornadasMultiobraRh(req.query || {}));
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao listar jornadas multiobra do RH/DP');
+    }
+  },
+
+  async consolidarMultiobra(req, res) {
+    try {
+      const data = await gerarApuracaoMultiobraRh(req.body || {}, req.user);
+      return res.status(201).json(data);
+    } catch (error) {
+      console.error(error);
+      return responderErroController(res, error, 'Erro ao consolidar jornadas multiobra');
     }
   },
 

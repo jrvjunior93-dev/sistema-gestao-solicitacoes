@@ -340,12 +340,10 @@ async function registrarJornada(dados = {}, contexto = {}) {
 
       const colaborador = porId.get(colaboradorId);
       const obrasDistribuicao = Array.from(obrasPorColaborador.get(colaboradorId) || []).sort((a, b) => a - b);
-      const marcouMultiplasObras = Boolean(linha.mais_de_uma_obra);
-      if (marcouMultiplasObras && obrasDistribuicao.length < 2) {
-        throw new ValidationError(
-          `${colaborador.nome} foi marcado em mais de uma obra, mas possui somente uma lotacao no periodo.`
-        );
-      }
+      // A distribuicao nao depende mais de uma marcacao manual da obra. O historico de lotacao e
+      // a fonte confiavel: se o colaborador esteve vinculado a duas ou mais obras no periodo, cada
+      // obra informa somente a sua parte e o DP consolida as jornadas depois.
+      const marcouMultiplasObras = obrasDistribuicao.length > 1;
       const aprovacaoDistribuicao = marcouMultiplasObras
         ? (!Array.isArray(contexto.obraIds)
           || obrasDistribuicao.every((id) => contexto.obraIds.includes(id))
@@ -558,6 +556,33 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
 
   const vinculos = await rhVinculoObraService.colaboradoresDaObraEm(obraId, periodo.inicio, periodo.fim);
 
+  const colaboradoresDoPeriodo = [...new Set(
+    vinculos.map((vinculo) => Number(vinculo.colaborador_id)).filter(Boolean)
+  )];
+  const todosVinculosDoPeriodo = colaboradoresDoPeriodo.length
+    ? await RhColaboradorVinculo.findAll({
+        where: {
+          colaborador_id: { [Op.in]: colaboradoresDoPeriodo },
+          obra_id: { [Op.ne]: null },
+          vigencia_inicio: { [Op.lte]: periodo.fim },
+          [Op.or]: [{ vigencia_fim: null }, { vigencia_fim: { [Op.gte]: periodo.inicio } }]
+        },
+        attributes: ['colaborador_id', 'obra_id'],
+        include: [{ model: Obra, as: 'obra', attributes: ['id', 'codigo', 'nome'], required: false }],
+        order: [['colaborador_id', 'ASC'], ['obra_id', 'ASC']]
+      })
+    : [];
+  const obrasPorColaborador = new Map();
+  todosVinculosDoPeriodo.forEach((vinculo) => {
+    const colaboradorId = Number(vinculo.colaborador_id);
+    if (!obrasPorColaborador.has(colaboradorId)) obrasPorColaborador.set(colaboradorId, new Map());
+    obrasPorColaborador.get(colaboradorId).set(Number(vinculo.obra_id), {
+      id: Number(vinculo.obra_id),
+      codigo: vinculo.obra?.codigo || null,
+      nome: vinculo.obra?.nome || `Obra #${vinculo.obra_id}`
+    });
+  });
+
   /**
    * QUEM AINDA NAO COMECOU TAMBEM APARECE — desligado, com a data (26/08).
    *
@@ -618,6 +643,11 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
     edicao_jornada: porColaborador.get(Number(vinculo.colaborador_id))?.edicao || null,
     periodo_jornada: periodo,
     dias_vinculados: diasVinculados(vinculos, vinculo.colaborador, periodo),
+    obras_vinculadas_periodo: Array.from(
+      obrasPorColaborador.get(Number(vinculo.colaborador_id))?.values() || []
+    ),
+    total_obras_periodo: obrasPorColaborador.get(Number(vinculo.colaborador_id))?.size || 1,
+    mais_de_uma_obra: (obrasPorColaborador.get(Number(vinculo.colaborador_id))?.size || 1) > 1,
     ainda_nao_comecou: false,
     comeca_em: null,
     ...extras

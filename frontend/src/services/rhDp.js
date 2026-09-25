@@ -290,6 +290,23 @@ export async function gerarRhApuracao(data) {
   return parseJson(response, 'Erro ao gerar apuracao RH/DP');
 }
 
+export async function getRhJornadasMultiobra(competencia) {
+  const query = buildQuery({ competencia });
+  const response = await fetch(`${API_URL}/rh/apuracoes/multiobra?${query}`, {
+    headers: authHeaders()
+  });
+  return parseJson(response, 'Erro ao buscar jornadas multiobra do RH/DP');
+}
+
+export async function consolidarRhJornadasMultiobra(data) {
+  const response = await fetch(`${API_URL}/rh/apuracoes/multiobra/consolidar`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(data)
+  });
+  return parseJson(response, 'Erro ao consolidar jornadas multiobra');
+}
+
 export async function atualizarRhApuracaoItem(apuracaoId, itemId, data) {
   const response = await fetch(`${API_URL}/rh/apuracoes/${apuracaoId}/itens/${itemId}`, {
     method: 'PATCH',

@@ -678,6 +678,27 @@ function validateRhApuracaoCreateBody(body = {}) {
   };
 }
 
+function validateRhJornadasMultiobraQuery(query = {}) {
+  ensureAllowedKeys(query, ['competencia'], 'Jornadas multiobra RH/DP');
+  return {
+    competencia: parseCompetencia(query.competencia, 'Competencia', { required: true })
+  };
+}
+
+function validateRhApuracaoMultiobraBody(body = {}) {
+  ensureAllowedKeys(
+    body,
+    ['competencia', 'colaborador_id', 'dias_base', 'observacoes'],
+    'Consolidacao multiobra RH/DP'
+  );
+  return {
+    competencia: parseCompetencia(body.competencia, 'Competencia', { required: true }),
+    colaborador_id: parseInteger(body.colaborador_id, 'Colaborador', { required: true }),
+    dias_base: parseDiasBaseApuracao(body.dias_base),
+    observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000)
+  };
+}
+
 function validateRhApuracaoItemParams(params = {}) {
   ensureAllowedKeys(params, ['id', 'itemId'], 'Parametros da apuracao RH/DP');
 
@@ -800,9 +821,11 @@ module.exports = {
   RH_TIPOS_IMPORTACAO,
   RH_VALIDADE_STATUS,
   validateRhApuracaoCreateBody,
+  validateRhApuracaoMultiobraBody,
   validateRhApuracaoItemParams,
   validateRhApuracaoItemUpdateBody,
   validateRhApuracaoQuery,
+  validateRhJornadasMultiobraQuery,
   validateRhColaboradorCreateBody,
   validateRhColaboradorQuery,
   validateRhColaboradorUpdateBody,

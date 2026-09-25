@@ -109,7 +109,9 @@ function linhaVazia(colaborador) {
     forma_calculo_gerencial: colaborador.forma_calculo_gerencial || 'MENSAL',
     valor_diaria: colaborador.valor_diaria,
     pagamento_automatico_40_60: Boolean(colaborador.pagamento_automatico_40_60),
-    mais_de_uma_obra: Boolean(ja.mais_de_uma_obra),
+    mais_de_uma_obra: Boolean(colaborador.mais_de_uma_obra),
+    obrasVinculadasPeriodo: colaborador.obras_vinculadas_periodo || [],
+    totalObrasPeriodo: Number(colaborador.total_obras_periodo || 1),
     aprovacao_distribuicao: ja.aprovacao_distribuicao || null,
     diasVinculados: Number(colaborador.dias_vinculados ?? 0),
     jaInformado: Boolean(colaborador.jornada_informada),
@@ -645,7 +647,6 @@ export default function RhDpJornada({ onAbrirApuracao }) {
         dias_base: Number(diasBase),
         linhas: preenchidas.map((l) => ({
           colaborador_id: l.colaborador_id,
-          mais_de_uma_obra: Boolean(l.mais_de_uma_obra),
           dias_trabalhados: Number(l.dias_trabalhados || 0),
           finais_semana_feriados: 0,
           faltas: Number(l.faltas || 0),
@@ -1203,27 +1204,18 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                 {
                   id: 'multiplas_obras',
                   titulo: 'Mais de uma obra',
-                  tipo: 'booleano',
+                  tipo: 'status',
                   render: (linha) => (linha.aindaNaoComecou ? <span className="opacity-50">—</span> : (
-                    <div className="space-y-1 text-center">
-                      <label className="flex items-center justify-center gap-2" title="Marque quando os dias desta competência serão distribuídos entre mais de uma obra.">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(linha.mais_de_uma_obra)}
-                          disabled={!podeEditarLinha(linha)}
-                          onChange={(event) => alterar(linha.__indice, 'mais_de_uma_obra', event.target.checked)}
-                          aria-label={`Trabalhou em mais de uma obra: ${linha.nome}`}
-                        />
-                        <span className="app-note">Sim</span>
-                      </label>
-                      {linha.mais_de_uma_obra && linha.jaInformado ? (
-                        <span className="app-note block">
-                          {linha.aprovacao_distribuicao === 'AUTOMATICA_MESMO_RESPONSAVEL'
-                            ? 'Aprovação automática'
-                            : 'Validação pelas obras'}
-                        </span>
-                      ) : null}
-                    </div>
+                    linha.mais_de_uma_obra ? (
+                      <span
+                        className="badge badge-warning"
+                        title={(linha.obrasVinculadasPeriodo || [])
+                          .map((item) => item.codigo ? `${item.codigo} - ${item.nome}` : item.nome)
+                          .join(' · ')}
+                      >
+                        {linha.totalObrasPeriodo} obras
+                      </span>
+                    ) : <span className="app-note">Uma obra</span>
                   ))
                 },
                 {

@@ -17,17 +17,20 @@ import {
   useFiltrosVisiveis
 } from '../components/padrao';
 import Alert from '../components/ui/Alert';
+import OverlayModal from '../components/ui/OverlayModal';
 import StatusBadge from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { getObras } from '../services/obras';
 import {
   conferirRhApuracao,
+  consolidarRhJornadasMultiobra,
   fecharRhApuracao,
   gerarRhApuracao,
   getRhApuracao,
   getRhApuracoes,
   getRhCategoriasFinanceiras,
   getRhEmpresasGrupo,
+  getRhJornadasMultiobra,
   reabrirRhFechamento,
   atualizarRhApuracaoItem
 } from '../services/rhDp';
@@ -106,6 +109,14 @@ function familiaStatus(status) {
 
 function rotuloStatus(status) {
   return String(status || '').trim().toUpperCase() === 'CONFERIDA' ? 'Conferida' : 'Rascunho';
+}
+
+function statusMultiobra(status) {
+  const normalizado = String(status || '').toUpperCase();
+  if (normalizado === 'CONSOLIDADA') return { rotulo: 'Consolidada', kind: 'success' };
+  if (normalizado === 'ATUALIZACAO') return { rotulo: 'Jornada atualizada', kind: 'warning' };
+  if (normalizado === 'PRONTA') return { rotulo: 'Pronta para consolidar', kind: 'info' };
+  return { rotulo: 'Aguardando outra obra', kind: 'warning' };
 }
 
 // O servico da apuracao recebe UM valor por recorte, entao cada dimensao do
@@ -237,6 +248,10 @@ export default function RhDpApuracao() {
   const [carregandoLista, setCarregandoLista] = useState(false);
   const [carregandoCategorias, setCarregandoCategorias] = useState(false);
   const [gerando, setGerando] = useState(false);
+  const [multiobra, setMultiobra] = useState({ resumo: {}, colaboradores: [] });
+  const [carregandoMultiobra, setCarregandoMultiobra] = useState(false);
+  const [consolidandoMultiobra, setConsolidandoMultiobra] = useState(false);
+  const [colaboradorMultiobra, setColaboradorMultiobra] = useState(null);
   const [salvandoItemId, setSalvandoItemId] = useState(null);
   const [conferindo, setConferindo] = useState(false);
   const [fechando, setFechando] = useState(false);
@@ -294,6 +309,14 @@ export default function RhDpApuracao() {
   useEffect(() => {
     carregarBase();
   }, []);
+
+  useEffect(() => {
+    if (!form.competencia) {
+      setMultiobra({ resumo: {}, colaboradores: [] });
+      return;
+    }
+    carregarJornadasMultiobra(form.competencia);
+  }, [form.competencia]);
 
   // Filtro marcado aplica na hora (padrao Solicitacoes); a competencia
   // digitada espera 350ms para nao martelar a API a cada tecla.
@@ -358,6 +381,51 @@ export default function RhDpApuracao() {
       avisar.erro(error?.message || 'Erro ao carregar categorias financeiras');
     } finally {
       setCarregandoCategorias(false);
+    }
+  }
+
+  async function carregarJornadasMultiobra(competencia = form.competencia) {
+    if (!competencia) return;
+    try {
+      setCarregandoMultiobra(true);
+      const data = await getRhJornadasMultiobra(competencia);
+      setMultiobra(data || { resumo: {}, colaboradores: [] });
+      setColaboradorMultiobra((atual) => {
+        if (!atual) return null;
+        return (data?.colaboradores || []).find(
+          (item) => Number(item.colaborador_id) === Number(atual.colaborador_id)
+        ) || null;
+      });
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao carregar jornadas multiobra');
+    } finally {
+      setCarregandoMultiobra(false);
+    }
+  }
+
+  async function consolidarMultiobra() {
+    if (!colaboradorMultiobra || colaboradorMultiobra.jornadas_pendentes || !podeEditar) return;
+    try {
+      setConsolidandoMultiobra(true);
+      const apuracao = await consolidarRhJornadasMultiobra({
+        competencia: form.competencia,
+        colaborador_id: Number(colaboradorMultiobra.colaborador_id),
+        dias_base: Number(form.dias_base || 30),
+        observacoes: form.observacoes || undefined
+      });
+      setDetalhe(apuracao);
+      setColaboradorMultiobra(null);
+      await Promise.all([
+        carregarJornadasMultiobra(form.competencia),
+        carregarApuracoes()
+      ]);
+      avisar.sucesso('Jornadas consolidadas em uma única apuração com rateio por obra.');
+    } catch (error) {
+      console.error(error);
+      avisar.erro(error?.message || 'Erro ao consolidar as jornadas do colaborador');
+    } finally {
+      setConsolidandoMultiobra(false);
     }
   }
 
@@ -688,6 +756,84 @@ export default function RhDpApuracao() {
         </form>
       </BlocoConteudo>
 
+      {form.competencia && (carregandoMultiobra || (multiobra.colaboradores || []).length > 0) ? (
+        <BlocoConteudo
+          titulo="Jornadas em mais de uma obra"
+          descricao="O vínculo é identificado automaticamente. Cada obra envia sua parte; o DP confere e consolida tudo em uma única apuração."
+          contagem={carregandoMultiobra
+            ? 'Atualizando...'
+            : `${multiobra.resumo?.pendentes || 0} pendente(s) · ${multiobra.resumo?.prontos || 0} pronta(s)`}
+          acoes={(
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => carregarJornadasMultiobra(form.competencia)}
+              disabled={carregandoMultiobra}
+            >
+              Atualizar
+            </button>
+          )}
+        >
+          {(multiobra.resumo?.pendentes || 0) > 0 ? (
+            <Alert
+              type="warning"
+              message="Existem colaboradores aguardando a jornada de outra obra. A consolidação será liberada quando todas as partes forem enviadas."
+            />
+          ) : null}
+          <TabelaPadrao
+            colunas={[
+              {
+                id: 'colaborador',
+                titulo: 'Colaborador',
+                tipo: 'identidade',
+                render: (item) => <CelulaDupla principal={item.nome} sub={item.matricula || item.cargo || 'Sem matrícula'} />
+              },
+              {
+                id: 'empresa',
+                titulo: 'Empresa',
+                tipo: 'texto',
+                render: (item) => item.empresa?.nome || 'Não informada'
+              },
+              {
+                id: 'obras',
+                titulo: 'Jornadas',
+                tipo: 'numero',
+                render: (item) => `${item.jornadas_enviadas} de ${item.total_obras}`
+              },
+              {
+                id: 'pendencias',
+                titulo: 'Obras pendentes',
+                tipo: 'texto',
+                render: (item) => item.obras
+                  .filter((obra) => !obra.jornada_enviada)
+                  .map((obra) => obra.codigo || obra.nome)
+                  .join(', ') || 'Nenhuma'
+              },
+              {
+                id: 'status',
+                titulo: 'Status',
+                tipo: 'status',
+                render: (item) => {
+                  const status = statusMultiobra(item.status);
+                  return <StatusBadge status={status.rotulo} kind={status.kind} />;
+                }
+              }
+            ]}
+            itens={multiobra.colaboradores || []}
+            carregando={carregandoMultiobra}
+            storageKey="tabela:rh-dp-apuracao:multiobra"
+            rotuloRolagem="Jornadas multiobra"
+            vazio="Nenhum colaborador teve vínculo com mais de uma obra nesta competência."
+            acoesLinha={(item) => (
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setColaboradorMultiobra(item)}>
+                {item.status === 'CONSOLIDADA' ? 'Ver consolidação' : 'Revisar'}
+              </button>
+            )}
+            larguraAcoes={150}
+          />
+        </BlocoConteudo>
+      ) : null}
+
       <StatGrid colunas={4}>
         <StatTile label="Apurações" valor={resumoLista.quantidade} />
         <StatTile label="Bruto filtrado" valor={formatCurrency(resumoLista.totalBruto)} />
@@ -760,7 +906,7 @@ export default function RhDpApuracao() {
               titulo: 'Obra',
               tipo: 'identidade',
               noCard: 'titulo',
-              render: (item) => item.obra?.nome || '-'
+              render: (item) => item.obra?.nome || (item.obra_id == null ? 'Consolidada multiobra' : '-')
             },
             {
               id: 'empresa',
@@ -838,7 +984,7 @@ export default function RhDpApuracao() {
 
       {detalhe ? (
         <BlocoConteudo
-          titulo={`Apuração ${detalhe.competencia} - ${detalhe.obra?.nome || 'obra nao informada'}`}
+          titulo={`Apuração ${detalhe.competencia} - ${detalhe.obra?.nome || 'consolidada multiobra'}`}
           contagem={`${detalhe.total_colaboradores || 0} colaborador(es)`}
           descricao={`Recorte: empresa do cadastro do colaborador | ${detalhe.tipo_vinculo || 'todos os vinculos'} | base ${detalhe.dias_base || 30} dias | criada em ${formatDateTime(detalhe.createdAt)} por ${detalhe.criadoPor?.nome || 'sistema'}`}
           acoes={(
@@ -1002,7 +1148,7 @@ export default function RhDpApuracao() {
                 render: (item) => (
                   <CelulaDupla
                     principal={item.colaborador?.nome || '-'}
-                    sub={`${item.colaborador?.matricula || '-'} | ${item.colaborador?.cargo || '-'} | ${item.colaborador?.empresaGrupo?.nome || 'Empresa nao informada'}`}
+                    sub={`${item.colaborador?.matricula || '-'} | ${item.colaborador?.cargo || '-'} | ${item.colaborador?.empresaGrupo?.nome || 'Empresa nao informada'}${item.detalhes_json?.multiobra ? ` | Rateio em ${item.detalhes_json.distribuicao_obras?.length || 0} obras` : ''}`}
                   />
                 )
               },
@@ -1248,6 +1394,123 @@ export default function RhDpApuracao() {
           />
         </BlocoConteudo>
       ) : null}
+
+      <OverlayModal
+        aberto={Boolean(colaboradorMultiobra)}
+        onFechar={() => !consolidandoMultiobra && setColaboradorMultiobra(null)}
+        rotulo="Consolidar jornadas em mais de uma obra"
+        largura="min(1080px, calc(100vw - 2rem))"
+      >
+        {colaboradorMultiobra ? (
+          <>
+            <div data-modal="cabecalho" className="modal-header">
+              <div>
+                <h2 className="modal-title">Consolidar jornadas</h2>
+                <p className="modal-subtitle">
+                  {colaboradorMultiobra.nome} · {form.competencia} · {colaboradorMultiobra.total_obras} obras
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setColaboradorMultiobra(null)}
+                disabled={consolidandoMultiobra}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {colaboradorMultiobra.jornadas_pendentes ? (
+                <Alert
+                  type="warning"
+                  message={`Ainda faltam ${colaboradorMultiobra.jornadas_pendentes} jornada(s). O DP pode acompanhar os dados recebidos, mas a consolidação permanece bloqueada.`}
+                />
+              ) : (
+                <Alert
+                  type="success"
+                  message="Todas as obras enviaram suas jornadas. Confira os valores antes de formar a apuração única."
+                />
+              )}
+
+              <TabelaPadrao
+                colunas={[
+                  {
+                    id: 'obra',
+                    titulo: 'Obra',
+                    tipo: 'identidade',
+                    render: (obra) => <CelulaDupla principal={obra.nome} sub={obra.codigo || `#${obra.id}`} />
+                  },
+                  {
+                    id: 'envio',
+                    titulo: 'Envio',
+                    tipo: 'status',
+                    render: (obra) => (
+                      <StatusBadge
+                        status={obra.jornada_enviada ? 'Recebida' : 'Pendente'}
+                        kind={obra.jornada_enviada ? 'success' : 'warning'}
+                      />
+                    )
+                  },
+                  { id: 'dias', titulo: 'Dias', tipo: 'numero', render: (obra) => formatNumber(obra.dias_trabalhados) },
+                  { id: 'faltas', titulo: 'Faltas', tipo: 'numero', render: (obra) => formatNumber(obra.faltas) },
+                  { id: 'acrescimos', titulo: 'Acréscimos', tipo: 'valor', render: (obra) => formatCurrency(obra.acrescimos) },
+                  { id: 'descontos', titulo: 'Descontos', tipo: 'valor', render: (obra) => formatCurrency(obra.descontos) },
+                  {
+                    id: 'atualizacao',
+                    titulo: 'Enviada em',
+                    tipo: 'data',
+                    render: (obra) => formatDateTime(obra.enviada_em)
+                  }
+                ]}
+                itens={colaboradorMultiobra.obras || []}
+                storageKey="tabela:rh-dp-apuracao:multiobra-modal"
+                rotuloRolagem="Partes da jornada multiobra"
+                vazio="Não há obras vinculadas para conferir."
+              />
+            </div>
+
+            <div data-modal="rodape" className="modal-footer">
+              <div className="app-note mr-auto">
+                {colaboradorMultiobra.status === 'CONSOLIDADA'
+                  ? 'Esta consolidação já possui uma apuração vinculada.'
+                  : colaboradorMultiobra.status === 'ATUALIZACAO'
+                    ? 'Uma obra reenviou a jornada. Revise e atualize a apuração antes do fechamento.'
+                    : 'O fechamento gerará um título único, rateado pelos valores de cada obra.'}
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setColaboradorMultiobra(null)}
+                disabled={consolidandoMultiobra}
+              >
+                Cancelar
+              </button>
+              {colaboradorMultiobra.status === 'CONSOLIDADA' ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={async () => {
+                    await abrirApuracao(colaboradorMultiobra.apuracao_id);
+                    setColaboradorMultiobra(null);
+                  }}
+                >
+                  Abrir apuração
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={consolidarMultiobra}
+                  disabled={Boolean(colaboradorMultiobra.jornadas_pendentes) || consolidandoMultiobra || !podeEditar}
+                >
+                  {consolidandoMultiobra ? 'Consolidando...' : 'Consolidar em uma apuração'}
+                </button>
+              )}
+            </div>
+          </>
+        ) : null}
+      </OverlayModal>
 
       {elementoConfirmacao}
     </div>
