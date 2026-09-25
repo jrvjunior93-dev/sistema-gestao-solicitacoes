@@ -1,4 +1,4 @@
-const { Contrato, ContratoCredor, Parceiro, ParceiroCategoria, TipoSolicitacao } = require('../models');
+const { Contrato, ContratoCredor, Obra, Parceiro, ParceiroCategoria, TipoSolicitacao } = require('../models');
 const { pendenciasDoCadastro: pendenciasDoCadastroCredor } = require('../services/credorContratoService');
 const {
   atualizarParceiro,
@@ -16,6 +16,20 @@ const { normalizeTipoSolicitacaoBehavior } = require('../services/tipoSolicitaca
 const { criarEscopoIdempotencia } = require('../services/idempotenciaCriacaoService');
 const { responderErroController } = require('../utils/controllerError');
 const { createWorkbookBuffer, sheetToJsonRows } = require('../utils/excelWorkbook');
+const {
+  obterAreasConfiguracaoCamposDestino
+} = require('../services/tipoSolicitacaoDisponibilidadeService');
+
+async function obterAreasConfiguracaoCampos(body = {}) {
+  const obraId = Number(body.obra_id);
+  const destino = Number.isInteger(obraId) && obraId > 0
+    ? await Obra.findByPk(obraId, { attributes: ['id', 'codigo', 'nome', 'tipo_centro_custo'] })
+    : null;
+  return [...new Set([
+    ...obterAreasConfiguracaoCamposDestino(destino),
+    body.area_responsavel
+  ].map((area) => String(area || '').trim()).filter(Boolean))];
+}
 
 const PLANILHA_COLUNAS = [
   ['cpf_cnpj', 'CPF/CNPJ'],
@@ -321,6 +335,7 @@ module.exports = {
       const tipoSolicitacaoId = Number(req.body?.tipo_solicitacao_id);
       const tipoSubId = req.body?.tipo_sub_id ? Number(req.body.tipo_sub_id) : null;
       const areaResponsavel = String(req.body?.area_responsavel || '').trim();
+      const areasConfiguracaoCampos = await obterAreasConfiguracaoCampos(req.body);
       const tipo = await TipoSolicitacao.findOne({
         where: { id: tipoSolicitacaoId, ativo: true },
         attributes: ['id', 'nome', 'codigo_interno', 'comportamento']
@@ -336,7 +351,7 @@ module.exports = {
         comportamento,
         configCampos,
         tipoSolicitacaoId,
-        { areaResponsavel, tipoSubId }
+        { areaResponsavel: areasConfiguracaoCampos, tipoSubId }
       );
       const fluxoMedicao = comportamento.mostrar_periodo_medicao === true
         || comportamento.exige_periodo_medicao === true;
@@ -371,6 +386,7 @@ module.exports = {
     try {
       const tipoSolicitacaoId = Number(req.body?.tipo_solicitacao_id);
       const areaResponsavel = String(req.body?.area_responsavel || '').trim();
+      const areasConfiguracaoCampos = await obterAreasConfiguracaoCampos(req.body);
       const contratoId = req.body?.contrato_id !== undefined && req.body?.contrato_id !== null && req.body?.contrato_id !== ''
         ? Number(req.body.contrato_id)
         : null;
@@ -399,7 +415,7 @@ module.exports = {
         {},
         configCampos,
         tipoSolicitacaoId,
-        { areaResponsavel }
+        { areaResponsavel: areasConfiguracaoCampos }
       );
 
       if (campos?.cadastro_credor?.visivel !== true) {
@@ -409,7 +425,7 @@ module.exports = {
       const opcoesNovaSolicitacao = obterOpcoesNovaSolicitacao(
         configCampos,
         tipoSolicitacaoId,
-        areaResponsavel
+        areasConfiguracaoCampos
       );
       const permiteCredorAvulsoComContrato = opcoesNovaSolicitacao.permitir_credor_avulso_com_contrato === true;
 
@@ -437,6 +453,7 @@ module.exports = {
 
       delete payload.tipo_solicitacao_id;
       delete payload.area_responsavel;
+      delete payload.obra_id;
       delete payload.contrato_id;
 
       const parceiro = await criarParceiro(payload);

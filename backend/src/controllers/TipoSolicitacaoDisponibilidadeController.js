@@ -29,6 +29,7 @@ module.exports = {
           nome: destinoInicial.setor.nome
         },
         tipo_automatico: catalogo.tipo_automatico === true,
+        areas_configuracao_campos: catalogo.areas_configuracao_campos,
         tipos: catalogo.tipos
       });
     } catch (error) {

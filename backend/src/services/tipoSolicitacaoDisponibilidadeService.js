@@ -16,9 +16,24 @@ const {
 } = require('./tipoSolicitacaoBehaviorService');
 
 const TIPOS_AUTOMATICOS_CENTRO_CUSTO = Object.freeze([
-  { chave: 'MARKETING', codigo: 'DESPESA_DE_MARKETING', nome: 'DESPESA DE MARKETING' },
-  { chave: 'COMERCIAL', codigo: 'DESPESA_COMERCIAL', nome: 'DESPESA COMERCIAL' },
-  { chave: 'ADMINISTRATIVO', codigo: 'DESPESA_ADMINISTRATIVA', nome: 'DESPESA ADMINISTRATIVA' }
+  {
+    chave: 'MARKETING',
+    codigo: 'DESPESA_DE_MARKETING',
+    nome: 'DESPESA DE MARKETING',
+    areasConfiguracaoCampos: ['MARKETING']
+  },
+  {
+    chave: 'COMERCIAL',
+    codigo: 'DESPESA_COMERCIAL',
+    nome: 'DESPESA COMERCIAL',
+    areasConfiguracaoCampos: ['COMERCIAL']
+  },
+  {
+    chave: 'ADMINISTRATIVO',
+    codigo: 'DESPESA_ADMINISTRATIVA',
+    nome: 'DESPESA ADMINISTRATIVA',
+    areasConfiguracaoCampos: ['ADMINISTRATIVO', 'ESCRITORIO', 'ADMINISTRATIVO/ESCRITORIO']
+  }
 ]);
 
 function erroNegocio(mensagem, statusCode = 400) {
@@ -51,6 +66,11 @@ function obterDefinicaoTipoAutomatico(destino) {
   if (tokens.has('COMERCIAL')) return TIPOS_AUTOMATICOS_CENTRO_CUSTO[1];
   if (tokens.has('ADMINISTRATIVO') || tokens.has('ESCRITORIO')) return TIPOS_AUTOMATICOS_CENTRO_CUSTO[2];
   return null;
+}
+
+function obterAreasConfiguracaoCamposDestino(destino) {
+  const definicao = obterDefinicaoTipoAutomatico(destino);
+  return definicao ? [...definicao.areasConfiguracaoCampos] : [];
 }
 
 async function garantirTiposAutomaticosCentroCusto({ transaction = null } = {}) {
@@ -191,6 +211,10 @@ async function listarTiposDisponiveis(destinoId, { transaction = null } = {}) {
     destino: destino.get({ plain: true }),
     contexto: ehObra ? 'OBRA' : 'CENTRO_CUSTO',
     tipo_automatico: Boolean(tipoAutomatico),
+    // O fluxo continua entrando operacionalmente em GEO. Esta lista serve somente para
+    // localizar a configuracao visual/obrigatoria do tipo automatico na tela "Campos da
+    // Nova Solicitacao" (MARKETING, COMERCIAL ou ADMINISTRATIVO), sem hardcode de campos.
+    areas_configuracao_campos: tipoAutomatico ? obterAreasConfiguracaoCamposDestino(destino) : [],
     tipos: tipos.filter(tipoPodeSerAbertoManualmente).map(enriquecerTipoComSubtipos)
   };
 }
@@ -353,6 +377,7 @@ module.exports = {
   assertTipoDisponivelNoDestino,
   garantirTiposAutomaticosCentroCusto,
   listarTiposDisponiveis,
+  obterAreasConfiguracaoCamposDestino,
   obterConfiguracao,
   salvarConfiguracao
 };

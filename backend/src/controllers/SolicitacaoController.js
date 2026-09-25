@@ -128,7 +128,10 @@ const {
   obterRegrasSetoresVisiveisPorUsuario
 } = require('../services/setoresVisiveisUsuarioService');
 const { resolverDestinoInicialNovaSolicitacao } = require('../services/novaSolicitacaoDestinoService');
-const { assertTipoDisponivelNoDestino } = require('../services/tipoSolicitacaoDisponibilidadeService');
+const {
+  assertTipoDisponivelNoDestino,
+  obterAreasConfiguracaoCamposDestino
+} = require('../services/tipoSolicitacaoDisponibilidadeService');
 const { validarDistribuicaoCentroCusto } = require('../services/centroCustoDistribuicaoService');
 const {
   aplicarVencimentoEfetivoSolicitacao,
@@ -3159,6 +3162,10 @@ module.exports = {
         return res.status(400).json({ error: 'Obra/Centro de custo informado nao foi encontrado.' });
       }
       const registroSelecionadoEhObra = isObraCentroCusto(obraSelecionada.tipo_centro_custo);
+      const areasConfiguracaoCampos = [
+        ...obterAreasConfiguracaoCamposDestino(obraSelecionada),
+        areaResponsavelPersistida
+      ];
 
       const areaUsuario = await obterAreaUsuario(req);
       const tokensSetorUsuario = await obterTokensSetorUsuario(req, areaUsuario);
@@ -3237,7 +3244,7 @@ module.exports = {
         tipo_solicitacao_id,
         {
           apropriacoesDisponiveis,
-          areaResponsavel: areaResponsavelPersistida,
+          areaResponsavel: areasConfiguracaoCampos,
           // Regra do subtipo tem precedencia sobre a do tipo (escopo de contratos 3.1-3.3).
           tipoSubId: tipo_sub_id
         }
@@ -3743,7 +3750,7 @@ module.exports = {
       const opcoesNovaSolicitacao = obterOpcoesNovaSolicitacao(
         configCamposNovaSolicitacao,
         tipo_solicitacao_id || tipo_macro_id,
-        area_responsavel
+        areasConfiguracaoCampos
       );
       const permiteCredorAvulsoComContrato = opcoesNovaSolicitacao.permitir_credor_avulso_com_contrato === true;
       const permiteVincularCredorPorCadastroRapido = campoVisivel('cadastro_credor') && !permiteCredorAvulsoComContrato;

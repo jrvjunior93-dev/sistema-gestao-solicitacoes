@@ -1,6 +1,12 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const {
+  resolverCamposNovaSolicitacao
+} = require('../src/services/novaSolicitacaoCamposConfig');
+const {
+  obterAreasConfiguracaoCamposDestino
+} = require('../src/services/tipoSolicitacaoDisponibilidadeService');
 
 function ler(...partes) {
   return fs.readFileSync(path.join(__dirname, '..', ...partes), 'utf8');
@@ -44,10 +50,47 @@ assert(compras.includes('assertTipoDisponivelNoDestino(obra, tipoSolicitacao, { 
 assert(!novaSolicitacao.includes('name="area_responsavel"'), 'A tela nao deve permitir escolher o setor inicial.');
 assert(novaSolicitacao.includes('getTiposSolicitacaoDisponiveis(form.obra_id)'));
 assert(novaSolicitacao.includes('area_responsavel: undefined'));
+assert(
+  novaSolicitacao.includes('areasConfiguracaoCampos'),
+  'A Nova Solicitacao deve resolver campos pelo Centro de Custo automatico antes do destino operacional.'
+);
 assert(telaDestino.includes("rotulo: 'Criar tipo'"), 'A configuração por destino deve oferecer cadastro rápido de tipo.');
 assert(telaDestino.includes('criarTipoSolicitacao({'), 'O atalho deve criar um tipo global reutilizável.');
 assert(subtipoMigration.includes('tipos_sub_contrato_tipos_solicitacao'), 'A relação muitos-para-muitos de subtipos deve possuir migration.');
 assert(subtipos.includes('setTiposSolicitacao'), 'O backend deve sincronizar todos os Tipos de Solicitação do subtipo.');
 assert(telaSubtipos.includes('tipo_solicitacao_ids'), 'A tela deve enviar múltiplos Tipos de Solicitação por subtipo.');
+
+const tipoAutomaticoId = 999;
+const configCampos = {
+  regras: {
+    MARKETING: {
+      tipos: {
+        [tipoAutomaticoId]: {
+          campos: {
+            forma_pagamento: { visivel: true, obrigatorio: true }
+          }
+        }
+      }
+    },
+    GEO: {
+      tipos: {
+        [tipoAutomaticoId]: {
+          campos: {
+            forma_pagamento: { visivel: false, obrigatorio: false }
+          }
+        }
+      }
+    }
+  }
+};
+const camposMarketing = resolverCamposNovaSolicitacao({}, configCampos, tipoAutomaticoId, {
+  areaResponsavel: ['MARKETING', 'GEO']
+});
+assert.strictEqual(camposMarketing.forma_pagamento.visivel, true);
+assert.strictEqual(camposMarketing.forma_pagamento.obrigatorio, true);
+assert.deepStrictEqual(
+  obterAreasConfiguracaoCamposDestino({ codigo: '111', nome: 'MARKETING', tipo_centro_custo: 'CENTRO_CUSTO' }),
+  ['MARKETING']
+);
 
 console.log('Catalogo de tipos por Obra/Centro de Custo validado com sucesso.');

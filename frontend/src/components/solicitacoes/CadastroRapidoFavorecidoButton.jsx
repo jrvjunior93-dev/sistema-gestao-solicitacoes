@@ -24,6 +24,7 @@ export default function CadastroRapidoFavorecidoButton({
   tipoSolicitacaoId,
   tipoSubId,
   areaResponsavel,
+  obraId,
   onCadastrado,
   disabled = false
 }) {
@@ -55,6 +56,7 @@ export default function CadastroRapidoFavorecidoButton({
     try {
       const resposta = await criarFavorecidoNovaSolicitacao({
         ...form,
+        obra_id: obraId ? Number(obraId) : null,
         tipo_solicitacao_id: Number(tipoSolicitacaoId),
         tipo_sub_id: tipoSubId ? Number(tipoSubId) : null,
         area_responsavel: areaResponsavel

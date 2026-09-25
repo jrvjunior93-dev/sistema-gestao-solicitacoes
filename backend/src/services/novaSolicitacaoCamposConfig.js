@@ -325,15 +325,23 @@ function chaveTipoSubtipo(tipoId, subtipoId) {
   return tipo && sub ? `${tipo}:${sub}` : null;
 }
 
+function normalizarAreasKey(value) {
+  const valores = Array.isArray(value) ? value : [value];
+  return [...new Set(valores.map(normalizarAreaKey).filter(Boolean))];
+}
+
 function obterRegraCampos(config, tipoId, areaResponsavel, subtipoId) {
   const tipoKey = normalizarTipoKey(tipoId);
   const subKey = chaveTipoSubtipo(tipoId, subtipoId);
-  const areaKey = normalizarAreaKey(areaResponsavel);
+  const areas = normalizarAreasKey(areaResponsavel);
+  const candidatosPorArea = areas.flatMap((areaKey) => [
+    subKey && config?.regras?.[areaKey]?.tipos?.[subKey]?.campos,
+    config?.regras?.[areaKey]?.tipos?.[tipoKey]?.campos
+  ]);
 
   // Ordem: subtipo antes do tipo, dentro de cada nivel (area -> global -> legado).
   const candidatos = [
-    subKey && config?.regras?.[areaKey]?.tipos?.[subKey]?.campos,
-    config?.regras?.[areaKey]?.tipos?.[tipoKey]?.campos,
+    ...candidatosPorArea,
     subKey && config?.regras?.__GLOBAL__?.tipos?.[subKey]?.campos,
     config?.regras?.__GLOBAL__?.tipos?.[tipoKey]?.campos,
     subKey && config?.regras?.[subKey]?.campos,
@@ -345,14 +353,13 @@ function obterRegraCampos(config, tipoId, areaResponsavel, subtipoId) {
 
 function obterRegraTipo(config, tipoId, areaResponsavel) {
   const tipoKey = normalizarTipoKey(tipoId);
-  const areaKey = normalizarAreaKey(areaResponsavel);
+  const areas = normalizarAreasKey(areaResponsavel);
 
-  return (
-    config?.regras?.[areaKey]?.tipos?.[tipoKey] ||
-    config?.regras?.__GLOBAL__?.tipos?.[tipoKey] ||
-    config?.regras?.[tipoKey] ||
-    {}
-  );
+  return [
+    ...areas.map((areaKey) => config?.regras?.[areaKey]?.tipos?.[tipoKey]),
+    config?.regras?.__GLOBAL__?.tipos?.[tipoKey],
+    config?.regras?.[tipoKey]
+  ].find((regra) => regra && typeof regra === 'object') || {};
 }
 
 function obterOpcoesNovaSolicitacao(config, tipoId, areaResponsavel) {

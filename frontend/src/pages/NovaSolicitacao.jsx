@@ -160,7 +160,9 @@ export default function NovaSolicitacao() {
   const [obraBusca, setObraBusca] = useState('');
   const [obraBuscaAtiva, setObraBuscaAtiva] = useState(false);
   const [tipos, setTipos] = useState([]);
-  const [catalogoDestino, setCatalogoDestino] = useState({ status: 'idle', contexto: null, destino: null, tipoAutomatico: false, erro: '' });
+  const [catalogoDestino, setCatalogoDestino] = useState({
+    status: 'idle', contexto: null, destino: null, tipoAutomatico: false, areasConfiguracaoCampos: [], erro: ''
+  });
   const [camposNovaSolicitacaoConfig, setCamposNovaSolicitacaoConfig] = useState({ regras: {} });
   const [automacaoDestinoConfig, setAutomacaoDestinoConfig] = useState({ destinos_disponiveis: [], regras: {} });
   const [tiposSub, setTiposSub] = useState([]);
@@ -316,6 +318,12 @@ export default function NovaSolicitacao() {
     [obras, form.obra_id]
   );
   const obraSelecionadaEhObra = isCadastroObra(obraSelecionada);
+  const areasConfiguracaoCampos = useMemo(() => (
+    [...new Set([
+      ...(Array.isArray(catalogoDestino.areasConfiguracaoCampos) ? catalogoDestino.areasConfiguracaoCampos : []),
+      form.area_responsavel
+    ].map((area) => String(area || '').trim()).filter(Boolean))]
+  ), [catalogoDestino.areasConfiguracaoCampos, form.area_responsavel]);
 
   useEffect(() => {
     async function load() {
@@ -343,7 +351,9 @@ export default function NovaSolicitacao() {
   useEffect(() => {
     if (!form.obra_id) {
       setTipos([]);
-      setCatalogoDestino({ status: 'idle', contexto: null, destino: null, tipoAutomatico: false, erro: '' });
+      setCatalogoDestino({
+        status: 'idle', contexto: null, destino: null, tipoAutomatico: false, areasConfiguracaoCampos: [], erro: ''
+      });
       setForm((atual) => ({
         ...atual,
         area_responsavel: '',
@@ -354,7 +364,9 @@ export default function NovaSolicitacao() {
     }
 
     let cancelado = false;
-    setCatalogoDestino({ status: 'loading', contexto: null, destino: null, tipoAutomatico: false, erro: '' });
+    setCatalogoDestino({
+      status: 'loading', contexto: null, destino: null, tipoAutomatico: false, areasConfiguracaoCampos: [], erro: ''
+    });
     getTiposSolicitacaoDisponiveis(form.obra_id)
       .then((data) => {
         if (cancelado) return;
@@ -366,6 +378,9 @@ export default function NovaSolicitacao() {
           contexto: data?.contexto || null,
           destino: data?.destino_inicial || null,
           tipoAutomatico: data?.tipo_automatico === true,
+          areasConfiguracaoCampos: Array.isArray(data?.areas_configuracao_campos)
+            ? data.areas_configuracao_campos
+            : [],
           erro: ''
         });
         const tipoAutomaticoId = data?.tipo_automatico === true && tiposDisponiveis.length === 1
@@ -390,6 +405,7 @@ export default function NovaSolicitacao() {
           contexto: null,
           destino: null,
           tipoAutomatico: false,
+          areasConfiguracaoCampos: [],
           erro: error?.message || 'Não foi possível carregar os tipos disponíveis.'
         });
         setForm((atual) => ({
@@ -741,6 +757,7 @@ export default function NovaSolicitacao() {
 
       const parceiro = await criarCredorNovaSolicitacao({
         ...payload,
+        obra_id: form.obra_id,
         tipo_solicitacao_id: form.tipo_solicitacao_id,
         area_responsavel: form.area_responsavel,
         contrato_id: permitirCredorAvulsoComContrato ? null : (form.contrato_id || null)
@@ -756,7 +773,9 @@ export default function NovaSolicitacao() {
 
   function limparSelecaoObraERegras() {
     setTipos([]);
-    setCatalogoDestino({ status: 'idle', contexto: null, destino: null, tipoAutomatico: false, erro: '' });
+    setCatalogoDestino({
+      status: 'idle', contexto: null, destino: null, tipoAutomatico: false, areasConfiguracaoCampos: [], erro: ''
+    });
     setForm(prev => ({
       ...prev,
       obra_id: '',
@@ -836,7 +855,7 @@ export default function NovaSolicitacao() {
       form.tipo_solicitacao_id,
       {
         apropriacoesDisponiveis: moduloApropriacoesHabilitado,
-        areaResponsavel: form.area_responsavel,
+        areaResponsavel: areasConfiguracaoCampos,
         // Regra do subtipo tem precedencia sobre a do tipo (escopo de contratos 3.1-3.3).
         tipoSubId: form.tipo_sub_id
       }
@@ -844,7 +863,7 @@ export default function NovaSolicitacao() {
     // `form.tipo_sub_id` entra aqui porque e lido dentro do memo: sem ele, trocar o subtipo nao
     // re-resolve os campos e a regra `tipo:subtipo` inteira nao tem efeito na tela (o motor, a
     // tela de configuracao e o backend ja resolviam certo — so esta lista estava incompleta).
-  ), [comportamentoTipo, camposNovaSolicitacaoConfig, form.tipo_solicitacao_id, form.area_responsavel, form.tipo_sub_id, moduloApropriacoesHabilitado]);
+  ), [comportamentoTipo, camposNovaSolicitacaoConfig, form.tipo_solicitacao_id, areasConfiguracaoCampos, form.tipo_sub_id, moduloApropriacoesHabilitado]);
   const tipoConfiguradoComoDespesaEventual = Boolean(comportamentoTipo.usa_fluxo_despesa_eventual);
   const tipoConfiguradoComoRecargaCartao = isTipoRecargaCartao(tipoSelecionado, comportamentoTipo);
   const tipoSolicitacaoEscolhido = Boolean(form.tipo_solicitacao_id);
@@ -879,9 +898,9 @@ export default function NovaSolicitacao() {
     obterOpcoesNovaSolicitacaoFrontend(
       camposNovaSolicitacaoConfig,
       form.tipo_solicitacao_id,
-      form.area_responsavel
+      areasConfiguracaoCampos
     )
-  ), [camposNovaSolicitacaoConfig, form.tipo_solicitacao_id, form.area_responsavel]);
+  ), [camposNovaSolicitacaoConfig, form.tipo_solicitacao_id, areasConfiguracaoCampos]);
   // Campo que nao aparece nao pode ser exigido — a guarda usa `exibirCampoSubtipo`, definido logo
   // abaixo, e por isso a exigencia e resolvida junto dele.
   const subtipoObrigatorio = campoObrigatorio('subtipo');
@@ -2945,6 +2964,7 @@ export default function NovaSolicitacao() {
                     tipoSolicitacaoId={form.tipo_solicitacao_id}
                     tipoSubId={form.tipo_sub_id}
                     areaResponsavel={form.area_responsavel}
+                    obraId={form.obra_id}
                     onCadastrado={(parceiro) => {
                       limparErroCampo('favorecido');
                       setFavorecidoSelecionado(parceiro);

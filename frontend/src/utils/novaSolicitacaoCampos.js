@@ -52,6 +52,11 @@ function normalizarTipoKey(value) {
   return String(value || '').trim();
 }
 
+function normalizarAreasNovaSolicitacao(value) {
+  const valores = Array.isArray(value) ? value : [value];
+  return [...new Set(valores.map(normalizarAreaNovaSolicitacao).filter(Boolean))];
+}
+
 // Espelha a cascata do backend: a regra do SUBTIPO (`tipo:subtipo`) tem precedencia sobre a do
 // tipo, e o tipo continua valendo quando nao ha regra de subtipo. As duas pontas precisam
 // resolver igual, senao a tela mostra um campo que o servidor recusa (ou o contrario).
@@ -64,29 +69,30 @@ function chaveTipoSubtipo(tipoId, subtipoId) {
 function obterRegraCampos(config, tipoId, areaResponsavel, subtipoId) {
   const subKey = chaveTipoSubtipo(tipoId, subtipoId);
   const tipoKey = normalizarTipoKey(tipoId);
-  const areaKey = normalizarAreaNovaSolicitacao(areaResponsavel);
+  const areas = normalizarAreasNovaSolicitacao(areaResponsavel);
+  const candidatosPorArea = areas.flatMap((areaKey) => [
+    subKey && config?.regras?.[areaKey]?.tipos?.[subKey]?.campos,
+    config?.regras?.[areaKey]?.tipos?.[tipoKey]?.campos
+  ]);
 
-  return (
-    (subKey && config?.regras?.[areaKey]?.tipos?.[subKey]?.campos) ||
-    config?.regras?.[areaKey]?.tipos?.[tipoKey]?.campos ||
-    (subKey && config?.regras?.__GLOBAL__?.tipos?.[subKey]?.campos) ||
-    config?.regras?.__GLOBAL__?.tipos?.[tipoKey]?.campos ||
-    (subKey && config?.regras?.[subKey]?.campos) ||
-    config?.regras?.[tipoKey]?.campos ||
-    {}
-  );
+  return [
+    ...candidatosPorArea,
+    subKey && config?.regras?.__GLOBAL__?.tipos?.[subKey]?.campos,
+    config?.regras?.__GLOBAL__?.tipos?.[tipoKey]?.campos,
+    subKey && config?.regras?.[subKey]?.campos,
+    config?.regras?.[tipoKey]?.campos
+  ].find((regra) => regra && typeof regra === 'object') || {};
 }
 
 function obterRegraTipo(config, tipoId, areaResponsavel) {
   const tipoKey = normalizarTipoKey(tipoId);
-  const areaKey = normalizarAreaNovaSolicitacao(areaResponsavel);
+  const areas = normalizarAreasNovaSolicitacao(areaResponsavel);
 
-  return (
-    config?.regras?.[areaKey]?.tipos?.[tipoKey] ||
-    config?.regras?.__GLOBAL__?.tipos?.[tipoKey] ||
-    config?.regras?.[tipoKey] ||
-    {}
-  );
+  return [
+    ...areas.map((areaKey) => config?.regras?.[areaKey]?.tipos?.[tipoKey]),
+    config?.regras?.__GLOBAL__?.tipos?.[tipoKey],
+    config?.regras?.[tipoKey]
+  ].find((regra) => regra && typeof regra === 'object') || {};
 }
 
 function normalizarOpcoesTipo(opcoesRaw) {
