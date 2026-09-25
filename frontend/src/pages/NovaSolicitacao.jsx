@@ -227,6 +227,7 @@ export default function NovaSolicitacao() {
     criterio: 'PERCENTUAL',
     todas: false,
     linhas: [],
+    edicaoManual: false,
     erro: ''
   });
   const [contratoNovoDados, setContratoNovoDados] = useState(null);
@@ -405,7 +406,7 @@ export default function NovaSolicitacao() {
   useEffect(() => {
     if (!form.obra_id || obraSelecionadaEhObra) {
       setDistribuicaoCentroCusto({
-        status: 'idle', regra: null, obras: [], criterio: 'PERCENTUAL', todas: false, linhas: [], erro: ''
+        status: 'idle', regra: null, obras: [], criterio: 'PERCENTUAL', todas: false, linhas: [], edicaoManual: false, erro: ''
       });
       return undefined;
     }
@@ -422,13 +423,14 @@ export default function NovaSolicitacao() {
           criterio: 'PERCENTUAL',
           todas: false,
           linhas: [],
+          edicaoManual: false,
           erro: ''
         });
       })
       .catch((error) => {
         if (cancelado) return;
         setDistribuicaoCentroCusto({
-          status: 'error', regra: null, obras: [], criterio: 'PERCENTUAL', todas: false, linhas: [],
+          status: 'error', regra: null, obras: [], criterio: 'PERCENTUAL', todas: false, linhas: [], edicaoManual: false,
           erro: error?.message || 'Nao foi possivel carregar as obras para distribuicao.'
         });
       });
@@ -593,7 +595,12 @@ export default function NovaSolicitacao() {
       const proxima = selecionadas.includes(Number(obraId))
         ? selecionadas.filter((id) => id !== Number(obraId))
         : [...selecionadas, Number(obraId)];
-      return { ...atual, todas: false, linhas: ratearIgualmente(proxima, atual.criterio) };
+      return {
+        ...atual,
+        todas: false,
+        linhas: ratearIgualmente(proxima, atual.criterio),
+        edicaoManual: false
+      };
     });
   }
 
@@ -602,7 +609,8 @@ export default function NovaSolicitacao() {
     setDistribuicaoCentroCusto((atual) => ({
       ...atual,
       criterio,
-      linhas: ratearIgualmente(atual.linhas.map((linha) => linha.obra_id), criterio)
+      linhas: ratearIgualmente(atual.linhas.map((linha) => linha.obra_id), criterio),
+      edicaoManual: false
     }));
   }
 
@@ -610,6 +618,7 @@ export default function NovaSolicitacao() {
     limparErroCampo('distribuicao_centro_custo');
     setDistribuicaoCentroCusto((atual) => ({
       ...atual,
+      edicaoManual: true,
       linhas: atual.linhas.map((linha) => Number(linha.obra_id) === Number(obraId)
         ? { ...linha, [campo]: valorCampo }
         : linha)
@@ -618,8 +627,26 @@ export default function NovaSolicitacao() {
 
   function selecionarTodasComoClassificacao() {
     limparErroCampo('distribuicao_centro_custo');
-    setDistribuicaoCentroCusto((atual) => ({ ...atual, todas: true, linhas: [] }));
+    setDistribuicaoCentroCusto((atual) => ({ ...atual, todas: true, linhas: [], edicaoManual: false }));
   }
+
+  useEffect(() => {
+    setDistribuicaoCentroCusto((atual) => {
+      if (
+        atual.criterio !== 'VALOR'
+        || atual.todas
+        || atual.edicaoManual
+        || atual.linhas.length === 0
+      ) return atual;
+      return {
+        ...atual,
+        linhas: ratearIgualmente(atual.linhas.map((linha) => linha.obra_id), 'VALOR')
+      };
+    });
+    // O valor total so redistribui linhas ainda automaticas. Depois da primeira edicao manual,
+    // a decisao do usuario e preservada e a validacao final confere o fechamento do total.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.valor]);
 
   function normalizarDocumento(valor) {
     return onlyDigits(valor);
@@ -985,7 +1012,7 @@ export default function NovaSolicitacao() {
   // Consequencia registrada no plano: a configuracao de "campos por subtipo" (PI-13) deixa de valer
   // para CONTRATO — passa a valer a do tipo. As solicitacoes antigas guardam o subtipo e seguem
   // legiveis; nada e apagado.
-  const exibirCampoSubtipo = campoVisivel('subtipo') && !usaFluxoContratoNovo;
+  const exibirCampoSubtipo = campoVisivel('subtipo') && !usaFluxoContratoNovo && tiposSub.length > 0;
   const exibirCampoCredor = campoVisivel('credor');
 
   // Busca do credor AO DIGITAR (pedido do cliente, 19/08), sem minimo de caracteres: procura desde
@@ -2604,6 +2631,9 @@ export default function NovaSolicitacao() {
   */
   const apoioDoCabecalho = (() => {
     const nomeDoTipo = String(tipoSelecionado?.nome || '').trim();
+    if (catalogoDestino.tipoAutomatico && nomeDoTipo) {
+      return 'Tipo definido automaticamente para o centro de custo selecionado.';
+    }
     if (nomeDoTipo) return nomeDoTipo;
     if (!form.obra_id) return 'Comece pela obra ou centro de custo — ela define os tipos disponíveis.';
     if (catalogoDestino.status === 'loading') return 'Carregando os tipos disponíveis para o destino selecionado.';
@@ -2699,32 +2729,31 @@ export default function NovaSolicitacao() {
               )}
             </CampoForm>
 
-            <CampoForm label="Tipo de Solicitação" obrigatorio>
-              <select
-                name="tipo_solicitacao_id"
-                onChange={handleChange}
-                className="input input-sm"
-                required
-                value={form.tipo_solicitacao_id}
-                disabled={!form.obra_id || catalogoDestino.status !== 'success' || catalogoDestino.tipoAutomatico}
-              >
-                <option value="">
-                  {!form.obra_id
-                    ? 'Selecione a obra/centro de custo primeiro'
-                    : catalogoDestino.status === 'loading'
-                      ? 'Carregando tipos...'
-                      : tiposDisponiveis.length === 0
-                        ? 'Nenhum tipo disponível'
-                        : 'Selecione'}
-                </option>
-                {tiposDisponiveis.map(t => (
-                  <option key={t.id} value={t.id}>{t.nome}</option>
-                ))}
-              </select>
-              {catalogoDestino.tipoAutomatico && tiposDisponiveis.length === 1 ? (
-                <span className="form-hint">Tipo definido automaticamente para este centro de custo.</span>
-              ) : null}
-            </CampoForm>
+            {!catalogoDestino.tipoAutomatico && (
+              <CampoForm label="Tipo de Solicitação" obrigatorio>
+                <select
+                  name="tipo_solicitacao_id"
+                  onChange={handleChange}
+                  className="input input-sm"
+                  required
+                  value={form.tipo_solicitacao_id}
+                  disabled={!form.obra_id || catalogoDestino.status !== 'success'}
+                >
+                  <option value="">
+                    {!form.obra_id
+                      ? 'Selecione a obra/centro de custo primeiro'
+                      : catalogoDestino.status === 'loading'
+                        ? 'Carregando tipos...'
+                        : tiposDisponiveis.length === 0
+                          ? 'Nenhum tipo disponível'
+                          : 'Selecione'}
+                  </option>
+                  {tiposDisponiveis.map(t => (
+                    <option key={t.id} value={t.id}>{t.nome}</option>
+                  ))}
+                </select>
+              </CampoForm>
+            )}
 
             {catalogoDestino.status === 'error' && (
               <p className="form-campo--linha form-hint text-[var(--c-danger)]">{catalogoDestino.erro}</p>
@@ -3408,18 +3437,6 @@ export default function NovaSolicitacao() {
                       </button>
                     ))}
                   </div>
-                  {!distribuicaoCentroCusto.todas && distribuicaoCentroCusto.linhas.length > 0 ? (
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={() => setDistribuicaoCentroCusto((atual) => ({
-                        ...atual,
-                        linhas: ratearIgualmente(atual.linhas.map((linha) => linha.obra_id), atual.criterio)
-                      }))}
-                    >
-                      Distribuir igualmente
-                    </button>
-                  ) : null}
                   <span className="text-xs text-[var(--c-muted)]">
                     {distribuicaoCentroCusto.regra === 'TODAS_PRIVADAS'
                       ? 'Marketing/Comercial: obras privadas disponíveis.'
@@ -3460,66 +3477,53 @@ export default function NovaSolicitacao() {
                     </span>
                   </label>
 
-                  <div className="max-h-56 overflow-auto p-2">
+                  <div className="max-h-72 overflow-auto p-2">
                     {distribuicaoCentroCusto.obras.length === 0 ? (
                       <p className="px-2 py-3 text-sm text-[var(--c-muted)]">Nenhuma obra individual disponível para este usuário.</p>
                     ) : distribuicaoCentroCusto.obras.map((obra) => {
-                      const selecionada = distribuicaoCentroCusto.linhas.some(
+                      const linhaSelecionada = distribuicaoCentroCusto.linhas.find(
                         (linha) => Number(linha.obra_id) === Number(obra.id)
                       );
+                      const selecionada = Boolean(linhaSelecionada);
+                      const campo = distribuicaoCentroCusto.criterio === 'PERCENTUAL' ? 'percentual' : 'valor';
                       return (
-                        <label key={obra.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-[var(--ui-surface-soft)]">
-                          <input
-                            type="checkbox"
-                            checked={selecionada}
-                            onChange={() => alternarObraDistribuicao(obra.id)}
-                          />
-                          <span className="min-w-0 flex-1 text-sm">
-                            <strong>{obra.codigo || 'Sem código'}</strong> · {obra.nome}
-                          </span>
+                        <div
+                          key={obra.id}
+                          className={`flex min-h-11 flex-wrap items-center gap-3 rounded-md px-2 py-2 ${selecionada ? 'bg-[var(--ui-surface-soft)]' : 'hover:bg-[var(--ui-surface-soft)]'}`}
+                        >
+                          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={selecionada}
+                              onChange={() => alternarObraDistribuicao(obra.id)}
+                            />
+                            <span className="min-w-0 flex-1 text-sm">
+                              <strong>{obra.codigo || 'Sem código'}</strong> · {obra.nome}
+                            </span>
+                          </label>
                           <span className="text-xs text-[var(--c-muted)]">{obra.classificacao || 'Sem classificação'}</span>
-                        </label>
+                          {selecionada && !distribuicaoCentroCusto.todas ? (
+                            <label className="flex w-full items-center gap-2 pl-7 sm:w-auto sm:pl-0">
+                              <span className="sr-only">
+                                {campo === 'percentual' ? 'Percentual' : 'Valor'} destinado para {obra.nome}
+                              </span>
+                              <input
+                                className="input input-sm input-moeda w-full sm:w-32"
+                                inputMode="decimal"
+                                aria-label={`${campo === 'percentual' ? 'Percentual' : 'Valor'} destinado para ${obra.nome}`}
+                                value={linhaSelecionada?.[campo] || ''}
+                                onChange={(event) => alterarValorDistribuicao(obra.id, campo, event.target.value)}
+                              />
+                              <span className="w-5 text-xs font-semibold text-[var(--c-muted)]">
+                                {campo === 'percentual' ? '%' : 'R$'}
+                              </span>
+                            </label>
+                          ) : null}
+                        </div>
                       );
                     })}
                   </div>
                 </div>
-
-                {!distribuicaoCentroCusto.todas && distribuicaoCentroCusto.linhas.length > 0 && (
-                  <div className="overflow-x-auto rounded-lg border border-[var(--c-border)]">
-                    <table className="app-table min-w-[640px]">
-                      <thead>
-                        <tr>
-                          <th>Obra</th>
-                          <th className="w-52">{distribuicaoCentroCusto.criterio === 'PERCENTUAL' ? 'Percentual' : 'Valor'}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {distribuicaoCentroCusto.linhas.map((linha) => {
-                          const obra = distribuicaoCentroCusto.obras.find((item) => Number(item.id) === Number(linha.obra_id));
-                          const campo = distribuicaoCentroCusto.criterio === 'PERCENTUAL' ? 'percentual' : 'valor';
-                          return (
-                            <tr key={linha.obra_id}>
-                              <td><strong>{obra?.codigo || '—'}</strong> · {obra?.nome || 'Obra'}</td>
-                              <td>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    className="input input-sm input-moeda"
-                                    inputMode="decimal"
-                                    value={linha[campo]}
-                                    onChange={(event) => alterarValorDistribuicao(linha.obra_id, campo, event.target.value)}
-                                  />
-                                  <span className="text-xs font-semibold text-[var(--c-muted)]">
-                                    {campo === 'percentual' ? '%' : 'R$'}
-                                  </span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
 
                 {errosCampo.distribuicao_centro_custo ? (
                   <p className="form-error" role="alert">{errosCampo.distribuicao_centro_custo}</p>
