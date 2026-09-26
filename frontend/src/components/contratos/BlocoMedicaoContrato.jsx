@@ -521,22 +521,30 @@ export default function BlocoMedicaoContrato({
 
             {(!usarCredor || !credorDoContrato) && (
               <div className="space-y-2">
-                <div className="relative">
-                  <input
-                    className="input input-sm w-full min-w-0"
-                    name="busca_favorecido"
-                    placeholder="Buscar por nome, telefone, CPF/CNPJ ou PIX"
-                    value={buscaFavorecido}
-                    autoComplete="off"
-                    role="combobox"
-                    aria-autocomplete="list"
-                    aria-expanded={resultadosFavorecido.length > 0}
-                    aria-controls="resultados-favorecido-medicao"
-                    onChange={(e) => {
-                      setBuscaFavorecido(e.target.value);
-                      setFavorecido(null);
-                      setConfirmado(false);
-                    }}
+                <div className="flex min-w-0 gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <input
+                      className="input input-sm w-full min-w-0"
+                      name="busca_favorecido"
+                      placeholder="Buscar por nome, telefone, CPF/CNPJ ou PIX"
+                      value={buscaFavorecido}
+                      autoComplete="off"
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-expanded={resultadosFavorecido.length > 0}
+                      aria-controls="resultados-favorecido-medicao"
+                      onChange={(e) => {
+                        setBuscaFavorecido(e.target.value);
+                        setFavorecido(null);
+                        setConfirmado(false);
+                      }}
+                    />
+                  </div>
+                  <CadastroRapidoFavorecidoButton
+                    tipoSolicitacaoId={tipoSolicitacaoId}
+                    tipoSubId={tipoSubId}
+                    areaResponsavel={areaResponsavel}
+                    onCadastrado={escolherFavorecido}
                   />
                 </div>
                 {carregandoFavorecido && (
@@ -559,12 +567,6 @@ export default function BlocoMedicaoContrato({
                     ))}
                   </div>
                 )}
-                <CadastroRapidoFavorecidoButton
-                  tipoSolicitacaoId={tipoSolicitacaoId}
-                  tipoSubId={tipoSubId}
-                  areaResponsavel={areaResponsavel}
-                  onCadastrado={escolherFavorecido}
-                />
               </div>
             )}
 

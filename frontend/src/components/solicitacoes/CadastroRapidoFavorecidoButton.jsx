@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { HiOutlinePlus, HiOutlineXMark } from 'react-icons/hi2';
+import { HiOutlineUserPlus, HiOutlineXMark } from 'react-icons/hi2';
 import { criarFavorecidoNovaSolicitacao } from '../../services/parceiros';
 import { maskPhone } from '../../utils/formatters';
 import OverlayModal from '../ui/OverlayModal';
@@ -78,12 +78,13 @@ export default function CadastroRapidoFavorecidoButton({
     <>
       <button
         type="button"
-        className="btn btn-outline btn-sm w-fit"
+        className="btn btn-outline btn-sm btn-icon-only favorecido-cadastro-action shrink-0"
         disabled={disabled || !tipoSolicitacaoId || !areaResponsavel}
         onClick={() => setAberto(true)}
+        title="Cadastrar favorecido"
+        aria-label="Cadastrar favorecido"
       >
-        <HiOutlinePlus aria-hidden="true" />
-        Cadastrar favorecido
+        <HiOutlineUserPlus className="h-4 w-4" aria-hidden="true" />
       </button>
 
       <OverlayModal aberto={aberto} largura="560px" rotulo="Cadastrar favorecido" onFechar={fechar}>

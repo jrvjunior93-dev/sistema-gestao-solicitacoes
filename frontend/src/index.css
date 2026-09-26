@@ -8673,6 +8673,12 @@ body {
   padding: 0;
 }
 
+.layout-shell .favorecido-cadastro-action {
+  width: 2.35rem;
+  min-width: 2.35rem;
+  padding: 0;
+}
+
 .layout-shell .input-field {
   display: grid;
   gap: 0.48rem;

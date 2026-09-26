@@ -25,6 +25,7 @@ export default function ParceiroBuscaRemota({
   obrigatorio = false,
   somenteFornecedor = false,
   placeholder = 'Digite nome, telefone, CPF/CNPJ ou PIX',
+  acaoFinal = null,
   className = ''
 }) {
   const inputId = useId();
@@ -133,6 +134,7 @@ export default function ParceiroBuscaRemota({
             if (selecionado) onSelecionar(null);
           }}
         />
+        {acaoFinal}
         {selecionado && (
           <button
             type="button"

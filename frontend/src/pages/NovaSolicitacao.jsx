@@ -2949,6 +2949,25 @@ export default function NovaSolicitacao() {
                     selecionado={favorecidoSelecionado}
                     obrigatorio={favorecidoObrigatorio}
                     placeholder="Buscar por nome, telefone, CPF/CNPJ ou PIX"
+                    acaoFinal={(
+                      <CadastroRapidoFavorecidoButton
+                        tipoSolicitacaoId={form.tipo_solicitacao_id}
+                        tipoSubId={form.tipo_sub_id}
+                        areaResponsavel={form.area_responsavel}
+                        obraId={form.obra_id}
+                        onCadastrado={(parceiro) => {
+                          limparErroCampo('favorecido');
+                          setFavorecidoSelecionado(parceiro);
+                          setForm((prev) => ({
+                            ...prev,
+                            favorecido_id: String(parceiro.id),
+                            favorecido_chave_pix: pagamentoViaPix
+                              ? (parceiro.chave_pix_selecionada || chavePixPreferencial(parceiro))
+                              : ''
+                          }));
+                        }}
+                      />
+                    )}
                     onSelecionar={(parceiro) => {
                       limparErroCampo('favorecido');
                       setFavorecidoSelecionado(parceiro);
@@ -2956,23 +2975,6 @@ export default function NovaSolicitacao() {
                         ...prev,
                         favorecido_id: parceiro ? String(parceiro.id) : '',
                         favorecido_chave_pix: pagamentoViaPix ? chavePixPreferencial(parceiro) : ''
-                      }));
-                    }}
-                  />
-                  <CadastroRapidoFavorecidoButton
-                    tipoSolicitacaoId={form.tipo_solicitacao_id}
-                    tipoSubId={form.tipo_sub_id}
-                    areaResponsavel={form.area_responsavel}
-                    obraId={form.obra_id}
-                    onCadastrado={(parceiro) => {
-                      limparErroCampo('favorecido');
-                      setFavorecidoSelecionado(parceiro);
-                      setForm((prev) => ({
-                        ...prev,
-                        favorecido_id: String(parceiro.id),
-                        favorecido_chave_pix: pagamentoViaPix
-                          ? (parceiro.chave_pix_selecionada || chavePixPreferencial(parceiro))
-                          : ''
                       }));
                     }}
                   />
