@@ -66,8 +66,7 @@ import {
 import {
   chavePixPreferencial,
   formaPagamentoEhBoleto,
-  formaPagamentoEhPix,
-  formaPagamentoPermitidaDespesaEventual
+  formaPagamentoEhPix
 } from '../utils/formaPagamento';
 
 function normalizarBusca(valor) {
@@ -896,17 +895,6 @@ export default function NovaSolicitacao() {
   const tipoConfiguradoComoDespesaEventual = Boolean(comportamentoTipo.usa_fluxo_despesa_eventual);
   const tipoConfiguradoComoRecargaCartao = isTipoRecargaCartao(tipoSelecionado, comportamentoTipo);
   const tipoSolicitacaoEscolhido = Boolean(form.tipo_solicitacao_id);
-  const camposFixosDespesaEventual = new Set([
-    'valor',
-    'credor',
-    'favorecido',
-    'forma_pagamento',
-    'apropriacao_principal',
-    'subtipo',
-    'justificativa',
-    'anexos',
-    'data_vencimento'
-  ]);
   const camposFixosRecargaCartao = new Set(['valor', 'data_vencimento']);
   const campoVisivel = (campo) => {
     // Antes de o tipo ser escolhido, nenhum campo funcional deve herdar o comportamento
@@ -914,14 +902,12 @@ export default function NovaSolicitacao() {
     // somente depois que a regra do tipo (e, quando houver, do subtipo) puder ser resolvida.
     if (!tipoSolicitacaoEscolhido) return false;
     if (tipoConfiguradoComoRecargaCartao) return camposFixosRecargaCartao.has(campo);
-    return (tipoConfiguradoComoDespesaEventual && camposFixosDespesaEventual.has(campo))
-      || camposNovaSolicitacao?.[campo]?.visivel !== false;
+    return camposNovaSolicitacao?.[campo]?.visivel !== false;
   };
   const campoObrigatorio = (campo) => {
     if (!tipoSolicitacaoEscolhido) return false;
     if (tipoConfiguradoComoRecargaCartao) return camposFixosRecargaCartao.has(campo);
-    return (tipoConfiguradoComoDespesaEventual && camposFixosDespesaEventual.has(campo))
-      || Boolean(camposNovaSolicitacao?.[campo]?.obrigatorio);
+    return Boolean(camposNovaSolicitacao?.[campo]?.obrigatorio);
   };
   const opcoesNovaSolicitacao = useMemo(() => (
     obterOpcoesNovaSolicitacaoFrontend(
@@ -1110,12 +1096,10 @@ export default function NovaSolicitacao() {
   // Em medicao o anexo e regra do fluxo, mesmo que a configuracao visual antiga tenha ocultado o
   // campo: campo invisivel e obrigatorio seria uma tela impossivel de concluir.
   const exibirAnexosConfigurados = campoVisivel('anexos') || tipoEhDeMedicao;
-  const formasPagamentoDisponiveis = useMemo(
-    () => usaFluxoDespesaEventual
-      ? formasPagamentoSolicitacao.filter(formaPagamentoPermitidaDespesaEventual)
-      : formasPagamentoSolicitacao,
-    [formasPagamentoSolicitacao, usaFluxoDespesaEventual]
-  );
+  // A curadoria administrativa e a fonte unica das formas exibidas. Despesa Eventual nao reduz
+  // mais a lista para tres nomes fixos; ativar ou desativar uma forma na configuracao passa a ter
+  // o mesmo efeito neste fluxo e nos demais tipos da Nova Solicitacao.
+  const formasPagamentoDisponiveis = formasPagamentoSolicitacao;
   const formaPagamentoSelecionada = useMemo(
     () => formasPagamentoDisponiveis.find((forma) => String(forma.id) === String(form.forma_pagamento_id)) || null,
     [formasPagamentoDisponiveis, form.forma_pagamento_id]

@@ -332,7 +332,7 @@ export default function TiposSolicitacao() {
                 </div>
                 {comportamento.usa_fluxo_despesa_eventual ? (
                   <p className="app-note mt-3">
-                    O fluxo de Despesa Eventual torna obrigatórios automaticamente: valor, credor, favorecido, forma de pagamento, apropriação principal, subtipo, justificativa, anexos e a data operacional. Para este fluxo, use a finalidade “Data de Pagamento”.
+                    O fluxo de Despesa Eventual usa esses campos como padrão. A visibilidade e a obrigatoriedade podem ser ajustadas em “Campos da Nova Solicitação”. Para este fluxo, use a finalidade “Data de Pagamento”.
                   </p>
                 ) : null}
               </BlocoConteudo>
@@ -434,7 +434,7 @@ export default function TiposSolicitacao() {
               </div>
               {editComportamento.usa_fluxo_despesa_eventual ? (
                 <p className="app-note mt-3">
-                  O fluxo de Despesa Eventual torna obrigatórios automaticamente: valor, credor, favorecido, forma de pagamento, apropriação principal, subtipo, justificativa, anexos e a data operacional. Para este fluxo, use a finalidade “Data de Pagamento”.
+                  O fluxo de Despesa Eventual usa esses campos como padrão. A visibilidade e a obrigatoriedade podem ser ajustadas em “Campos da Nova Solicitação”. Para este fluxo, use a finalidade “Data de Pagamento”.
                 </p>
               ) : null}
             </BlocoConteudo>

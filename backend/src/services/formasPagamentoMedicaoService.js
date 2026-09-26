@@ -46,21 +46,6 @@ function formaPagamentoEhTransferencia(forma) {
   return tokens.includes('TRANSFERENCIA') || tokens.includes('TED') || tokens.includes('DOC');
 }
 
-function formaPagamentoPermitidaDespesaEventual(forma) {
-  const tokens = [forma?.codigo, forma?.nome]
-    .map((valor) => String(valor || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim()
-      .toUpperCase())
-    .filter(Boolean)
-    .join(' ')
-    .split(/[^A-Z0-9]+/);
-  return tokens.includes('PIX')
-    || tokens.includes('BOLETO')
-    || tokens.includes('TRANSFERENCIA');
-}
-
 function normalizarIds(bruto) {
   const lista = Array.isArray(bruto) ? bruto : [];
   return [...new Set(lista.map((n) => Number(n)).filter((n) => Number.isInteger(n) && n > 0))];
@@ -160,7 +145,6 @@ module.exports = {
   formaPagamentoEhBoleto,
   formaPagamentoEhTransferencia,
   formaPagamentoEhPix,
-  formaPagamentoPermitidaDespesaEventual,
   listarFormasDosFluxos,
   listarFormasDaMedicao,
   listarCatalogoParaConfiguracao,

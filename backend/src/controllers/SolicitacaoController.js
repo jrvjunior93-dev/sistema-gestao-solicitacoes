@@ -95,7 +95,6 @@ const { isObraCentroCusto } = require('../constants/centroCusto');
 const { resolverApropriacaoPadrao } = require('../services/obraTipoApropriacaoPadraoService');
 const {
   formaPagamentoEhBoleto,
-  formaPagamentoPermitidaDespesaEventual,
   formaPagamentoEhPix,
   listarFormasDosFluxos
 } = require('../services/formasPagamentoMedicaoService');
@@ -3252,21 +3251,9 @@ module.exports = {
           tipoSubId: tipo_sub_id
         }
       );
-      const camposFixosDespesaEventual = new Set([
-        'valor',
-        'credor',
-        'favorecido',
-        'forma_pagamento',
-        'apropriacao_principal',
-        'subtipo',
-        'justificativa',
-        'anexos',
-        'data_vencimento'
-      ]);
       const camposFixosRecargaCartao = new Set(['valor', 'data_vencimento']);
       const campoVisivel = (campo) => (
         (usaFluxoRecargaCartao && camposFixosRecargaCartao.has(campo))
-        || (!usaFluxoRecargaCartao && usaFluxoDespesaEventual && camposFixosDespesaEventual.has(campo))
         || (!usaFluxoRecargaCartao && camposNovaSolicitacao?.[campo]?.visivel !== false)
       );
       const exibeFormaPagamentoNaNovaSolicitacao = campoVisivel('forma_pagamento')
@@ -3307,7 +3294,6 @@ module.exports = {
       const campoObrigatorio = (campo) => {
         if (ehMedicaoFluxoNovo && ['valor', 'descricao', 'data_vencimento'].includes(campo)) return false;
         if (usaFluxoRecargaCartao) return camposFixosRecargaCartao.has(campo);
-        if (usaFluxoDespesaEventual && camposFixosDespesaEventual.has(campo)) return true;
         return Boolean(camposNovaSolicitacao?.[campo]?.obrigatorio);
       };
       const rateioApropriacoes = campoVisivel('contrato')
@@ -3826,11 +3812,6 @@ module.exports = {
           .find((forma) => Number(forma.id) === formaPagamentoId) || null;
         if (!Number.isInteger(formaPagamentoId) || !formaPagamentoSelecionada) {
           return res.status(400).json({ error: 'A forma de pagamento informada nao esta ativa ou liberada para este fluxo.' });
-        }
-        if (usaFluxoDespesaEventual && !formaPagamentoPermitidaDespesaEventual(formaPagamentoSelecionada)) {
-          return res.status(400).json({
-            error: 'Despesa Eventual aceita somente PIX, Transferência Bancária ou Boleto.'
-          });
         }
         formaPagamentoIdPersistida = formaPagamentoId;
       }

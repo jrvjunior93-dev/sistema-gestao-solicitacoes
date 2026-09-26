@@ -31,8 +31,8 @@ const CAMPOS_NOVA_SOLICITACAO = [
     id: 'credor',
     label: 'Credor',
     descricao: 'Pessoa ou empresa vinculada como credor.',
-    visivelPadrao: (behavior) => behavior.mostrar_credor !== false,
-    obrigatorioPadrao: (behavior) => Boolean(behavior.exige_credor)
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || behavior.mostrar_credor !== false,
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_credor)
   },
   {
     id: 'cadastro_credor',
@@ -47,30 +47,33 @@ const CAMPOS_NOVA_SOLICITACAO = [
     label: 'Favorecido',
     descricao: 'Pessoa ou empresa que recebera o pagamento.',
     excetoFluxoContratoNovo: true,
-    visivelPadrao: (behavior) => Boolean(behavior.mostrar_favorecido),
-    obrigatorioPadrao: (behavior) => Boolean(behavior.exige_favorecido)
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_favorecido),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_favorecido)
   },
   {
     id: 'forma_pagamento',
     label: 'Forma de pagamento',
     descricao: 'Forma prevista para o pagamento da solicitacao.',
     excetoFluxoContratoNovo: true,
-    visivelPadrao: (behavior) => Boolean(behavior.mostrar_forma_pagamento),
-    obrigatorioPadrao: (behavior) => Boolean(behavior.exige_forma_pagamento)
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_forma_pagamento),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_forma_pagamento)
   },
   {
     id: 'apropriacao_principal',
     label: 'Apropriacao principal',
     descricao: 'Apropriacao da solicitacao na obra.',
-    visivelPadrao: (behavior, contexto) => Boolean(contexto?.apropriacoesDisponiveis && behavior.mostrar_apropriacao_principal),
-    obrigatorioPadrao: (behavior) => Boolean(behavior.exige_apropriacao_principal)
+    visivelPadrao: (behavior, contexto) => Boolean(
+      contexto?.apropriacoesDisponiveis
+      && (behavior.usa_fluxo_despesa_eventual === true || behavior.mostrar_apropriacao_principal)
+    ),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_apropriacao_principal)
   },
   {
     id: 'subtipo',
     label: 'Subtipo',
     descricao: 'Subtipo de contrato ou classificacao complementar.',
-    visivelPadrao: (behavior) => Boolean(behavior.mostrar_subtipo),
-    obrigatorioPadrao: (behavior) => Boolean(behavior.exige_subtipo)
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_subtipo),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_subtipo)
   },
   {
     id: 'contrato',
@@ -94,8 +97,8 @@ const CAMPOS_NOVA_SOLICITACAO = [
     id: 'valor',
     label: 'Valor',
     descricao: 'Valor da solicitacao.',
-    visivelPadrao: (behavior) => Boolean(behavior.mostrar_valor),
-    obrigatorioPadrao: (behavior) => Boolean(behavior.exige_valor)
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_valor),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_valor)
   },
   {
     id: 'data_vencimento',
@@ -194,15 +197,15 @@ const CAMPOS_NOVA_SOLICITACAO = [
     label: 'Justificativa',
     descricao: 'Motivo e necessidade da solicitacao.',
     excetoFluxoContratoNovo: true,
-    visivelPadrao: (behavior) => Boolean(behavior.mostrar_justificativa),
-    obrigatorioPadrao: (behavior) => Boolean(behavior.exige_justificativa)
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_justificativa),
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_justificativa)
   },
   {
     id: 'anexos',
     label: 'Anexos',
     descricao: 'Arquivos anexados na abertura da solicitacao.',
-    visivelPadrao: (behavior) => behavior.mostrar_anexos !== false,
-    obrigatorioPadrao: (behavior) => Boolean(behavior.exige_anexos)
+    visivelPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || behavior.mostrar_anexos !== false,
+    obrigatorioPadrao: (behavior) => behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_anexos)
   }
 ];
 

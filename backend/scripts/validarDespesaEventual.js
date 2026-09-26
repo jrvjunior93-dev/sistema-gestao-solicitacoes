@@ -8,7 +8,6 @@ const {
   obterSaldoPorObra,
   validarDeclaracoes
 } = require('../src/services/despesaEventualService');
-const { formaPagamentoPermitidaDespesaEventual } = require('../src/services/formasPagamentoMedicaoService');
 
 const SUBTIPOS_ESPERADOS = [
   'Serviço Eventual',
@@ -93,15 +92,6 @@ async function executar() {
     );
   }
 
-  assert.strictEqual(formaPagamentoPermitidaDespesaEventual({ nome: 'PIX' }), true);
-  assert.strictEqual(formaPagamentoPermitidaDespesaEventual({ nome: 'Transferência Bancária' }), true);
-  assert.strictEqual(formaPagamentoPermitidaDespesaEventual({ nome: 'Boleto' }), true);
-  assert.strictEqual(
-    formaPagamentoPermitidaDespesaEventual({ nome: 'FOPAG', codigo: 'FOPAG', tipo: 'TRANSFERENCIA' }),
-    false,
-    'FOPAG nao pode se passar pela forma nominal Transferencia Bancaria.'
-  );
-  assert.strictEqual(formaPagamentoPermitidaDespesaEventual({ nome: 'Cartão de crédito' }), false);
   assert.throws(() => validarDeclaracoes({}), /Confirme/);
   assert.deepStrictEqual(validarDeclaracoes({
     despesa_pontual_nao_recorrente: true,

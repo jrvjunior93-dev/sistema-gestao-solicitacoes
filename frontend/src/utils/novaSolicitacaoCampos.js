@@ -120,20 +120,35 @@ function padraoCampo(id, behavior = {}, contexto = {}) {
     case 'area_responsavel':
       return { visivel: true, obrigatorio: true };
     case 'credor':
-      return { visivel: behavior.mostrar_credor !== false, obrigatorio: Boolean(behavior.exige_credor) };
+      return {
+        visivel: behavior.usa_fluxo_despesa_eventual === true || behavior.mostrar_credor !== false,
+        obrigatorio: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_credor)
+      };
     case 'cadastro_credor':
       return { visivel: Boolean(behavior.usa_fluxo_contrato_novo), obrigatorio: false };
     case 'favorecido':
-      return { visivel: Boolean(behavior.mostrar_favorecido), obrigatorio: Boolean(behavior.exige_favorecido) };
+      return {
+        visivel: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_favorecido),
+        obrigatorio: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_favorecido)
+      };
     case 'forma_pagamento':
-      return { visivel: Boolean(behavior.mostrar_forma_pagamento), obrigatorio: Boolean(behavior.exige_forma_pagamento) };
+      return {
+        visivel: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_forma_pagamento),
+        obrigatorio: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_forma_pagamento)
+      };
     case 'apropriacao_principal':
       return {
-        visivel: Boolean(apropriacoesDisponiveis && behavior.mostrar_apropriacao_principal),
-        obrigatorio: Boolean(behavior.exige_apropriacao_principal)
+        visivel: Boolean(
+          apropriacoesDisponiveis
+          && (behavior.usa_fluxo_despesa_eventual === true || behavior.mostrar_apropriacao_principal)
+        ),
+        obrigatorio: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_apropriacao_principal)
       };
     case 'subtipo':
-      return { visivel: Boolean(behavior.mostrar_subtipo), obrigatorio: Boolean(behavior.exige_subtipo) };
+      return {
+        visivel: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_subtipo),
+        obrigatorio: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_subtipo)
+      };
     case 'contrato':
       return { visivel: Boolean(behavior.mostrar_contrato), obrigatorio: Boolean(behavior.exige_contrato) };
     case 'apropriacoes_contrato':
@@ -142,7 +157,10 @@ function padraoCampo(id, behavior = {}, contexto = {}) {
         obrigatorio: Boolean(behavior.exige_apropriacoes_contrato)
       };
     case 'valor':
-      return { visivel: Boolean(behavior.mostrar_valor), obrigatorio: Boolean(behavior.exige_valor) };
+      return {
+        visivel: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_valor),
+        obrigatorio: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_valor)
+      };
     case 'data_vencimento':
       return { visivel: true, obrigatorio: true };
     case 'data_demissao':
@@ -181,9 +199,15 @@ function padraoCampo(id, behavior = {}, contexto = {}) {
     case 'descricao':
       return { visivel: behavior.mostrar_descricao !== false, obrigatorio: Boolean(behavior.exige_descricao) };
     case 'justificativa':
-      return { visivel: Boolean(behavior.mostrar_justificativa), obrigatorio: Boolean(behavior.exige_justificativa) };
+      return {
+        visivel: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.mostrar_justificativa),
+        obrigatorio: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_justificativa)
+      };
     case 'anexos':
-      return { visivel: behavior.mostrar_anexos !== false, obrigatorio: Boolean(behavior.exige_anexos) };
+      return {
+        visivel: behavior.usa_fluxo_despesa_eventual === true || behavior.mostrar_anexos !== false,
+        obrigatorio: behavior.usa_fluxo_despesa_eventual === true || Boolean(behavior.exige_anexos)
+      };
     default:
       return { visivel: true, obrigatorio: false };
   }
@@ -233,7 +257,9 @@ export function normalizarConfigCamposNovaSolicitacao(config) {
       const visivel = boolOrDefault(regraCampo?.visivel, true);
       campos[campoId] = {
         visivel,
-      obrigatorio: ['anexos', 'cadastro_credor'].includes(campoId) ? false : (visivel ? boolOrDefault(regraCampo?.obrigatorio, false) : false)
+        obrigatorio: campoId === 'cadastro_credor'
+          ? false
+          : (visivel ? boolOrDefault(regraCampo?.obrigatorio, false) : false)
       };
     });
     return campos;

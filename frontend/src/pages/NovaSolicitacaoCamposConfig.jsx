@@ -24,6 +24,48 @@ import {
 
 const DESCRICAO = 'Defina, por area e tipo, quais campos aparecem e quais ficam obrigatorios na abertura da solicitacao.';
 
+function filtrarTiposPorArea(listaTipos, regrasTiposPorSetor, area, listaSetores = []) {
+  const areaKey = normalizarAreaNovaSolicitacao(area);
+  const tiposAtivos = Array.isArray(listaTipos)
+    ? listaTipos.filter((tipo) => tipo?.ativo !== false)
+    : [];
+  const tiposPermitidos = Array.isArray(regrasTiposPorSetor?.[areaKey]?.tipos)
+    ? regrasTiposPorSetor[areaKey].tipos.map(Number).filter(Number.isFinite)
+    : [];
+
+  if (tiposPermitidos.length === 0) {
+    return tiposAtivos;
+  }
+
+  const setorSelecionado = (Array.isArray(listaSetores) ? listaSetores : []).find((setor) => (
+    normalizarAreaNovaSolicitacao(setor?.codigo) === areaKey
+  ));
+  const tokensSetorSelecionado = [setorSelecionado?.codigo, setorSelecionado?.nome]
+    .map((valor) => normalizarAreaNovaSolicitacao(valor)
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z0-9]+/g, '_'));
+  const areaEhGerenciaProcessos = setorSelecionado?.eh_setor_geo === true
+    || Number(setorSelecionado?.eh_setor_geo) === 1
+    || tokensSetorSelecionado.some((token) => ['GEO', 'GERENCIA_DE_PROCESSOS'].includes(token));
+  const idsPermitidos = new Set(tiposPermitidos);
+
+  // Tipos cujo fluxo obriga destino na Gerencia de Processos precisam continuar configuraveis
+  // aqui mesmo quando a lista administrativa "Tipos por Setor" ainda nao os menciona. A Nova
+  // Solicitacao ja os oferece pelo catalogo da obra; esconder nesta tela criava uma regra que o
+  // usuario conseguia usar, mas nao conseguia configurar.
+  return tiposAtivos.filter((tipo) => (
+    idsPermitidos.has(Number(tipo.id))
+    || (
+      areaEhGerenciaProcessos
+      && (
+        getTipoSolicitacaoBehavior(tipo).somente_gerencia_processos === true
+        || getTipoSolicitacaoBehavior(tipo).usa_fluxo_despesa_eventual === true
+      )
+    )
+  ));
+}
+
 export default function NovaSolicitacaoCamposConfig() {
   const { user } = useAuth();
   const moduloContratosHabilitado = hasEnabledModule(user, 'CONTRATOS');
@@ -62,7 +104,12 @@ export default function NovaSolicitacaoCamposConfig() {
           ? tiposPorSetorData.regras
           : {};
         const primeiraArea = listaSetores.find((setor) => setor?.codigo)?.codigo || '';
-        const tiposPrimeiraArea = filtrarTiposPorArea(listaTipos, regrasTiposPorSetor, primeiraArea);
+        const tiposPrimeiraArea = filtrarTiposPorArea(
+          listaTipos,
+          regrasTiposPorSetor,
+          primeiraArea,
+          listaSetores
+        );
         setSetores(listaSetores);
         setTipos(listaTipos);
         setTiposPorSetorConfig(regrasTiposPorSetor);
@@ -80,26 +127,9 @@ export default function NovaSolicitacaoCamposConfig() {
     load();
   }, []);
 
-  function filtrarTiposPorArea(listaTipos, regrasTiposPorSetor, area) {
-    const areaKey = normalizarAreaNovaSolicitacao(area);
-    const tiposAtivos = Array.isArray(listaTipos)
-      ? listaTipos.filter((tipo) => tipo?.ativo !== false)
-      : [];
-    const tiposPermitidos = Array.isArray(regrasTiposPorSetor?.[areaKey]?.tipos)
-      ? regrasTiposPorSetor[areaKey].tipos.map(Number).filter(Number.isFinite)
-      : [];
-
-    if (tiposPermitidos.length === 0) {
-      return tiposAtivos;
-    }
-
-    const idsPermitidos = new Set(tiposPermitidos);
-    return tiposAtivos.filter((tipo) => idsPermitidos.has(Number(tipo.id)));
-  }
-
   const tiposDaArea = useMemo(
-    () => filtrarTiposPorArea(tipos, tiposPorSetorConfig, areaSelecionada),
-    [tipos, tiposPorSetorConfig, areaSelecionada]
+    () => filtrarTiposPorArea(tipos, tiposPorSetorConfig, areaSelecionada, setores),
+    [tipos, tiposPorSetorConfig, areaSelecionada, setores]
   );
 
   useEffect(() => {

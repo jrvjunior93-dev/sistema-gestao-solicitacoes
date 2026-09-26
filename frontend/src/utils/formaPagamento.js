@@ -26,15 +26,6 @@ export function formaPagamentoEhTransferencia(forma) {
   return tokens.includes('TRANSFERENCIA') || tokens.includes('TED') || tokens.includes('DOC');
 }
 
-export function formaPagamentoPermitidaDespesaEventual(forma) {
-  const tokens = normalizar([forma?.codigo, forma?.nome].filter(Boolean).join(' '))
-    .split(/[^A-Z0-9]+/)
-    .filter(Boolean);
-  return tokens.includes('PIX')
-    || tokens.includes('BOLETO')
-    || tokens.includes('TRANSFERENCIA');
-}
-
 export function chavePixPreferencial(parceiro) {
   if (!parceiro) return '';
   return [
