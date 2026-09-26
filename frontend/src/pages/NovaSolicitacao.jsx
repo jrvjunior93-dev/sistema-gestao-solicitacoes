@@ -26,7 +26,15 @@ import { listarApropriacoes } from '../services/apropriacoes';
 import { getAutomacaoDestinoNovaSolicitacao, getCamposNovaSolicitacao } from '../services/configuracoesSistema';
 import { useAuth } from '../contexts/AuthContext';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
-import { HiOutlineArrowUturnLeft, HiOutlineClock, HiOutlineMagnifyingGlass, HiPaperClip } from 'react-icons/hi2';
+import {
+  HiOutlineArrowPath,
+  HiOutlineArrowUturnLeft,
+  HiOutlineClock,
+  HiOutlineMagnifyingGlass,
+  HiOutlineUserPlus,
+  HiOutlineXMark,
+  HiPaperClip
+} from 'react-icons/hi2';
 import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
 import OverlayModal from '../components/ui/OverlayModal';
 import ParceiroBuscaRemota from '../components/solicitacoes/ParceiroBuscaRemota';
@@ -149,6 +157,27 @@ function criarChaveIdempotenciaSolicitacao() {
     return crypto.randomUUID();
   }
   return `sol-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function BotaoAcaoCredor({ rotulo, onClick, disabled = false, carregando = false, tipo = 'buscar' }) {
+  const Icone = carregando
+    ? HiOutlineArrowPath
+    : (tipo === 'cadastrar'
+      ? HiOutlineUserPlus
+      : (tipo === 'limpar' ? HiOutlineXMark : HiOutlineMagnifyingGlass));
+  return (
+    <button
+      type="button"
+      className="btn btn-outline btn-sm btn-icon-only nova-solicitacao-credor-action shrink-0"
+      onClick={onClick}
+      disabled={disabled || carregando}
+      title={rotulo}
+      aria-label={rotulo}
+      aria-busy={carregando}
+    >
+      <Icone className={`h-4 w-4${carregando ? ' animate-spin' : ''}`} aria-hidden="true" />
+    </button>
+  );
 }
 
 export default function NovaSolicitacao() {
@@ -2321,22 +2350,27 @@ export default function NovaSolicitacao() {
                 {parceiroSelecionado.nome}
                 {parceiroSelecionado.cpf_cnpj ? ` - ${parceiroSelecionado.cpf_cnpj}` : ''}
               </span>
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
+              <BotaoAcaoCredor
+                tipo="limpar"
+                rotulo="Limpar credor selecionado"
                 onClick={limparParceiroSelecionado}
-              >
-                Limpar
-              </button>
+              />
             </div>
           ) : (
-            <button
-              type="button"
-              className="btn btn-outline btn-sm w-fit"
-              onClick={() => setModalParceiroAberto(true)}
-            >
-              Cadastrar novo credor
-            </button>
+            <div className="flex min-w-0 gap-2 nova-solicitacao-inline-actions nova-solicitacao-credor-row">
+              <input
+                className="input input-sm min-w-0 flex-1"
+                value=""
+                placeholder="Cadastre um novo credor"
+                aria-label="Credor ainda não cadastrado"
+                readOnly
+              />
+              <BotaoAcaoCredor
+                tipo="cadastrar"
+                rotulo="Cadastrar novo credor"
+                onClick={() => setModalParceiroAberto(true)}
+              />
+            </div>
           )}
         </CampoForm>
       );
@@ -2369,7 +2403,7 @@ export default function NovaSolicitacao() {
         {restringirCredorAoContrato ? (
           <>
             <div ref={campoCredorContratoRef} className="relative">
-              <div className="flex gap-2 nova-solicitacao-inline-actions">
+              <div className="flex min-w-0 gap-2 nova-solicitacao-inline-actions nova-solicitacao-credor-row">
                 <input
                   className="input input-sm min-w-0 flex-1"
                   placeholder={!form.contrato_id
@@ -2401,11 +2435,8 @@ export default function NovaSolicitacao() {
                     }
                   }}
                 />
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm shrink-0 px-3"
-                  title="Listar credores do contrato"
-                  aria-label="Listar credores do contrato"
+                <BotaoAcaoCredor
+                  rotulo="Listar credores do contrato"
                   onClick={() => {
                     // O botao mora DENTRO do ref do campo (para o hook nao
                     // fechar a lista quando ele recebe o clique), entao e ele
@@ -2416,17 +2447,20 @@ export default function NovaSolicitacao() {
                     setModalCredoresContratoAberto(true);
                   }}
                   disabled={credoresContratoCampo.length === 0}
-                >
-                  <HiOutlineMagnifyingGlass className="h-4 w-4" />
-                </button>
+                />
+                {exibirCadastroCredor && (
+                  <BotaoAcaoCredor
+                    tipo="cadastrar"
+                    rotulo="Cadastrar novo credor"
+                    onClick={() => setModalParceiroAberto(true)}
+                  />
+                )}
                 {form.parceiro_id && (
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm shrink-0"
+                  <BotaoAcaoCredor
+                    tipo="limpar"
+                    rotulo="Limpar credor selecionado"
                     onClick={limparParceiroSelecionado}
-                  >
-                    Limpar
-                  </button>
+                  />
                 )}
               </div>
 
@@ -2452,21 +2486,12 @@ export default function NovaSolicitacao() {
                 </div>
               )}
             </div>
-            {exibirCadastroCredor && (
-              <button
-                type="button"
-                className="btn btn-outline btn-sm mt-2 w-fit"
-                onClick={() => setModalParceiroAberto(true)}
-              >
-                Cadastrar novo credor
-              </button>
-            )}
           </>
         ) : (
           <>
-            <div className="flex gap-2 nova-solicitacao-inline-actions">
+            <div className="flex min-w-0 gap-2 nova-solicitacao-inline-actions nova-solicitacao-credor-row">
               <input
-                className="input input-sm"
+                className="input input-sm min-w-0 flex-1"
                 placeholder="Buscar credor por nome ou CPF/CNPJ"
                 value={parceiroBusca}
                 onChange={e => {
@@ -2479,23 +2504,31 @@ export default function NovaSolicitacao() {
                     setForm(prev => ({ ...prev, parceiro_id: '' }));
                   }
                 }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void buscarParceirosRelacionados();
+                  }
+                }}
               />
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
+              <BotaoAcaoCredor
+                rotulo={parceiroBuscando ? 'Buscando credores' : 'Buscar credor'}
                 onClick={() => buscarParceirosRelacionados()}
-                disabled={parceiroBuscando}
-              >
-                {parceiroBuscando ? 'Buscando...' : 'Buscar'}
-              </button>
+                carregando={parceiroBuscando}
+              />
+              {exibirCadastroCredor && (
+                <BotaoAcaoCredor
+                  tipo="cadastrar"
+                  rotulo="Cadastrar novo credor"
+                  onClick={() => setModalParceiroAberto(true)}
+                />
+              )}
               {form.parceiro_id && (
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
+                <BotaoAcaoCredor
+                  tipo="limpar"
+                  rotulo="Limpar credor selecionado"
                   onClick={limparParceiroSelecionado}
-                >
-                  Limpar
-                </button>
+                />
               )}
             </div>
 
@@ -2519,28 +2552,10 @@ export default function NovaSolicitacao() {
                 <span>
                   Nenhum credor encontrado.
                 </span>
-                {exibirCadastroCredor ? (
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm w-fit"
-                    onClick={() => setModalParceiroAberto(true)}
-                  >
-                    Cadastrar credor
-                  </button>
-                ) : (
+                {!exibirCadastroCredor && (
                   <span>Solicite ao setor de Gerência de Processo o cadastro do credor.</span>
                 )}
               </div>
-            )}
-
-            {exibirCadastroCredor && !parceiroSelecionado && !parceiroBuscaExecutada && (
-              <button
-                type="button"
-                className="btn btn-outline btn-sm mt-2 w-fit"
-                onClick={() => setModalParceiroAberto(true)}
-              >
-                Cadastrar novo credor
-              </button>
             )}
           </>
         )}

@@ -3242,6 +3242,21 @@ a:hover {
   font-size: var(--fonte-detalhe);
 }
 
+.solicitacao-nova-page .nova-solicitacao-inline-actions .nova-solicitacao-credor-action {
+  width: 2.15rem;
+  min-width: 2.15rem;
+  padding: 0;
+}
+
+.solicitacao-nova-page .nova-solicitacao-credor-row {
+  flex-wrap: nowrap;
+}
+
+.solicitacao-nova-page .nova-solicitacao-credor-row .input {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .solicitacao-nova-page .nova-solicitacao-selection-card {
   border-radius: 12px;
   padding: 0.55rem 0.65rem;
