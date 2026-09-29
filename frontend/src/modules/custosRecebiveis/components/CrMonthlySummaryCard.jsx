@@ -5,6 +5,7 @@ import {
   HiOutlinePencilSquare
 } from 'react-icons/hi2';
 import { COMPETENCIA_ESTADO_LABELS } from '../constants/custosRecebiveis';
+import CrIconAction from './CrIconAction';
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -35,7 +36,9 @@ export default function CrMonthlySummaryCard({
   glosa = 0,
   onOpen,
   onEditPlanning,
+  editDisabledReason = '',
   onOpenApproved,
+  approvedDisabledReason = '',
   onRequestReopening,
   reopeningDisabled = false,
   reopeningActionLabel = 'Solicitar reabertura',
@@ -127,50 +130,46 @@ export default function CrMonthlySummaryCard({
           <span>{isPublic ? 'Obra pública' : 'Obra privada'}</span>
         </div>
         <div className="cr-period-card__actions">
+          {/* Ordem fixa: editar, aprovação, reabertura, detalhes. Com motivo
+              de indisponibilidade o ícone aparece apagado e o tooltip diz
+              por quê — a posição dos quatro nunca muda entre cards. */}
           {onEditPlanning ? (
-            <button
-              type="button"
-              className="cr-icon-button"
+            <CrIconAction
+              icon={HiOutlinePencilSquare}
+              label="Editar planejamento"
               onClick={onEditPlanning}
-              aria-label={`Editar planejamento de ${title}`}
-              title="Editar planejamento"
-            >
-              <HiOutlinePencilSquare aria-hidden="true" />
-            </button>
+              disabled={Boolean(editDisabledReason)}
+              disabledReason={editDisabledReason}
+              contextLabel={title}
+            />
           ) : null}
           {onOpenApproved ? (
-            <button
-              type="button"
-              className="cr-icon-button"
+            <CrIconAction
+              icon={HiOutlineClipboardDocumentCheck}
+              label={approvedLabel}
               onClick={onOpenApproved}
-              aria-label={`${approvedLabel} de ${title}`}
-              title={approvedLabel}
-            >
-              <HiOutlineClipboardDocumentCheck aria-hidden="true" />
-            </button>
+              disabled={Boolean(approvedDisabledReason)}
+              disabledReason={approvedDisabledReason}
+              contextLabel={title}
+            />
           ) : null}
           {onRequestReopening ? (
-            <button
-              type="button"
-              className="cr-icon-button"
+            <CrIconAction
+              icon={HiOutlineLockOpen}
+              label="Solicitar reabertura"
               onClick={onRequestReopening}
               disabled={reopeningDisabled}
-              aria-label={`${reopeningActionLabel} de ${title}`}
-              title={reopeningActionLabel}
-            >
-              <HiOutlineLockOpen aria-hidden="true" />
-            </button>
+              disabledReason={reopeningActionLabel}
+              contextLabel={title}
+            />
           ) : null}
           {onOpen ? (
-            <button
-              type="button"
-              className="cr-icon-button"
+            <CrIconAction
+              icon={HiOutlineEye}
+              label={actionLabel}
               onClick={onOpen}
-              aria-label={`${actionLabel} de ${title}`}
-              title={actionLabel}
-            >
-              <HiOutlineEye aria-hidden="true" />
-            </button>
+              contextLabel={title}
+            />
           ) : null}
         </div>
       </footer>

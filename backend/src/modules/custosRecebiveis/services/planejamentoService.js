@@ -9,6 +9,7 @@ const {
   prazoCompetencia
 } = require('./obrigacaoService');
 const { totalTitulosEmitidosPorCompetencia } = require('./realizadoService');
+const { competenciasLiberadasObra } = require('./prazoService');
 
 const VALID_COMPETENCIA = /^\d{4}-(0[1-9]|1[0-2])$/;
 const CONTRACT_ACTIVE_STATUSES = ['RASCUNHO', 'ATIVO', 'INADIMPLENTE', 'QUITADO'];
@@ -35,6 +36,7 @@ function dependencies(overrides = {}) {
     User: db.User,
     listarMinhasObrigacoes,
     resolverEscopoObras,
+    competenciasLiberadasObra,
     ...overrides
   };
 }
@@ -108,14 +110,17 @@ function competenciaSeguinte(competencia) {
     : `${year}-${String(month + 1).padStart(2, '0')}`;
 }
 
-function assertCompetenciaNovoMes(competencia, now = new Date()) {
-  const atual = competenciaAtual(now);
-  const permitidas = [atual, competenciaSeguinte(atual)];
+// `permitidas` vem de prazoService.competenciasLiberadas: as competencias
+// atrasadas ainda sem registro e a competencia cuja janela de planejamento
+// ja abriu (dia 25 do mes anterior, no padrao).
+function assertCompetenciaNovoMes(competencia, permitidas = []) {
   if (!permitidas.includes(competencia)) {
     throw createBusinessError(
       422,
       'CR_COMPETENCIA_FORA_JANELA',
-      `Novo mes permite somente as competencias ${permitidas.join(' ou ')}.`
+      permitidas.length
+        ? `Novo mes permite somente: ${permitidas.join(', ')}.`
+        : 'Nenhuma competencia liberada para esta obra no momento.'
     );
   }
   return permitidas;
@@ -456,7 +461,10 @@ async function getOrCreateCompetencia(obraId, competencia, deps, transaction) {
 async function assertEditable(competencia, deps, transaction) {
   if (!competencia) return;
   const expired = prazoCompetencia(competencia.competencia) <= new Date();
-  if (competencia.estado === 'FINALIZADA' || expired) {
+  const reopened = competencia.estado === 'REABERTA';
+  // REABERTA tambem precisa consultar a reabertura vigente: antes, um mes
+  // finalizado e reaberto DENTRO do prazo caia direto no erro de expiracao.
+  if (competencia.estado === 'FINALIZADA' || reopened || expired) {
     const validReopening = await deps.CrReabertura.findOne({
       where: {
         competencia_id: competencia.id,
@@ -468,19 +476,19 @@ async function assertEditable(competencia, deps, transaction) {
       lock: transaction?.LOCK?.UPDATE
     });
     if (validReopening) return;
+    if (reopened) {
+      throw createBusinessError(
+        409,
+        'CR_REABERTURA_EXPIRADA',
+        'A janela aprovada de reabertura expirou. Solicite uma nova reabertura.'
+      );
+    }
     throw createBusinessError(
       409,
       expired ? 'CR_COMPETENCIA_VENCIDA' : 'CR_COMPETENCIA_IMUTAVEL',
       expired
         ? 'O prazo da competencia venceu. Solicite e aprove uma reabertura antes de editar.'
         : 'A competencia esta finalizada. Solicite e aprove uma reabertura antes de editar.'
-    );
-  }
-  if (competencia.estado === 'REABERTA') {
-    throw createBusinessError(
-      409,
-      'CR_REABERTURA_EXPIRADA',
-      'A janela aprovada de reabertura expirou. Solicite uma nova reabertura.'
     );
   }
 }
@@ -655,8 +663,15 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
       ? null
       : mappedReopeningState;
     const expired = prazoCompetencia(row.competencia) <= now;
+    const activeApprovedReopening = mappedReopeningState === 'APROVADA';
     return {
       ...serializeCompetencia(row),
+      // Mesmo criterio de assertEditable, mas mes FINALIZADO nunca e
+      // "planejamento a editar": o caminho dele e a reabertura.
+      planejamento_editavel: row.estado !== 'FINALIZADA' && (
+        activeApprovedReopening
+        || (['ABERTA', 'EM_PREENCHIMENTO'].includes(row.estado) && !expired)
+      ),
       medicao_apresentada: presented,
       medicao_aprovada: hasApprovedMeasurement ? approved : null,
       glosa: hasApprovedMeasurement ? money(Math.max(0, presented - approved)) : null,
@@ -669,11 +684,10 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
       )
     };
   });
-  const atual = competenciaAtual();
   return {
     obra: serializeObra(obra),
     items,
-    competencias_permitidas: [atual, competenciaSeguinte(atual)]
+    competencias_permitidas: await deps.competenciasLiberadasObra(obraId)
   };
 }
 
@@ -695,8 +709,8 @@ async function criarCompetencia(
       'Idempotency-Key e obrigatoria para criar a competencia.'
     );
   }
-  assertCompetenciaNovoMes(competenciaCode);
   await assertScope(user, obraId, deps);
+  assertCompetenciaNovoMes(competenciaCode, await deps.competenciasLiberadasObra(obraId));
 
   return deps.sequelize.transaction(async (transaction) => {
     await findObra(obraId, deps, { transaction, lock: transaction.LOCK.UPDATE });
@@ -2716,6 +2730,7 @@ async function decidirReabertura(user, reaberturaIdValue, payload = {}, override
 module.exports = {
   CONTRACT_ACTIVE_STATUSES,
   assertCompetenciaNovoMes,
+  assertEditable,
   competenciaAtual,
   competenciaSeguinte,
   consolidarMedicao,

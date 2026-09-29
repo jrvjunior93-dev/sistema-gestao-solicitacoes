@@ -544,6 +544,32 @@ O frontend possui as abas `Configuracoes` e `Auditoria`, exibidas somente pelas
 permissoes `custos_recebiveis.configuracoes.gerenciar` e
 `custos_recebiveis.auditoria.visualizar`.
 
+## Reforma 2026-09 - prazos e tela do engenheiro (Fase 1)
+
+Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
+`docs/handoffs/2026-09-29-custos-recebiveis-reforma.md`):
+
+- Janela de planejamento da competencia M: dia 25 do mes anterior (00:00) ate o
+  dia 5 de M (23:59:59), horario de Brasilia, sem antecipar por fim de semana ou
+  feriado.
+- Medicao aprovada (somente obra publica): 40 dias contados do dia 1o da
+  competencia (marco -> ate 10/04 23:59:59).
+- Os dois prazos sao o padrao; a configuracao por obra entra na Fase 2.
+- Calculo em `services/prazoService.js` (Brasilia = UTC-3 fixo, sem depender do
+  fuso do servidor). `GET /obras` devolve `prazos` por obra:
+  `planejamento` (`ABERTO`, `VENCIDO`, `AGUARDANDO_JANELA`, `SEM_ESTRUTURA`),
+  `medicao` (`ABERTO`, `VENCIDO`, `EM_DIA`; `null` em obra privada) e `travada`
+  (sempre `false` ate a Fase 3).
+- "Novo mes" libera as competencias atrasadas ainda sem registro e a competencia
+  cuja janela ja abriu (`competencias_permitidas`); `POST /competencias` recusa
+  as demais com `CR_COMPETENCIA_FORA_JANELA`.
+- `GET /obras/:obraId/competencias` devolve `planejamento_editavel` por mes: so
+  e verdadeiro com planejamento aberto (ou reaberto com reabertura vigente) e
+  nao finalizado.
+- Ate a Fase 3 o bloqueio de edicao por prazo (`assertEditable`) continua usando
+  o prazo antigo (ultimo dia util do mes, 18h). Correcao: mes REABERTO dentro do
+  prazo voltou a ser editavel com a reabertura vigente.
+
 ## Regras de evolucao
 
 - Cada fase funcional deve ser entregue e aceita separadamente.
@@ -566,6 +592,7 @@ npm.cmd run test:custos-recebiveis-fase2
 npm.cmd run test:custos-recebiveis-fase3
 npm.cmd run test:custos-recebiveis-fase4
 npm.cmd run test:custos-recebiveis-prontidao
+npm.cmd run test:custos-recebiveis-prazos
 npm.cmd run test:docs
 npm.cmd run test:compra-cotacao-envio
 npm.cmd run test:compra-remanejamento

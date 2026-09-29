@@ -47,13 +47,18 @@ function validateCompetenciaBoundaries() {
     nextMonth: '2027-01-01'
   });
   assert.throws(() => normalizeCompetencia('08/2026'), /Competencia invalida/);
+  // A lista de liberadas vem de prazoService (ver validarPrazos.js).
   assert.deepStrictEqual(
-    assertCompetenciaNovoMes('2026-08', new Date('2026-07-15T12:00:00-03:00')),
+    assertCompetenciaNovoMes('2026-08', ['2026-07', '2026-08']),
     ['2026-07', '2026-08']
   );
   assert.throws(
-    () => assertCompetenciaNovoMes('2026-09', new Date('2026-07-15T12:00:00-03:00')),
+    () => assertCompetenciaNovoMes('2026-09', ['2026-07', '2026-08']),
     /Novo mes permite somente/
+  );
+  assert.throws(
+    () => assertCompetenciaNovoMes('2026-09', []),
+    /Nenhuma competencia liberada/
   );
   assert.deepStrictEqual(
     dashboardCompetencias('2026-02'),
@@ -253,12 +258,16 @@ function validateFrontendContracts() {
   assert(page.includes('<CrPlanejamentoMensalView'));
   assert(page.includes('<CrComparativoView'));
   assert(page.includes("activeTab !== 'obras'"));
-  assert(page.includes('cardMode={isObraUser}'));
-  assert(page.includes('onEditPlanning={handleEditPlanning}'));
+  // Reforma 29/09: todo engenheiro entra pelos cards de obra (nome, codigo,
+  // situacao e os dois avisos de prazo) e chega aos meses clicando no card.
+  assert(page.includes('cardMode={obraExperience}'));
+  assert(page.includes("tab.id !== 'planejamento'"));
   assert(page.includes('onRequestReopen={handleRequestReopening}'));
-  assert(worksView.includes('Editar planejamento'));
-  assert(worksView.includes('Solicitar reabertura'));
-  assert(worksView.includes('cr-period-card cr-work-card'));
+  assert(page.includes('prazos={selectedObra?.prazos || null}'));
+  assert(worksView.includes('function ObraCard'));
+  assert(worksView.includes('avisoPlanejamento(obra.prazos)'));
+  assert(worksView.includes('avisoMedicao(obra.prazos)'));
+  assert(worksView.includes('<BarraFiltros'));
   assert(planning.includes('PUBLIC_STEPS'));
   assert(planning.includes('PRIVATE_STEPS'));
   assert(planning.includes("label: 'Custos planejados'"));
@@ -296,14 +305,15 @@ function validateFrontendContracts() {
   assert(monthlyPlanning.includes("obra?.classificacao === 'PUBLICA'"));
   assert(monthlyPlanning.includes('<CrMonthlySummaryCard'));
   assert(monthlyPlanning.includes('<CrMonthlyDetailView'));
-  assert(monthlyPlanning.includes('cr-planning-deadline'));
+  assert(monthlyPlanning.includes('cr-deadline-strip'));
+  assert(monthlyPlanning.includes('editBlockReason(item)'));
   assert(monthlySummary.includes('Custo planejado'));
   assert(monthlySummary.includes('Recebível previsto'));
   assert(monthlySummary.includes('Desvio de custo'));
   assert(monthlySummary.includes('Saldo a receber'));
-  assert(monthlySummary.includes('className="cr-icon-button"'));
-  assert(monthlySummary.includes('aria-label={`${approvedLabel} de ${title}`}'));
-  assert(monthlyDetail.includes('aria-label="Editar planejamento"'));
+  assert(monthlySummary.includes('<CrIconAction'));
+  assert(monthlySummary.includes('disabled={Boolean(editDisabledReason)}'));
+  assert(monthlyDetail.includes('label="Editar planejamento"'));
   assert(monthlyDetail.includes('aria-label="Voltar aos meses"'));
   assert(dashboard.includes('Pontos de atenção'));
   assert(dashboard.includes('Evolução de custos'));
@@ -335,11 +345,10 @@ function validateFrontendContracts() {
   assert(worksView.includes('obra.contrato'));
   assert(worksView.includes('obra.valor_orcado'));
   assert(worksView.includes('obra.responsavel'));
-  assert(worksView.includes('obra.resumo_competencia'));
-  assert(worksView.includes('Resumo da competência atual'));
-  assert(worksView.includes('Custo planejado'));
-  assert(worksView.includes('Saldo a receber'));
-  assert(worksView.includes('Editar planejamento'));
+  // O card de obra nao mostra numeros de competencia (decisao de 29/09).
+  assert(!worksView.includes('resumo_competencia'));
+  assert(!worksView.includes('Custo planejado'));
+  assert(!worksView.includes('Saldo a receber'));
   assert(!worksView.includes('<th>Contrato</th>'));
   assert(!worksView.includes('<dt>Contrato</dt>'));
   assert(!worksView.includes('Remover'));
@@ -361,8 +370,9 @@ function validateFrontendContracts() {
   assert(monthlyPlanning.includes("realized: 'realized'"));
   assert(monthlyPlanning.includes("comparison: 'comparison'"));
   assert(comparison.includes('Comparativo operacional por item'));
-  assert(comparison.includes('<th>Medição prevista</th>'));
-  assert(comparison.includes('<th>Medição aprovada</th>'));
+  // Tabela migrou para TabelaPadrao: colunas declaradas por `titulo`.
+  assert(comparison.includes("titulo: 'Medição prevista'"));
+  assert(comparison.includes("titulo: 'Medição aprovada'"));
   assert(comparison.includes('data?.linhas_medicao || []'));
   assert(planningImport.includes('Validar novamente'));
 }
@@ -626,17 +636,19 @@ async function validateFinalizationIdempotency() {
 
 async function validateFinalizedCompetencyIsImmutable() {
   let replacedRows = 0;
+  // Competencia futura: com um mes ja vencido o erro seria de prazo, nao de
+  // imutabilidade, e o teste passaria a depender da data em que roda.
   const finalized = {
     id: 41,
     obra_id: 7,
-    competencia: '2026-08',
+    competencia: '2999-08',
     estado: 'FINALIZADA'
   };
   await assert.rejects(
     () => salvarCustos(
       { id: 1 },
       7,
-      '2026-08',
+      '2999-08',
       { itens: [] },
       {
         sequelize: transactionHarness(),

@@ -3,14 +3,15 @@ import { Link } from 'react-router-dom';
 import {
   HiOutlineArrowTopRightOnSquare,
   HiOutlineBuildingOffice2,
-  HiOutlineEye,
-  HiOutlineLockOpen,
-  HiOutlineMagnifyingGlass,
-  HiOutlinePencilSquare
+  HiOutlineMagnifyingGlass
 } from 'react-icons/hi2';
-import { TabelaPadrao, CelulaDupla } from '../../../components/padrao';
-import { COMPETENCIA_ESTADO_LABELS } from '../constants/custosRecebiveis';
-import CrReopeningRequestModal from './CrReopeningRequestModal';
+import {
+  BarraFiltros,
+  TabelaPadrao,
+  CelulaDupla,
+  alternarValorFiltro
+} from '../../../components/padrao';
+import { avisoMedicao, avisoPlanejamento, situacaoObra } from '../utils/prazos';
 import CrStatusPill from './CrStatusPill';
 
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -38,152 +39,107 @@ function BudgetStatus({ obra }) {
   return <CrStatusPill status={value.status} label={value.label} />;
 }
 
-function monthLabel(value) {
-  if (!/^\d{4}-\d{2}$/.test(String(value || ''))) return 'Competência não informada';
-  const [year, month] = String(value).split('-').map(Number);
-  return new Intl.DateTimeFormat('pt-BR', {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC'
-  }).format(new Date(Date.UTC(year, month - 1, 1)));
-}
-
-function WorkMetric({ label, value, tone = 'neutral' }) {
+function Aviso({ aviso }) {
+  if (!aviso) return null;
   return (
-    <div className="cr-period-card__metric" data-tone={tone}>
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
+    <span className="cr-obra-card__aviso" data-tone={aviso.tone}>
+      <small>{aviso.rotulo}</small>
+      <span>{aviso.texto}</span>
+    </span>
   );
 }
 
-function WorkCard({
-  obra,
-  competencia,
-  canEditPlanning,
-  canRequestReopen,
-  onOpen,
-  onEditPlanning,
-  onOpenReopening
-}) {
-  const month = obra.competencia_atual?.competencia
-    || obra.competencia_referencia
-    || competencia;
-  const state = obra.competencia_atual?.estado || 'NAO_INICIADA';
-  const budget = BUDGET_STATUS[obra.situacao_orcamento] || BUDGET_STATUS.PENDENTE;
-  const reopeningAllowed = obra.reabertura_permitida === true;
-  const summary = obra.resumo_competencia || {};
-  const isPublic = String(obra.classificacao || '').toUpperCase() === 'PUBLICA';
-  const plannedCost = Number(summary.custo_planejado || 0);
-  const realizedCost = Number(summary.custo_realizado || 0);
-  const expectedReceivable = Number(summary.recebivel_previsto || 0);
-  const recognizedReceivable = Number(summary.recebivel_reconhecido || 0);
-  const receivedRevenue = Number(summary.receita_recebida || 0);
-  const costDelta = realizedCost - plannedCost;
-  const balance = Math.max(0, recognizedReceivable - receivedRevenue);
-  const hasApprovedMeasurement = !isPublic || summary.medicao_aprovada != null;
-  const glosa = Number(summary.glosa || 0);
+function ObraCard({ obra, onOpen }) {
+  const situacao = situacaoObra(obra.prazos);
+  const planejamento = avisoPlanejamento(obra.prazos);
+  const medicao = avisoMedicao(obra.prazos);
+  return (
+    <button
+      type="button"
+      className="cr-obra-card"
+      data-status={situacao.status}
+      onClick={() => onOpen(obra.id)}
+      aria-label={`Abrir meses de ${obra.nome}`}
+    >
+      <span className="cr-obra-card__header">
+        <span>
+          <small>{obra.codigo || `OBRA ${obra.id}`}</small>
+          <strong title={obra.nome}>{obra.nome}</strong>
+        </span>
+        <CrStatusPill status={situacao.status} label={situacao.label} />
+      </span>
+      {obra.prazos ? (
+        <span className="cr-obra-card__avisos">
+          <Aviso aviso={planejamento} />
+          <Aviso aviso={medicao} />
+        </span>
+      ) : (
+        <span className="cr-obra-card__sem-prazo">Prazos indisponíveis</span>
+      )}
+    </button>
+  );
+}
+
+function normalize(value) {
+  return String(value || '').trim().toLocaleLowerCase('pt-BR');
+}
+
+function EngineerWorks({ obras, loading, error, onReload, onOpen }) {
+  const [busca, setBusca] = useState('');
+  const [ativos, setAtivos] = useState({});
+  const query = normalize(busca);
+  const selecionadas = ativos.obra || new Set();
+
+  const matchesQuery = (obra) => !query
+    || normalize(obra.nome).includes(query)
+    || normalize(obra.codigo).includes(query);
+  // Busca e lista funcionam juntas: o texto estreita os cards E as opções da
+  // lista; a lista escolhe obras específicas dentro do que sobrou.
+  const opcoesObra = (Array.isArray(obras) ? obras : [])
+    .filter((obra) => matchesQuery(obra) || selecionadas.has(String(obra.id)))
+    .map((obra) => ({ valor: String(obra.id), rotulo: obra.nome }));
+  const filtered = (Array.isArray(obras) ? obras : []).filter((obra) => (
+    matchesQuery(obra) && (!selecionadas.size || selecionadas.has(String(obra.id)))
+  ));
 
   return (
-    <article className="cr-period-card cr-work-card">
-      <header className="cr-period-card__header">
-        <div>
-          <span>{obra.codigo || `OBRA ${obra.id}`} · {obra.cidade || 'Cidade não informada'}</span>
-          <h3 title={obra.nome}>{obra.nome}</h3>
-        </div>
-        <CrStatusPill
-          status={state}
-          label={COMPETENCIA_ESTADO_LABELS[state] || state}
-        />
-      </header>
+    <section className="cr-section">
+      <BarraFiltros
+        busca={{ valor: busca, aoMudar: setBusca, placeholder: 'Nome ou código da obra' }}
+        filtros={[{ id: 'obra', rotulo: 'Obra', opcoes: opcoesObra }]}
+        ativos={ativos}
+        aoAlternar={(dimensao, valor, opcoes) => setAtivos(
+          (current) => alternarValorFiltro(current, dimensao, valor, opcoes)
+        )}
+        aoLimpar={() => {
+          setBusca('');
+          setAtivos({});
+        }}
+      />
 
-      <dl className="cr-period-card__metrics cr-work-card__context">
-        <WorkMetric label="Valor contratado" value={currency.format(obra.contrato?.valor_total || 0)} />
-        <WorkMetric label="Orçamento da obra" value={currency.format(obra.valor_orcado || 0)} />
-        <WorkMetric label="Responsável" value={obra.responsavel?.nome || 'Não definido'} />
-        <WorkMetric label="Competência" value={monthLabel(month)} />
-      </dl>
-
-      <div className="cr-work-card__month-label">Resumo da competência atual</div>
-      <dl className="cr-period-card__metrics cr-work-card__month-metrics">
-        <WorkMetric label="Custo planejado" value={currency.format(plannedCost)} />
-        <WorkMetric
-          label={isPublic ? 'Medição prevista' : 'Recebível previsto'}
-          value={currency.format(expectedReceivable)}
-        />
-        <WorkMetric label="Custo realizado" value={currency.format(realizedCost)} tone="positive" />
-        <WorkMetric
-          label={isPublic ? 'Medição aprovada' : 'Receita recebida'}
-          value={isPublic && !hasApprovedMeasurement
-            ? 'Aguardando'
-            : currency.format(isPublic ? recognizedReceivable : receivedRevenue)}
-          tone={isPublic && !hasApprovedMeasurement
-            ? 'warning'
-            : (isPublic ? 'context' : 'positive')}
-        />
-        <WorkMetric
-          label="Desvio de custo"
-          value={currency.format(costDelta)}
-          tone={costDelta > 0 ? 'negative' : (costDelta < 0 ? 'context' : 'neutral')}
-        />
-        <WorkMetric
-          label={isPublic ? 'Receita recebida' : 'Saldo a receber'}
-          value={currency.format(isPublic ? receivedRevenue : balance)}
-          tone={isPublic ? 'positive' : (balance > 0 ? 'warning' : 'neutral')}
-        />
-      </dl>
-
-      <footer className="cr-period-card__footer cr-work-card__footer">
-        <div className="cr-period-card__signals">
-          {isPublic && glosa > 0 ? (
-            <span data-tone="negative">Glosa {currency.format(glosa)}</span>
-          ) : null}
-          {isPublic && hasApprovedMeasurement ? (
-            <span data-tone={balance > 0 ? 'warning' : 'neutral'}>
-              Saldo a receber {currency.format(balance)}
-            </span>
-          ) : null}
-          <ClassificationPill value={obra.classificacao} />
-          <span>{budget.label}</span>
+      {error ? (
+        <div className="cr-feedback" data-tone="error">
+          <div>
+            <strong>Não foi possível carregar as obras.</strong>
+            <span>{error}</span>
+          </div>
+          <button type="button" className="btn btn-outline" onClick={onReload}>Tentar novamente</button>
         </div>
-        <div className="cr-period-card__actions">
-          {canEditPlanning ? (
-            <button
-              type="button"
-              className="cr-icon-button"
-              onClick={() => onEditPlanning(obra.id, month)}
-              aria-label={`Editar planejamento de ${obra.nome}`}
-              title="Editar planejamento"
-            >
-              <HiOutlinePencilSquare aria-hidden="true" />
-            </button>
-          ) : null}
-          {canRequestReopen ? (
-            <button
-              type="button"
-              className="cr-icon-button"
-              onClick={() => onOpenReopening(obra, month)}
-              disabled={!reopeningAllowed}
-              aria-label={`Solicitar reabertura de ${obra.nome}`}
-              title={reopeningAllowed
-                ? 'Solicitar reabertura desta competência'
-                : 'Disponível quando a competência estiver finalizada ou vencida'}
-            >
-              <HiOutlineLockOpen aria-hidden="true" />
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="cr-icon-button"
-            onClick={() => onOpen(obra.id)}
-            aria-label={`Ver competências de ${obra.nome}`}
-            title="Ver competências"
-          >
-            <HiOutlineEye aria-hidden="true" />
-          </button>
+      ) : loading ? (
+        <div className="cr-empty-state">Carregando obras...</div>
+      ) : filtered.length === 0 ? (
+        <div className="cr-empty-state">
+          <HiOutlineBuildingOffice2 className="h-6 w-6" />
+          <strong>Nenhuma obra encontrada</strong>
         </div>
-      </footer>
-    </article>
+      ) : (
+        <div className="cr-obra-card-grid">
+          {filtered.map((obra) => (
+            <ObraCard key={obra.id} obra={obra} onOpen={onOpen} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -194,17 +150,11 @@ export default function CrObrasView({
   onReload,
   onOpen,
   cardMode = false,
-  competencia = '',
-  canEditPlanning = false,
-  canRequestReopen = false,
-  onEditPlanning,
-  onRequestReopen,
   showAdministrationLink = false
 }) {
   const [busca, setBusca] = useState('');
   const [classificacao, setClassificacao] = useState('');
   const [situacao, setSituacao] = useState('');
-  const [reopeningTarget, setReopeningTarget] = useState(null);
 
   const filtered = useMemo(() => {
     const query = String(busca || '').trim().toLocaleLowerCase('pt-BR');
@@ -226,8 +176,16 @@ export default function CrObrasView({
     });
   }, [busca, classificacao, obras, situacao]);
 
-  function openReopening(obra, targetCompetencia) {
-    setReopeningTarget({ obra, competencia: targetCompetencia });
+  if (cardMode) {
+    return (
+      <EngineerWorks
+        obras={obras}
+        loading={loading}
+        error={error}
+        onReload={onReload}
+        onOpen={onOpen}
+      />
+    );
   }
 
   return (
@@ -292,24 +250,6 @@ export default function CrObrasView({
           <strong>Nenhuma obra encontrada</strong>
           <span>Ajuste os filtros ou solicite o vínculo da obra ao administrador.</span>
         </div>
-      ) : cardMode ? (
-        <>
-          <div className="cr-portfolio-planning__grid cr-work-card-grid">
-            {filtered.map((obra) => (
-              <WorkCard
-                key={obra.id}
-                obra={obra}
-                competencia={competencia}
-                canEditPlanning={canEditPlanning}
-                canRequestReopen={canRequestReopen}
-                onOpen={onOpen}
-                onEditPlanning={onEditPlanning}
-                onOpenReopening={openReopening}
-              />
-            ))}
-          </div>
-          <div className="cr-result-count">{filtered.length} obra(s) exibida(s)</div>
-        </>
       ) : (
         <>
           <TabelaPadrao
@@ -372,12 +312,6 @@ export default function CrObrasView({
           <div className="cr-result-count">{filtered.length} obra(s) exibida(s)</div>
         </>
       )}
-
-      <CrReopeningRequestModal
-        target={reopeningTarget}
-        onClose={() => setReopeningTarget(null)}
-        onSubmit={onRequestReopen}
-      />
     </section>
   );
 }

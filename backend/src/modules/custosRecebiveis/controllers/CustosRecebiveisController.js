@@ -37,6 +37,7 @@ const {
   reprocessarRealizados
 } = require('../services/realizadoService');
 const { gerarExportacao } = require('../services/exportacaoService');
+const { calcularPrazosObras } = require('../services/prazoService');
 const {
   concederBypass,
   listarBypasses,
@@ -96,11 +97,15 @@ class CustosRecebiveisController {
       const summaryByWork = new Map(
         summaries.map((item) => [Number(item.obra?.id), item])
       );
+      const prazosByWork = result.items?.length
+        ? await calcularPrazosObras(result.items)
+        : new Map();
       return res.json({
         ...result,
         items: (result.items || []).map((obra) => ({
           ...obra,
-          resumo_competencia: summaryByWork.get(Number(obra.id)) || null
+          resumo_competencia: summaryByWork.get(Number(obra.id)) || null,
+          prazos: prazosByWork.get(Number(obra.id)) || null
         }))
       });
     } catch (error) {

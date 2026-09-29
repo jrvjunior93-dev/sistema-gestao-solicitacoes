@@ -4722,3 +4722,218 @@
   .cr-month-detail-tabs button,
   .cr-work-access-card .btn { min-height: 44px; }
 }
+
+/* ============================================================================
+   Reforma Custos e Recebiveis — Fase 1 (29/09/2026)
+   Cards de obra do engenheiro, faixa de prazos da obra e acoes de icone do
+   card de mes (44px, estado indisponivel legivel a distancia, tooltip).
+============================================================================ */
+.cr-obra-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: 12px;
+}
+
+.cr-obra-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--cr-border);
+  border-left: 4px solid var(--cr-border-strong);
+  border-radius: 11px;
+  background: var(--cr-surface);
+  color: var(--cr-text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.cr-obra-card:hover {
+  border-color: color-mix(in srgb, var(--cr-primary) 45%, var(--cr-border));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--cr-ink) 10%, transparent);
+}
+
+.cr-obra-card:focus-visible {
+  outline: 2px solid var(--cr-primary);
+  outline-offset: 2px;
+}
+
+.cr-obra-card[data-status="VENCIDA"],
+.cr-obra-card[data-status="TRAVADA"] { border-left-color: var(--cr-danger); }
+.cr-obra-card[data-status="PRAZO_PROXIMO"] { border-left-color: var(--cr-warning); }
+.cr-obra-card[data-status="ABERTO"] { border-left-color: var(--cr-accent); }
+.cr-obra-card[data-status="CUMPRIDA"] { border-left-color: var(--cr-success); }
+
+.cr-obra-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cr-obra-card__header > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cr-obra-card__header small {
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+
+.cr-obra-card__header strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: var(--fonte-corpo);
+  font-weight: 800;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.cr-obra-card__header .cr-status-pill {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.cr-obra-card__avisos {
+  display: grid;
+  gap: 6px;
+}
+
+.cr-obra-card__aviso {
+  display: grid;
+  gap: 1px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cr-muted) 8%, transparent);
+  font-size: var(--fonte-corpo);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.cr-obra-card__aviso small {
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+
+.cr-obra-card__aviso[data-tone="info"] { color: var(--cr-accent); background: color-mix(in srgb, var(--cr-accent) 8%, transparent); }
+.cr-obra-card__aviso[data-tone="positive"] { color: var(--cr-success); background: color-mix(in srgb, var(--cr-success) 8%, transparent); }
+.cr-obra-card__aviso[data-tone="warning"] { color: var(--cr-warning); background: color-mix(in srgb, var(--cr-warning) 12%, transparent); }
+.cr-obra-card__aviso[data-tone="negative"] { color: var(--cr-danger); background: color-mix(in srgb, var(--cr-danger) 10%, transparent); }
+
+.cr-obra-card__sem-prazo {
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+}
+
+.cr-status-pill[data-status="ABERTO"] {
+  color: var(--cr-accent);
+  background: color-mix(in srgb, var(--cr-accent) 10%, transparent);
+}
+
+.cr-status-pill[data-status="TRAVADA"],
+.cr-status-pill[data-status="PRAZO_PROXIMO"] {
+  font-weight: 800;
+}
+
+.cr-status-pill[data-status="TRAVADA"] {
+  color: var(--cr-danger);
+  background: color-mix(in srgb, var(--cr-danger) 12%, transparent);
+}
+
+.cr-status-pill[data-status="PRAZO_PROXIMO"] {
+  color: var(--cr-warning);
+  background: color-mix(in srgb, var(--cr-warning) 12%, transparent);
+}
+
+.cr-workspace-heading__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cr-workspace-heading__title > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cr-workspace-heading__title span {
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+}
+
+.cr-deadline-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--cr-border);
+}
+
+.cr-deadline-strip__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Acoes de icone: 44px, icone 22px. Disponivel = contorno e icone na cor
+   de acao; indisponivel = tracejado, sem fundo e icone apagado. */
+.cr-icon-button {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-basis: 2.75rem;
+  border-color: color-mix(in srgb, var(--cr-primary) 40%, var(--cr-border));
+  color: var(--cr-primary);
+}
+
+.cr-icon-button svg {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.cr-icon-button[aria-disabled="true"],
+.cr-icon-button[aria-disabled="true"]:hover {
+  transform: none;
+  border-style: dashed;
+  border-color: var(--cr-border);
+  background: transparent;
+  color: color-mix(in srgb, var(--cr-muted) 45%, transparent);
+  cursor: not-allowed;
+}
+
+.cr-icon-tip .tooltip-content {
+  width: max-content;
+  max-width: 16rem;
+}
+
+/* Dentro do card o tooltip abre para a esquerda: o card corta o que passa
+   da borda (`overflow: clip`) e as acoes ficam encostadas na direita. */
+.cr-period-card__actions .cr-icon-tip .tooltip-content {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+/* Rodape do card de mes: as acoes nunca encolhem; sem espaco ao lado das
+   etiquetas, descem para a propria linha, alinhadas a direita. */
+.cr-period-card__footer {
+  flex-wrap: wrap;
+}
+
+.cr-period-card__actions {
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}

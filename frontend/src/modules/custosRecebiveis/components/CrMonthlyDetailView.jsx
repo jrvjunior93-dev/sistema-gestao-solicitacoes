@@ -10,6 +10,7 @@ import {
 import { TabelaPadrao } from '../../../components/padrao';
 import { obterPlanejamentoCompetencia } from '../services/custosRecebiveis';
 import CrComparativoView from './CrComparativoView';
+import CrIconAction from './CrIconAction';
 import CrRealizadoView from './CrRealizadoView';
 
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -295,26 +296,26 @@ export default function CrMonthlyDetailView({
         </div>
         <div className="cr-month-detail-surface__actions">
           {permissions.costs || permissions.receipts ? (
-            <button
-              type="button"
-              className="cr-icon-button"
+            <CrIconAction
+              icon={HiOutlinePencilSquare}
+              label="Editar planejamento"
               onClick={onEditPlanning}
-              aria-label="Editar planejamento"
-              title="Editar planejamento"
-            >
-              <HiOutlinePencilSquare aria-hidden="true" />
-            </button>
+              /* Mesmo critério do card do mês: só há o que editar com
+                 planejamento aberto (ou reaberto) e não finalizado. */
+              disabled={Boolean(data) && (
+                data.competencia?.estado === 'FINALIZADA' || data.regras?.editavel === false
+              )}
+              disabledReason={data?.competencia?.estado === 'FINALIZADA'
+                ? 'planejamento finalizado; solicite reabertura'
+                : 'mês bloqueado para edição; solicite reabertura'}
+            />
           ) : null}
           {isPublic && permissions.measurementView ? (
-            <button
-              type="button"
-              className="cr-icon-button"
+            <CrIconAction
+              icon={HiOutlineCheckCircle}
+              label={permissions.measurement ? 'Registrar aprovação' : 'Ver aprovação'}
               onClick={onOpenApproved}
-              aria-label={permissions.measurement ? 'Registrar aprovação' : 'Ver aprovação'}
-              title={permissions.measurement ? 'Registrar aprovação' : 'Ver aprovação'}
-            >
-              <HiOutlineCheckCircle aria-hidden="true" />
-            </button>
+            />
           ) : null}
           <button
             type="button"

@@ -60,7 +60,8 @@ function validateRouteAndPermissionContracts() {
   assert(realizedView.includes('Todos da obra'));
   assert(realizedView.includes('Emitidos na competência'));
   assert(realizedView.includes('data?.titulos || []'));
-  assert(realizedView.includes('groupedTitles.map'));
+  // Agrupamento migrou para `agruparPor` da TabelaPadrao.
+  assert(realizedView.includes('agruparPor={{'));
   assert(realizedView.includes('Rateado em mais de uma etapa macro'));
   assert(service.includes('etapas_macro: planContext.macros'));
   assert(!realizedView.includes('Cadeia operacional'));

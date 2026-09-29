@@ -111,15 +111,19 @@ export default function CustosRecebiveis() {
     [user]
   );
   const visibleTabs = useMemo(() => {
+    // Engenheiro: entra pelos cards de "Minhas obras" e chega aos meses
+    // clicando na obra — a aba "Planejamento mensal" (que pedia escolher a
+    // obra num select) não aparece para ele.
     const tabs = availableTabs.filter((tab) => (
-      !tab.hidden || (obraExperience && tab.id === 'obras')
+      obraExperience
+        ? (!tab.hidden || tab.id === 'obras') && tab.id !== 'planejamento'
+        : !tab.hidden
     ));
     if (!obraExperience) return tabs;
     const operationalOrder = new Map([
       ['obras', 0],
-      ['planejamento', 1],
-      ['visao-geral', 2],
-      ['obrigacoes', 3]
+      ['visao-geral', 1],
+      ['obrigacoes', 2]
     ]);
     return [...tabs].sort((left, right) => (
       (operationalOrder.get(left.id) ?? 99) - (operationalOrder.get(right.id) ?? 99)
@@ -233,6 +237,12 @@ export default function CustosRecebiveis() {
   const selectedObra = obras.find((obra) => Number(obra.id) === selectedObraId)
     || planData?.obra
     || null;
+  const hasSelectedObra = Number.isInteger(selectedObraId) && selectedObraId > 0;
+  // Engenheiro: sem obra escolhida, o planejamento mostra os cards de obra.
+  const engineerWorksHome = obraExperience && (
+    activeTab === 'obras' || (activeTab === 'planejamento' && !hasSelectedObra)
+  );
+  const engineerMonths = obraExperience && activeTab === 'planejamento' && hasSelectedObra;
   const executiveWorks = useMemo(
     () => obras.filter((obra) => String(obra.tipo_centro_custo || '').toUpperCase() === 'OBRA'),
     [obras]
@@ -491,18 +501,6 @@ export default function CustosRecebiveis() {
     });
   }
 
-  function handleEditPlanning(obraId, targetCompetencia) {
-    updateQuery({
-      aba: 'planejamento',
-      obra: obraId,
-      competencia: targetCompetencia || competencia,
-      plano: null,
-      detalhe: '1',
-      painel: 'planning',
-      bloqueio: null
-    });
-  }
-
   async function handleRequestReopening(obraId, targetCompetencia, motivo) {
     try {
       setFeedback(null);
@@ -694,7 +692,10 @@ export default function CustosRecebiveis() {
             <button
               key={tab.id}
               type="button"
-              className={activeTab === tab.id ? 'is-active' : ''}
+              className={(
+                activeTab === tab.id
+                || (engineerMonths && tab.id === 'obras')
+              ) ? 'is-active' : ''}
               onClick={() => updateQuery({ aba: tab.id })}
             >
               <Icon className="h-4 w-4" />
@@ -734,7 +735,7 @@ export default function CustosRecebiveis() {
             periodo_fim: end
           })}
         />
-      ) : activeTab !== 'obras' ? (
+      ) : activeTab !== 'obras' && !engineerWorksHome && !engineerMonths ? (
       /*
         R12: estes DOIS selects continuam legítimos — não são filtro de
         lista, são o SELETOR DE CONTEXTO (qual obra e qual competência as
@@ -784,7 +785,7 @@ export default function CustosRecebiveis() {
       </BlocoConteudo>
       ) : null}
 
-      {activeTab === 'obras' ? (
+      {activeTab === 'obras' || engineerWorksHome ? (
         <>
           <CrObrasView
             obras={obras}
@@ -792,12 +793,7 @@ export default function CustosRecebiveis() {
             error={obrasError}
             onReload={loadObras}
             onOpen={handleOpenObra}
-            cardMode={isObraUser}
-            competencia={obrasCompetencia}
-            canEditPlanning={planningPermissions.costs || planningPermissions.receipts}
-            canRequestReopen={planningPermissions.reopenRequest}
-            onEditPlanning={handleEditPlanning}
-            onRequestReopen={handleRequestReopening}
+            cardMode={obraExperience}
             showAdministrationLink={!obraExperience && canViewStructure}
           />
           {!operationalExperience && Number.isInteger(selectedObraId) && selectedObraId > 0 ? (
@@ -834,7 +830,7 @@ export default function CustosRecebiveis() {
         />
       ) : null}
 
-      {activeTab === 'planejamento' ? (
+      {activeTab === 'planejamento' && !engineerWorksHome ? (
         <CrPlanejamentoMensalView
           key={`${selectedObraId}-${competencia}-${refreshToken}`}
           obra={selectedObra}
@@ -842,11 +838,18 @@ export default function CustosRecebiveis() {
           initialCompetencia={competencia}
           autoOpen={searchParams.get('bloqueio') === '1'}
           detailMode={detailMode}
-          obligations={obligationData?.items || []}
-          obligationsServerTime={obligationData?.server_time || null}
           permissions={planningPermissions}
           onChanged={handlePlanningChanged}
           onRequestReopen={handleRequestReopening}
+          prazos={selectedObra?.prazos || null}
+          onBackToWorks={obraExperience ? () => updateQuery({
+            aba: 'obras',
+            obra: null,
+            competencia: null,
+            detalhe: null,
+            painel: null,
+            bloqueio: null
+          }) : null}
           onNavigateDetail={(competenciaValue, area) => updateQuery({
             competencia: competenciaValue || competencia,
             detalhe: competenciaValue ? '1' : null,
