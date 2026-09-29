@@ -1,10 +1,8 @@
-const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
   sequelize,
   CategoriaFinanceira,
   ChequeTerceiro,
-  ChequeTerceiroMovimento,
   ConfiguracaoSistema,
   ContratoComercial,
   ContratoComercialComprador,
@@ -1858,6 +1856,52 @@ function buildTituloContratoPayload({ contrato, parcela, categoriaFinanceiraId, 
   };
 }
 
+async function receberParcelaContratoEmCheque({
+  req,
+  contrato,
+  cliente,
+  parcela,
+  titulo,
+  empresaId,
+  transaction
+}) {
+  // O cheque recebido quita a obrigacao do cliente no ato da entrega, mas
+  // ainda nao representa dinheiro em banco. A rotina oficial de baixa cria o
+  // movimento sem conta bancaria e mantem o documento em custodia ate o
+  // deposito/compensacao.
+  const { baixarTitulo } = require('./tituloFinanceiroService');
+  const valor = roundCurrency(parcela.valor);
+  await baixarTitulo(req, titulo.id, {
+    valor,
+    empresa_id: Number(empresaId),
+    forma_recebimento: 'CHEQUE',
+    data_movimento: contrato.data_assinatura || contrato.data_contrato || getToday(),
+    documento_referencia: parcela.cheque_numero,
+    cheque_numero: parcela.cheque_numero,
+    cheque_emitente: parcela.cheque_titular_nome,
+    titular_documento: parcela.cheque_titular_documento,
+    cheque_banco: parcela.cheque_banco,
+    cheque_agencia: parcela.cheque_agencia || null,
+    cheque_conta: parcela.cheque_conta || null,
+    data_emissao: parcela.cheque_data_emissao,
+    data_vencimento: parcela.data_vencimento,
+    cliente_nome: cliente.nome,
+    cheque_origem_tipo: 'CONTRATO_COMERCIAL',
+    cheque_motivo_origem: `Contrato ${contrato.numero} - ${parcela.descricao}`.slice(0, 255),
+    observacoes: parcela.observacoes || `Cheque recebido no contrato ${contrato.numero}.`
+  }, {
+    transaction,
+    autorizadoInternamente: true,
+    skipSecurityEvent: true
+  });
+
+  await sincronizarContratoComercialPorTituloEditado({
+    tituloId: titulo.id,
+    usuarioId: req.user?.id || null,
+    transaction
+  });
+}
+
 function buildTituloComissaoPayload({ contrato, corretorParceiro, categoriaFinanceiraId, empresaId, usuarioId }) {
   if (!Number.isInteger(Number(empresaId)) || Number(empresaId) <= 0) {
     throw createHttpError(400, 'Empresa do contrato comercial e obrigatoria para gerar titulo de comissao.');
@@ -2131,50 +2175,15 @@ async function criarContratoComercial(req, payload = {}) {
       }, { transaction });
 
       if (String(parcela.forma_recebimento_prevista || '').trim().toUpperCase() === 'CHEQUE') {
-        const cheque = await ChequeTerceiro.create({
-          codigo: `CHQ-${crypto.randomUUID().replace(/-/g, '').slice(0, 10).toUpperCase()}`,
-          titulo_financeiro_id: titulo.id,
-          parceiro_entregou_id: cliente.id,
-          titular_parceiro_id: null,
-          empresa_id: empresaContratoId,
-          obra_origem_id: obra.id,
-          origem_tipo: 'CONTRATO_COMERCIAL',
-          motivo_origem: `Contrato ${contrato.numero} - ${parcela.descricao}`.slice(0, 255),
-          data_entrada: dataAssinatura,
-          cliente_nome: cliente.nome,
-          titular_nome: parcela.cheque_titular_nome,
-          titular_documento: parcela.cheque_titular_documento,
-          banco: parcela.cheque_banco,
-          agencia: parcela.cheque_agencia || null,
-          conta: parcela.cheque_conta || null,
-          numero_cheque: parcela.cheque_numero,
-          valor: roundCurrency(parcela.valor),
-          data_emissao: parcela.cheque_data_emissao,
-          data_vencimento: parcela.data_vencimento,
-          status: 'EM_CARTEIRA',
-          observacoes: parcela.observacoes || `Cheque recebido no contrato ${contrato.numero}.`,
-          criado_por: req.user?.id || null,
-          atualizado_por: req.user?.id || null
-        }, { transaction });
-
-        await ChequeTerceiroMovimento.create({
-          cheque_terceiro_id: cheque.id,
-          tipo_evento: 'ENTRADA',
-          status_anterior: null,
-          status_novo: 'EM_CARTEIRA',
-          empresa_origem_id: null,
-          empresa_destino_id: empresaContratoId,
-          titulo_financeiro_id: titulo.id,
-          valor: roundCurrency(parcela.valor),
-          data_evento: dataAssinatura,
-          observacoes: `Cheque recebido no contrato ${contrato.numero}.`,
-          metadata_json: {
-            origem: 'CONTRATO_COMERCIAL',
-            contrato_id: contrato.id,
-            parcela_sequencia: parcela.sequencia
-          },
-          criado_por: req.user?.id || null
-        }, { transaction });
+        await receberParcelaContratoEmCheque({
+          req,
+          contrato,
+          cliente,
+          parcela,
+          titulo,
+          empresaId: empresaContratoId,
+          transaction
+        });
       }
     }
 

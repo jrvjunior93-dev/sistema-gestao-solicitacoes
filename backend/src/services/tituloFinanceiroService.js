@@ -734,8 +734,9 @@ async function registrarChequeTerceiroRecebido({
     parceiro_entregou_id: titulo.parceiro_id || null,
     empresa_id: titulo.empresa_id || movimento.empresa_id || null,
     obra_origem_id: titulo.obra_id || null,
-    origem_tipo: 'RECEBIMENTO_TITULO',
-    cliente_nome: getTituloParceiroNome(titulo),
+    origem_tipo: payload.cheque_origem_tipo || 'RECEBIMENTO_TITULO',
+    motivo_origem: payload.cheque_motivo_origem || null,
+    cliente_nome: payload.cliente_nome || getTituloParceiroNome(titulo),
     titular_nome: titularNome,
     titular_documento: chequePayload.titular_documento || getTituloParceiroDocumento(titulo),
     banco: chequePayload.banco,
@@ -1977,7 +1978,8 @@ async function carregarTituloPorId(req, tituloId, { includeMovimentos = false, t
 }
 
 async function carregarTituloParaBaixaComLock(req, tituloId, transaction, options = {}) {
-  if (!options.autorizadoPorFilaPagamento) {
+  const acessoInternoAutorizado = options.autorizadoInternamente === true;
+  if (!options.autorizadoPorFilaPagamento && !acessoInternoAutorizado) {
     await assertFinanceAccess(req);
   }
 
@@ -1991,7 +1993,7 @@ async function carregarTituloParaBaixaComLock(req, tituloId, transaction, option
   }
   assertTituloDisponivelParaBaixa(titulo);
 
-  if (!options.autorizadoPorFilaPagamento) {
+  if (!options.autorizadoPorFilaPagamento && !acessoInternoAutorizado) {
     if (titulo.renegociacao_id) await require('./tituloRenegociacaoService').assertEscopoTitulo(req, titulo, transaction);
     else await assertObraScope(
       req,
@@ -3786,7 +3788,8 @@ async function baixarTitulo(req, tituloId, payload = {}, options = {}) {
   const transaction = options.transaction || await sequelize.transaction();
   try {
     const titulo = await carregarTituloParaBaixaComLock(req, tituloId, transaction, {
-      autorizadoPorFilaPagamento: options.autorizadoPorFilaPagamento === true
+      autorizadoPorFilaPagamento: options.autorizadoPorFilaPagamento === true,
+      autorizadoInternamente: options.autorizadoInternamente === true
     });
     const statusAtual = String(titulo.status || '').trim().toUpperCase();
 
