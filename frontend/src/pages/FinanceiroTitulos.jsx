@@ -1390,6 +1390,26 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
   }, [assinaturaEscolhidos, appliedFilters, fixedTipo]);
 
   /*
+    O FILTRO GRAVADO VOLTA DO BANCO (29/09). Ele era gravado (definirFiltroGravado)
+    mas nunca lido: a tela so semeava do localStorage, e numa maquina nova o
+    filtro nao acompanhava a pessoa. Aplica o valor que chega da carga unica
+    enquanto nenhuma consulta foi feita (link do Hub e consulta ja feita
+    vencem), uma vez por valor — para nao atropelar o que a pessoa digitar
+    depois.
+  */
+  const filtroGravadoAplicadoRef = useRef(null);
+  useEffect(() => {
+    if (appliedFilters) return;
+    const valores = filtroGravado?.valores;
+    if (!valores || typeof valores !== 'object') return;
+    const assinatura = `${chavePreferencias}|${JSON.stringify(valores)}`;
+    if (filtroGravadoAplicadoRef.current === assinatura) return;
+    filtroGravadoAplicadoRef.current = assinatura;
+    setDraftFilters(normalizeFilters(valores, fixedTipo));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtroGravado, appliedFilters, chavePreferencias, fixedTipo]);
+
+  /*
     A RECONCILIAÇÃO "filtro com valor é filtro visível" deixou de ser um
     efeito (05/09): ela virou LEITURA, em `preenchidosVisiveis` acima. Como
     efeito ela empurrava a revelação para dentro do estado — e a revelação é

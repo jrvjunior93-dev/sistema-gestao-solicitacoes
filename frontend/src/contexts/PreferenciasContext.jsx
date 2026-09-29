@@ -320,6 +320,30 @@ const ESPELHO = {
       removerChave(`${base}:v3`);
     }
   },
+  /*
+    `geral` (29/09): o tipo existia (TIPO_GERAL, usado pelo filtro gravado de
+    FinanceiroTitulos) mas NÃO tinha entrada aqui — `registrar` devolvia
+    null e a preferência nunca era gravada nem lida. Como `blocos` e
+    `filtros`, o espelho é SÓ SEMENTE numa chave nova (`<base>:geral`); a
+    adoção em lote não varre esta chave, e as telas que usam o balde `geral`
+    pela rota legada (getListaPreferencias) seguem pelo caminho delas.
+  */
+  [TIPO_GERAL]: {
+    ler(base) {
+      const valor = lerJson(`${base}:geral`, null);
+      return ehObjeto(valor) ? valor : null;
+    },
+    gravar(base, valor) {
+      // A carga única traz o `geral` de TODAS as listas (inclusive o balde
+      // legado de outras telas, até 32KB cada). A semente local fica só para
+      // quem usa o tipo por este contexto, para não encher o localStorage.
+      if (!/^(tabela:|painel-gestor)/.test(String(base || ''))) return;
+      gravarJson(`${base}:geral`, valor);
+    },
+    remover(base) {
+      removerChave(`${base}:geral`);
+    }
+  },
   [TIPO_VISUAL]: {
     ler(base) {
       const alinhamentos = lerJson(`${base}:alinhar`, null);
