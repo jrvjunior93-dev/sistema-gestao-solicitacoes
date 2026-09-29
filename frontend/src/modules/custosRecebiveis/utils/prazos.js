@@ -32,6 +32,25 @@ export function monthShort(value) {
   return `${name}/${year}`;
 }
 
+// "setembro/2026": o mês no título do editor (o que está sendo feito agora).
+export function monthSlash(value) {
+  if (!/^\d{4}-\d{2}$/.test(String(value || ''))) return value || '—';
+  const [year, month] = String(value).split('-').map(Number);
+  const name = new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(year, month - 1, 1)));
+  return `${name}/${year}`;
+}
+
+// "agosto/26": o mês que um botão de ação abre (segunda linha do botão).
+// `monthShort` ("ago/2026") continua servindo às colunas estreitas.
+export function monthCompact(value) {
+  if (!/^\d{4}-\d{2}$/.test(String(value || ''))) return value || '—';
+  const [year, month] = String(value).split('-').map(Number);
+  const name = new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(year, month - 1, 1)));
+  return `${name}/${String(year).slice(-2)}`;
+}
+
 function shortDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : dayMonth.format(date);

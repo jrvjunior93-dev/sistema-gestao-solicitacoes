@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   HiOutlineArrowLeft,
   HiOutlineCalendarDays,
+  HiOutlineCheckCircle,
   HiOutlineExclamationTriangle,
   HiOutlinePlus
 } from 'react-icons/hi2';
-import { avisoMedicao, avisoPlanejamento, monthLabel } from '../utils/prazos';
+import { avisoMedicao, avisoPlanejamento, monthCompact, monthLabel } from '../utils/prazos';
 import {
   criarCompetenciaObra,
   listarCompetenciasObra,
@@ -54,6 +55,9 @@ export default function CrPlanejamentoMensalView({
   const [error, setError] = useState('');
   const [reopeningTarget, setReopeningTarget] = useState(null);
   const [dilatacaoTarget, setDilatacaoTarget] = useState(null);
+  // Mensagem de sucesso trazida do editor quando a etapa foi concluída
+  // (medição aprovada, sem medição, finalizar) e a tela voltou aos meses.
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     if (!obra?.id) {
@@ -114,6 +118,7 @@ export default function CrPlanejamentoMensalView({
     : null;
 
   function openDetail(competenciaValue, area) {
+    setNotice('');
     setSelectedCompetencia(competenciaValue);
     setDetailArea(area);
     onNavigateDetail?.(competenciaValue, area);
@@ -124,6 +129,13 @@ export default function CrPlanejamentoMensalView({
     setDetailArea('planning');
     onNavigateDetail?.(null, null);
     void load();
+  }
+
+  // Etapa concluída no editor: mesmo caminho da seta "Meses da obra", com a
+  // mensagem de sucesso visível na lista de meses.
+  function completeDetail(message) {
+    closeDetail();
+    setNotice(message || '');
   }
 
   async function createMonth(target = nextNewMonth) {
@@ -188,6 +200,7 @@ export default function CrPlanejamentoMensalView({
           competencia={selectedCompetencia}
           permissions={permissions}
           viewMode={detailArea}
+          onCompleted={completeDetail}
           onChanged={async () => {
             await load();
             onChanged?.();
@@ -254,8 +267,12 @@ export default function CrPlanejamentoMensalView({
                 className={registerPlanningPrimary ? 'btn btn-primary' : 'btn btn-outline'}
                 disabled={creating}
                 onClick={registerPendingPlanning}
+                aria-label={`Registrar planejamento de ${monthLabel(pendingPlanning)}`}
               >
-                Registrar planejamento
+                <span className="cr-deadline-btn__text">
+                  <span>Registrar planejamento</span>
+                  <small>{monthCompact(pendingPlanning)}</small>
+                </span>
               </button>
             ) : null}
             {pendingMeasurement && isPublic && permissions.measurement ? (
@@ -263,8 +280,12 @@ export default function CrPlanejamentoMensalView({
                 type="button"
                 className="btn btn-outline"
                 onClick={() => openDetail(pendingMeasurement, 'approved')}
+                aria-label={`Registrar medição aprovada de ${monthLabel(pendingMeasurement)}`}
               >
-                Registrar medição aprovada
+                <span className="cr-deadline-btn__text">
+                  <span>Registrar medição aprovada</span>
+                  <small>{monthCompact(pendingMeasurement)}</small>
+                </span>
               </button>
             ) : null}
             {measurementDue?.situacao === 'VENCIDO' && isPublic && permissions.measurement ? (
@@ -275,12 +296,23 @@ export default function CrPlanejamentoMensalView({
                   type="button"
                   className="btn btn-outline"
                   onClick={() => setDilatacaoTarget({ obra, competencia: measurementDue.competencia })}
+                  aria-label={`Solicitar dilatação de ${monthLabel(measurementDue.competencia)}`}
                 >
-                  Solicitar dilatação
+                  <span className="cr-deadline-btn__text">
+                    <span>Solicitar dilatação</span>
+                    <small>{monthCompact(measurementDue.competencia)}</small>
+                  </span>
                 </button>
               )
             ) : null}
           </div>
+        </div>
+      ) : null}
+
+      {notice ? (
+        <div className="cr-feedback cr-month-notice" data-tone="success" role="status">
+          <HiOutlineCheckCircle className="h-5 w-5" aria-hidden="true" />
+          {notice}
         </div>
       ) : null}
 
@@ -333,8 +365,10 @@ export default function CrPlanejamentoMensalView({
                 ? 'obra privada não tem medição aprovada'
                 : (!permissions.measurementView ? 'sem permissão para medição' : '')}
               approvedActionLabel={!permissions.measurement
-                ? 'Ver aprovação'
-                : (item.medicao_aprovada != null ? 'Revisar aprovação' : 'Registrar aprovação')}
+                ? 'Ver medição efetivamente paga'
+                : (item.medicao_aprovada != null || item.sem_medicao
+                  ? 'Revisar medição efetivamente paga'
+                  : 'Registrar medição efetivamente paga')}
               onRequestReopening={() => setReopeningTarget({ obra, competencia: item.competencia })}
               openDisabledReason={obraTravada ? travadaReason : ''}
               reopeningDisabled={obraTravada || !permissions.reopenRequest || !item.reabertura_permitida}

@@ -4195,17 +4195,27 @@
   cursor: not-allowed;
 }
 
-.cr-icon-tip .tooltip-content {
+/* Tooltip do CrIconAction (29/09): sai por portal no `body` e e posto pelo
+   `usePosicaoFlutuante` (position fixed, dentro da janela). O card corta o
+   que passa da borda (`overflow: clip` + `container-type`), por isso o balao
+   nao mora mais dentro dele. Largura maxima de 240px: texto longo quebra em
+   2-3 linhas em vez de sair da tela. */
+.tooltip-content.cr-icon-tip__float {
+  z-index: var(--z-dropdown-portal);
+  bottom: auto;
   width: max-content;
-  max-width: 16rem;
+  max-width: none;
+  opacity: 1;
+  transform: none;
+  transition: none;
 }
 
-/* Dentro do card o tooltip abre para a esquerda: o card corta o que passa
-   da borda (`overflow: clip`) e as acoes ficam encostadas na direita. */
-.cr-period-card__actions .cr-icon-tip .tooltip-content {
-  left: auto;
-  right: 0;
-  transform: none;
+.tooltip-content.cr-icon-tip__float .cr-icon-tip__text {
+  display: block;
+  color: inherit;
+  width: max-content;
+  max-width: 15rem;
+  overflow-wrap: break-word;
 }
 
 /* Rodape do card de mes: as acoes nunca encolhem; sem espaco ao lado das
@@ -4297,4 +4307,73 @@
 
 .cr-dilatacao-historico__meses strong::first-letter {
   text-transform: uppercase;
+}
+
+/* ---- Cabecalho do editor do mes (29/09) ----
+   O que esta sendo feito e o mes sao a linha principal (titulo da tela,
+   22px); a obra vem logo abaixo em titulo de bloco (18px); planilha e
+   situacao ficam como apoio. */
+.cr-page .cr-editor-heading {
+  align-items: center;
+}
+
+.cr-page .cr-editor-heading__title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cr-page .cr-workspace-heading.cr-editor-heading h2 {
+  font-size: var(--fonte-pagina);
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.cr-page .cr-workspace-heading.cr-editor-heading .cr-editor-heading__obra {
+  margin: 0;
+  color: var(--c-text);
+  font-size: var(--fonte-bloco);
+  font-weight: 650;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.cr-page .cr-workspace-heading.cr-editor-heading > div:first-child > .cr-editor-heading__meta {
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Faixa de prazos da obra (29/09): cada botao mostra, abaixo do rotulo, o
+   mes que ele abre ("agosto/26"). O botao continua o mesmo; so ganha a
+   segunda linha, menor. */
+.cr-deadline-strip__actions .cr-deadline-btn__text {
+  display: grid;
+  justify-items: center;
+  gap: 0;
+  line-height: 1.2;
+}
+
+.cr-deadline-strip__actions .cr-deadline-btn__text small {
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+/* Aviso de etapa concluida na lista de meses (29/09): icone e texto juntos,
+   alinhados a esquerda, com o mesmo recuo da grade de meses. */
+.cr-page .cr-feedback.cr-month-notice {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  margin: 12px 12px 0;
+  font-size: var(--fonte-corpo);
+}
+
+.cr-page .cr-feedback.cr-month-notice svg {
+  flex: 0 0 auto;
+  color: var(--cr-success);
 }

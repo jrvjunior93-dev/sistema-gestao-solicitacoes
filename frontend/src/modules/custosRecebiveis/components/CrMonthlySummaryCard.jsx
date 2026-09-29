@@ -62,7 +62,9 @@ export default function CrMonthlySummaryCard({
   const balance = Math.max(0, recognized - received);
   const statusLabel = COMPETENCIA_ESTADO_LABELS[status] || status || 'Não iniciada';
   const approvedLabel = approvedActionLabel
-    || (medicaoAprovadaInformada ? 'Revisar aprovação' : 'Registrar aprovação');
+    || (medicaoAprovadaInformada
+      ? 'Revisar medição efetivamente paga'
+      : 'Registrar medição efetivamente paga');
   const deltaTone = !hasPlanning || costDelta === 0
     ? 'neutral'
     : (costDelta > 0 ? 'negative' : (presentation === 'gestor' ? 'positive' : 'context'));

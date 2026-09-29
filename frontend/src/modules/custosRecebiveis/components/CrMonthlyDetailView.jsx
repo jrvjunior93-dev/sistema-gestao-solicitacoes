@@ -313,7 +313,9 @@ export default function CrMonthlyDetailView({
           {isPublic && permissions.measurementView ? (
             <CrIconAction
               icon={HiOutlineCheckCircle}
-              label={permissions.measurement ? 'Registrar aprovação' : 'Ver aprovação'}
+              label={permissions.measurement
+                ? 'Registrar medição efetivamente paga'
+                : 'Ver medição efetivamente paga'}
               onClick={onOpenApproved}
             />
           ) : null}

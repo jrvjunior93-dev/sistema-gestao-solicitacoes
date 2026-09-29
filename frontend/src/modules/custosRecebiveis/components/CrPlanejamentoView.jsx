@@ -37,7 +37,7 @@ import {
   removePlanningDraft,
   writePlanningDraft
 } from '../utils/planningDraftStorage';
-import { monthLabel, monthShort } from '../utils/prazos';
+import { monthLabel, monthShort, monthSlash } from '../utils/prazos';
 import {
   ajustarPrevisaoAoSaldo,
   mensagemErroPlanilha,
@@ -213,7 +213,7 @@ function privateReceiptStatusLabel(status) {
   saldo disponível. Quem não pode ajustar vê a faixa sem o botão.
   Exportada para o detalhe do mês reutilizar a mesma faixa.
 */
-export function CrAjustePrevisaoFaixa({ obraId, ajuste, canAdjust = false, onAdjusted }) {
+export function CrAjustePrevisaoFaixa({ obraId, ajuste, canAdjust = false, onAdjusted, onDismiss = null }) {
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -266,6 +266,16 @@ export function CrAjustePrevisaoFaixa({ obraId, ajuste, canAdjust = false, onAdj
             {busy ? 'Ajustando...' : `Ajustar previsão de ${mes} ao saldo`}
           </button>
         ) : null}
+        {onDismiss ? (
+          <button
+            type="button"
+            className="btn btn-outline"
+            disabled={busy}
+            onClick={onDismiss}
+          >
+            Fechar
+          </button>
+        ) : null}
       </header>
       {error ? <div className="cr-feedback" data-tone="error">{error}</div> : null}
       <TabelaPadrao
@@ -315,7 +325,8 @@ export default function CrPlanejamentoView({
   competencia,
   permissions,
   viewMode = 'planning',
-  onChanged
+  onChanged,
+  onCompleted = null
 }) {
   const [data, setData] = useState(null);
   const { confirmar, elementoConfirmacao } = useConfirmacao();
@@ -353,6 +364,9 @@ export default function CrPlanejamentoView({
   const [costErrors, setCostErrors] = useState([]);
   const [forecastNotices, setForecastNotices] = useState([]);
   const [adjustmentAfterRegister, setAdjustmentAfterRegister] = useState(null);
+  // Mensagem da medição aprovada recém-registrada que ainda espera a decisão
+  // sobre a faixa "ajustar previsão ao saldo" antes de voltar aos meses.
+  const [completeAfterAdjustment, setCompleteAfterAdjustment] = useState('');
   const [savedTotals, setSavedTotals] = useState(null);
   const sheetFileRef = useRef(null);
   const sheetTypeRef = useRef('');
@@ -450,6 +464,7 @@ export default function CrPlanejamentoView({
     setCostErrors([]);
     setForecastNotices([]);
     setAdjustmentAfterRegister(null);
+    setCompleteAfterAdjustment('');
     load();
   }, [load, viewMode]);
 
@@ -499,6 +514,11 @@ export default function CrPlanejamentoView({
   const costsDirty = draftSignature(costs) !== serverBaselineRef.current.costs;
   const receiptsDirty = isPublic && draftSignature(receipts) !== serverBaselineRef.current.receipts;
   const reviewStep = !approvedOnly && ((isPublic && step === 3) || (!isPublic && step === 2));
+  // Título do editor: a etapa em curso (29/09, pedido do proprietário).
+  let editorStageTitle = 'Custos previstos';
+  if (approvedOnly) editorStageTitle = 'Medição aprovada';
+  else if (step === 2) editorStageTitle = isPublic ? 'Medição prevista' : 'Recebíveis previstos';
+  else if (step === 3) editorStageTitle = 'Revisão e envio';
 
   // Revisão e envio mostra o que está GRAVADO: ao entrar na etapa relê os
   // totais do servidor (sem mexer no que está em edição na tela).
@@ -1337,7 +1357,11 @@ export default function CrPlanejamentoView({
     return Boolean(outcome);
   }
 
-  async function saveMeasurement({ rows: sourceRows = measurements, successMessage = 'Medição aprovada registrada.' } = {}) {
+  async function saveMeasurement({
+    rows: sourceRows = measurements,
+    successMessage = 'Medição aprovada registrada.',
+    completeOnSuccess = false
+  } = {}) {
     const outcome = await runMutation(
       'measurement',
       () => consolidarMedicaoCompetencia(
@@ -1360,7 +1384,16 @@ export default function CrPlanejamentoView({
     if (!outcome) return false;
     // Parte B (29/09): a previsão do mês seguinte pode ter passado do saldo
     // depois desta aprovação; a faixa de ajuste aparece aqui mesmo.
-    setAdjustmentAfterRegister(outcome.result?.ajuste_previsao || null);
+    const ajuste = outcome.result?.ajuste_previsao || null;
+    setAdjustmentAfterRegister(ajuste);
+    // Registrado pelo botão (29/09): volta aos meses da obra. Com a faixa de
+    // ajuste ao saldo a decisão é do usuário; a volta espera ajustar/fechar.
+    if (completeOnSuccess && onCompleted) {
+      const pendingAdjustment = Boolean(ajuste?.competencia)
+        && Array.isArray(ajuste?.itens) && ajuste.itens.length > 0;
+      if (pendingAdjustment) setCompleteAfterAdjustment(successMessage);
+      else onCompleted(successMessage);
+    }
     return true;
   }
 
@@ -1381,12 +1414,14 @@ export default function CrPlanejamentoView({
       setError('Informe uma justificativa com pelo menos 10 caracteres para registrar o mês sem medição.');
       return;
     }
-    await runMutation(
+    const noMeasurementMessage = 'Mês registrado sem medição aprovada.';
+    const outcome = await runMutation(
       'measurement',
       () => registrarSemMedicaoCompetencia(obraAlvo.id, competenciaAlvo, justificativa),
-      'Mês registrado sem medição aprovada.',
+      noMeasurementMessage,
       'measurement'
     );
+    if (outcome) onCompleted?.(noMeasurementMessage);
   }
 
   async function finish() {
@@ -1421,11 +1456,13 @@ export default function CrPlanejamentoView({
       if (!confirmed || !String(texto || '').trim()) return;
       justifications.justificativa_sem_receitas = String(texto).trim();
     }
-    await runMutation(
+    const finishMessage = 'Competência finalizada e protegida contra alterações.';
+    const outcome = await runMutation(
       'finish',
       () => finalizarPlanejamentoCompetencia(obra.id, competencia, justifications),
-      'Competência finalizada e protegida contra alterações.'
+      finishMessage
     );
+    if (outcome) onCompleted?.(finishMessage);
   }
 
   // "Salvar e continuar" (Fase 6): um clique grava a etapa e, se deu certo,
@@ -1450,9 +1487,23 @@ export default function CrPlanejamentoView({
     setAdjustmentAfterRegister(null);
     setError('');
     if (competenciaAjustada === competencia) await load();
-    setFeedback(`Previsão de ${monthLabel(competenciaAjustada)} ajustada ao saldo em ${count} item(ns).`
-      + (ignored ? ` ${ignored} item(ns) já estavam dentro do saldo.` : ''));
+    const adjustedMessage = `Previsão de ${monthLabel(competenciaAjustada)} ajustada ao saldo em ${count} item(ns).`
+      + (ignored ? ` ${ignored} item(ns) já estavam dentro do saldo.` : '');
+    setFeedback(adjustedMessage);
     onChanged?.();
+    if (completeAfterAdjustment && onCompleted) {
+      const registeredMessage = completeAfterAdjustment;
+      setCompleteAfterAdjustment('');
+      onCompleted(`${registeredMessage} ${adjustedMessage}`);
+    }
+  }
+
+  // Fechar a faixa depois de registrar a medição aprovada: sem ajuste, volta.
+  function dismissAdjustmentAndReturn() {
+    const registeredMessage = completeAfterAdjustment;
+    setAdjustmentAfterRegister(null);
+    setCompleteAfterAdjustment('');
+    onCompleted?.(registeredMessage);
   }
 
   async function requestReopening() {
@@ -1626,10 +1677,15 @@ export default function CrPlanejamentoView({
         hidden
         onChange={handlePlanningFile}
       />
-      <header className="cr-workspace-heading">
-        <div>
-          <span>{monthLabel(competencia)} · planilha v{data?.plano?.versao}</span>
-          <h2>{approvedOnly ? 'Medição aprovada' : 'Planejamento'} · {obra.codigo || obra.id} · {obra.nome}</h2>
+      <header className="cr-workspace-heading cr-editor-heading">
+        <div className="cr-editor-heading__title">
+          {/* O que está sendo feito e o mês vêm primeiro e grandes; a obra
+              logo abaixo; planilha e situação ficam como apoio. */}
+          <h2>{editorStageTitle} — {monthSlash(competencia)}</h2>
+          <p className="cr-editor-heading__obra">{obra.codigo || obra.id} · {obra.nome}</p>
+          {data?.plano?.versao ? (
+            <span className="cr-editor-heading__meta">Planilha v{data.plano.versao}</span>
+          ) : null}
         </div>
         <div className="cr-planning-status-stack">
           <span className="cr-status-pill" data-status={data?.competencia?.estado}>
@@ -1670,6 +1726,7 @@ export default function CrPlanejamentoView({
         ajuste={adjustmentAfterRegister || data?.ajuste_previsao_pendente || null}
         canAdjust={Boolean(permissions.measurement || permissions.receipts)}
         onAdjusted={handleAdjusted}
+        onDismiss={completeAfterAdjustment && adjustmentAfterRegister ? dismissAdjustmentAndReturn : null}
       />
 
       {!approvedOnly ? <nav className="cr-stepper" aria-label="Etapas do planejamento">
@@ -2228,7 +2285,7 @@ export default function CrPlanejamentoView({
                         || data?.medicao_aprovada_estado?.editavel === false
                         || (totalApproved < totalReceipts && measurementJustification.trim().length < 5)
                       }
-                      onClick={() => saveMeasurement()}
+                      onClick={() => saveMeasurement({ completeOnSuccess: true })}
                     >
                       {saving === 'measurement' ? 'Registrando...' : 'Registrar medição aprovada'}
                     </button>
