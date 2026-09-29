@@ -601,7 +601,8 @@
   flex-direction: column;
   height: 100%;
   min-width: 0;
-  overflow: clip;
+  /* visible: as dicas (tooltip) dos rótulos passam da borda do card. */
+  overflow: visible;
   border: 1px solid var(--ui-border-strong, var(--c-border));
   border-radius: var(--raio-3);
   background: var(--ui-surface, var(--c-surface));
@@ -1085,4 +1086,21 @@ input.input.pg-pin-campo {
   --cr-text: var(--c-text);
   --cr-ink: var(--c-text);
   --cr-muted: var(--c-muted);
+}
+
+/* Dicas do card de obra: largura do texto (não a do rótulo, que é estreito),
+   sem herdar a caixa alta do rótulo; ancoradas no início do rótulo e, na
+   terceira coluna, no fim — para não sair pela borda da tela. */
+.pg-obra-card .tooltip-content {
+  left: 0;
+  transform: none;
+  width: max-content;
+  max-width: min(260px, 80vw);
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
+}
+.pg-obra-card__linha > .pg-obra-metrica:nth-child(3) .tooltip-content {
+  left: auto;
+  right: 0;
 }
