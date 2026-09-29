@@ -73,11 +73,6 @@ export default function CrComparativoView({ obra, competencia }) {
       <div className="cr-section-heading">
         <div>
           <h2>Comparativo operacional por item</h2>
-          <p>{obra.codigo || obra.id} · {obra.nome} · competência {competencia}</p>
-        </div>
-        <div className="cr-summary-inline">
-          <span>Medição prevista <strong>{currency.format(data?.recebiveis?.medicao_apresentada || 0)}</strong></span>
-          <span>Medição aprovada <strong>{data?.recebiveis?.medicao_aprovada == null ? 'Aguardando' : currency.format(data.recebiveis.medicao_aprovada)}</strong></span>
         </div>
       </div>
       <div className="cr-kpi-strip cr-kpi-strip--receivables">
@@ -123,36 +118,42 @@ export default function CrComparativoView({ obra, competencia }) {
           },
           {
             id: 'previsto',
+            largura: 140, minWidth: 140,
             titulo: 'Medição prevista',
             tipo: 'valor',
             render: (item) => currency.format(item.previsto)
           },
           {
             id: 'aprovado',
+            largura: 140, minWidth: 140,
             titulo: 'Medição aprovada',
             tipo: 'valor',
             render: (item) => (item.tem_aprovacao ? currency.format(item.aprovado) : 'Aguardando')
           },
           {
             id: 'glosa',
+            largura: 140, minWidth: 140,
             titulo: 'Glosa',
             tipo: 'valor',
             render: (item) => (item.tem_aprovacao ? (
-              <span style={{ color: Number(item.glosa || 0) > 0 ? '#c73847' : undefined }}>
+              <span className={Number(item.glosa || 0) > 0 ? 'cr-detalhe-negativo' : undefined}>
                 {currency.format(item.glosa)}
               </span>
             ) : '—')
           },
           {
             id: 'percentual_aprovacao',
+            largura: 110,
             titulo: 'Aprovação',
             tipo: 'numero',
             render: (item) => (item.percentual_aprovacao == null ? '—' : `${item.percentual_aprovacao}%`)
           },
           {
             id: 'estado',
+            largura: 200,
             titulo: 'Estado',
-            tipo: 'badge',
+            // Rótulo por extenso ("Aprovado parcialmente"): largura de status, não de badge curto.
+            tipo: 'status',
             render: (item) => (
               <span className="cr-status-pill" data-status={item.estado}>
                 {APPROVAL_STATUS[item.estado] || COMPARATIVO_ESTADO_LABELS[item.estado] || item.estado}

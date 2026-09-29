@@ -371,6 +371,7 @@ export default function CrRealizadoView({
           colunas={[
             {
               id: 'emissao',
+              largura: 200, flex: 0,
               titulo: 'Emissão / vencimento',
               // Célula COMPOSTA (emissão + vencimento + marca de
               // competência), não uma data solta: a medida é de texto.
@@ -384,6 +385,7 @@ export default function CrRealizadoView({
             },
             {
               id: 'titulo',
+              largura: 150,
               titulo: 'Título / descrição',
               // R17: o código do título NOMEIA a linha do razão de custos.
               tipo: 'identidade',
@@ -397,6 +399,7 @@ export default function CrRealizadoView({
             },
             {
               id: 'credor',
+              largura: 120,
               titulo: 'Credor',
               tipo: 'texto',
               render: (item) => (
@@ -408,6 +411,7 @@ export default function CrRealizadoView({
             },
             {
               id: 'classificacao',
+              largura: 120,
               titulo: 'Categoria / apropriação',
               tipo: 'texto',
               render: (item) => (
@@ -419,24 +423,28 @@ export default function CrRealizadoView({
             },
             {
               id: 'alocado',
+              largura: 120, minWidth: 120,
               titulo: 'Alocado',
               tipo: 'valor',
               render: (item) => currency(item.valor_alocado)
             },
             {
               id: 'pago',
+              largura: 120, minWidth: 120,
               titulo: 'Pago',
               tipo: 'valor',
               render: (item) => currency(item.valor_pago)
             },
             {
               id: 'saldo',
+              largura: 120, minWidth: 120,
               titulo: 'Saldo',
               tipo: 'valor',
               render: (item) => <strong>{currency(item.valor_saldo)}</strong>
             },
             {
               id: 'situacao',
+              largura: 155,
               titulo: 'Situação',
               tipo: 'status',
               render: (item) => (

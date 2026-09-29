@@ -1,1 +1,167 @@
 /* Custos e Recebiveis (reforma 29/09/2026): estilos de cr-detalhe. Tokens --cr-* so dentro de .cr-page. */
+
+/* ==========================================================================
+   "Ver detalhes" do mes (Fase 6): SO acabamento visual, escopado em
+   .cr-page .cr-month-detail-surface. Escala 4/8/12/16/24 (--esp-*), fontes por
+   token, numeros a direita e tabulares. Sobrescreve por especificidade as
+   regras antigas de custos-recebiveis.css (que nao e deste arquivo).
+   ========================================================================== */
+
+.cr-page .cr-month-detail-surface {
+  box-shadow: none;
+  border-radius: 8px;
+}
+
+/* Cabecalho e abas: mesma gutter de 16px do conteudo. */
+.cr-page .cr-month-detail-surface__header {
+  gap: var(--esp-4);
+  padding: var(--esp-3) var(--esp-4);
+}
+.cr-page .cr-month-detail-surface__header > div:first-child { gap: var(--esp-1); }
+.cr-page .cr-month-detail-surface__header span { font-weight: 700; letter-spacing: 0.04em; }
+.cr-page .cr-month-detail-surface__header h2 { font-weight: 700; line-height: 1.25; }
+.cr-page .cr-month-detail-surface__actions { gap: var(--esp-2); }
+
+.cr-page .cr-month-detail-tabs {
+  gap: var(--esp-1);
+  padding: 0 var(--esp-4);
+}
+.cr-page .cr-month-detail-tabs button {
+  min-height: 40px;
+  padding: var(--esp-2) var(--esp-3);
+  font-weight: 700;
+}
+.cr-page .cr-month-detail-tabs button svg { flex: 0 0 auto; }
+
+/* Grupos de etapa macro (medicao prevista/aprovada). */
+.cr-page .cr-month-read-groups { gap: var(--esp-4); padding: var(--esp-4); }
+.cr-page .cr-month-read-group { border-radius: 8px; }
+.cr-page .cr-month-read-group > header {
+  padding: var(--esp-2) var(--esp-3);
+  font-size: var(--fonte-detalhe);
+  line-height: 1.4;
+}
+.cr-page .cr-month-read-group > header strong { min-width: 0; font-weight: 700; }
+.cr-page .cr-month-read-group > header span {
+  flex: 0 0 auto;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cr-page .cr-month-read-empty { min-height: 120px; }
+
+/* Tabela: o shell da TabelaPadrao (borda + raio grande + sombra + padding de
+   card) vira superficie plana dentro do bloco, sem moldura dupla. */
+.cr-page .cr-month-detail-surface .app-table-shell.app-tabela {
+  padding: var(--esp-2) var(--esp-3) 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.cr-page .cr-month-detail-surface > .app-table-shell.app-tabela {
+  padding: var(--esp-3) var(--esp-4) 0;
+}
+.cr-page .cr-month-detail-surface .app-tabela-barra { margin-bottom: var(--esp-2); }
+.cr-page .cr-month-detail-surface .app-tabela-rodape-linha { padding-bottom: var(--esp-2); }
+.cr-page .cr-month-detail-surface .app-tabela td.celula-valor,
+.cr-page .cr-month-detail-surface .app-tabela td.celula-numero,
+.cr-page .cr-month-detail-surface .app-tabela td.celula-data {
+  font-variant-numeric: tabular-nums;
+}
+/* Cabecalho de coluna numerica alinhado com o valor. */
+.cr-page .cr-month-detail-surface .app-tabela th { white-space: nowrap; }
+.cr-page .cr-month-detail-surface .app-tabela .cr-status-pill { max-width: none; overflow: visible; }
+
+/* Blocos com moldura propria (comparativo e realizado) viram area plana:
+   a moldura do detalhe ja delimita, e o titulo fica alinhado a gutter de 16. */
+.cr-page .cr-month-detail-surface > .cr-section {
+  margin: 0;
+  padding: var(--esp-4);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.cr-page .cr-month-detail-surface > .cr-section .app-table-shell.app-tabela { padding-inline: 0; }
+.cr-page .cr-month-detail-surface > .cr-section .cr-section-heading { margin-bottom: var(--esp-3); }
+.cr-page .cr-month-detail-surface > .cr-section .cr-section-heading h2 { font-weight: 700; }
+.cr-page .cr-month-detail-surface > .cr-section .cr-section-heading p { margin-top: var(--esp-1); }
+.cr-page .cr-month-detail-surface > .cr-section.cr-empty-state { padding: var(--esp-4); }
+
+/* Comparativo: faixa de totais compacta, valores tabulares. */
+.cr-page .cr-month-detail-surface .cr-kpi-strip {
+  gap: 1px;
+  border-radius: 8px;
+}
+.cr-page .cr-month-detail-surface .cr-kpi-strip--receivables { margin-bottom: var(--esp-4); }
+.cr-page .cr-month-detail-surface .cr-kpi-strip > div { gap: var(--esp-1); padding: var(--esp-3); }
+.cr-page .cr-month-detail-surface .cr-kpi-strip strong {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.cr-page .cr-month-detail-surface .cr-kpi-strip [data-tone="negative"] strong { color: var(--cr-danger); }
+.cr-page .cr-month-detail-surface .cr-detalhe-negativo { color: var(--cr-danger); }
+
+/* Custos realizados (razao). */
+.cr-page .cr-month-detail-surface .cr-cost-ledger { gap: var(--esp-4); }
+.cr-page .cr-month-detail-surface .cr-cost-ledger .cr-section-header {
+  gap: var(--esp-1);
+  margin: calc(var(--esp-4) * -1) calc(var(--esp-4) * -1) 0;
+  padding: var(--esp-3) var(--esp-4);
+}
+.cr-page .cr-month-detail-surface .cr-section-header h2 { margin-top: 0; font-weight: 700; line-height: 1.25; }
+.cr-page .cr-month-detail-surface .cr-section-header > div > span { font-weight: 700; }
+.cr-page .cr-month-detail-surface .cr-cost-ledger__summary { border-radius: 8px; }
+.cr-page .cr-month-detail-surface .cr-cost-ledger__summary article { padding: var(--esp-3); }
+.cr-page .cr-month-detail-surface .cr-cost-ledger__summary span { margin-bottom: var(--esp-1); font-weight: 700; }
+.cr-page .cr-month-detail-surface .cr-cost-ledger__summary strong {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cr-page .cr-month-detail-surface .cr-cost-ledger__summary small { margin-top: var(--esp-1); }
+.cr-page .cr-month-detail-surface .cr-cost-ledger__toolbar { gap: var(--esp-3); }
+.cr-page .cr-month-detail-surface .cr-cost-ledger__scope { border-radius: 8px; }
+.cr-page .cr-month-detail-surface .cr-cost-ledger__scope,
+.cr-page .cr-month-detail-surface .cr-cost-ledger__statuses { gap: var(--esp-1); }
+.cr-page .cr-month-detail-surface .cr-cost-ledger__scope button,
+.cr-page .cr-month-detail-surface .cr-cost-ledger__statuses button {
+  min-height: 32px;
+  gap: var(--esp-2);
+  border-radius: 6px;
+  font-weight: 700;
+}
+.cr-page .cr-month-detail-surface .cr-cost-ledger__search {
+  min-height: 40px;
+  padding: 0 var(--esp-3);
+  border-radius: 8px;
+  font-size: var(--fonte-corpo);
+}
+.cr-page .cr-month-detail-surface .cr-cost-ledger__result { min-height: 0; }
+.cr-page .cr-month-detail-surface .cr-cost-ledger__result small {
+  font-size: var(--fonte-detalhe);
+  text-align: right;
+}
+.cr-page .cr-month-detail-surface .cr-cost-ledger__macro-title > small {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+.cr-page .cr-month-detail-surface .cr-cost-ledger__technical { border-radius: 8px; }
+
+@media (max-width: 760px) {
+  .cr-page .cr-month-detail-surface { border-radius: 0; }
+  .cr-page .cr-month-detail-surface__header { flex-direction: row; align-items: center; }
+  .cr-page .cr-month-detail-surface__actions { align-self: center; flex-wrap: nowrap; }
+  .cr-page .cr-month-detail-tabs { padding: 0 var(--esp-2); }
+  .cr-page .cr-month-read-groups { gap: var(--esp-3); padding: var(--esp-3); }
+  .cr-page .cr-month-detail-surface > .cr-section { padding: var(--esp-3); }
+  .cr-page .cr-month-detail-surface .cr-cost-ledger .cr-section-header {
+    margin: calc(var(--esp-3) * -1) calc(var(--esp-3) * -1) 0;
+    padding: var(--esp-3);
+  }
+  .cr-page .cr-month-detail-surface .cr-cost-ledger__toolbar { grid-template-columns: minmax(0, 1fr); }
+  .cr-page .cr-month-detail-surface .cr-cost-ledger__scope { width: 100%; }
+  .cr-page .cr-month-detail-surface .cr-cost-ledger__scope button { flex: 1 1 0; justify-content: center; }
+  .cr-page .cr-month-detail-surface .cr-cost-ledger__result { align-items: flex-start; flex-direction: column; gap: var(--esp-1); }
+  .cr-page .cr-month-detail-surface .cr-cost-ledger__result small { text-align: left; }
+}
