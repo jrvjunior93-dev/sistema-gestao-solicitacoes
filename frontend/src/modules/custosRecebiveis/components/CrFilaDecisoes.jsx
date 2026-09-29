@@ -164,15 +164,18 @@ export default function CrFilaDecisoes({ versao = 0, onOpenMonth, onDecided }) {
   }
 
   if (estado !== 'pronto') {
+    // Dentro de um bloco (B5): texto solto na pagina nao tem dono visual.
     return (
-      <p className="cr-fila-indisponivel" role="status">
-        {estado === 'indisponivel'
-          ? 'Fila de decisões indisponível no servidor no momento.'
-          : 'Não foi possível consultar a fila de decisões.'}
-        <button type="button" className="btn btn-outline btn-sm" onClick={() => void load()}>
-          Tentar novamente
-        </button>
-      </p>
+      <BlocoConteudo className="cr-fila-decisoes" titulo="Decisões pendentes">
+        <p className="cr-fila-indisponivel" role="status">
+          {estado === 'indisponivel'
+            ? 'Fila de decisões indisponível no servidor no momento.'
+            : 'Não foi possível consultar a fila de decisões.'}
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => void load()}>
+            Tentar novamente
+          </button>
+        </p>
+      </BlocoConteudo>
     );
   }
 
