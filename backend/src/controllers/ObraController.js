@@ -1,4 +1,8 @@
-const { obrasTravadasDoUsuario } = require('../modules/custosRecebiveis/services/bloqueioObraService');
+const {
+  guardMode,
+  mensagemSolicitacaoNova,
+  travaDasObras
+} = require('../modules/custosRecebiveis/services/bloqueioObraService');
 const { Obra, UsuarioObra, Setor, ConfiguracaoSistema, EmpresaGrupo, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const {
@@ -164,22 +168,28 @@ module.exports = {
       const { codigo, descricao, modo } = req.query;
       const modoNormalizado = String(modo || '').trim().toUpperCase();
       // Custos e Recebiveis (29/09/2026): obra travada por atraso de
-      // planejamento/medicao nao aparece para o engenheiro criar nada nela.
-      if (modoNormalizado === 'CRIACAO') {
-        // Falha no calculo nao pode derrubar os seletores de criacao (o
-        // bloqueio em si continua no middleware).
-        const travadas = new Set((await obrasTravadasDoUsuario(req.user).catch((error) => {
-          console.error('Falha segura ao consultar obras travadas:', error.message);
-          return [];
-        }))
-          .filter((item) => item.bloqueando)
-          .map((item) => Number(item.obra_id)));
-        if (travadas.size) {
-          const originalJson = res.json.bind(res);
-          res.json = (body) => originalJson(Array.isArray(body)
-            ? body.filter((obra) => !travadas.has(Number(obra?.id)))
-            : body);
-        }
+      // planejamento/medicao nao recebe solicitacao nova. A lista de criacao
+      // continua com ela, marcada com o motivo, para a tela avisar antes do
+      // envio (quem recusa de fato e o middleware). Falha no calculo nao
+      // derruba os seletores.
+      if (modoNormalizado === 'CRIACAO' && guardMode() === 'enforce') {
+        const originalJson = res.json.bind(res);
+        res.json = (body) => {
+          if (!Array.isArray(body) || !body.length) return originalJson(body);
+          const lista = body.map((obra) => (obra?.toJSON ? obra.toJSON() : obra));
+          travaDasObras(lista.map((obra) => obra?.id))
+            .then((travas) => originalJson(lista.map((obra) => {
+              const trava = travas.get(Number(obra?.id));
+              return trava?.bloqueando
+                ? { ...obra, bloqueio_solicitacao_nova: { motivo: mensagemSolicitacaoNova(trava), obra_travada: trava } }
+                : obra;
+            })))
+            .catch((error) => {
+              console.error('Falha segura ao consultar obras travadas:', error.message);
+              originalJson(lista);
+            });
+          return res;
+        };
       }
       const defaultScope = String(req.query?.escopo || '').trim()
         ? req.query.escopo

@@ -9,8 +9,10 @@ a migration `backend/migrations/202609290001_custos_recebiveis_prazos_dilatacao.
 `docs/modulos/custos-recebiveis/README.md` e o handoff
 `docs/handoffs/2026-09-29-custos-recebiveis-reforma.md`; na Fase 3 tambem
 `backend/src/controllers/AuthController.js`, `backend/src/controllers/ObraController.js`,
-`backend/src/services/authorizationService.js`, `frontend/src/layout/Layout.jsx` e
-`frontend/src/main.jsx` (CSS da faixa global) (pontos de integracao do bloqueio por obra).
+`frontend/src/layout/Layout.jsx`, `frontend/src/main.jsx` (CSS da faixa global),
+`frontend/src/pages/NovaSolicitacao.jsx` e
+`frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx` (aviso de
+obra que nao recebe solicitacao nova) (pontos de integracao do bloqueio por obra).
 Sem EC2, RDS, migration em ambiente compartilhado ou deploy. Fases 1 a 3
 implementadas; ownership mantido ate o fim da reforma.
 

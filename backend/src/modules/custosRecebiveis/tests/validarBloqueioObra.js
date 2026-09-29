@@ -6,7 +6,14 @@ const path = require('path');
 const servicePath = path.resolve(__dirname, '../services/bloqueioObraService.js');
 const middlewarePath = path.resolve(__dirname, '../middlewares/requireCustosRecebiveisCompletion.js');
 const service = require(servicePath);
-const { calcularObrasTravadas, mensagemTravada, obrasDaRequisicao } = service;
+const {
+  calcularObrasTravadas,
+  calcularTravaDasObras,
+  ehAberturaDeSolicitacao,
+  mensagemSolicitacaoNova,
+  mensagemTravada,
+  obrasDaAbertura
+} = service;
 
 const at = (value) => new Date(value);
 const engineer = { id: 77, perfil: 'USUARIO' };
@@ -100,14 +107,67 @@ async function validateLockedWorks() {
   assert.strictEqual((await calcularObrasTravadas({ id: 1, perfil: 'SUPERADMIN' }, { mode: 'enforce', now }, deps())).length, 0);
 }
 
+// Situacao da OBRA (independe de quem abre a solicitacao): decisao de 29/09.
+async function validateObraLevel() {
+  const now = at('2026-10-07T12:00:00-03:00');
+  const responsavel = (userId, perfil = 'USUARIO', obraId = 1) => ({
+    user_id: userId,
+    usuario: { id: userId, perfil },
+    obra: { id: obraId, codigo: `OB-${obraId}`, nome: obraId === 1 ? 'Obra atrasada' : 'Obra em dia', classificacao: obraId === 1 ? 'PUBLICA' : 'PRIVADA' }
+  });
+  const base = (extra = {}) => ({
+    ...deps(),
+    CrResponsavelObra: { findAll: async () => [responsavel(77), responsavel(78, 'USUARIO', 2)] },
+    ...extra
+  });
+  const travas = await calcularTravaDasObras([1, 2], { mode: 'enforce', now }, base());
+  assert.deepStrictEqual([...travas.keys()], [1]);
+  assert.strictEqual(travas.get(1).bloqueando, true);
+  assert.match(mensagemSolicitacaoNova(travas.get(1)), /OB-1 - Obra atrasada nao recebe solicitacao nova.*planejamento de 2026-09 vencido/);
+  // Liberacao concedida a qualquer usuario, para a obra, libera a obra toda.
+  const liberada = await calcularTravaDasObras([1], { mode: 'enforce', now }, base({
+    CrGuardBypass: { findAll: async () => [{ obra_id: 1, user_id: 999, expira_em: '2026-10-08T12:00:00Z', concedido_em: '2026-10-07T10:00:00Z' }] }
+  }));
+  assert.strictEqual(liberada.get(1).bloqueando, false);
+  // Liberacao "todas as obras" de quem nao e responsavel pela obra: nao vale.
+  const alheia = await calcularTravaDasObras([1], { mode: 'enforce', now }, base({
+    CrGuardBypass: { findAll: async () => [{ obra_id: null, user_id: 999, expira_em: '2026-10-08T12:00:00Z', concedido_em: '2026-10-07T10:00:00Z' }] }
+  }));
+  assert.strictEqual(alheia.get(1).bloqueando, true);
+  // Nenhum responsavel consegue regularizar: a obra nao trava.
+  assert.strictEqual((await calcularTravaDasObras([1], { mode: 'enforce', now }, base({ resolveExplicitPermissions: async () => [] }))).size, 0);
+  // Responsavel SUPERADMIN regulariza; a obra trava do mesmo jeito.
+  const superResp = await calcularTravaDasObras([1], { mode: 'enforce', now }, base({
+    resolveExplicitPermissions: async () => [],
+    CrResponsavelObra: { findAll: async () => [responsavel(1, 'SUPERADMIN')] }
+  }));
+  assert.strictEqual(superResp.get(1).bloqueando, true);
+  // Obra sem responsavel vigente: fora do bloqueio.
+  assert.strictEqual((await calcularTravaDasObras([1], { mode: 'enforce', now }, base({ CrResponsavelObra: { findAll: async () => [] } }))).size, 0);
+  assert.strictEqual((await calcularTravaDasObras([1], { mode: 'observe', now }, base())).get(1).bloqueando, false);
+}
+
 async function validateRequestWorks() {
-  assert.deepStrictEqual(await obrasDaRequisicao({ path: '/qualquer', body: { obra_id: '5' }, query: {} }), [5]);
+  const post = (path) => ({ method: 'POST', path });
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/solicitacoes')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/compras/solicitacoes')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/compras/solicitacoes-diretas')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/contratos/fluxo-novo')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/rh/solicitacoes')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/solicitacoes/5/comentarios')), false);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/financeiro/titulos')), false);
+  assert.strictEqual(ehAberturaDeSolicitacao({ method: 'GET', path: '/solicitacoes' }), false);
+  assert.deepStrictEqual(await obrasDaAbertura({ body: { obra_id: '5' } }), [5]);
   assert.deepStrictEqual(
-    (await obrasDaRequisicao({ path: '/x', body: { rateios: [{ obra_id: 3 }, { obra_id: 4 }] }, query: { obra_id: '9' } })).sort(),
-    [3, 4, 9]
+    (await obrasDaAbertura({ body: { obra_id: 2, distribuicao_centro_custo: { linhas: [{ obra_id: 3 }, { obra_id: 4 }] } } })).sort(),
+    [2, 3, 4]
   );
-  assert.deepStrictEqual(await obrasDaRequisicao({ path: '/obras/12/gestao', body: {}, query: {} }), [12]);
-  assert.deepStrictEqual(await obrasDaRequisicao({ path: '/usuarios', body: {}, query: {} }), []);
+  assert.deepStrictEqual(await obrasDaAbertura({ body: { dados: { obra_id: 8 } } }), [8]);
+  assert.deepStrictEqual(
+    await obrasDaAbertura({ body: { colaborador_id: 3 } }, { RhColaborador: { findByPk: async () => ({ obra_id: 6 }) } }),
+    [6]
+  );
+  assert.deepStrictEqual(await obrasDaAbertura({ body: {} }), []);
 }
 
 async function validateMiddleware() {
@@ -119,10 +179,12 @@ async function validateMiddleware() {
     bloqueando: true
   }];
   const originalTravadas = service.obrasTravadasDoUsuario;
+  const originalTrava = service.travaDasObras;
   service.obrasTravadasDoUsuario = async () => locked;
+  service.travaDasObras = async (ids) => new Map(ids.filter((id) => id === 1).map((id) => [id, locked[0]]));
   delete require.cache[middlewarePath];
   const middleware = require(middlewarePath);
-  const run = async (req) => {
+  const run = async (req, user = engineer) => {
     let status = null;
     let payload = null;
     let passed = false;
@@ -130,24 +192,33 @@ async function validateMiddleware() {
       status(code) { status = code; return this; },
       json(body) { payload = body; return this; }
     };
-    await middleware({ user: engineer, query: {}, body: {}, ...req }, res, () => { passed = true; });
+    await middleware({ user, query: {}, body: {}, ...req }, res, () => { passed = true; });
     return { status, payload, passed };
   };
   try {
     process.env.CR_GUARD_MODE = 'enforce';
     const blocked = await run({ path: '/compras/solicitacoes', method: 'POST', body: { obra_id: 1 } });
     assert.strictEqual(blocked.status, 403);
-    assert.strictEqual(blocked.payload.code, 'OBRA_TRAVADA_CUSTOS_RECEBIVEIS');
+    assert.strictEqual(blocked.payload.code, 'OBRA_TRAVADA_SOLICITACAO_NOVA');
     assert.strictEqual(blocked.payload.obra_travada.obra_id, 1);
-    // Outra obra do mesmo engenheiro: livre.
+    // Qualquer usuario (inclusive SUPERADMIN) e qualquer rota de abertura.
+    const outro = { id: 5, perfil: 'SUPERADMIN' };
+    assert.strictEqual((await run({ path: '/solicitacoes', method: 'POST', body: { obra_id: 1 } }, outro)).status, 403);
+    assert.strictEqual((await run({ path: '/solicitacoes', method: 'POST', body: { obra_id: 2, distribuicao_centro_custo: [{ obra_id: 1 }] } })).status, 403);
+    assert.strictEqual((await run({ path: '/contratos/fluxo-novo', method: 'POST', body: { obra_id: 1 } })).status, 403);
+    assert.strictEqual((await run({ path: '/rh/solicitacoes', method: 'POST', body: { dados: { obra_id: 1 } } })).status, 403);
+    // Outra obra: livre.
     assert.strictEqual((await run({ path: '/compras/solicitacoes', method: 'POST', body: { obra_id: 2 } })).passed, true);
-    // Consulta ligada a obra travada tambem fica fechada.
-    assert.strictEqual((await run({ path: '/obras/1/gestao', method: 'GET' })).status, 403);
+    // Solicitacoes existentes, consultas, titulos e baixas da obra travada: livres.
+    assert.strictEqual((await run({ path: '/obras/1/gestao', method: 'GET' })).passed, true);
+    assert.strictEqual((await run({ path: '/solicitacoes/55/comentarios', method: 'POST', body: { obra_id: 1 } })).passed, true);
+    assert.strictEqual((await run({ path: '/financeiro/titulos', method: 'POST', body: { obra_id: 1 } }, outro)).passed, true);
+    assert.strictEqual((await run({ path: '/financeiro/fila-pagamentos/9/baixar', method: 'POST', body: { obra_id: 1 } }, outro)).passed, true);
     // Onde se regulariza: livre.
     assert.strictEqual((await run({ path: '/custos-recebiveis/obras/1/competencias', method: 'POST', body: { obra_id: 1 } })).passed, true);
     assert.strictEqual((await run({ path: '/custos-recebiveis/obras/1/competencias/2026-09/medicao', method: 'POST' })).passed, true);
     assert.strictEqual((await run({ path: '/custos-recebiveis/obras/1/competencias/2026-09/dilatacoes', method: 'POST' })).passed, true);
-    // Consultas do modulo que nao regularizam: fechadas para a obra travada.
+    // Consultas do modulo que nao regularizam: fechadas para o engenheiro.
     assert.strictEqual((await run({ path: '/custos-recebiveis/obras/1/comparativo', method: 'GET' })).status, 403);
     assert.strictEqual((await run({ path: '/custos-recebiveis/obras/1/auditoria', method: 'GET' })).status, 403);
     assert.strictEqual((await run({ path: '/custos-recebiveis/exportacoes/resumo-executivo', method: 'GET', query: { obra_id: '1' } })).status, 403);
@@ -157,6 +228,7 @@ async function validateMiddleware() {
     assert.strictEqual((await run({ path: '/compras/solicitacoes', method: 'POST', body: { obra_id: 1 } })).passed, true);
   } finally {
     service.obrasTravadasDoUsuario = originalTravadas;
+    service.travaDasObras = originalTrava;
     delete require.cache[middlewarePath];
     if (previousMode === undefined) delete process.env.CR_GUARD_MODE;
     else process.env.CR_GUARD_MODE = previousMode;
@@ -165,6 +237,7 @@ async function validateMiddleware() {
 
 async function run() {
   await validateLockedWorks();
+  await validateObraLevel();
   await validateRequestWorks();
   await validateMiddleware();
   console.log('Bloqueio por obra de Custos e Recebiveis validado com sucesso.');

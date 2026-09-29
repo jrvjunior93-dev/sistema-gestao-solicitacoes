@@ -279,9 +279,10 @@ function validateContracts() {
   assert(routes.includes('OBLIGATION_BYPASS'));
   assert(auth.includes('custos_recebiveis_pendencia'));
   assert(globalRoutes.includes('requireCustosRecebiveisCompletion'));
-  // Fase 3 da reforma (29/09): bloqueio por OBRA, nao mais do usuario inteiro.
+  // Fase 3 da reforma (29/09): obra travada nao recebe solicitacao nova.
   assert(middleware.includes("'OBRA_TRAVADA_CUSTOS_RECEBIVEIS'"));
-  assert(middleware.includes('obrasDaRequisicao(req)'));
+  assert(middleware.includes("'OBRA_TRAVADA_SOLICITACAO_NOVA'"));
+  assert(middleware.includes('obrasDaAbertura(req)'));
   assert(middleware.includes("guardMode() === 'observe'"));
   // Decisao de 29/09: planejamento atrasado e registrado sem reabertura; so
   // mes finalizado (ou com reabertura expirada) exige reabertura.

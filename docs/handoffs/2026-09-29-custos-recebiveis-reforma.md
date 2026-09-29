@@ -162,13 +162,25 @@ Definicoes adotadas nesta fase (a confirmar com o proprietario):
 - Faixa global: `role="status"`, atualiza a cada 5 minutos e ao voltar para a
   aba; falha ao calcular a trava nao derruba o login nem `obras/minhas`.
 
-Limitacoes conhecidas: listas amplas (sem obra no filtro) nao sao recortadas;
-abrir um item da obra travada e bloqueado. Rotas de acao em lote de fila,
-lotes de pagamento, transferencias de RH e uploads multipart com a obra no
-formulario nao sao resolvidas.
+Limitacoes (versao anterior, superadas pela revisao abaixo): recorte de listas
+e de consultas deixou de existir; so a abertura de solicitacao nova e barrada.
 
 Ativacao: seguir em `observe` no deploy, conferir quem "seria travado" e so
 entao definir `CR_GUARD_MODE=enforce` no ambiente (decisao do proprietario).
+
+## Revisao da Fase 3 (29/09, respostas do proprietario)
+
+- Bloqueio passa a ser da OBRA: nao recebe solicitacao nova de ninguem (geral,
+  compra, compra direta, contrato pela abertura, RH). Solicitacoes existentes
+  e demais operacoes liberadas para todos, inclusive o engenheiro.
+- Sem excecao fixa para SUPERADMIN; a liberacao temporaria (ate 48h) libera a
+  obra para todos.
+- Revertido o recorte de `getUserObraIds`/`hasObraAccess` e o filtro de
+  `obras/minhas` (a lista de criacao marca a obra com o motivo).
+- Dentro do modulo, o engenheiro da obra travada segue so com o que regulariza.
+- Dilatacao so com o prazo da medicao vencido; dias contam da aprovacao.
+- Previsao x medicao do mes anterior (40 dias): aprovado A + B (saldo provavel
+  com aviso e acerto ao registrar a medicao aprovada) — entra na Fase 5.
 
 ## Proximo passo
 

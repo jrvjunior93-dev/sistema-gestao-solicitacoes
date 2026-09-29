@@ -292,7 +292,7 @@ export default function CrObrigacoesView({ canGrantBypass, onOpenPlanning }) {
             <div className="cr-section-heading">
               <div>
                 <h2>Liberações temporárias</h2>
-                <p>Exceção administrativa por usuário, com prazo e auditoria.</p>
+                <p>Libera a obra travada por até 48 horas: ela volta a receber solicitações novas, de qualquer usuário. Com prazo e auditoria.</p>
               </div>
               <button
                 type="button"

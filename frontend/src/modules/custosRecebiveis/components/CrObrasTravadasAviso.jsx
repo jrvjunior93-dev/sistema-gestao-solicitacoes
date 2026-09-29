@@ -21,7 +21,8 @@ function pendenciaTexto(pendencia) {
 
 /*
   Faixa fixa no topo de todas as telas (reforma de 29/09/2026, Fase 3): diz
-  ao engenheiro qual obra está travada, por quê e onde regularizar. Em modo
+  ao engenheiro qual obra está travada (sem solicitação nova), por quê e onde
+  regularizar. Em modo
   observação ("seria travada") avisa sem bloquear; com liberação temporária
   mostra até quando.
 */
@@ -74,7 +75,7 @@ export default function CrObrasTravadasAviso() {
                 {estado === 'observacao' ? `Obra ${obraNome} seria travada` : null}
               </strong>
               {`: ${motivo}.`}
-              {estado === 'travada' ? ' Só é possível regularizar esta obra.' : null}
+              {estado === 'travada' ? ' A obra não recebe solicitação nova até você regularizar.' : null}
               {estado === 'observacao' ? ' Bloqueio ainda em observação.' : null}
             </span>
             <Link className="btn btn-primary" to={regularizarHref(item)}>

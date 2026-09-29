@@ -2692,7 +2692,7 @@ export default function NovaSolicitacao() {
               label="Obra/Centro de Custo"
               obrigatorio
               linha
-              erro={errosCampo.obra_id}
+              erro={errosCampo.obra_id || obraSelecionada?.bloqueio_solicitacao_nova?.motivo}
               hint={`Digite parte do nome ou do código para filtrar obras e centros de custo enquanto você preenche.${obrasFiltradas.length === 1 && mostrarSugestoesObra ? ' Pressione Enter para selecionar o único resultado.' : ''}`}
             >
               <div ref={campoObraRef} className="relative nova-solicitacao-obra-field">
@@ -3833,6 +3833,8 @@ export default function NovaSolicitacao() {
                 className="btn btn-primary"
                 disabled={
                   criandoSolicitacao ||
+                  // Obra travada em Custos e Recebiveis nao recebe solicitacao nova (29/09/2026).
+                  Boolean(obraSelecionada?.bloqueio_solicitacao_nova) ||
                   (tipoEhDeMedicao && contratoSelecionadoMedicaoBloqueada) ||
                   (usaFluxoRecargaCartao && (!cartaoRecargaId || recargaCartaoContexto?.bloqueado)) ||
                   (usaApropriacaoAutomaticaObra && apropriacaoAutomatica.status === 'loading') ||

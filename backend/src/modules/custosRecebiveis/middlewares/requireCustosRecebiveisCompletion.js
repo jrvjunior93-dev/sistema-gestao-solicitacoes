@@ -1,61 +1,53 @@
 'use strict';
 
 const {
+  ehAberturaDeSolicitacao,
   guardMode,
+  mensagemSolicitacaoNova,
   mensagemTravada,
-  obrasDaRequisicao,
+  obrasDaAbertura,
   obrasTravadasDoUsuario,
-  rotaRegularizacaoBloqueada
+  rotaRegularizacaoBloqueada,
+  travaDasObras
 } = require('../services/bloqueioObraService');
 
 /*
-  Bloqueio por obra (reforma de 29/09/2026, Fase 3). Substitui o guard
-  antigo, que travava o usuario no sistema inteiro: agora so a OBRA atrasada
-  fica fechada para o engenheiro responsavel por ela; as demais seguem livres.
-  Continua liberado o que regulariza (todo o modulo Custos e Recebiveis) e o
-  basico da sessao. Falha inesperada e fail-open, como antes.
+  Bloqueio por obra (reforma de 29/09/2026, Fase 3, revisto no mesmo dia).
+  Substitui o guard antigo, que travava o usuario no sistema inteiro.
+  1. Abrir solicitacao NOVA para obra travada: recusado para qualquer usuario
+     (so a liberacao temporaria do administrador abre excecao).
+  2. Dentro de Custos e Recebiveis, o engenheiro responsavel pela obra travada
+     so acessa o que regulariza.
+  Todo o resto (solicitacoes existentes, titulos, pagamentos, baixas) segue
+  normal. Falha inesperada e fail-open, como antes.
 */
-const ALWAYS_ALLOWED_PREFIXES = Object.freeze([
-  '/auth/logout',
-  '/auth/heartbeat',
-  '/auth/me',
-  '/usuarios/me',
-  '/perfil',
-  '/ajuda',
-  '/suporte',
-  '/live-updates'
-]);
-
-function isAllowedRoute(req) {
-  const path = String(req.path || req.originalUrl || '').split('?')[0];
-  return ALWAYS_ALLOWED_PREFIXES.some((prefix) => (
-    path === prefix || path.startsWith(`${prefix}/`)
-  ));
+function recusar(res, item, code, error) {
+  return res.status(403).json({ error, code, obra_travada: item });
 }
 
 async function requireCustosRecebiveisCompletion(req, res, next) {
   if (guardMode() === 'observe') return next();
   try {
-    if (isAllowedRoute(req)) return next();
-    const travadas = (await obrasTravadasDoUsuario(req.user)).filter((item) => item.bloqueando);
-    if (!travadas.length) return next();
-    let hit = null;
     const path = String(req.path || '').split('?')[0];
-    if (path === '/custos-recebiveis' || path.startsWith('/custos-recebiveis/')) {
-      // O modulo e onde se regulariza: so as consultas que nao regularizam
-      // (comparativo, realizado, auditoria, estrutura, exportacao) fecham.
-      const obraId = rotaRegularizacaoBloqueada(req, new Set(travadas.map((item) => Number(item.obra_id))));
-      hit = obraId ? travadas.find((item) => Number(item.obra_id) === obraId) : null;
-    } else {
-      const obraIds = await obrasDaRequisicao(req);
-      hit = travadas.find((item) => obraIds.includes(Number(item.obra_id)));
+    if (ehAberturaDeSolicitacao(req)) {
+      const obraIds = await obrasDaAbertura(req);
+      if (!obraIds.length) return next();
+      const travas = await travaDasObras(obraIds);
+      const hit = obraIds.map((id) => travas.get(id)).find((item) => item?.bloqueando);
+      return hit
+        ? recusar(res, hit, 'OBRA_TRAVADA_SOLICITACAO_NOVA', mensagemSolicitacaoNova(hit))
+        : next();
     }
-    if (!hit) return next();
-    return res.status(403).json({
-      error: mensagemTravada(hit),
-      code: 'OBRA_TRAVADA_CUSTOS_RECEBIVEIS',
-      obra_travada: hit
-    });
+    if (path === '/custos-recebiveis' || path.startsWith('/custos-recebiveis/')) {
+      const travadas = (await obrasTravadasDoUsuario(req.user)).filter((item) => item.bloqueando);
+      if (!travadas.length) return next();
+      const obraId = rotaRegularizacaoBloqueada(req, new Set(travadas.map((item) => Number(item.obra_id))));
+      const hit = obraId ? travadas.find((item) => Number(item.obra_id) === obraId) : null;
+      return hit
+        ? recusar(res, hit, 'OBRA_TRAVADA_CUSTOS_RECEBIVEIS', mensagemTravada(hit))
+        : next();
+    }
+    return next();
   } catch (error) {
     console.error('Falha segura ao avaliar bloqueio de obra (Custos e Recebiveis):', error.message);
     return next();
@@ -63,5 +55,3 @@ async function requireCustosRecebiveisCompletion(req, res, next) {
 }
 
 module.exports = requireCustosRecebiveisCompletion;
-module.exports.ALWAYS_ALLOWED_PREFIXES = ALWAYS_ALLOWED_PREFIXES;
-module.exports.isAllowedRoute = isAllowedRoute;

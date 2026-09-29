@@ -527,6 +527,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
   }, []);
 
   const itemModalAtual = modalApropriacaoIndex !== null ? itens[modalApropriacaoIndex] || null : null;
+  // Obra travada em Custos e Recebiveis: GET /obras/minhas?modo=CRIACAO marca
+  // a obra com o motivo; o envio e recusado tambem no servidor.
+  const obraTravadaMotivo = obras.find((obra) => Number(obra.id) === Number(obraId))
+    ?.bloqueio_solicitacao_nova?.motivo || '';
+
   const formasPagamentoSelecionadas = useMemo(
     () => formasPagamento.filter((forma) => formaPagamentoIds.includes(String(forma.id))),
     [formasPagamento, formaPagamentoIds]
@@ -1597,6 +1602,11 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       reprovarCampo('obra_id', 'Selecione a obra.');
       return;
     }
+    // Obra travada em Custos e Recebiveis nao recebe solicitacao nova (29/09/2026).
+    if (obraTravadaMotivo) {
+      reprovarCampo('obra_id', obraTravadaMotivo);
+      return;
+    }
 
     if (modoCompraDireta && !necessarioPara) {
       reprovarCampo('necessario_para', 'Informe a data de vencimento.');
@@ -1961,7 +1971,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
       */}
       <BlocoConteudo titulo="Dados gerais" variante="primario" cor="var(--sem-info)">
         <FormSecao colunas={2}>
-          <CampoForm label="Obra" obrigatorio linha erro={errosCampo.obra_id}>
+          <CampoForm label="Obra" obrigatorio linha erro={errosCampo.obra_id || obraTravadaMotivo}>
             <ApropriacaoAutocomplete
               value={obraId}
               options={obras}
