@@ -5,12 +5,18 @@ const {
   normalizeTipoSolicitacaoCodigo,
   serializeTipoSolicitacaoBehavior
 } = require('../services/tipoSolicitacaoBehaviorService');
-const { garantirTiposAutomaticosCentroCusto } = require('../services/tipoSolicitacaoDisponibilidadeService');
+const {
+  garantirTipoCadastroObra,
+  garantirTiposAutomaticosCentroCusto
+} = require('../services/tipoSolicitacaoDisponibilidadeService');
 
 module.exports = {
   async index(req, res) {
     try {
-      await garantirTiposAutomaticosCentroCusto();
+      await Promise.all([
+        garantirTiposAutomaticosCentroCusto(),
+        garantirTipoCadastroObra()
+      ]);
       const tipos = await TipoSolicitacao.findAll({
         order: [['nome', 'ASC']]
       });

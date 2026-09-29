@@ -205,6 +205,41 @@ function normalizeTipoSolicitacaoBehavior(tipo) {
     merged.usa_apropriacao_automatica_obra = true;
   }
 
+  if (codigoInterno === 'CADASTRO_DE_OBRA') {
+    Object.assign(merged, {
+      usa_fluxo_cadastro_obra: true,
+      somente_gerencia_processos: true,
+      finalidade_data_vencimento: FINALIDADES_DATA_SOLICITACAO.RESPOSTA,
+      mostrar_valor: false,
+      exige_valor: false,
+      mostrar_descricao: true,
+      exige_descricao: true,
+      mostrar_credor: false,
+      exige_credor: false,
+      mostrar_justificativa: false,
+      exige_justificativa: false,
+      mostrar_favorecido: false,
+      exige_favorecido: false,
+      mostrar_forma_pagamento: false,
+      exige_forma_pagamento: false,
+      mostrar_apropriacao_principal: false,
+      exige_apropriacao_principal: false,
+      mostrar_contrato: false,
+      exige_contrato: false,
+      mostrar_subtipo: false,
+      exige_subtipo: false,
+      mostrar_periodo_medicao: false,
+      exige_periodo_medicao: false,
+      mostrar_ref_contrato_abertura: false,
+      exige_ref_contrato_abertura: false,
+      mostrar_itens_apropriacao: false,
+      exige_itens_apropriacao: false,
+      exige_apropriacoes_contrato: false,
+      mostrar_anexos: true,
+      exige_anexos: true
+    });
+  }
+
   return merged;
 }
 

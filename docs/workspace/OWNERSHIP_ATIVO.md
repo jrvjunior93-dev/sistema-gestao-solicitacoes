@@ -718,3 +718,16 @@ Ownership da sessao `codex-cadastro-obra-solicitacao-2026-09-29` liberado apos i
 testes de dominio e regressao, verificacao de sintaxe, `git diff --check`, build do frontend e
 registro do handoff. Migration e teste integrado com o banco permanecem como passos controlados
 do deploy em dev.
+
+## Ownership ativo - codex-hotfix-cadastro-obra-migration-2026-09-29
+- `backend/migrations/202609290003_cadastro_obra_solicitacao.js`
+- `backend/scripts/validarCadastroObraSolicitacao.js`
+- `backend/src/controllers/TipoSolicitacaoController.js`
+- `backend/src/services/tipoSolicitacaoBehaviorService.js`
+- `backend/src/services/tipoSolicitacaoDisponibilidadeService.js`
+- `frontend/src/utils/tipoSolicitacao.js`
+- `docs/handoffs/2026-09-29-cadastro-obra-solicitacao.md`
+
+Ownership da sessao `codex-hotfix-cadastro-obra-migration-2026-09-29` liberado apos tornar a
+migration exclusivamente estrutural, mover o provisionamento idempotente do tipo para a camada
+da aplicacao e repetir testes de dominio, regressao, sintaxe, build e `git diff --check`.

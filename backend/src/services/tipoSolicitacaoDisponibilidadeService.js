@@ -42,6 +42,11 @@ const TIPOS_AUTOMATICOS_CENTRO_CUSTO = Object.freeze([
   }
 ]);
 
+const TIPO_CADASTRO_OBRA = Object.freeze({
+  codigo: 'CADASTRO_DE_OBRA',
+  nome: 'CADASTRO DE OBRA'
+});
+
 function erroNegocio(mensagem, statusCode = 400) {
   return Object.assign(new Error(mensagem), { statusCode });
 }
@@ -137,6 +142,51 @@ async function garantirTiposAutomaticosCentroCusto({ transaction = null } = {}) 
   return tipos;
 }
 
+async function garantirTipoCadastroObra({ transaction = null } = {}) {
+  const tiposReconhecidos = await TipoSolicitacao.findAll({
+    where: {
+      [Op.or]: [
+        { codigo_interno: TIPO_CADASTRO_OBRA.codigo },
+        { nome: TIPO_CADASTRO_OBRA.nome }
+      ]
+    },
+    order: [['id', 'ASC']],
+    transaction
+  });
+  let tipo = tiposReconhecidos[0] || null;
+
+  if (!tipo) {
+    tipo = await TipoSolicitacao.create({
+      nome: TIPO_CADASTRO_OBRA.nome,
+      codigo_interno: TIPO_CADASTRO_OBRA.codigo,
+      disponivel_para_obras: true,
+      ativo: true,
+      comportamento: serializeTipoSolicitacaoBehavior(
+        normalizeTipoSolicitacaoBehavior(TIPO_CADASTRO_OBRA)
+      )
+    }, { transaction });
+    return tipo;
+  }
+
+  const comportamento = serializeTipoSolicitacaoBehavior(
+    normalizeTipoSolicitacaoBehavior({
+      ...tipo.get({ plain: true }),
+      codigo_interno: TIPO_CADASTRO_OBRA.codigo,
+      nome: TIPO_CADASTRO_OBRA.nome
+    })
+  );
+  const atualizacoes = {};
+  if (tipo.nome !== TIPO_CADASTRO_OBRA.nome) atualizacoes.nome = TIPO_CADASTRO_OBRA.nome;
+  if (tipo.codigo_interno !== TIPO_CADASTRO_OBRA.codigo) atualizacoes.codigo_interno = TIPO_CADASTRO_OBRA.codigo;
+  if (tipo.ativo === false) atualizacoes.ativo = true;
+  if (tipo.disponivel_para_obras !== true && Number(tipo.disponivel_para_obras) !== 1) {
+    atualizacoes.disponivel_para_obras = true;
+  }
+  if (String(tipo.comportamento || '') !== comportamento) atualizacoes.comportamento = comportamento;
+  if (Object.keys(atualizacoes).length) await tipo.update(atualizacoes, { transaction });
+  return tipo;
+}
+
 async function obterTipoAutomaticoDestino(destino, transaction = null) {
   const definicao = obterDefinicaoTipoAutomatico(destino);
   if (!definicao) return null;
@@ -174,6 +224,7 @@ function enriquecerTipoComSubtipos(tipo) {
 }
 
 async function listarTiposDisponiveis(destinoId, { transaction = null } = {}) {
+  await garantirTipoCadastroObra({ transaction });
   const destino = await carregarDestino(destinoId, transaction);
   const ehObra = isObraCentroCusto(destino.tipo_centro_custo);
   const tipoAutomatico = ehObra ? null : await obterTipoAutomaticoDestino(destino, transaction);
@@ -274,7 +325,10 @@ async function assertTipoDisponivelNoDestino(destino, tipo, { transaction = null
 }
 
 async function obterConfiguracao() {
-  await garantirTiposAutomaticosCentroCusto();
+  await Promise.all([
+    garantirTiposAutomaticosCentroCusto(),
+    garantirTipoCadastroObra()
+  ]);
   const [tipos, centrosCusto, vinculos] = await Promise.all([
     TipoSolicitacao.findAll({ order: [['nome', 'ASC']] }),
     Obra.findAll({
@@ -393,6 +447,7 @@ async function salvarConfiguracao({ escopo, centroCustoId, tipos, usuarioId }) {
 
 module.exports = {
   assertTipoDisponivelNoDestino,
+  garantirTipoCadastroObra,
   garantirTiposAutomaticosCentroCusto,
   listarTiposDisponiveis,
   obterAreasConfiguracaoCamposDestino,

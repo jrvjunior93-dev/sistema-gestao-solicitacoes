@@ -18,14 +18,17 @@ Data: 29/09/2026
 
 ## Persistência e segurança
 
-- A migration `202609290003_cadastro_obra_solicitacao.js` cria a tabela relacional
-  `solicitacao_cadastro_obra_usuarios` e cadastra/atualiza idempotentemente o tipo.
+- A migration `202609290003_cadastro_obra_solicitacao.js` cria somente a tabela relacional
+  `solicitacao_cadastro_obra_usuarios` e seus índices.
+- O tipo é cadastrado/normalizado idempotentemente pela camada da aplicação quando o catálogo de
+  tipos ou a Nova Solicitação é consultado. Isso respeita a proteção que impede seeds em migrations.
 - A criação da solicitação e dos vínculos de pessoas ocorre na mesma transação.
 - O backend rejeita centro de custo, lista vazia, usuários inexistentes e usuários inativos.
 - Os vínculos desta solicitação são dados operacionais para o futuro cadastro da obra; eles não
   concedem acesso à obra solicitante nem alteram permissões dos usuários.
 - O endpoint da lista devolve somente `id` e `nome` dos usuários ativos.
 - A migration não usa `describeTable`, preservando compatibilidade com o runner de migrations do projeto.
+- A migration não possui `INSERT`, `UPDATE`, seed ou backfill.
 
 ## Ordem segura de deploy em dev
 
