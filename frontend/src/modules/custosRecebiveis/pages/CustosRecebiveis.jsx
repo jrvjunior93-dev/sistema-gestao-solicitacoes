@@ -54,6 +54,9 @@ import {
   hasExplicitCustosRecebiveisPermission
 } from '../utils/access';
 import '../styles/custos-recebiveis.css';
+import '../styles/cr-admin.css';
+import '../styles/cr-detalhe.css';
+import '../styles/cr-previsao.css';
 
 const TAB_ICONS = {
   'visao-geral': HiOutlineChartBarSquare,
