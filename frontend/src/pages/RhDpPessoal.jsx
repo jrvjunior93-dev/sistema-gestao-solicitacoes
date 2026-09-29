@@ -417,10 +417,12 @@ export default function RhDpPessoal() {
       apoio: 'Quem está na obra hoje, com o que cada um tem em curso.'
     },
     { id: 'transferencias', rotulo: 'Transferências entre obras', apoio: 'Consulta global e transferências aprovadas pelos responsáveis das obras, sem passar pelo DP.' },
-    ...(usuarioDoDp ? [{
+    ...(usuarioDoDp || usuarioOperacionalDaObra ? [{
       id: 'eventos-recorrentes',
       rotulo: 'Eventos recorrentes',
-      apoio: 'Acompanhe parcelas futuras, ajuste valores ainda não aplicados e encerre recorrências.'
+      apoio: usuarioDoDp
+        ? 'Acompanhe parcelas futuras, ajuste valores ainda não aplicados e encerre recorrências.'
+        : 'Acompanhe os eventos aprovados dos colaboradores vinculados às suas obras.'
     }] : []),
     {
       id: 'jornada',
@@ -437,7 +439,7 @@ export default function RhDpPessoal() {
       rotulo: 'Fechamentos',
       apoio: 'Competências encerradas e títulos financeiros gerados a partir das apurações.'
     }] : [])
-  ], [podeVerApuracao, podeVerFechamentos, usuarioDoDp]);
+  ], [podeVerApuracao, podeVerFechamentos, usuarioDoDp, usuarioOperacionalDaObra]);
   const abasDisponiveis = useMemo(() => ABAS.map((aba) => aba.id), [ABAS]);
   const abaDaUrl = parametros.get('aba');
   const abaAtiva = abasDisponiveis.includes(abaDaUrl) ? abaDaUrl : 'solicitacoes';
@@ -1184,6 +1186,7 @@ export default function RhDpPessoal() {
         <RhDpPessoalSolicitacoes
           podeAbrir={podeAbrir}
           podeDecidir={podeDecidir}
+          podeDecidirEventoRecorrente={usuarioDoDp}
           podeAprovarSalario={podeAprovarSalario}
           aoMudar={carregar}
           onAbrirListaJornadas={abrirListaDeJornadas}
@@ -1354,8 +1357,11 @@ export default function RhDpPessoal() {
       {abaAtiva === 'transferencias' ? <RhDpTransferencias
         onNotificacoesLidas={limparNotificacoesTransferencia}
       /> : null}
-      {abaAtiva === 'eventos-recorrentes' && usuarioDoDp ? (
-        <RhDpEventosRecorrentes podeDecidir={podeDecidir} />
+      {abaAtiva === 'eventos-recorrentes' && (usuarioDoDp || usuarioOperacionalDaObra) ? (
+        <RhDpEventosRecorrentes
+          podeDecidir={usuarioDoDp && podeDecidir}
+          somenteLeitura={!usuarioDoDp}
+        />
       ) : null}
       {abaAtiva === 'jornada' ? (
         <RhDpJornada onAbrirApuracao={podeVerApuracao ? abrirApuracaoDaJornada : undefined} />

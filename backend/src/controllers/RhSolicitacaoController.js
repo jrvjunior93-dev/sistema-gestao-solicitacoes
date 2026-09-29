@@ -22,8 +22,10 @@ const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const {
   getRhDpObraScopeIds,
   getUserObraIds,
+  isSuperadmin,
   userHasAreaPermission
 } = require('../services/authorizationService');
+const { userBelongsToDpSetor } = require('../services/setorCapabilityService');
 const { ValidationError } = require('../middlewares/validation');
 const { ehTransferencia } = require('../services/rhPessoalDomain');
 const { comAtividade, marcarLida } = require('../services/rhSolicitacaoAtividadeService');
@@ -69,7 +71,7 @@ async function obrasVisiveis(req) {
 
 async function exigirObraNoEscopoDoUsuario(req, obraId) {
   const escopo = await getRhDpObraScopeIds(req.user);
-  if (!Array.isArray(escopo)) return;
+  if (!Array.isArray(escopo)) return pedido;
 
   const id = Number(obraId);
   if (!id || !escopo.includes(id)) {
@@ -104,6 +106,7 @@ async function exigirSolicitacaoNoEscopoDoUsuario(req, solicitacaoId) {
   if (!solicitacao.obra_id || !escopo.includes(Number(solicitacao.obra_id))) {
     throw new ValidationError('Acesso negado a esta solicitacao de pessoal.', 403);
   }
+  return pedido;
 }
 
 module.exports = {
@@ -213,7 +216,15 @@ module.exports = {
 
   async aprovar(req, res) {
     try {
-      await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
+      const solicitacao = await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
+      if (String(solicitacao.tipo || '').toUpperCase() === 'EVENTO_RECORRENTE'
+          && !isSuperadmin(req.user)
+          && !(await userBelongsToDpSetor(req.user))) {
+        throw new ValidationError(
+          'Apenas o Departamento Pessoal pode aprovar e cadastrar um evento recorrente.',
+          403
+        );
+      }
       const resultado = await aprovarSolicitacao(req.params.id, contextoDe(req));
       return res.json(resultado);
     } catch (error) {

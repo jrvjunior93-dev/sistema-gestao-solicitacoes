@@ -41,7 +41,7 @@ function eventoConcluido(evento) {
     && Number(evento.parcelas_aplicadas || 0) >= Number(evento.parcelas_total));
 }
 
-export default function RhDpEventosRecorrentes({ podeDecidir }) {
+export default function RhDpEventosRecorrentes({ podeDecidir, somenteLeitura = false }) {
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [eventos, setEventos] = useState([]);
@@ -153,6 +153,13 @@ export default function RhDpEventosRecorrentes({ podeDecidir }) {
   return (
     <div className="space-y-3">
       <Avisos avisos={avisos} aoFechar={fechar} />
+
+      {somenteLeitura ? (
+        <p className="app-note">
+          Consulta dos eventos aprovados dos colaboradores das suas obras. Solicitações novas ou
+          alterações devem ser enviadas ao Departamento Pessoal pela aba Solicitações.
+        </p>
+      ) : null}
 
       <BarraFiltros
         busca={{ valor: busca, aoMudar: setBusca, placeholder: 'Colaborador, evento, obra ou matrícula' }}

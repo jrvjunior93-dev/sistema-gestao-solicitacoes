@@ -154,7 +154,7 @@ function dadosOperacionais(solicitacao) {
     .map(([chave, valor]) => ({ chave, rotulo: ROTULO_DADO[chave], valor: formatarDado(chave, valor) }));
 }
 
-export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAprovarSalario, aoMudar, onAbrirListaJornadas, aoContarAbertas, aoContarNaoLidas, aoMarcarVisualizada }) {
+export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeDecidirEventoRecorrente, podeAprovarSalario, aoMudar, onAbrirListaJornadas, aoContarAbertas, aoContarNaoLidas, aoMarcarVisualizada }) {
   const { avisos, avisar, fechar, limpar } = useAvisos();
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [parametros, setParametros] = useSearchParams();
@@ -676,7 +676,10 @@ export default function RhDpPessoalSolicitacoes({ podeAbrir, podeDecidir, podeAp
               <button type="button" className="btn btn-outline btn-sm" onClick={() => selecionarDetalhe(s)}>
                 Abrir
               </button>
-              {podeDecidir && s.situacao === 'ABERTA' && s.tipo !== 'JORNADA' ? (
+              {podeDecidir
+                  && (s.tipo !== 'EVENTO_RECORRENTE' || podeDecidirEventoRecorrente)
+                  && s.situacao === 'ABERTA'
+                  && s.tipo !== 'JORNADA' ? (
                 <>
                   {s.tipo !== 'ALTERACAO_SALARIAL' || podeAprovarSalario ? (
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => decidir(s, 'aprovar')}>

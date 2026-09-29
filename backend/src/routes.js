@@ -2058,7 +2058,10 @@ router.get('/rh/tickets/status', allowRhDpTicketManage, RhTicketController.statu
 router.get('/rh/tickets/vencimento', allowRhDpTicketManage, RhTicketController.vencimento);
 router.post('/rh/tickets', requireEnabledModule('FINANCEIRO'), allowRhDpTicketManage, uploadRateLimit, criticalRateLimit, uploadComprovantes.single('boleto'), RhTicketController.create);
 router.get('/rh/colaboradores/:id/eventos-recorrentes', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.eventosDoColaborador);
-router.get('/rh/eventos-recorrentes', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoVer, RhJornadaController.listarEventos);
+// A Obra acompanha, em modo somente leitura, os eventos dos colaboradores lotados nas obras em
+// que o usuario possui vinculo. O controller injeta esse escopo e o servico aplica o filtro no
+// banco. Edicao e cancelamento continuam protegidos pelo middleware exclusivo do DP abaixo.
+router.get('/rh/eventos-recorrentes', allowRhDpSolicitacaoVer, RhJornadaController.listarEventos);
 router.patch('/rh/eventos-recorrentes/:id', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.atualizarEvento);
 router.post('/rh/eventos-recorrentes/:id/desativar', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.desativarEvento);
 router.get('/rh/apuracao-eventos/:id/itens', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Linha da folha') }), RhJornadaController.itensDaFolha);
