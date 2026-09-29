@@ -82,3 +82,16 @@ Validações do complemento:
 - `cd frontend && npm run build`
 
 Não há migration, seed ou alteração de dados.
+
+## Complemento — cores por natureza do movimento
+
+Nas visões `Previsto` e `Realizado`, as séries agora usam verde para entradas e vermelho para
+saídas, tanto na linha quanto nos pontos e na legenda. A visão `Comparativo` preserva azul para
+previsto e verde para realizado, porque nesse recorte as cores distinguem planejamento de baixa,
+e não a natureza do movimento. O modo escuro recebeu equivalentes com contraste adequado.
+
+Validação do complemento:
+
+- `cd frontend && npm run build`
+
+Não houve alteração de cálculo, endpoint, permissão ou dados.

@@ -418,7 +418,9 @@ function FluxoComparativoCard({ serie, dataLimiteRealizado, periodoLabel }) {
     : null;
 
   return (
-    <section className="finance-chart-card finance-chart-card--comparison">
+    <section
+      className={`finance-chart-card finance-chart-card--comparison ${view === 'COMPARATIVO' ? '' : 'finance-chart-card--cash-direction'}`}
+    >
       <div className="finance-chart-card__backdrop" />
 
       <div className="finance-chart-card__head">
@@ -467,11 +469,11 @@ function FluxoComparativoCard({ serie, dataLimiteRealizado, periodoLabel }) {
 
           <div className="finance-chart-legend">
             <span className="finance-chart-legend-item">
-              <span className="finance-chart-legend-dot finance-chart-legend-dot--previsto" />
+              <span className="finance-chart-legend-dot finance-chart-legend-dot--primary" />
               {modeConfig.primaryLabel}
             </span>
             <span className="finance-chart-legend-item">
-              <span className="finance-chart-legend-dot finance-chart-legend-dot--realizado" />
+              <span className="finance-chart-legend-dot finance-chart-legend-dot--secondary" />
               {modeConfig.secondaryLabel}
             </span>
           </div>
@@ -569,7 +571,7 @@ function FluxoComparativoCard({ serie, dataLimiteRealizado, periodoLabel }) {
               <path
                 d={geometry.primaryPath}
                 fill="none"
-                stroke="var(--finance-chart-previsto)"
+                stroke="var(--finance-chart-primary)"
                 strokeWidth="3.4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -578,7 +580,7 @@ function FluxoComparativoCard({ serie, dataLimiteRealizado, periodoLabel }) {
               <path
                 d={geometry.secondaryPath}
                 fill="none"
-                stroke="var(--finance-chart-realizado)"
+                stroke="var(--finance-chart-secondary)"
                 strokeWidth="3.4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -591,7 +593,7 @@ function FluxoComparativoCard({ serie, dataLimiteRealizado, periodoLabel }) {
                   cx={point.x}
                   cy={point.y}
                   r="4.2"
-                  fill="var(--finance-chart-previsto)"
+                  fill="var(--finance-chart-primary)"
                   className="finance-chart-point"
                 >
                   <title>{`${point.label} - ${modeConfig.primaryLabel} ${formatCurrency(point.raw)}`}</title>
@@ -603,7 +605,7 @@ function FluxoComparativoCard({ serie, dataLimiteRealizado, periodoLabel }) {
                   cx={point.x}
                   cy={point.y}
                   r="4.2"
-                  fill="var(--finance-chart-realizado)"
+                  fill="var(--finance-chart-secondary)"
                   className="finance-chart-point finance-chart-point--secondary"
                 >
                   <title>{`${point.label} - ${modeConfig.secondaryLabel} ${formatCurrency(point.raw)}`}</title>

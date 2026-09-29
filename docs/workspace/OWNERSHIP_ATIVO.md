@@ -1,5 +1,14 @@
 # Ownership Ativo
 
+Ownership temporario da sessao `/root` iniciado em 2026-09-29 para diferenciar
+visualmente as linhas de entradas e saidas no grafico de fluxo de caixa. Escopo:
+`frontend/src/pages/FinanceiroRelatorios.jsx`, `frontend/src/index.css`, handoff e
+este registro. Preservar `outputs/` e alteracoes paralelas; sem backend, migration,
+banco, deploy, commit ou push nesta etapa.
+
+Implementacao local concluida; ownership de edicao liberado. Handoff atualizado:
+`docs/handoffs/2026-09-29-fluxo-caixa-previsto-realizado.md`.
+
 Ownership temporario da sessao `/root` iniciado em 2026-09-29 para ampliar o
 filtro do fluxo de caixa com periodos retroativos e garantir que o mesmo periodo
 seja aplicado às visoes Comparativo, Previsto e Realizado. Escopo:

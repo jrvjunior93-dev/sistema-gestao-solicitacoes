@@ -6120,6 +6120,10 @@ input[type="file"]:disabled {
 .finance-chart-card {
   --finance-chart-previsto: #356dff;
   --finance-chart-realizado: #0fbf8f;
+  --finance-chart-entrada: #11845f;
+  --finance-chart-saida: #c23636;
+  --finance-chart-primary: var(--finance-chart-previsto);
+  --finance-chart-secondary: var(--finance-chart-realizado);
   --finance-chart-border: #c8d8ee;
   --finance-chart-bg:
     radial-gradient(circle at top left, rgba(89, 164, 255, 0.18), transparent 36%),
@@ -6163,6 +6167,8 @@ input[type="file"]:disabled {
 .dark .finance-chart-card {
   --finance-chart-previsto: #73f7ff;
   --finance-chart-realizado: #d6ff8e;
+  --finance-chart-entrada: #50d8a8;
+  --finance-chart-saida: #ff7b86;
   --finance-chart-border: #203a63;
   --finance-chart-bg:
     radial-gradient(circle at top left, rgba(111, 225, 255, 0.18), transparent 36%),
@@ -6193,6 +6199,11 @@ input[type="file"]:disabled {
   --finance-chart-empty-bg: rgba(255, 255, 255, 0.04);
   --finance-chart-empty-border: rgba(158, 197, 255, 0.24);
   --finance-chart-empty-text: rgba(226, 239, 255, 0.78);
+}
+
+.finance-chart-card--cash-direction {
+  --finance-chart-primary: var(--finance-chart-entrada);
+  --finance-chart-secondary: var(--finance-chart-saida);
 }
 
 .finance-chart-card__backdrop {
@@ -6309,13 +6320,13 @@ input[type="file"]:disabled {
   box-shadow: 0 0 10px currentColor;
 }
 
-.finance-chart-legend-dot--previsto {
-  color: var(--finance-chart-previsto);
+.finance-chart-legend-dot--primary {
+  color: var(--finance-chart-primary);
   background: currentColor;
 }
 
-.finance-chart-legend-dot--realizado {
-  color: var(--finance-chart-realizado);
+.finance-chart-legend-dot--secondary {
+  color: var(--finance-chart-secondary);
   background: currentColor;
 }
 
@@ -6392,11 +6403,11 @@ input[type="file"]:disabled {
 }
 
 .finance-chart-point {
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--finance-chart-previsto) 72%, transparent));
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--finance-chart-primary) 72%, transparent));
 }
 
 .finance-chart-point--secondary {
-  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--finance-chart-realizado) 62%, transparent));
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--finance-chart-secondary) 62%, transparent));
 }
 
 .finance-chart-axis {
