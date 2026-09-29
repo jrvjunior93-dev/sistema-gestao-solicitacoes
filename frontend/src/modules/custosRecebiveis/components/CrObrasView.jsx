@@ -7,6 +7,7 @@ import {
 } from 'react-icons/hi2';
 import {
   BarraFiltros,
+  BlocoConteudo,
   TabelaPadrao,
   CelulaDupla,
   alternarValorFiltro
@@ -106,7 +107,7 @@ function EngineerWorks({ obras, loading, error, onReload, onOpen }) {
   ));
 
   return (
-    <section className="cr-section">
+    <BlocoConteudo titulo="Minhas obras" contagem={`${filtered.length} obra(s)`}>
       <BarraFiltros
         busca={{ valor: busca, aoMudar: setBusca, placeholder: 'Nome ou código da obra' }}
         filtros={[{ id: 'obra', rotulo: 'Obra', opcoes: opcoesObra }]}
@@ -142,7 +143,7 @@ function EngineerWorks({ obras, loading, error, onReload, onOpen }) {
           ))}
         </div>
       )}
-    </section>
+    </BlocoConteudo>
   );
 }
 
