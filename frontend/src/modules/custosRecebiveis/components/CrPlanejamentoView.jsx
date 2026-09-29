@@ -1258,7 +1258,7 @@ export default function CrPlanejamentoView({
         titulo: 'Previsão acima do saldo provável',
         mensagem: (
           <>
-            {warned.length} item(ns) passam do saldo provável:
+            A previsão de {payload.length} item(ns) será salva; {warned.length} passam do saldo provável:
             {warned.map(({ item, balance }) => (
               <span key={planningRowKey(item)} className="cr-confirm-line">
                 {item.item?.codigo ? `${item.item.codigo} · ` : ''}{item.descricao}: {formatQuantity(balance.quantity, item.unidade || 'un')} previsto, saldo provável {formatQuantity(balance.probable, item.unidade || 'un')} ({pendingMonthsText(balance)} aguardando aprovação)

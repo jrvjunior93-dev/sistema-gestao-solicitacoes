@@ -3,14 +3,12 @@
   "criado_em": "2026-09-04",
   "porque": "Token e classe que a tela usa e que NUNCA foram declarados. O CSS nao resolve, a declaracao e descartada, e o estilo nunca chega a tela. Classe fantasma e pior que valor errado: parece intencao. O numero SO DESCE.",
   "nomes": {
-    ".cr-field--search": 1,
     ".cr-governance": 1,
     ".cr-inline-state": 2,
     ".cr-macro-planning-group": 2,
     ".cr-modal--compact": 1,
     ".cr-planning-workspace": 1,
     ".cr-subitem": 1,
-    ".cr-works-access": 1,
     ".form-field": 79,
     ".form-help": 1,
     ".la-cards-grupo": 1
