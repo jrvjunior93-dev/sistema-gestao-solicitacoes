@@ -2240,6 +2240,13 @@ router.get('/painel-gestor/custos-recebiveis', PainelGestorController.custosRece
 router.get('/painel-gestor/saldos', PainelGestorController.saldos);
 router.get('/painel-gestor/saldos/preenchimento', PainelGestorController.preenchimentoSaldos);
 router.post('/painel-gestor/saldos', criticalRateLimit, PainelGestorController.salvarSaldos);
+router.get('/painel-gestor/olho', PainelGestorController.olhoEstado);
+router.post('/painel-gestor/olho/fechar', criticalRateLimit, PainelGestorController.olhoFechar);
+router.post('/painel-gestor/olho/abrir', criticalRateLimit, PainelGestorController.olhoAbrir);
+// Senha unica do olho do Painel do Gestor: mesmo criterio das configuracoes gravadas em
+// ConfiguracaoSistema (ex.: areas-obra) -> allowConfiguracoesStatusVinculos.
+router.get('/configuracoes/painel-gestor/pin', allowConfiguracoesStatusVinculos, PainelGestorController.pinConfiguracao);
+router.put('/configuracoes/painel-gestor/pin', allowConfiguracoesStatusVinculos, criticalRateLimit, PainelGestorController.pinDefinir);
 router.get('/financeiro/baixas', allowFinanceiro, validateRequest({ query: validateFinanceBaixasQuery }), TituloFinanceiroController.baixas);
 router.get('/financeiro/financiamentos-bancarios', allowFinanceiro, validateRequest({ query: validateFinanceFinanciamentoBancarioQuery }), FinanciamentoBancarioController.index);
 router.post('/financeiro/financiamentos-bancarios', allowFinanceiro, criticalRateLimit, validateRequest({ body: validateFinanceFinanciamentoBancarioCreateBody }), FinanciamentoBancarioController.create);

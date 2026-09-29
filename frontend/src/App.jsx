@@ -1007,7 +1007,7 @@ export default function App() {
         <Route path="permissoes-areas-padroes" element={<ConfiguracoesAreaRoute area="permissoes"><PermissoesAreasPadroes /></ConfiguracoesAreaRoute>} />
         <Route path="governanca" element={<GovernancaSistemaRoute><GovernancaSistema /></GovernancaSistemaRoute>} />
         <Route path="governanca/auditoria-operacional" element={<AuditoriaOperacionalRoute><AuditoriaOperacional /></AuditoriaOperacionalRoute>} />
-        <Route path="configuracoes-painel-gestor" element={<SuperadminRoute><ConfiguracoesPainelGestor /></SuperadminRoute>} />
+        <Route path="configuracoes-painel-gestor" element={<ConfiguracoesAreaRoute area="status_vinculos"><ConfiguracoesPainelGestor /></ConfiguracoesAreaRoute>} />
         <Route path="arquivos-modelos-config" element={<SuperadminRoute><ArquivosModelosConfig /></SuperadminRoute>} />
         <Route path="configuracoes-cotacao" element={<EnabledModuleRoute moduleKey="COMPRAS"><EnabledModuleRoute moduleKey="COTACOES"><ComprasConfiguracoesRoute><ConfiguracoesCotacao /></ComprasConfiguracoesRoute></EnabledModuleRoute></EnabledModuleRoute>} />
         <Route path="configuracoes-status-pedidos-compra" element={<EnabledModuleRoute moduleKey="COMPRAS"><ComprasConfiguracoesRoute><ConfiguracoesStatusPedidoCompra /></ComprasConfiguracoesRoute></EnabledModuleRoute>} />

@@ -102,7 +102,7 @@ const corsOptions = {
     'Idempotency-Key',
     'X-Audit-Session-Id'
   ],
-  exposedHeaders: ['X-CSRF-Token', 'X-Idempotent-Replay'],
+  exposedHeaders: ['X-CSRF-Token', 'X-Idempotent-Replay', 'X-Painel-Valores-Ocultos', 'Retry-After'],
   credentials: true
 };
 app.use(cors(corsOptions));
