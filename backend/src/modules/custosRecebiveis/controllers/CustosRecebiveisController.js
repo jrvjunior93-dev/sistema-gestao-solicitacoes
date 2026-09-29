@@ -58,6 +58,16 @@ const {
   listarAuditoriaObra,
   listarResponsaveisObra
 } = require('../services/governancaService');
+const {
+  listarAuditoriaGeral,
+  listarObrigacoesGeral,
+  listarPlanosGeral,
+  listarResponsaveisGeral
+} = require('../services/consultaAdminService');
+const {
+  listarDecisoesPendentes,
+  listarReaberturasGeral
+} = require('../services/filaDecisoesService');
 
 function respondError(res, error, fallbackMessage) {
   const status = Number(error?.statusCode || error?.status);
@@ -390,10 +400,16 @@ class CustosRecebiveisController {
 
   static async decidirReabertura(req, res) {
     try {
+      // Fase 4: a tela do administrador envia `justificativa`; o servico
+      // grava `observacao` na auditoria. `observacao` continua valendo.
+      const body = req.body || {};
+      const payload = body.observacao == null && body.justificativa != null
+        ? { ...body, observacao: body.justificativa }
+        : body;
       return res.json(await decidirReabertura(
         req.user,
         req.params.reaberturaId,
-        req.body
+        payload
       ));
     } catch (error) {
       return respondError(res, error, 'Erro ao decidir a reabertura');
@@ -536,6 +552,55 @@ class CustosRecebiveisController {
       ));
     } catch (error) {
       return respondError(res, error, 'Erro ao consultar auditoria de Custos e Recebiveis');
+    }
+  }
+
+  // Consultas gerais do administrador (reforma 2026-09, Fase 4).
+  static async decisoesPendentes(req, res) {
+    try {
+      return res.json(await listarDecisoesPendentes(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar pedidos aguardando decisao');
+    }
+  }
+
+  static async reaberturas(req, res) {
+    try {
+      return res.json(await listarReaberturasGeral(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar reaberturas');
+    }
+  }
+
+  static async auditoriaGeral(req, res) {
+    try {
+      return res.json(await listarAuditoriaGeral(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar auditoria de Custos e Recebiveis');
+    }
+  }
+
+  static async planosGeral(req, res) {
+    try {
+      return res.json(await listarPlanosGeral(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar planos das obras');
+    }
+  }
+
+  static async responsaveisGeral(req, res) {
+    try {
+      return res.json(await listarResponsaveisGeral(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar responsaveis das obras');
+    }
+  }
+
+  static async obrigacoesGeral(req, res) {
+    try {
+      return res.json(await listarObrigacoesGeral(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar obrigacoes das obras');
     }
   }
 

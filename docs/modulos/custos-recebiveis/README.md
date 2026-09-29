@@ -629,6 +629,69 @@ Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
 - Reabertura aprovada vale 24 horas; depois o mes fecha sozinho (primeira
   consulta apos o vencimento).
 
+## Reforma 2026-09 - Fase 4: consultas do administrador
+
+Consultas gerais para a tela do administrador abrir Importacoes, Auditoria,
+Configuracoes, Obrigacoes e a fila de decisoes sem escolher obra antes. Todas
+sao `GET`, somente leitura, recortadas pelo escopo de obras do usuario
+(`resolverEscopoObras`, o mesmo das rotas por obra). `obra_id` fora do escopo
+responde 403 `CR_OBRA_FORA_ESCOPO`; `obra_id`, `situacao`, data ou periodo
+invalidos respondem 400 com mensagem legivel. Paginacao onde indicado:
+`limit` padrao 50, maximo 200 (acima disso vale 200; invalido vale 50),
+`offset` padrao 0; a resposta ecoa `limit` e `offset`. Datas em ISO 8601.
+Servicos: `services/filaDecisoesService.js` e `services/consultaAdminService.js`.
+As rotas por obra (`/obras/:obraId/auditoria`, `/obras/:obraId/plano`,
+`/obras/:obraId/responsaveis`) e `/obrigacoes/minhas` nao mudaram.
+
+| Rota | Permissao | Resposta |
+| --- | --- | --- |
+| `GET /custos-recebiveis/decisoes/pendentes?obra_id=&limit=&offset=` | `REOPEN_APPROVE` | `{ items: [{ tipo: 'REABERTURA'\|'DILATACAO', id, obra: {id,codigo,nome}, competencia, motivo, dias, prazo_vigente, solicitado_por: {id,nome}, solicitado_em }], total }` |
+| `GET /custos-recebiveis/reaberturas?situacao=&obra_id=&limit=&offset=` | `REOPEN_APPROVE` ou `OBRIGACOES_VIEW` | `{ items: [{ id, obra, competencia, motivo, situacao, solicitado_por, solicitado_em, decidido_por\|null, decidido_em\|null, justificativa\|null, expira_em\|null }], total }` |
+| `GET /custos-recebiveis/auditoria?obra_id=&acao=&de=&ate=&limit=&offset=` | `AUDITORIA_VIEW` | `{ items: [{ id, criado_em, obra\|null, competencia\|null, acao, descricao, usuario: {id,nome}\|null }], total, acoes }` |
+| `GET /custos-recebiveis/planos` | `ESTRUTURA_VIEW` | `{ items: [{ obra: {id,codigo,nome,classificacao}, vigente: {id,versao,publicado_em,total_itens}\|null, rascunhos: [{id,versao,criado_em}], total_versoes, ultima_importacao_em\|null }] }` |
+| `GET /custos-recebiveis/responsaveis` | `CONFIG_MANAGE` | `{ items: [{ obra: {id,codigo,nome}, responsaveis: [{ id, usuario: {id,nome}, papel, vigencia_inicio, vigencia_fim, ativo }] }] }` |
+| `GET /custos-recebiveis/obrigacoes?situacao=&obra_id=&limit=&offset=` | `OBRIGACOES_VIEW` | `{ items: [{ id, tipo, obra, competencia, usuario: {id,nome}, prazo_em, cumprida_em\|null, situacao }], total }` |
+
+- Fila de decisoes: reaberturas e dilatacoes com situacao `SOLICITADA` (o
+  model de reabertura nao tem `PENDENTE`), do pedido mais antigo para o mais
+  novo (`solicitado_em` ASC; empate por tipo e id). `dias` e `prazo_vigente`
+  so na dilatacao (senao `null`); `prazo_vigente` e o prazo efetivo atual da
+  medicao aprovada daquele mes (com dilatacao ja aprovada). Sem a tabela
+  `cr_dilatacoes` (migration 202609290001 pendente) a fila traz so as
+  reaberturas, sem 500.
+- Reaberturas: mais recente primeiro (`createdAt` DESC, id DESC);
+  `situacao` em `SOLICITADA`, `APROVADA` ou `NEGADA`. `decidido_por`/
+  `decidido_em` vem de `aprovado_por`/`aprovado_em` (preenchidos tambem na
+  negacao). `justificativa` vem do campo `observacao` do evento de auditoria
+  da decisao (a tabela nao tem coluna propria).
+- Decisao de reabertura: continua em `POST /reaberturas/:reaberturaId/aprovar`
+  (`REOPEN_APPROVE`), que ja aprova e nega. Body
+  `{ decisao: 'APROVADA'|'NEGADA', observacao?: string }`; `justificativa`
+  e aceito como sinonimo de `observacao`. Aprovada vale 24 horas e leva mes
+  `FINALIZADA` a `REABERTA`; transacional, auditada
+  (`CR_REABERTURA_APROVADA`/`CR_REABERTURA_NEGADA`) e idempotente: pedido ja
+  decidido devolve `{ idempotente: true, reabertura }` sem gravar. Nao foi
+  criada rota `/decidir` para reabertura.
+- Auditoria: mais recente primeiro (`criado_em` DESC, id DESC). `acao` filtra
+  o evento exato; `de`/`ate` em AAAA-MM-DD, dias de Brasilia, `ate`
+  inclusivo. `acoes` e a lista distinta de eventos do escopo (sem os demais
+  filtros). Eventos sem obra so aparecem para quem tem escopo total.
+- Planos e responsaveis: uma linha por obra ativa (`tipo_centro_custo`
+  `OBRA`) do escopo, por nome, inclusive sem plano ou sem responsavel.
+  `vigente` e a versao `PUBLICADA`; `total_versoes` conta todas as versoes.
+- Obrigacoes: lista geral de `cr_obrigacoes_usuario` por `prazo_em` DESC, id
+  DESC. `situacao` segue a tela de obrigacoes: `CUMPRIDA` depois do prazo
+  vira `CUMPRIDA_COM_ATRASO`; `PENDENTE` com prazo ja passado vira `VENCIDA`
+  (a situacao gravada so e recalculada quando o responsavel consulta). Filtro
+  aceita `PENDENTE`, `VENCIDA`, `CUMPRIDA`, `CUMPRIDA_COM_ATRASO`;
+  `DISPENSADA` so aparece sem filtro. A lista reflete o que ja foi gravado
+  pelas consultas dos responsaveis.
+- Bloqueio por obra (Fase 3): em `CR_GUARD_MODE=enforce`, a auditoria e os
+  planos gerais tiram do resultado a obra travada do proprio usuario e o
+  filtro direto por ela responde 403 `OBRA_TRAVADA_CUSTOS_RECEBIVEIS`, como as
+  rotas por obra.
+- Teste: `tests/validarFase4Admin.js`.
+
 ## Regras de evolucao
 
 - Cada fase funcional deve ser entregue e aceita separadamente.

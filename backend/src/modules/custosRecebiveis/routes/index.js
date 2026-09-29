@@ -338,4 +338,46 @@ router.post(
   CustosRecebiveisController.decidirDilatacao
 );
 
+// Consultas gerais do administrador sem escolher obra (reforma 2026-09,
+// Fase 4). Somente leitura; o recorte por obra vem do escopo do usuario
+// (resolverEscopoObras) e obra_id fora dele responde 403.
+router.get(
+  '/decisoes/pendentes',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.REOPEN_APPROVE),
+  CustosRecebiveisController.decisoesPendentes
+);
+
+router.get(
+  '/reaberturas',
+  requireAnyCustosRecebiveisPermission([
+    CUSTOS_RECEBIVEIS_PERMISSIONS.REOPEN_APPROVE,
+    CUSTOS_RECEBIVEIS_PERMISSIONS.OBRIGACOES_VIEW
+  ]),
+  CustosRecebiveisController.reaberturas
+);
+
+router.get(
+  '/auditoria',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.AUDITORIA_VIEW),
+  CustosRecebiveisController.auditoriaGeral
+);
+
+router.get(
+  '/planos',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.ESTRUTURA_VIEW),
+  CustosRecebiveisController.planosGeral
+);
+
+router.get(
+  '/responsaveis',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.CONFIG_MANAGE),
+  CustosRecebiveisController.responsaveisGeral
+);
+
+router.get(
+  '/obrigacoes',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.OBRIGACOES_VIEW),
+  CustosRecebiveisController.obrigacoesGeral
+);
+
 module.exports = router;

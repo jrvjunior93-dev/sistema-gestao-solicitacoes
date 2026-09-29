@@ -12,6 +12,7 @@ const {
   competenciasLiberadasObra,
   fimDoDiaBrasilia,
   prazoMedicaoEfetivo,
+  isMissingTableError,
   resolverConfig
 } = require('./prazoService');
 const { getOrCreateCompetencia, normalizeCompetencia } = require('./planejamentoService');
@@ -383,6 +384,7 @@ async function listarDilatacoes(user, query = {}, overrides = {}) {
   }
   const situacao = text(query.situacao, 20).toUpperCase();
   if (['SOLICITADA', 'APROVADA', 'NEGADA'].includes(situacao)) where.situacao = situacao;
+  // Sem a migration 202609290001 (tabela ausente) a lista vem vazia, sem 500.
   const rows = await deps.CrDilatacao.findAll({
     where,
     include: dilatacaoIncludes(deps),
@@ -391,6 +393,9 @@ async function listarDilatacoes(user, query = {}, overrides = {}) {
     // separados, entao o limite nao corta pendentes nem o periodo da obra.
     order: [['createdAt', 'ASC'], ['id', 'ASC']],
     limit: 2000
+  }).catch((error) => {
+    if (isMissingTableError(error)) return [];
+    throw error;
   });
   return { items: rows.map(serializeDilatacao) };
 }
