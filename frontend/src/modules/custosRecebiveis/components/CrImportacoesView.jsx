@@ -144,7 +144,10 @@ export default function CrImportacoesView({
         <div className="cr-section-heading">
           <div>
             <h2>Nova importação</h2>
-            <p>Valide primeiro. A importação só cria uma nova versão após a conferência do arquivo.</p>
+            <p className="cr-warning-text">
+              A medição já aprovada continua valendo pelo código do item: mantenha os códigos
+              ao gerar nova versão. Item com código novo recomeça o saldo do zero.
+            </p>
           </div>
           {canImport ? (
             <button type="button" className="btn btn-outline" onClick={onDownloadModel}>

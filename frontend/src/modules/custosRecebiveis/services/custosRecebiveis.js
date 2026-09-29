@@ -505,3 +505,62 @@ export async function listarAuditoriaCustosRecebiveis(obraId, params = {}) {
   );
   return parseResponse(response, 'Erro ao consultar auditoria');
 }
+
+/* ---- Reforma 29/09/2026, Fase 2: prazos por obra, dilatação e sem medição ---- */
+
+export async function listarPrazosObras() {
+  const response = await fetch(`${API_URL}/custos-recebiveis/prazos`, { headers: authHeaders() });
+  return parseResponse(response, 'Erro ao consultar prazos das obras');
+}
+
+export async function salvarPrazosObra(obraId, payload) {
+  const response = await fetch(`${API_URL}/custos-recebiveis/obras/${obraId}/prazos`, {
+    method: 'PUT',
+    headers: jsonHeaders(),
+    body: JSON.stringify(payload)
+  });
+  return parseResponse(response, 'Erro ao salvar prazos da obra');
+}
+
+export async function listarDilatacoes(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== null && value !== undefined && String(value).trim() !== '') query.set(key, value);
+  });
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  const response = await fetch(`${API_URL}/custos-recebiveis/dilatacoes${suffix}`, { headers: authHeaders() });
+  return parseResponse(response, 'Erro ao consultar dilatações de prazo');
+}
+
+export async function solicitarDilatacao(obraId, competencia, dias, motivo) {
+  const response = await fetch(
+    `${API_URL}/custos-recebiveis/obras/${obraId}/competencias/${competencia}/dilatacoes`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(),
+      body: JSON.stringify({ dias, motivo })
+    }
+  );
+  return parseResponse(response, 'Erro ao solicitar dilatação de prazo');
+}
+
+export async function decidirDilatacao(dilatacaoId, decisao, observacao = '') {
+  const response = await fetch(`${API_URL}/custos-recebiveis/dilatacoes/${dilatacaoId}/decidir`, {
+    method: 'POST',
+    headers: jsonHeaders(),
+    body: JSON.stringify({ decisao, observacao: observacao || null })
+  });
+  return parseResponse(response, 'Erro ao decidir dilatação de prazo');
+}
+
+export async function registrarSemMedicaoCompetencia(obraId, competencia, justificativa) {
+  const response = await fetch(
+    `${API_URL}/custos-recebiveis/obras/${obraId}/competencias/${competencia}/medicao`,
+    {
+      method: 'POST',
+      headers: jsonHeaders({ 'Idempotency-Key': newIdempotencyKey('cr-sem-medicao') }),
+      body: JSON.stringify({ itens: [], sem_medicao: true, justificativa_sem_medicao: justificativa })
+    }
+  );
+  return parseResponse(response, 'Erro ao registrar mês sem medição aprovada');
+}

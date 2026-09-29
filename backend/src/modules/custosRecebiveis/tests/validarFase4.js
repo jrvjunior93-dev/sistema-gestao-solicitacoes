@@ -61,6 +61,19 @@ function validateDateRules() {
     }),
     ['CUSTO_PREVISTO']
   );
+  assert.deepStrictEqual(
+    obligationTypesForWork('PUBLICA', {
+      moduleAccess: true,
+      costs: true,
+      receivables: true,
+      measurement: true
+    }),
+    ['CUSTO_PREVISTO', 'RECEITA_PREVISTA', 'MEDICAO_CONSOLIDADA']
+  );
+  assert.deepStrictEqual(
+    obligationTypesForWork('PRIVADA', { moduleAccess: true, measurement: true }),
+    []
+  );
 }
 
 function guardOverrides({
@@ -103,6 +116,7 @@ function guardOverrides({
       findOrCreate: async ({ where }) => [{ id: where.competencia === '2026-07' ? 21 : 22 }]
     },
     CrReabertura: { findAll: async () => [] },
+    carregarContextoPrazos: async () => new Map(),
     CrGuardBypass: {
       findAll: async () => (bypass ? [{
         id: 31,
@@ -136,14 +150,15 @@ async function validateGuardModesAndBypass() {
   assert.strictEqual(observed.pendencia_detectada, true);
   assert.strictEqual(observed.bloqueado, false);
   assert.strictEqual(observed.competencia, '2026-07');
-  assert.strictEqual(observed.quantidade_vencidas, 2);
+  // Janela 25 -> 5 (29/09): em 10/08 julho e agosto ja venceram (2 tipos cada).
+  assert.strictEqual(observed.quantidade_vencidas, 4);
 
   const privateWork = await calcularEstadoGuardUsuario(
     user,
     { mode: 'observe', moduleEnabled: true, persistir: false, now: new Date('2026-08-10T12:00:00') },
     guardOverrides({ classificacao: 'PRIVADA' })
   );
-  assert.strictEqual(privateWork.quantidade_vencidas, 1);
+  assert.strictEqual(privateWork.quantidade_vencidas, 2);
 
   const publicWithoutReceivablesPermission = await calcularEstadoGuardUsuario(
     user,
@@ -156,7 +171,32 @@ async function validateGuardModesAndBypass() {
       ]
     })
   );
-  assert.strictEqual(publicWithoutReceivablesPermission.quantidade_vencidas, 1);
+  assert.strictEqual(publicWithoutReceivablesPermission.quantidade_vencidas, 2);
+
+  // Medicao aprovada: julho vence em 10/08 23:59 e ainda esta no prazo.
+  const withMeasurement = await calcularEstadoGuardUsuario(
+    user,
+    { mode: 'observe', moduleEnabled: true, persistir: false, now: new Date('2026-08-10T12:00:00') },
+    guardOverrides({
+      permissions: [
+        'custos_recebiveis.modulo.acessar',
+        'custos_recebiveis.planejamento.preencher_custos',
+        'custos_recebiveis.medicao.consolidar'
+      ]
+    })
+  );
+  assert.strictEqual(withMeasurement.quantidade_vencidas, 2);
+  const lateMeasurement = await calcularEstadoGuardUsuario(
+    user,
+    { mode: 'observe', moduleEnabled: true, persistir: false, now: new Date('2026-08-12T12:00:00') },
+    guardOverrides({
+      permissions: [
+        'custos_recebiveis.modulo.acessar',
+        'custos_recebiveis.medicao.consolidar'
+      ]
+    })
+  );
+  assert.strictEqual(lateMeasurement.quantidade_vencidas, 1);
 
   const enforced = await calcularEstadoGuardUsuario(
     user,

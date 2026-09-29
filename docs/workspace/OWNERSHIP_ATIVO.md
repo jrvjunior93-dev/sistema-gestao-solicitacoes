@@ -4,10 +4,12 @@ Ownership temporario (sessao Claude) em 29/09/2026: reforma do modulo Custos e
 Recebiveis em fases (prazos, tela do engenheiro, tela do administrador,
 planilhas e polimento). Escopo: `backend/src/modules/custosRecebiveis/`,
 `frontend/src/modules/custosRecebiveis/`, `backend/package.json` (scripts de
-teste do modulo), `docs/modulos/custos-recebiveis/README.md` e o handoff
+teste do modulo), registro dos models do modulo em `backend/src/models/index.js`,
+a migration `backend/migrations/202609290001_custos_recebiveis_prazos_dilatacao.js`,
+`docs/modulos/custos-recebiveis/README.md` e o handoff
 `docs/handoffs/2026-09-29-custos-recebiveis-reforma.md`. Sem EC2, RDS,
-migration em ambiente compartilhado ou deploy. Fase 1 implementada; ownership
-mantido ate o fim da reforma.
+migration em ambiente compartilhado ou deploy. Fases 1 e 2 implementadas;
+ownership mantido ate o fim da reforma.
 
 Ownership temporario `/root` em 23/09/2026: adicionar consulta completa de
 apropriacoes por obra, acionada por icone de lupa nos campos de selecao, com

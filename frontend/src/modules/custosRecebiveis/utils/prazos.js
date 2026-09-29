@@ -75,18 +75,21 @@ export function avisoMedicao(prazos) {
   const item = prazos?.medicao;
   if (!item) return null;
   const month = monthLabel(item.competencia);
+  const dilatacao = item.dilatacao_pendente
+    ? ' · dilatação aguardando decisão'
+    : (item.dilatado ? ' · prazo dilatado' : '');
   if (item.situacao === 'VENCIDO') {
     return {
       tone: 'negative',
       rotulo: `Medição aprovada ${month}`,
-      texto: `vencida há ${days(item.dias)}${prazos.travada ? ' · obra travada' : ''}${extraPending(item)}`
+      texto: `vencida há ${days(item.dias)}${prazos.travada ? ' · obra travada' : ''}${extraPending(item)}${dilatacao}`
     };
   }
   if (item.situacao === 'ABERTO') {
     return {
       tone: Number(item.dias) <= PRAZO_PROXIMO_DIAS ? 'warning' : 'info',
       rotulo: `Medição aprovada ${month}`,
-      texto: `${openText(item, 'prazo')}${extraPending(item)}`
+      texto: `${openText(item, 'prazo')}${extraPending(item)}${dilatacao}`
     };
   }
   return { tone: 'positive', rotulo: 'Medição aprovada', texto: 'em dia' };

@@ -13,11 +13,17 @@ const {
 const {
   resolveExplicitCustosRecebiveisPermissions
 } = require('../policies/permissionPolicy');
+const {
+  carregarContextoPrazos,
+  janelaPlanejamento,
+  prazoMedicaoEfetivo
+} = require('./prazoService');
 
 const VALID_COMPETENCIA = /^\d{4}-(0[1-9]|1[0-2])$/;
 const OBRIGACAO_TYPES = Object.freeze({
   CUSTO_PREVISTO: 'CUSTO_PREVISTO',
-  MEDICAO_APRESENTADA: 'RECEITA_PREVISTA'
+  MEDICAO_APRESENTADA: 'RECEITA_PREVISTA',
+  MEDICAO_APROVADA: 'MEDICAO_CONSOLIDADA'
 });
 const ACTIVE_OBLIGATION_STATES = Object.freeze(['PENDENTE', 'VENCIDA']);
 const MAX_BYPASS_DAYS = 30;
@@ -34,6 +40,7 @@ function dependencies(overrides = {}) {
     CrReabertura: db.CrReabertura,
     CrGuardBypass: db.CrGuardBypass,
     CrAuditoria: db.CrAuditoria,
+    carregarContextoPrazos,
     isModuleEnabled,
     isSuperadmin,
     resolveExplicitPermissions: resolveExplicitCustosRecebiveisPermissions,
@@ -145,7 +152,8 @@ function serializeObligation(value, context = {}) {
     cumprida_em: item.cumprida_em || null,
     alerta: alertLevel(deadline, context.now),
     reabertura_ativa: Boolean(context.reaberturaAtiva),
-    exige_reabertura: item.situacao === 'VENCIDA' && !context.reaberturaAtiva
+    // Planejamento atrasado e registrado sem reabertura (decisao de 29/09).
+    exige_reabertura: false
   };
 }
 
@@ -185,7 +193,8 @@ async function resolveObligationCapabilities(user, deps) {
     return {
       moduleAccess: true,
       costs: true,
-      receivables: true
+      receivables: true,
+      measurement: true
     };
   }
   const permissions = new Set(
@@ -195,7 +204,8 @@ async function resolveObligationCapabilities(user, deps) {
   return {
     moduleAccess: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.MODULE_ACCESS),
     costs: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_COSTS),
-    receivables: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_RECEIVABLES)
+    receivables: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_RECEIVABLES),
+    measurement: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.MEDICAO_CONSOLIDATE)
   };
 }
 
@@ -208,6 +218,12 @@ function obligationTypesForWork(classificationValue, capabilities) {
     && capabilities.receivables
   ) {
     types.push(OBRIGACAO_TYPES.MEDICAO_APRESENTADA);
+  }
+  if (
+    String(classificationValue || '').trim().toUpperCase() === 'PUBLICA'
+    && capabilities.measurement
+  ) {
+    types.push(OBRIGACAO_TYPES.MEDICAO_APROVADA);
   }
   return types;
 }
@@ -278,12 +294,15 @@ async function findExpectedObligations(user, deps, options = {}) {
     });
   }
   const earliest = starts.sort()[0] || current;
+  // Planejamento do mes seguinte ja e cobrado quando a janela dele abre (dia
+  // 25, no padrao): a busca vai ate o mes seguinte.
   const competencies = await deps.CrCompetencia.findAll({
     where: {
       obra_id: { [Op.in]: obraIds },
-      competencia: { [Op.between]: [earliest, current] }
+      competencia: { [Op.between]: [earliest, addMonth(current)] }
     }
   });
+  const prazosContext = await deps.carregarContextoPrazos(obraIds);
   const competencyByKey = new Map(competencies.map((record) => {
     const item = plain(record);
     return [`${Number(item.obra_id)}:${item.competencia}`, item];
@@ -312,28 +331,54 @@ async function findExpectedObligations(user, deps, options = {}) {
     const start = VALID_COMPETENCIA.test(String(responsible.competencia_inicial || ''))
       ? responsible.competencia_inicial
       : (firstCompetencyByObra.get(obraId) || current);
-    for (const competencia of listCompetencias(start, current)) {
+    const prazoObra = prazosContext.get(obraId) || {};
+    const medicaoByCompetencia = new Map(
+      (prazoObra.competencias || []).map((item) => [item.competencia, item])
+    );
+    const obraRef = {
+      id: obraId,
+      codigo: responsible.obra?.codigo || null,
+      nome: responsible.obra?.nome || `Obra ${obraId}`,
+      classificacao: responsible.obra?.classificacao || null
+    };
+    const planningTarget = janelaPlanejamento(addMonth(current), prazoObra.config).abre_em <= now
+      ? addMonth(current)
+      : current;
+    for (const competencia of listCompetencias(start, planningTarget)) {
       const competency = competencyByKey.get(`${obraId}:${competencia}`) || null;
+      const base = {
+        user_id: Number(user.id),
+        obra_id: obraId,
+        obra: obraRef,
+        competencia,
+        competencia_id: competency?.id ? Number(competency.id) : null,
+        reabertura_ativa: Boolean(competency?.id && reopeningByCompetency.has(Number(competency.id)))
+      };
+      // Planejamento (custos + medicao prevista): janela da obra, cumprido
+      // ao finalizar. Reabrir torna a obrigacao visivel ate nova finalizacao.
       const complete = competency?.estado === 'FINALIZADA';
-      const deadline = prazoCompetencia(competencia);
-      const state = complete ? 'CUMPRIDA' : (deadline <= now ? 'VENCIDA' : 'PENDENTE');
-      for (const type of obligationTypes) {
+      const planningDeadline = janelaPlanejamento(competencia, prazoObra.config).fecha_em;
+      const planningState = complete ? 'CUMPRIDA' : (planningDeadline <= now ? 'VENCIDA' : 'PENDENTE');
+      for (const type of obligationTypes.filter((item) => item !== OBRIGACAO_TYPES.MEDICAO_APROVADA)) {
         result.push({
-          user_id: Number(user.id),
-          obra_id: obraId,
-          obra: {
-            id: obraId,
-            codigo: responsible.obra?.codigo || null,
-            nome: responsible.obra?.nome || `Obra ${obraId}`,
-            classificacao: responsible.obra?.classificacao || null
-          },
-          competencia,
+          ...base,
           tipo: type,
-          prazo_em: deadline,
-          situacao: state,
-          cumprida_em: complete ? (competency.finalizado_em || competency.updatedAt || now) : null,
-          competencia_id: competency?.id ? Number(competency.id) : null,
-          reabertura_ativa: Boolean(competency?.id && reopeningByCompetency.has(Number(competency.id)))
+          prazo_em: planningDeadline,
+          situacao: planningState,
+          cumprida_em: complete ? (competency.finalizado_em || competency.updatedAt || now) : null
+        });
+      }
+      // Medicao aprovada: so para meses ja iniciados; prazo com dilatacao.
+      if (obligationTypes.includes(OBRIGACAO_TYPES.MEDICAO_APROVADA) && competencia <= current) {
+        const medicao = medicaoByCompetencia.get(competencia) || null;
+        const registered = Boolean(medicao?.tem_medicao_aprovada);
+        const measurementDeadline = prazoMedicaoEfetivo(competencia, prazoObra.config, medicao?.dilatacao_prazo);
+        result.push({
+          ...base,
+          tipo: OBRIGACAO_TYPES.MEDICAO_APROVADA,
+          prazo_em: measurementDeadline,
+          situacao: registered ? 'CUMPRIDA' : (measurementDeadline <= now ? 'VENCIDA' : 'PENDENTE'),
+          cumprida_em: registered ? (medicao.medicao_registrada_em || now) : null
         });
       }
     }

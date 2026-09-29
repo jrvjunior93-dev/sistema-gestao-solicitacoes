@@ -123,15 +123,26 @@ async function resolveContext(obraIdValue, competenciaValue, typeValue) {
         raw: true
       });
   }
-  const previousByItem = new Map();
+  // Aprovado anterior somado pelo CODIGO do item (atravessa versoes da
+  // planilha, decisao 5b de 29/09) — mesmo criterio do planejamentoService.
+  const measuredIds = [...new Set(previousRows.map((row) => Number(row.plano_item_id)))];
+  const measuredItems = measuredIds.length
+    ? await db.CrPlanoItem.findAll({
+      where: { id: { [Op.in]: measuredIds } },
+      attributes: ['id', 'codigo'],
+      raw: true
+    })
+    : [];
+  const codeById = new Map(measuredItems.map((item) => [Number(item.id), String(item.codigo ?? '').trim()]));
+  const previousByCode = new Map();
   previousRows.forEach((row) => {
-    const itemId = Number(row.plano_item_id);
-    const quantity = number(row.quantidade_medida);
-    previousByItem.set(itemId, number(previousByItem.get(itemId)) + quantity);
+    const code = codeById.get(Number(row.plano_item_id));
+    if (!code) return;
+    previousByCode.set(code, number(previousByCode.get(code)) + number(row.quantidade_medida));
   });
   const items = leaves.map((item) => {
     const budgetQuantity = number(item.quantidade);
-    const previousQuantity = number(previousByItem.get(Number(item.id)));
+    const previousQuantity = number(previousByCode.get(String(item.codigo ?? '').trim()));
     return {
       plano_item_id: Number(item.id),
       etapa_macro_codigo: text(item.etapa_macro_codigo, 80),

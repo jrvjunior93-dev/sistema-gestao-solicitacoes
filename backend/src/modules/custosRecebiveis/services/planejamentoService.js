@@ -6,7 +6,14 @@ const { createBusinessError } = require('./planoMicroService');
 const { resolverEscopoObras } = require('../policies/obraScopePolicy');
 const { listarMinhasObrigacoes } = require('./obrigacaoService');
 const { totalTitulosEmitidosPorCompetencia } = require('./realizadoService');
-const { competenciasLiberadasObra, janelaPlanejamento } = require('./prazoService');
+const {
+  carregarContextoPrazos,
+  competenciasLiberadasObra,
+  isMissingTableError,
+  janelaPlanejamento,
+  prazoMedicaoEfetivo,
+  readOptional
+} = require('./prazoService');
 
 const VALID_COMPETENCIA = /^\d{4}-(0[1-9]|1[0-2])$/;
 const CONTRACT_ACTIVE_STATUSES = ['RASCUNHO', 'ATIVO', 'INADIMPLENTE', 'QUITADO'];
@@ -34,6 +41,8 @@ function dependencies(overrides = {}) {
     listarMinhasObrigacoes,
     resolverEscopoObras,
     competenciasLiberadasObra,
+    carregarContextoPrazos,
+    CrMedicaoSemRegistro: db.CrMedicaoSemRegistro,
     ...overrides
   };
 }
@@ -451,6 +460,45 @@ function podeSolicitarReabertura(estado, validReopening) {
   return estado === 'FINALIZADA' || (estado === 'REABERTA' && !validReopening);
 }
 
+// Aprovado acumulado dos meses anteriores, somado pelo CODIGO do item: uma
+// nova versao da planilha cria ids novos, e somar por id zerava o saldo
+// (decisao 5b de 29/09). Codigo novo recomeca do zero.
+async function aprovadoAnteriorPorItem(obraId, competenciaCode, planItems, deps, transaction) {
+  const result = new Map();
+  const itens = (planItems || []).map((item) => ({ id: Number(item.id), codigo: String(item.codigo ?? '').trim() }));
+  if (!itens.length) return result;
+  const previous = await deps.CrCompetencia.findAll({
+    where: { obra_id: obraId, competencia: { [Op.lt]: competenciaCode } },
+    attributes: ['id'],
+    transaction
+  });
+  const previousIds = previous.map((item) => Number(item.id));
+  if (!previousIds.length) return result;
+  const measurements = await deps.CrMedicaoConsolidada.findAll({
+    where: { competencia_id: { [Op.in]: previousIds }, plano_item_id: { [Op.ne]: null } },
+    attributes: ['plano_item_id', 'quantidade_medida'],
+    transaction
+  });
+  if (!measurements.length) return result;
+  const measuredIds = [...new Set(measurements.map((item) => Number(item.plano_item_id)))];
+  const measuredItems = await deps.CrPlanoItem.findAll({
+    where: { id: { [Op.in]: measuredIds } },
+    attributes: ['id', 'codigo'],
+    transaction
+  });
+  const codeById = new Map(measuredItems.map((item) => [Number(item.id), String(item.codigo ?? '').trim()]));
+  const byCode = new Map();
+  measurements.forEach((item) => {
+    const code = codeById.get(Number(item.plano_item_id));
+    if (!code) return;
+    byCode.set(code, number(byCode.get(code)) + number(item.quantidade_medida));
+  });
+  itens.forEach((item) => {
+    if (byCode.has(item.codigo)) result.set(item.id, byCode.get(item.codigo));
+  });
+  return result;
+}
+
 async function getOrCreateCompetencia(obraId, competencia, deps, transaction) {
   let record = await findCompetencia(obraId, competencia, deps, {
     transaction,
@@ -637,6 +685,13 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
       })
     ])
     : [[], new Map(), new Map(), []];
+  const semMedicaoIds = new Set(ids.length
+    ? (await readOptional(() => deps.CrMedicaoSemRegistro.findAll({
+      where: { competencia_id: { [Op.in]: ids } },
+      attributes: ['competencia_id'],
+      raw: true
+    }))).map((item) => Number(item.competencia_id))
+    : []);
   const measurementByCompetency = new Map();
   const competenciesWithMeasurement = new Set();
   measurements.forEach((item) => measurementByCompetency.set(
@@ -683,6 +738,7 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
       planejamento_editavel: podeEditarPlanejamento(row.estado, activeApprovedReopening),
       medicao_apresentada: presented,
       medicao_aprovada: hasApprovedMeasurement ? approved : null,
+      sem_medicao: semMedicaoIds.has(Number(row.id)),
       glosa: hasApprovedMeasurement ? money(Math.max(0, presented - approved)) : null,
       custo_realizado: money(costsByMonth.get(row.competencia)),
       receita_recebida: money(receivedByMonth.get(row.competencia)),
@@ -852,24 +908,15 @@ async function pesquisarItensPlano(
           plano_item_id: { [Op.in]: itemIds }
         }
       }),
-      deps.CrMedicaoConsolidada.findAll({
-        where: {
-          competencia_id: { [Op.in]: previousIds },
-          plano_item_id: { [Op.in]: itemIds }
-        }
-      })
+      aprovadoAnteriorPorItem(obraId, competenciaCode, serialized, deps)
     ])
-    : [[], []];
+    : [[], new Map()];
   const receiptTotals = new Map();
   receipts.forEach((item) => receiptTotals.set(
     Number(item.plano_item_id),
     number(receiptTotals.get(Number(item.plano_item_id))) + number(item.quantidade_prevista)
   ));
-  const measurementTotals = new Map();
-  measurements.forEach((item) => measurementTotals.set(
-    Number(item.plano_item_id),
-    number(measurementTotals.get(Number(item.plano_item_id))) + number(item.quantidade_medida)
-  ));
+  const measurementTotals = measurements;
   return {
     items: serialized.map((item) => ({
       ...item,
@@ -970,26 +1017,21 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
           plano_item_id: { [Op.in]: selectedItemIds }
         }
       }),
-      deps.CrMedicaoConsolidada.findAll({
-        where: {
-          competencia_id: { [Op.in]: previousIds },
-          plano_item_id: { [Op.in]: selectedItemIds }
-        }
-      })
+      aprovadoAnteriorPorItem(
+        obraId,
+        competenciaCode,
+        planStructure.filter((item) => selectedItemIds.includes(Number(item.id))),
+        deps
+      )
     ])
-    : [[], []];
+    : [[], new Map()];
   const previousReceiptByItem = new Map();
   previousReceipts.forEach((item) => previousReceiptByItem.set(
     Number(item.plano_item_id),
     number(previousReceiptByItem.get(Number(item.plano_item_id)))
       + number(item.quantidade_prevista)
   ));
-  const previousMeasurementByItem = new Map();
-  previousMeasurements.forEach((item) => previousMeasurementByItem.set(
-    Number(item.plano_item_id),
-    number(previousMeasurementByItem.get(Number(item.plano_item_id)))
-      + number(item.quantidade_medida)
-  ));
+  const previousMeasurementByItem = previousMeasurements;
   const serializePlanningItem = (value) => {
     const item = serializeItem(value);
     return {
@@ -1045,8 +1087,36 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
     };
   });
 
+  // Estado da medicao aprovada (29/09): prazo com dilatacao, "sem medicao" e
+  // se a alteracao ja depende de reabertura.
+  let medicaoAprovada = null;
+  if (String(obra.classificacao).toUpperCase() === 'PUBLICA') {
+    const prazoContext = (await deps.carregarContextoPrazos([obraId])).get(obraId) || {};
+    const registro = (prazoContext.competencias || []).find((item) => item.competencia === competenciaCode) || null;
+    const prazo = prazoMedicaoEfetivo(competenciaCode, prazoContext.config, registro?.dilatacao_prazo);
+    const semRegistro = saved?.id
+      ? (await readOptional(() => deps.CrMedicaoSemRegistro.findAll({
+        where: { competencia_id: saved.id },
+        raw: true
+      })))[0] || null
+      : null;
+    const registrada = Boolean(registro?.tem_medicao_aprovada);
+    medicaoAprovada = {
+      prazo_em: prazo.toISOString(),
+      vencida: prazo < new Date(),
+      registrada,
+      dilatacao_pendente: Boolean(registro?.dilatacao_pendente),
+      sem_medicao: semRegistro ? {
+        justificativa: semRegistro.justificativa,
+        registrado_em: semRegistro.registrado_em
+      } : null,
+      editavel: !registrada || prazo >= new Date() || (saved?.estado === 'REABERTA' && validReopening)
+    };
+  }
+
   return {
     obra: serializeObra(obra),
+    medicao_aprovada_estado: medicaoAprovada,
     plano: {
       id: Number(plan.id),
       versao: Number(plan.versao),
@@ -1268,7 +1338,8 @@ function validatePublicReceiptRows(
   rows,
   allowedItems,
   allowedCosts = new Map(),
-  previousQuantities = new Map()
+  previousQuantities = new Map(),
+  legacyCostRefs = null
 ) {
   if (!Array.isArray(rows)) {
     throw createBusinessError(400, 'CR_RECEBIVEIS_INVALIDOS', 'Informe a lista de recebiveis.');
@@ -1281,7 +1352,7 @@ function validatePublicReceiptRows(
     const itemId = row?.plano_item_id
       ? positiveId(row.plano_item_id, `Item da linha ${index + 1}`)
       : null;
-    const cost = costId ? allowedCosts.get(costId) : null;
+    const cost = costId && (!legacyCostRefs || legacyCostRefs.has(costId)) ? allowedCosts.get(costId) : null;
     const planItem = itemId ? allowedItems.get(itemId) : null;
     const identity = costId ? `custo:${costId}` : `plano:${itemId}`;
     if ((!cost && !planItem) || seen.has(identity)) {
@@ -1373,32 +1444,18 @@ async function salvarRecebiveis(user, obraIdValue, competenciaValue, payload = {
     const items = await findPlanItems(plan.id, deps, { transaction });
     const allowed = new Map(items.map((item) => [Number(item.id), plain(item)]));
     const isPublic = String(obra.classificacao).toUpperCase() === 'PUBLICA';
-    const previousQuantities = new Map();
-    if (isPublic) {
-      const previousCompetencies = await deps.CrCompetencia.findAll({
-        where: {
-          obra_id: obraId,
-          competencia: { [Op.lt]: competenciaCode }
-        },
-        attributes: ['id'],
+    const previousQuantities = isPublic
+      ? await aprovadoAnteriorPorItem(obraId, competenciaCode, items, deps, transaction)
+      : new Map();
+    // 5a (29/09): medicao so de itens da planilha contratual. Linha antiga
+    // ligada a custo planejado continua aceita apenas se ja estava gravada.
+    const legacyCostRefs = isPublic && saved
+      ? new Set((await deps.CrPrevisaoReceita.findAll({
+        where: { competencia_id: saved.id, previsao_custo_id: { [Op.ne]: null } },
+        attributes: ['previsao_custo_id'],
         transaction
-      });
-      const previousIds = previousCompetencies.map((item) => Number(item.id));
-      const previousMeasurements = previousIds.length
-        ? await deps.CrMedicaoConsolidada.findAll({
-          where: {
-            competencia_id: { [Op.in]: previousIds },
-            plano_item_id: { [Op.ne]: null }
-          },
-          transaction
-        })
-        : [];
-      previousMeasurements.forEach((item) => previousQuantities.set(
-        Number(item.plano_item_id),
-        number(previousQuantities.get(Number(item.plano_item_id)))
-          + number(item.quantidade_medida)
-      ));
-    }
+      })).map((item) => Number(item.previsao_custo_id)))
+      : new Set();
     const currentCosts = isPublic && saved
       ? await deps.CrPrevisaoCusto.findAll({
         where: { competencia_id: saved.id },
@@ -1408,7 +1465,7 @@ async function salvarRecebiveis(user, obraIdValue, competenciaValue, payload = {
       : [];
     const allowedCosts = new Map(currentCosts.map((item) => [Number(item.id), plain(item)]));
     const rows = isPublic
-      ? validatePublicReceiptRows(payload.itens, allowed, allowedCosts, previousQuantities)
+      ? validatePublicReceiptRows(payload.itens, allowed, allowedCosts, previousQuantities, legacyCostRefs)
       : await buildPrivateReceiptRows(
         obraId,
         competenciaCode,
@@ -1623,30 +1680,25 @@ async function consolidarMedicao(user, obraIdValue, competenciaValue, payload = 
     }
     const items = await findPlanItems(plan.id, deps, { transaction });
     const allowed = new Map(items.map((item) => [Number(item.id), plain(item)]));
-    const previousCompetencies = await deps.CrCompetencia.findAll({
-      where: {
-        obra_id: obraId,
-        competencia: { [Op.lt]: competenciaCode }
-      },
-      attributes: ['id'],
+    const previousApprovedByItem = await aprovadoAnteriorPorItem(
+      obraId,
+      competenciaCode,
+      items,
+      deps,
       transaction
-    });
-    const previousIds = previousCompetencies.map((item) => Number(item.id));
-    const previousMeasurements = previousIds.length
-      ? await deps.CrMedicaoConsolidada.findAll({
-        where: {
-          competencia_id: { [Op.in]: previousIds },
-          plano_item_id: { [Op.ne]: null }
-        },
-        transaction
-      })
-      : [];
-    const previousApprovedByItem = new Map();
-    previousMeasurements.forEach((item) => previousApprovedByItem.set(
-      Number(item.plano_item_id),
-      number(previousApprovedByItem.get(Number(item.plano_item_id)))
-        + number(item.quantidade_medida)
-    ));
+    );
+    const semMedicao = payload.sem_medicao === true;
+    const semMedicaoJustificativa = normalizeText(payload.justificativa_sem_medicao);
+    if (semMedicao && (payload.itens || []).length) {
+      throw createBusinessError(422, 'CR_SEM_MEDICAO_COM_ITENS', 'Sem medicao aprovada nao aceita itens.');
+    }
+    if (semMedicao && semMedicaoJustificativa.length < 10) {
+      throw createBusinessError(
+        422,
+        'CR_SEM_MEDICAO_JUSTIFICATIVA',
+        'Informe por que nao houve medicao aprovada (pelo menos 10 caracteres).'
+      );
+    }
     if (!Array.isArray(payload.itens)) {
       throw createBusinessError(400, 'CR_MEDICAO_INVALIDA', 'Informe os itens da medicao.');
     }
@@ -1677,8 +1729,37 @@ async function consolidarMedicao(user, obraIdValue, competenciaValue, payload = 
         competencia: serializeCompetencia(competencia),
         quantidade_itens: number(previousPayload.quantidade_itens),
         valor_total: money(previousPayload.valor_total),
-        valor_glosa: money(previousPayload.valor_glosa)
+        valor_glosa: money(previousPayload.valor_glosa),
+        sem_medicao: Boolean(previousPayload.sem_medicao)
       };
+    }
+    // Trava (29/09): medicao ja registrada e prazo (com dilatacao) vencido so
+    // muda com reabertura vigente. Ainda nao registrada: registro atrasado e
+    // aceito — e o que regulariza a obra.
+    const alreadyRegistered = Boolean(previousAudit) || await deps.CrMedicaoConsolidada.count({
+      where: { competencia_id: competencia.id },
+      transaction
+    }) > 0;
+    if (alreadyRegistered) {
+      const prazoContext = (await deps.carregarContextoPrazos([obraId])).get(obraId) || {};
+      const registro = (prazoContext.competencias || [])
+        .find((item) => item.competencia === competenciaCode) || null;
+      const deadline = prazoMedicaoEfetivo(competenciaCode, prazoContext.config, registro?.dilatacao_prazo);
+      if (deadline < new Date()) {
+        const validReopening = competencia.estado === 'REABERTA'
+          ? await deps.CrReabertura.findOne({
+            where: { competencia_id: competencia.id, situacao: 'APROVADA', expira_em: { [Op.gt]: new Date() } },
+            transaction
+          })
+          : null;
+        if (!validReopening) {
+          throw createBusinessError(
+            409,
+            'CR_MEDICAO_ENCERRADA',
+            'O prazo da medicao aprovada deste mes terminou. Solicite reabertura para alterar.'
+          );
+        }
+      }
     }
     const presentedRows = await deps.CrPrevisaoReceita.findAll({
       where: {
@@ -1693,7 +1774,14 @@ async function consolidarMedicao(user, obraIdValue, competenciaValue, payload = 
       transaction,
       lock: transaction.LOCK.UPDATE
     });
-    const costById = new Map(monthlyCosts.map((item) => [Number(item.id), plain(item)]));
+    const legacyMeasurementCosts = new Set((await deps.CrMedicaoConsolidada.findAll({
+      where: { competencia_id: competencia.id, previsao_custo_id: { [Op.ne]: null } },
+      attributes: ['previsao_custo_id'],
+      transaction
+    })).map((item) => Number(item.previsao_custo_id)));
+    const costById = new Map(monthlyCosts
+      .filter((item) => legacyMeasurementCosts.has(Number(item.id)))
+      .map((item) => [Number(item.id), plain(item)]));
     const presentedByReference = new Map(
       presentedRows.map((item) => [planningReferenceKey(item), plain(item)])
     );
@@ -1753,7 +1841,7 @@ async function consolidarMedicao(user, obraIdValue, competenciaValue, payload = 
     const approvedTotal = money(rows.reduce((sum, row) => sum + row.valor_medido, 0));
     const overallGlosa = money(Math.max(0, predictedTotal - approvedTotal));
     const generalGlosaReason = normalizeText(payload.justificativa_glosa_geral);
-    if (overallGlosa > 0 && generalGlosaReason.length < 5) {
+    if (!semMedicao && overallGlosa > 0 && generalGlosaReason.length < 5) {
       throw createBusinessError(
         422,
         'CR_GLOSA_JUSTIFICATIVA_REQUIRED',
@@ -1775,6 +1863,21 @@ async function consolidarMedicao(user, obraIdValue, competenciaValue, payload = 
         { transaction, validate: true }
       );
     }
+    try {
+      await deps.CrMedicaoSemRegistro.destroy({ where: { competencia_id: competencia.id }, transaction });
+      if (semMedicao) {
+        await deps.CrMedicaoSemRegistro.create({
+          competencia_id: competencia.id,
+          justificativa: semMedicaoJustificativa,
+          registrado_por: user?.id,
+          registrado_em: new Date()
+        }, { transaction });
+      }
+    } catch (error) {
+      // Migration 202609290001 ainda nao aplicada: sem a tabela nao ha como
+      // registrar "sem medicao"; medicao com itens segue normalmente.
+      if (!isMissingTableError(error) || semMedicao) throw error;
+    }
     await audit(deps, transaction, {
       obraId,
       competenciaId: competencia.id,
@@ -1787,6 +1890,8 @@ async function consolidarMedicao(user, obraIdValue, competenciaValue, payload = 
         valor_total: approvedTotal,
         valor_glosa: overallGlosa,
         justificativa_glosa_geral: generalGlosaReason || null,
+        sem_medicao: semMedicao,
+        justificativa_sem_medicao: semMedicao ? semMedicaoJustificativa : null,
         idempotency_key: idempotencyKey
       }
     });
@@ -1795,7 +1900,8 @@ async function consolidarMedicao(user, obraIdValue, competenciaValue, payload = 
       competencia: serializeCompetencia(competencia),
       quantidade_itens: rows.length,
       valor_total: approvedTotal,
-      valor_glosa: overallGlosa
+      valor_glosa: overallGlosa,
+      sem_medicao: semMedicao
     };
   });
 }
@@ -2744,6 +2850,7 @@ module.exports = {
   assertCompetenciaNovoMes,
   assertEditable,
   competenciaAtual,
+  getOrCreateCompetencia,
   competenciaSeguinte,
   consolidarMedicao,
   criarCompetencia,

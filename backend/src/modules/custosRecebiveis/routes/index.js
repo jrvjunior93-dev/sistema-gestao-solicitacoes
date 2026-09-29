@@ -15,6 +15,7 @@ const {
   resolverObraIdPorReabertura
 } = require('../services/planejamentoService');
 const { resolverObraIdPorRealizado } = require('../services/realizadoService');
+const { resolverObraIdPorDilatacao } = require('../services/prazoGestaoService');
 const {
   resolverObraIdPorResponsabilidade
 } = require('../services/governancaService');
@@ -285,6 +286,44 @@ router.get(
   '/exportacoes/:tipo',
   requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.REPORT_EXPORT),
   CustosRecebiveisController.exportacao
+);
+
+// Prazos por obra (reforma de 29/09/2026, Fase 2).
+router.get(
+  '/prazos',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.CONFIG_MANAGE),
+  CustosRecebiveisController.prazosObras
+);
+
+router.put(
+  '/obras/:obraId/prazos',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.CONFIG_MANAGE),
+  requireCustosRecebiveisObraScope(),
+  CustosRecebiveisController.salvarPrazosObra
+);
+
+// Dilatacao do prazo da medicao aprovada: engenheiro pede, administrador decide.
+router.get(
+  '/dilatacoes',
+  requireAnyCustosRecebiveisPermission([
+    CUSTOS_RECEBIVEIS_PERMISSIONS.REOPEN_APPROVE,
+    CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_VIEW
+  ]),
+  CustosRecebiveisController.dilatacoes
+);
+
+router.post(
+  '/obras/:obraId/competencias/:competencia/dilatacoes',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.MEDICAO_CONSOLIDATE),
+  requireCustosRecebiveisObraScope(),
+  CustosRecebiveisController.solicitarDilatacao
+);
+
+router.post(
+  '/dilatacoes/:dilatacaoId/decidir',
+  requireCustosRecebiveisPermission(CUSTOS_RECEBIVEIS_PERMISSIONS.REOPEN_APPROVE),
+  requireCustosRecebiveisObraScope(async (req) => resolverObraIdPorDilatacao(req.params.dilatacaoId)),
+  CustosRecebiveisController.decidirDilatacao
 );
 
 module.exports = router;

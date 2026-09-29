@@ -1132,7 +1132,57 @@ async function reconciliarRealizado(user, realizadoIdValue, payload = {}, overri
   });
 }
 
+/*
+  Custo realizado automatico no Comparativo (decisao de 29/09): antes as
+  baixas so eram projetadas quando alguem clicava em "Reprocessar". Agora a
+  consulta do Comparativo/Realizado sincroniza a competencia antes de ler.
+  - so para mes que ja existe e ja comecou (reprocessar cria a competencia
+    quando falta, e isso faria surgir mes "Aberto" sozinho);
+  - no maximo uma vez a cada 5 minutos por obra/mes neste processo;
+  - falha na sincronizacao nao impede a consulta (registra no log).
+*/
+const AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const lastAutoSync = new Map();
+
+async function sincronizarRealizadosAoConsultar(user, obraIdValue, competenciaValue, overrides = {}) {
+  const deps = dependencies(overrides);
+  const obraId = Number(obraIdValue);
+  let competencia;
+  try {
+    competencia = normalizeCompetencia(competenciaValue);
+  } catch {
+    return { sincronizado: false, motivo: 'COMPETENCIA_INVALIDA' };
+  }
+  const now = typeof deps.now === 'function' ? deps.now() : new Date();
+  const current = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit' })
+    .format(now).slice(0, 7);
+  if (!Number.isInteger(obraId) || obraId <= 0 || competencia > current) {
+    return { sincronizado: false, motivo: 'MES_FUTURO' };
+  }
+  const key = `${obraId}:${competencia}`;
+  const last = lastAutoSync.get(key);
+  if (last && now.getTime() - last < AUTO_SYNC_INTERVAL_MS) {
+    return { sincronizado: false, motivo: 'RECENTE' };
+  }
+  const existing = await deps.CrCompetencia.findOne({
+    where: { obra_id: obraId, competencia },
+    attributes: ['id']
+  });
+  if (!existing) return { sincronizado: false, motivo: 'SEM_COMPETENCIA' };
+  lastAutoSync.set(key, now.getTime());
+  try {
+    await (overrides.reprocessarRealizados || reprocessarRealizados)(user, obraId, competencia, overrides);
+    return { sincronizado: true };
+  } catch (error) {
+    lastAutoSync.delete(key);
+    console.error('[custos-recebiveis] sincronizacao automatica do realizado falhou:', error.message);
+    return { sincronizado: false, motivo: 'FALHA' };
+  }
+}
+
 module.exports = {
+  AUTO_SYNC_INTERVAL_MS,
+  sincronizarRealizadosAoConsultar,
   allocateMoney,
   buildProjectionRows,
   dependencies,

@@ -4943,3 +4943,82 @@
   gap: 0.5rem;
   margin-left: auto;
 }
+
+/* ---- Fase 2 (29/09): prazos por obra, dilatacao ---- */
+.cr-prazos-form {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--cr-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--cr-primary) 3%, var(--cr-surface));
+}
+
+.cr-prazos-form__acoes,
+.cr-dias-opcoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cr-prazos-form__acoes {
+  justify-content: flex-end;
+}
+
+.cr-deadline-strip__status {
+  align-self: center;
+  color: var(--cr-warning);
+  font-size: var(--fonte-corpo);
+  font-weight: 700;
+}
+
+.cr-dilatacao-historico {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--cr-border);
+}
+
+.cr-dilatacao-historico > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.cr-dilatacao-historico > header span {
+  color: var(--cr-muted);
+  font-size: var(--fonte-corpo);
+}
+
+.cr-dilatacao-historico > header .btn {
+  margin-left: auto;
+}
+
+.cr-dilatacao-historico__meses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cr-dilatacao-historico__meses li {
+  display: grid;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cr-muted) 8%, transparent);
+  font-size: var(--fonte-detalhe);
+}
+
+.cr-dilatacao-historico__meses strong {
+  font-size: var(--fonte-corpo);
+}
+
+.cr-dilatacao-historico__meses strong::first-letter {
+  text-transform: uppercase;
+}

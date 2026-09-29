@@ -264,6 +264,9 @@ db.CrResponsavelObra = require('../modules/custosRecebiveis/models/CrResponsavel
 db.CrObrigacaoUsuario = require('../modules/custosRecebiveis/models/CrObrigacaoUsuario')(sequelize, Sequelize);
 db.CrReabertura = require('../modules/custosRecebiveis/models/CrReabertura')(sequelize, Sequelize);
 db.CrGuardBypass = require('../modules/custosRecebiveis/models/CrGuardBypass')(sequelize, Sequelize);
+db.CrPrazoObra = require('../modules/custosRecebiveis/models/CrPrazoObra')(sequelize, Sequelize);
+db.CrDilatacao = require('../modules/custosRecebiveis/models/CrDilatacao')(sequelize, Sequelize);
+db.CrMedicaoSemRegistro = require('../modules/custosRecebiveis/models/CrMedicaoSemRegistro')(sequelize, Sequelize);
 db.CrAuditoria = require('../modules/custosRecebiveis/models/CrAuditoria')(sequelize, Sequelize);
 
 /* =====================
@@ -5028,6 +5031,13 @@ db.CrGuardBypass.belongsTo(db.Obra, { foreignKey: 'obra_id', as: 'obra' });
 db.CrGuardBypass.belongsTo(db.User, { foreignKey: 'user_id', as: 'usuario' });
 db.CrGuardBypass.belongsTo(db.User, { foreignKey: 'concedido_por', as: 'concedidoPor' });
 db.CrGuardBypass.belongsTo(db.User, { foreignKey: 'revogado_por', as: 'revogadoPor' });
+db.CrPrazoObra.belongsTo(db.Obra, { foreignKey: 'obra_id', as: 'obra' });
+db.CrDilatacao.belongsTo(db.Obra, { foreignKey: 'obra_id', as: 'obra' });
+db.CrDilatacao.belongsTo(db.CrCompetencia, { foreignKey: 'competencia_id', as: 'competencia' });
+db.CrDilatacao.belongsTo(db.User, { foreignKey: 'solicitado_por', as: 'solicitadoPor' });
+db.CrDilatacao.belongsTo(db.User, { foreignKey: 'decidido_por', as: 'decididoPor' });
+db.CrMedicaoSemRegistro.belongsTo(db.CrCompetencia, { foreignKey: 'competencia_id', as: 'competencia' });
+db.CrMedicaoSemRegistro.belongsTo(db.User, { foreignKey: 'registrado_por', as: 'registradoPor' });
 
 db.CrAuditoria.belongsTo(db.Obra, { foreignKey: 'obra_id', as: 'obra' });
 db.CrAuditoria.belongsTo(db.CrCompetencia, { foreignKey: 'competencia_id', as: 'competencia' });

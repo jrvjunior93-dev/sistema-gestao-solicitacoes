@@ -33,6 +33,7 @@ export default function CrMonthlySummaryCard({
   recebivelReconhecido = 0,
   receitaRecebida = 0,
   medicaoAprovadaInformada = true,
+  semMedicao = false,
   glosa = 0,
   onOpen,
   onEditPlanning,
@@ -81,13 +82,17 @@ export default function CrMonthlySummaryCard({
         <Metric
           label={isPublic ? 'Medição aprovada' : 'Receita recebida'}
           value={
-            isPublic && !medicaoAprovadaInformada
-              ? 'Aguardando'
-              : currency.format(isPublic ? recognized : received)
+            isPublic && semMedicao
+              ? 'Sem medição'
+              : (isPublic && !medicaoAprovadaInformada
+                ? 'Aguardando'
+                : currency.format(isPublic ? recognized : received))
           }
-          tone={isPublic && !medicaoAprovadaInformada
-            ? 'warning'
-            : (isPublic ? 'context' : 'positive')}
+          tone={isPublic && semMedicao
+            ? 'neutral'
+            : (isPublic && !medicaoAprovadaInformada
+              ? 'warning'
+              : (isPublic ? 'context' : 'positive'))}
         />
         <Metric
           label="Desvio de custo"

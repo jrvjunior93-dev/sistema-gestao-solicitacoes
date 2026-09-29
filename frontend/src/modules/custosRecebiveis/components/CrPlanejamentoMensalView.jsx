@@ -8,8 +8,10 @@ import {
 import { avisoMedicao, avisoPlanejamento, monthLabel } from '../utils/prazos';
 import {
   criarCompetenciaObra,
-  listarCompetenciasObra
+  listarCompetenciasObra,
+  solicitarDilatacao
 } from '../services/custosRecebiveis';
+import CrDilatacaoRequestModal from './CrDilatacaoRequestModal';
 import CrMonthlySummaryCard from './CrMonthlySummaryCard';
 import CrMonthlyDetailView from './CrMonthlyDetailView';
 import CrPlanejamentoView from './CrPlanejamentoView';
@@ -51,6 +53,7 @@ export default function CrPlanejamentoMensalView({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [reopeningTarget, setReopeningTarget] = useState(null);
+  const [dilatacaoTarget, setDilatacaoTarget] = useState(null);
 
   const load = useCallback(async () => {
     if (!obra?.id) {
@@ -93,6 +96,10 @@ export default function CrPlanejamentoMensalView({
   const pendingMeasurement = ['ABERTO', 'VENCIDO'].includes(prazos?.medicao?.situacao)
     && existingMonths.has(prazos.medicao.competencia)
     ? prazos.medicao.competencia
+    : null;
+  // Dilatação: medição do mês ainda não registrada (em prazo ou vencida).
+  const measurementDue = ['ABERTO', 'VENCIDO'].includes(prazos?.medicao?.situacao)
+    ? prazos.medicao
     : null;
 
   function openDetail(competenciaValue, area) {
@@ -251,6 +258,19 @@ export default function CrPlanejamentoMensalView({
                 Registrar medição aprovada
               </button>
             ) : null}
+            {measurementDue && isPublic && permissions.measurement ? (
+              measurementDue.dilatacao_pendente ? (
+                <span className="cr-deadline-strip__status">Dilatação aguardando decisão</span>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setDilatacaoTarget({ obra, competencia: measurementDue.competencia })}
+                >
+                  Solicitar dilatação
+                </button>
+              )
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -288,7 +308,8 @@ export default function CrPlanejamentoMensalView({
                 ? item.medicao_aprovada
                 : item.total_receita_prevista}
               receitaRecebida={item.receita_recebida}
-              medicaoAprovadaInformada={!isPublic || item.medicao_aprovada != null}
+              medicaoAprovadaInformada={!isPublic || item.medicao_aprovada != null || Boolean(item.sem_medicao)}
+              semMedicao={Boolean(item.sem_medicao)}
               glosa={item.glosa}
               actionLabel="Ver detalhes"
               onEditPlanning={() => openDetail(item.competencia, 'planning')}
@@ -319,6 +340,15 @@ export default function CrPlanejamentoMensalView({
           ))}
         </div>
       ) : null}
+
+      <CrDilatacaoRequestModal
+        target={dilatacaoTarget}
+        onClose={() => setDilatacaoTarget(null)}
+        onSubmit={async (obraId, competenciaValue, dias, motivo) => {
+          await solicitarDilatacao(obraId, competenciaValue, dias, motivo);
+          await onChanged?.();
+        }}
+      />
 
       <CrReopeningRequestModal
         target={reopeningTarget}

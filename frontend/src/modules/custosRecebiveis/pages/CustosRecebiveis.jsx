@@ -34,6 +34,8 @@ import CrPlanejamentoMensalView from '../components/CrPlanejamentoMensalView';
 import CrPlanoWorkspace from '../components/CrPlanoWorkspace';
 import CrRealizadoView from '../components/CrRealizadoView';
 import CrAuditoriaView from '../components/CrAuditoriaView';
+import CrDilatacoesView from '../components/CrDilatacoesView';
+import CrPrazosObrasView from '../components/CrPrazosObrasView';
 import {
   CUSTOS_RECEBIVEIS_PERMISSIONS,
   CUSTOS_RECEBIVEIS_TABS
@@ -459,7 +461,7 @@ export default function CustosRecebiveis() {
     )?.versao;
     const { ok } = await confirmar({
       titulo: 'Publicar versão do plano micro',
-      mensagem: `Publicar ${versaoAlvo ? `a versao v${versaoAlvo}` : 'esta versao'} da obra ${obraAlvo?.nome || obraAlvo?.codigo || 'selecionada'}? Ela substitui a versao vigente para todos que consultam custos, recebiveis e medicoes desta obra.`,
+      mensagem: `Publicar ${versaoAlvo ? `a versao v${versaoAlvo}` : 'esta versao'} da obra ${obraAlvo?.nome || obraAlvo?.codigo || 'selecionada'}? Ela substitui a versao vigente para todos que consultam custos, recebiveis e medicoes desta obra. A medicao ja aprovada nos meses anteriores continua valendo pelo CODIGO do item: item com codigo novo recomeca do zero.`,
       rotuloConfirmar: 'Publicar versao'
     });
     if (!ok) return;
@@ -558,7 +560,7 @@ export default function CustosRecebiveis() {
       competencia: item.competencia,
       plano: null,
       detalhe: '1',
-      painel: 'planning',
+      painel: item.tipo === 'MEDICAO_CONSOLIDADA' ? 'approved' : 'planning',
       bloqueio: item.exige_reabertura ? '1' : null
     });
   }
@@ -876,11 +878,17 @@ export default function CustosRecebiveis() {
       ) : null}
 
       {activeTab === 'obrigacoes' ? (
-        <CrObrigacoesView
-          key={refreshToken}
-          canGrantBypass={canGrantBypass}
-          onOpenPlanning={handleOpenObligationPlanning}
-        />
+        <>
+          <CrObrigacoesView
+            key={refreshToken}
+            canGrantBypass={canGrantBypass}
+            onOpenPlanning={handleOpenObligationPlanning}
+          />
+          <CrDilatacoesView
+            key={`dilatacoes-${refreshToken}`}
+            canDecide={planningPermissions.reopenApprove}
+          />
+        </>
       ) : null}
 
       {activeTab === 'importacoes' ? (
@@ -915,11 +923,14 @@ export default function CustosRecebiveis() {
       ) : null}
 
       {activeTab === 'configuracoes' ? (
+        <>
+        <CrPrazosObrasView key={`prazos-${refreshToken}`} />
         <CrConfiguracoesView
           key={`${selectedObraId}-${refreshToken}`}
           obra={selectedObra}
           onChanged={handleRefresh}
         />
+        </>
       ) : null}
 
       {elementoConfirmacao}

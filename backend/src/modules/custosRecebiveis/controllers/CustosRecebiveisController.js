@@ -33,10 +33,18 @@ const {
 const {
   listarRealizados,
   reconciliarRealizado,
-  reprocessarRealizados
+  reprocessarRealizados,
+  sincronizarRealizadosAoConsultar
 } = require('../services/realizadoService');
 const { gerarExportacao } = require('../services/exportacaoService');
 const { calcularPrazosObras } = require('../services/prazoService');
+const {
+  decidirDilatacao,
+  listarDilatacoes,
+  listarPrazosObras,
+  salvarPrazosObra,
+  solicitarDilatacao
+} = require('../services/prazoGestaoService');
 const {
   concederBypass,
   listarBypasses,
@@ -332,6 +340,7 @@ class CustosRecebiveisController {
 
   static async comparativo(req, res) {
     try {
+      await sincronizarRealizadosAoConsultar(req.user, req.params.obraId, req.query.competencia);
       return res.json(await obterComparativo(
         req.user,
         req.params.obraId,
@@ -383,6 +392,7 @@ class CustosRecebiveisController {
 
   static async realizados(req, res) {
     try {
+      await sincronizarRealizadosAoConsultar(req.user, req.params.obraId, req.query.competencia);
       return res.json(await listarRealizados(
         req.user,
         req.params.obraId,
@@ -516,6 +526,52 @@ class CustosRecebiveisController {
       ));
     } catch (error) {
       return respondError(res, error, 'Erro ao consultar auditoria de Custos e Recebiveis');
+    }
+  }
+
+  static async prazosObras(req, res) {
+    try {
+      return res.json(await listarPrazosObras(req.user));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar prazos das obras');
+    }
+  }
+
+  static async salvarPrazosObra(req, res) {
+    try {
+      return res.json(await salvarPrazosObra(req.user, req.params.obraId, req.body));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao salvar prazos da obra');
+    }
+  }
+
+  static async dilatacoes(req, res) {
+    try {
+      return res.json(await listarDilatacoes(req.user, req.query));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao consultar dilatacoes de prazo');
+    }
+  }
+
+  static async solicitarDilatacao(req, res) {
+    try {
+      const result = await solicitarDilatacao(
+        req.user,
+        req.params.obraId,
+        req.params.competencia,
+        req.body
+      );
+      return res.status(result.idempotente ? 200 : 201).json(result);
+    } catch (error) {
+      return respondError(res, error, 'Erro ao solicitar dilatacao de prazo');
+    }
+  }
+
+  static async decidirDilatacao(req, res) {
+    try {
+      return res.json(await decidirDilatacao(req.user, req.params.dilatacaoId, req.body));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao decidir dilatacao de prazo');
     }
   }
 }

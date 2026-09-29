@@ -17,6 +17,11 @@ const {
 } = require('../services/planejamentoService');
 
 const at = (value) => new Date(value);
+const {
+  decidirDilatacao,
+  salvarPrazosObra,
+  solicitarDilatacao
+} = require('../services/prazoGestaoService');
 
 function validateWindows() {
   const janela = janelaPlanejamento('2026-10');
@@ -59,11 +64,23 @@ function validateSummaries() {
   assert.strictEqual(vencido.planejamento.situacao, 'VENCIDO');
   assert.strictEqual(vencido.planejamento.dias, 2);
 
-  const emDia = resumirPrazosObra({
+  // Mes reaberto volta a ser pendencia ate nova finalizacao.
+  const reaberto = resumirPrazosObra({
     ...base,
     competencias: [
       { competencia: '2026-09', estado: 'FINALIZADA', finalizado_em: 'x', tem_medicao_aprovada: true },
       { competencia: '2026-10', estado: 'REABERTA', finalizado_em: 'x', tem_medicao_aprovada: true }
+    ],
+    now: at('2026-10-10T12:00:00-03:00')
+  });
+  assert.strictEqual(reaberto.planejamento.situacao, 'VENCIDO');
+  assert.strictEqual(reaberto.planejamento.competencia, '2026-10');
+
+  const emDia = resumirPrazosObra({
+    ...base,
+    competencias: [
+      { competencia: '2026-09', estado: 'FINALIZADA', finalizado_em: 'x', tem_medicao_aprovada: true },
+      { competencia: '2026-10', estado: 'FINALIZADA', finalizado_em: 'x', tem_medicao_aprovada: true }
     ],
     now: at('2026-10-10T12:00:00-03:00')
   });
@@ -210,6 +227,7 @@ async function validateMonthListFlags() {
     TituloFinanceiroRateio: { findAll: async () => [] },
     MovimentoFinanceiro: { findAll: async () => [] },
     CrReabertura: { findAll: async () => [] },
+    CrMedicaoSemRegistro: { findAll: async () => [{ competencia_id: 2 }] },
     competenciasLiberadasObra: async () => ['2026-10']
   });
   const byMonth = new Map(response.items.map((item) => [item.competencia, item]));
@@ -221,6 +239,170 @@ async function validateMonthListFlags() {
   assert.strictEqual(byMonth.get('2020-03').planejamento_editavel, false);
   assert.strictEqual(byMonth.get('2020-03').reabertura_permitida, true);
   assert.deepStrictEqual(response.competencias_permitidas, ['2026-10']);
+  assert.strictEqual(byMonth.get('2020-02').sem_medicao, true);
+  assert.strictEqual(byMonth.get('2020-01').sem_medicao, false);
+}
+
+async function validateConfiguredWindows() {
+  const config = { planejamento_dia_abertura: 20, planejamento_dia_fechamento: 10, medicao_prazo_dias: 30 };
+  const janela = janelaPlanejamento('2026-10', config);
+  assert.strictEqual(janela.abre_em.toISOString(), '2026-09-20T03:00:00.000Z');
+  assert.strictEqual(janela.fecha_em.toISOString(), '2026-10-11T02:59:59.999Z');
+  assert.strictEqual(prazoMedicaoAprovada('2026-03', config).toISOString(), '2026-04-01T02:59:59.999Z');
+  // Valor fora do limite cai no padrao, nao quebra o calculo.
+  assert.strictEqual(
+    janelaPlanejamento('2026-10', { planejamento_dia_abertura: 40 }).abre_em.toISOString(),
+    '2026-09-25T03:00:00.000Z'
+  );
+  const resumo = resumirPrazosObra({
+    classificacao: 'PUBLICA',
+    temPlanoPublicado: true,
+    inicio: '2026-09',
+    config,
+    competencias: [{ competencia: '2026-09', estado: 'FINALIZADA', tem_medicao_aprovada: false, dilatacao_prazo: at('2026-10-05T23:59:59-03:00') }],
+    now: at('2026-10-03T12:00:00-03:00')
+  });
+  // 1o/09 + 30 = 01/10; a dilatacao aprovada ate 05/10 prevalece.
+  assert.strictEqual(resumo.medicao.situacao, 'ABERTO');
+  assert.strictEqual(resumo.medicao.dias, 2);
+  assert.strictEqual(resumo.medicao.dilatado, true);
+  assert.strictEqual(resumo.planejamento.competencia, '2026-10');
+  assert.strictEqual(resumo.planejamento.dias, 7);
+}
+
+async function validateConfigSave() {
+  const audits = [];
+  let row = null;
+  const deps = {
+    sequelize: tx,
+    resolverEscopoObras: scope,
+    Obra: { findByPk: async () => ({ id: 7 }) },
+    CrPrazoObra: {
+      findOne: async () => row,
+      create: async (values) => {
+        row = { ...values, update: async (next) => Object.assign(row, next), destroy: async () => { row = null; } };
+        return row;
+      }
+    },
+    CrAuditoria: { create: async (values) => audits.push(values) }
+  };
+  await assert.rejects(
+    () => salvarPrazosObra({ id: 1 }, 7, { planejamento_dia_abertura: 30, planejamento_dia_fechamento: 5, medicao_prazo_dias: 40 }, deps),
+    (error) => error.code === 'CR_PRAZOS_INVALIDOS'
+  );
+  const saved = await salvarPrazosObra({ id: 1 }, 7, { planejamento_dia_abertura: 20, planejamento_dia_fechamento: 8, medicao_prazo_dias: 45 }, deps);
+  assert.strictEqual(saved.personalizado, true);
+  assert.strictEqual(saved.medicao_prazo_dias, 45);
+  assert.strictEqual(audits.length, 1);
+  const repeated = await salvarPrazosObra({ id: 1 }, 7, { planejamento_dia_abertura: 20, planejamento_dia_fechamento: 8, medicao_prazo_dias: 45 }, deps);
+  assert.strictEqual(repeated.idempotente, true);
+  assert.strictEqual(audits.length, 1);
+  const reset = await salvarPrazosObra({ id: 1 }, 7, { padrao: true }, deps);
+  assert.strictEqual(reset.personalizado, false);
+  assert.strictEqual(reset.planejamento_dia_abertura, 25);
+  assert.strictEqual(row, null);
+}
+
+async function validateDilatacao() {
+  const created = [];
+  let pending = null;
+  const now = at('2026-10-15T12:00:00-03:00');
+  const context = (extra = {}) => async () => new Map([[7, {
+    config: null,
+    competencias: [{ competencia: '2026-09', tem_medicao_aprovada: false, ...extra }]
+  }]]);
+  const deps = {
+    sequelize: tx,
+    resolverEscopoObras: scope,
+    now: () => now,
+    Obra: { findByPk: async () => ({ id: 7, classificacao: 'PUBLICA' }) },
+    CrCompetencia: { findOne: async () => ({ id: 41, competencia: '2026-09' }) },
+    CrDilatacao: {
+      findOne: async () => pending,
+      create: async (values) => { const row = { id: 90, ...values }; created.push(row); return row; }
+    },
+    CrAuditoria: { create: async () => null },
+    carregarContextoPrazos: context(),
+    competenciasLiberadasObra: async () => []
+  };
+  const ask = (payload, overrides = {}) => solicitarDilatacao({ id: 3 }, 7, '2026-09', payload, { ...deps, ...overrides });
+  await assert.rejects(() => ask({ dias: 1, motivo: 'Fiscal atrasou a visita' }), (e) => e.code === 'CR_DILATACAO_DIAS_INVALIDOS');
+  await assert.rejects(() => ask({ dias: 6, motivo: 'Fiscal atrasou a visita' }), (e) => e.code === 'CR_DILATACAO_DIAS_INVALIDOS');
+  await assert.rejects(() => ask({ dias: 3, motivo: 'curto' }), (e) => e.code === 'CR_DILATACAO_MOTIVO_REQUIRED');
+  await assert.rejects(
+    () => ask({ dias: 3, motivo: 'Fiscal atrasou a visita' }, { Obra: { findByPk: async () => ({ id: 7, classificacao: 'PRIVADA' }) } }),
+    (e) => e.code === 'CR_MEDICAO_APENAS_OBRA_PUBLICA'
+  );
+  await assert.rejects(
+    () => ask({ dias: 3, motivo: 'Fiscal atrasou a visita' }, { carregarContextoPrazos: context({ tem_medicao_aprovada: true }) }),
+    (e) => e.code === 'CR_DILATACAO_MEDICAO_REGISTRADA'
+  );
+  await assert.rejects(
+    () => solicitarDilatacao({ id: 3 }, 7, '2026-11', { dias: 3, motivo: 'Fiscal atrasou a visita' }, deps),
+    (e) => e.code === 'CR_DILATACAO_MES_FUTURO'
+  );
+  // Depois do vencimento (setembro vence em 11/10) o pedido e aceito.
+  const first = await ask({ dias: 3, motivo: 'Fiscal atrasou a visita' });
+  assert.strictEqual(first.idempotente, false);
+  assert.strictEqual(new Date(created[0].prazo_anterior).toISOString(), '2026-10-12T02:59:59.999Z');
+  pending = created[0];
+  const again = await ask({ dias: 5, motivo: 'Outro pedido enquanto pende' });
+  assert.strictEqual(again.idempotente, true);
+  assert.strictEqual(created.length, 1);
+
+  // Decisao: prazo vencido -> conta da aprovacao (15/10) + 3 = 18/10 23:59.
+  const record = { id: 90, obra_id: 7, competencia_id: 41, dias: 3, situacao: 'SOLICITADA', update: async function update(values) { Object.assign(this, values); } };
+  const decideDeps = {
+    ...deps,
+    CrDilatacao: { findByPk: async () => ({ ...record, competencia: { competencia: '2026-09' } }) }
+  };
+  decideDeps.CrDilatacao.findByPk = async (id, options) => (options?.include ? { ...record, competencia: { competencia: '2026-09' } } : record);
+  await assert.rejects(() => decidirDilatacao({ id: 1 }, 90, { decisao: 'TALVEZ' }, decideDeps), (e) => e.code === 'CR_DILATACAO_DECISAO_INVALIDA');
+  const approved = await decidirDilatacao({ id: 1 }, 90, { decisao: 'APROVADA' }, decideDeps);
+  assert.strictEqual(approved.dilatacao.situacao, 'APROVADA');
+  assert.strictEqual(new Date(record.prazo_novo).toISOString(), '2026-10-19T02:59:59.999Z');
+  assert.strictEqual((await decidirDilatacao({ id: 1 }, 90, { decisao: 'APROVADA' }, decideDeps)).idempotente, true);
+  await assert.rejects(() => decidirDilatacao({ id: 1 }, 90, { decisao: 'NEGADA' }, decideDeps), (e) => e.code === 'CR_DILATACAO_JA_DECIDIDA');
+
+  // Prazo ainda vigente -> conta do prazo: 11/10 + 2 = 13/10.
+  const early = { id: 91, obra_id: 7, competencia_id: 41, dias: 2, situacao: 'SOLICITADA', update: async function update(values) { Object.assign(this, values); } };
+  await decidirDilatacao({ id: 1 }, 91, { decisao: 'APROVADA' }, {
+    ...deps,
+    now: () => at('2026-10-02T12:00:00-03:00'),
+    CrDilatacao: { findByPk: async (id, options) => (options?.include ? { ...early, competencia: { competencia: '2026-09' } } : early) }
+  });
+  assert.strictEqual(new Date(early.prazo_novo).toISOString(), '2026-10-14T02:59:59.999Z');
+}
+
+async function validateRealizedAutoSync() {
+  const { sincronizarRealizadosAoConsultar } = require('../services/realizadoService');
+  let calls = 0;
+  let now = at('2026-09-29T12:00:00-03:00');
+  const deps = (exists = true, fail = false) => ({
+    now: () => now,
+    CrCompetencia: { findOne: async () => (exists ? { id: 1 } : null) },
+    reprocessarRealizados: async () => { calls += 1; if (fail) throw new Error('falhou'); }
+  });
+  assert.strictEqual((await sincronizarRealizadosAoConsultar({ id: 1 }, 55, '2026-10', deps())).motivo, 'MES_FUTURO');
+  assert.strictEqual((await sincronizarRealizadosAoConsultar({ id: 1 }, 55, '2026-09', deps(false))).motivo, 'SEM_COMPETENCIA');
+  assert.strictEqual((await sincronizarRealizadosAoConsultar({ id: 1 }, 55, '2026-09', deps())).sincronizado, true);
+  assert.strictEqual((await sincronizarRealizadosAoConsultar({ id: 1 }, 55, '2026-09', deps())).motivo, 'RECENTE');
+  now = at('2026-09-29T12:06:00-03:00');
+  assert.strictEqual((await sincronizarRealizadosAoConsultar({ id: 1 }, 55, '2026-09', deps())).sincronizado, true);
+  assert.strictEqual(calls, 2);
+  const failed = await sincronizarRealizadosAoConsultar({ id: 1 }, 56, '2026-08', deps(true, true));
+  assert.strictEqual(failed.motivo, 'FALHA');
+  // Falha nao conta para o intervalo: a proxima consulta tenta de novo.
+  assert.strictEqual((await sincronizarRealizadosAoConsultar({ id: 1 }, 56, '2026-08', deps())).sincronizado, true);
+}
+
+function validateMigration() {
+  const migration = require('../../../../migrations/202609290001_custos_recebiveis_prazos_dilatacao');
+  const db = require('../../../models');
+  assert.strictEqual(typeof migration.up, 'function');
+  assert.strictEqual(db.CrPrazoObra.getTableName(), 'cr_prazos_obra');
+  assert.strictEqual(db.CrDilatacao.getTableName(), 'cr_dilatacoes');
+  assert.strictEqual(db.CrMedicaoSemRegistro.getTableName(), 'cr_medicao_sem_registro');
 }
 
 async function run() {
@@ -232,6 +414,11 @@ async function run() {
   await validateSaveCannotCreateFutureMonth();
   await validateReopeningEligibility();
   await validateMonthListFlags();
+  await validateConfiguredWindows();
+  await validateConfigSave();
+  await validateDilatacao();
+  await validateRealizedAutoSync();
+  validateMigration();
   console.log('Prazos de Custos e Recebiveis validados com sucesso.');
 }
 

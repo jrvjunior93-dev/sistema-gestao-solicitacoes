@@ -566,9 +566,33 @@ Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
 - `GET /obras/:obraId/competencias` devolve `planejamento_editavel` por mes: so
   e verdadeiro com planejamento aberto (ou reaberto com reabertura vigente) e
   nao finalizado.
-- Ate a Fase 3 o bloqueio de edicao por prazo (`assertEditable`) continua usando
-  o prazo antigo (ultimo dia util do mes, 18h). Correcao: mes REABERTO dentro do
-  prazo voltou a ser editavel com a reabertura vigente.
+- Planejamento atrasado e registrado sem reabertura (decisao de 29/09): mes nao
+  finalizado continua editavel depois do prazo; finalizado nunca e editavel;
+  reabertura so para mes finalizado ou reaberto com janela expirada.
+
+## Reforma 2026-09 - Fase 2: prazos por obra, medicao aprovada e dilatacao
+
+- Migration `202609290001_custos_recebiveis_prazos_dilatacao.js` (tabelas novas,
+  `cr_competencias` nao muda): `cr_prazos_obra`, `cr_dilatacoes`,
+  `cr_medicao_sem_registro`. Sem a migration o modulo continua abrindo com os
+  prazos padrao; "sem medicao" e dilatacao dependem dela.
+- Prazos por obra: `GET /prazos` e `PUT /obras/:obraId/prazos` (Configuracoes;
+  `{ padrao: true }` volta ao padrao). Limites: dias 1 a 28; medicao 1 a 120.
+- Obrigacoes passam a usar a janela da obra; nova obrigacao `MEDICAO_CONSOLIDADA`
+  (medicao aprovada, obra publica, permissao `medicao.consolidar`), cumprida com
+  medicao registrada ou "sem medicao".
+- Medicao aprovada: registro atrasado aceito; alterar depois do prazo (com
+  dilatacao) exige reabertura (`CR_MEDICAO_ENCERRADA`). "Sem medicao neste mes"
+  com justificativa (`sem_medicao: true`). Medicao so de itens da planilha (linha
+  antiga ligada a custo so se ja gravada). Aprovado anterior somado pelo codigo
+  do item, atravessando versoes da planilha.
+- Dilatacao: `POST /obras/:obraId/competencias/:competencia/dilatacoes`
+  (`medicao.consolidar`; 2 a 5 dias; antes ou depois do vencimento; um pendente
+  por mes), `POST /dilatacoes/:id/decidir` (`reabertura.aprovar`),
+  `GET /dilatacoes`. Prazo novo = prazo vigente (ou a aprovacao, se ja venceu)
+  + dias, ate 23:59 de Brasilia.
+- Custo realizado do Comparativo: a consulta sincroniza as baixas do mes (mes
+  existente e iniciado; no maximo a cada 5 minutos por obra/mes).
 
 ## Regras de evolucao
 

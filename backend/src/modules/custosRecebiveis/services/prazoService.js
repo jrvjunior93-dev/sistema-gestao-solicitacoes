@@ -12,8 +12,9 @@ const db = require('../../../models');
   - Medicao aprovada (somente obra PUBLICA): 40 dias contados a partir do dia
     1o da competencia. Marco -> 1o/03 + 40 dias = 10/04, ate 23:59:59.
 
-  Os valores abaixo sao o PADRAO; a configuracao por obra entra na Fase 2 e
-  chega a estas funcoes pelo parametro `config`.
+  Os valores abaixo sao o PADRAO; cada obra pode ter a sua configuracao
+  (`cr_prazos_obra`, tela de Configuracoes), que chega por `config`.
+  Dilatacao aprovada (`cr_dilatacoes`) move o prazo da medicao do mes.
 
   Brasilia e UTC-3 fixo desde o fim do horario de verao (2019). O calculo nao
   depende do fuso do servidor.
@@ -28,8 +29,20 @@ const OFFSET_BRASILIA_HORAS = 3;
 const DAY_MS = 86400000;
 const VALID_COMPETENCIA = /^\d{4}-(0[1-9]|1[0-2])$/;
 
+const LIMITES_PRAZOS = Object.freeze({
+  planejamento_dia_abertura: [1, 28],
+  planejamento_dia_fechamento: [1, 28],
+  medicao_prazo_dias: [1, 120]
+});
+
 function resolverConfig(config = {}) {
-  return { ...PRAZOS_PADRAO, ...(config || {}) };
+  const result = { ...PRAZOS_PADRAO };
+  Object.keys(PRAZOS_PADRAO).forEach((key) => {
+    const value = Number(config?.[key]);
+    const [min, max] = LIMITES_PRAZOS[key];
+    if (Number.isInteger(value) && value >= min && value <= max) result[key] = value;
+  });
+  return result;
 }
 
 function instanteBrasilia(year, monthIndex, day, hours = 0, minutes = 0, seconds = 0, ms = 0) {
@@ -80,6 +93,20 @@ function prazoMedicaoAprovada(competencia, config) {
   return instanteBrasilia(year, month - 1, 1 + Number(cfg.medicao_prazo_dias), 23, 59, 59, 999);
 }
 
+// Prazo da medicao considerando dilatacoes aprovadas: vale o maior entre o
+// prazo base e o ultimo prazo concedido.
+function prazoMedicaoEfetivo(competencia, config, prazoDilatado = null) {
+  const base = prazoMedicaoAprovada(competencia, config);
+  const dilatado = prazoDilatado ? new Date(prazoDilatado) : null;
+  return dilatado && !Number.isNaN(dilatado.getTime()) && dilatado > base ? dilatado : base;
+}
+
+// Fim do dia (23:59:59.999 de Brasilia) da data informada, somando dias.
+function fimDoDiaBrasilia(value, addDays = 0) {
+  const { year, month, day } = partesBrasilia(value);
+  return instanteBrasilia(year, month - 1, day + addDays, 23, 59, 59, 999);
+}
+
 // Dias de calendario (Brasilia) entre duas datas: 0 = mesmo dia.
 function diasCalendario(from, to) {
   const a = partesBrasilia(from);
@@ -94,8 +121,10 @@ function competenciaAlvoPlanejamento(now = new Date(), config) {
   return janelaPlanejamento(seguinte, config).abre_em <= now ? seguinte : atual;
 }
 
+// Mesmo criterio das obrigacoes: cumprido = FINALIZADA. Mes reaberto volta a
+// contar como pendente ate nova finalizacao (regra de reabertura da Fase 4).
 function planejamentoCumprido(competencia) {
-  return Boolean(competencia && (competencia.finalizado_em || competencia.estado === 'FINALIZADA'));
+  return competencia?.estado === 'FINALIZADA';
 }
 
 function inicioEfetivo(inicio, competencias, limite) {
@@ -145,14 +174,17 @@ function resumoMedicao({ inicio, byKey, now, config }) {
     .filter((competencia) => !byKey.get(competencia)?.tem_medicao_aprovada);
   if (pendentes.length) {
     const competencia = pendentes[0];
-    const prazo = prazoMedicaoAprovada(competencia, config);
+    const registro = byKey.get(competencia);
+    const prazo = prazoMedicaoEfetivo(competencia, config, registro?.dilatacao_prazo);
     const vencido = prazo < now;
     return {
       situacao: vencido ? 'VENCIDO' : 'ABERTO',
       competencia,
       prazo_em: prazo.toISOString(),
       dias: vencido ? diasCalendario(prazo, now) : diasCalendario(now, prazo),
-      pendentes: pendentes.length
+      pendentes: pendentes.length,
+      dilatado: Boolean(registro?.dilatacao_prazo) && prazo > prazoMedicaoAprovada(competencia, config),
+      dilatacao_pendente: Boolean(registro?.dilatacao_pendente)
     };
   }
   const proxima = start > atual ? start : addMonth(atual);
@@ -185,6 +217,7 @@ function resumirPrazosObra({
     planejamento: resumoPlanejamento({ temPlanoPublicado, inicio, byKey, now, config }),
     // Sem planilha publicada nao ha como registrar medicao: nada a cobrar.
     medicao: publica && temPlanoPublicado ? resumoMedicao({ inicio, byKey, now, config }) : null,
+    config: resolverConfig(config),
     // O bloqueio por atraso entra na Fase 3; ate la nenhuma obra e travada.
     travada: false,
     server_time: new Date(now).toISOString()
@@ -213,8 +246,33 @@ function dependencies(overrides = {}) {
     CrMedicaoConsolidada: db.CrMedicaoConsolidada,
     CrResponsavelObra: db.CrResponsavelObra,
     CrPlanoObra: db.CrPlanoObra,
+    CrPrazoObra: db.CrPrazoObra,
+    CrDilatacao: db.CrDilatacao,
+    CrMedicaoSemRegistro: db.CrMedicaoSemRegistro,
     ...overrides
   };
+}
+
+function isMissingTableError(error) {
+  return error?.parent?.code === 'ER_NO_SUCH_TABLE'
+    || error?.original?.code === 'ER_NO_SUCH_TABLE';
+}
+
+// Tabelas da Fase 2 (migration 202609290001). Enquanto a migration nao roda
+// no ambiente, prazos caem no padrao e nao ha dilatacao/sem medicao — o
+// modulo continua abrindo em vez de responder 500.
+let missingTableWarned = false;
+async function readOptional(query) {
+  try {
+    return await query();
+  } catch (error) {
+    if (!isMissingTableError(error)) throw error;
+    if (!missingTableWarned) {
+      missingTableWarned = true;
+      console.warn('[custos-recebiveis] migration 202609290001 pendente: usando prazos padrao.');
+    }
+    return [];
+  }
 }
 
 /*
@@ -224,10 +282,15 @@ function dependencies(overrides = {}) {
 async function carregarContextoPrazos(obraIdsValue, overrides = {}) {
   const deps = dependencies(overrides);
   const obraIds = [...new Set((obraIdsValue || []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
-  const result = new Map(obraIds.map((id) => [id, { temPlanoPublicado: false, inicio: null, competencias: [] }]));
+  const result = new Map(obraIds.map((id) => [id, {
+    temPlanoPublicado: false,
+    inicio: null,
+    config: null,
+    competencias: []
+  }]));
   if (!obraIds.length) return result;
 
-  const [competencias, planos, responsaveis] = await Promise.all([
+  const [competencias, planos, responsaveis, configs] = await Promise.all([
     deps.CrCompetencia.findAll({
       where: { obra_id: { [Op.in]: obraIds } },
       attributes: ['id', 'obra_id', 'competencia', 'estado', 'finalizado_em'],
@@ -246,19 +309,52 @@ async function carregarContextoPrazos(obraIdsValue, overrides = {}) {
       },
       attributes: ['obra_id', 'competencia_inicial'],
       raw: true
-    })
+    }),
+    readOptional(() => deps.CrPrazoObra.findAll({
+      where: { obra_id: { [Op.in]: obraIds } },
+      raw: true
+    }))
   ]);
 
   const competenciaIds = competencias.map((item) => Number(item.id));
-  const medidas = competenciaIds.length
-    ? await deps.CrMedicaoConsolidada.findAll({
-      where: { competencia_id: { [Op.in]: competenciaIds } },
-      attributes: ['competencia_id'],
-      group: ['competencia_id'],
-      raw: true
-    })
-    : [];
-  const comMedicao = new Set(medidas.map((item) => Number(item.competencia_id)));
+  const [medidas, semRegistro, dilatacoes] = competenciaIds.length
+    ? await Promise.all([
+      deps.CrMedicaoConsolidada.findAll({
+        where: { competencia_id: { [Op.in]: competenciaIds } },
+        attributes: ['competencia_id', [db.sequelize.fn('MAX', db.sequelize.col('createdAt')), 'registrado_em']],
+        group: ['competencia_id'],
+        raw: true
+      }),
+      readOptional(() => deps.CrMedicaoSemRegistro.findAll({
+        where: { competencia_id: { [Op.in]: competenciaIds } },
+        attributes: ['competencia_id', 'registrado_em'],
+        raw: true
+      })),
+      readOptional(() => deps.CrDilatacao.findAll({
+        where: {
+          competencia_id: { [Op.in]: competenciaIds },
+          situacao: { [Op.in]: ['SOLICITADA', 'APROVADA'] }
+        },
+        attributes: ['competencia_id', 'situacao', 'prazo_novo'],
+        raw: true
+      }))
+    ])
+    : [[], [], []];
+  const medicaoRegistradaEm = new Map();
+  [...medidas, ...semRegistro].forEach((item) => {
+    medicaoRegistradaEm.set(Number(item.competencia_id), item.registrado_em || null);
+  });
+  const dilatacaoPrazo = new Map();
+  const dilatacaoPendente = new Set();
+  dilatacoes.forEach((item) => {
+    const id = Number(item.competencia_id);
+    if (item.situacao === 'SOLICITADA') {
+      dilatacaoPendente.add(id);
+      return;
+    }
+    const prazo = item.prazo_novo ? new Date(item.prazo_novo) : null;
+    if (prazo && (!dilatacaoPrazo.has(id) || prazo > dilatacaoPrazo.get(id))) dilatacaoPrazo.set(id, prazo);
+  });
 
   competencias.forEach((item) => {
     const entry = result.get(Number(item.obra_id));
@@ -267,8 +363,15 @@ async function carregarContextoPrazos(obraIdsValue, overrides = {}) {
       competencia: item.competencia,
       estado: item.estado,
       finalizado_em: item.finalizado_em || null,
-      tem_medicao_aprovada: comMedicao.has(Number(item.id))
+      tem_medicao_aprovada: medicaoRegistradaEm.has(Number(item.id)),
+      medicao_registrada_em: medicaoRegistradaEm.get(Number(item.id)) || null,
+      dilatacao_prazo: dilatacaoPrazo.get(Number(item.id)) || null,
+      dilatacao_pendente: dilatacaoPendente.has(Number(item.id))
     });
+  });
+  configs.forEach((item) => {
+    const entry = result.get(Number(item.obra_id));
+    if (entry) entry.config = item;
   });
   planos.forEach((item) => {
     const entry = result.get(Number(item.obra_id));
@@ -306,7 +409,12 @@ async function competenciasLiberadasObra(obraId, options = {}, overrides = {}) {
 }
 
 module.exports = {
+  LIMITES_PRAZOS,
   PRAZOS_PADRAO,
+  isMissingTableError,
+  prazoMedicaoEfetivo,
+  readOptional,
+  resolverConfig,
   addMonth,
   calcularPrazosObras,
   carregarContextoPrazos,
@@ -315,6 +423,7 @@ module.exports = {
   competenciasLiberadas,
   competenciasLiberadasObra,
   diasCalendario,
+  fimDoDiaBrasilia,
   janelaPlanejamento,
   planejamentoCumprido,
   prazoMedicaoAprovada,

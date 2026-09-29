@@ -13,12 +13,13 @@ import {
   HiOutlinePlus,
   HiOutlineTrash
 } from 'react-icons/hi2';
-import { CelulaDupla, TabelaPadrao } from '../../../components/padrao';
+import { CelulaDupla, TabelaPadrao, useConfirmacao } from '../../../components/padrao';
 import CrPlanningImportModal from './CrPlanningImportModal';
 import { COMPETENCIA_ESTADO_LABELS } from '../constants/custosRecebiveis';
 import { useFecharAoSair } from '../../../hooks/useFecharAoSair';
 import {
   consolidarMedicaoCompetencia,
+  registrarSemMedicaoCompetencia,
   baixarModeloPlanilhaPlanejamento,
   decidirReaberturaCompetencia,
   finalizarPlanejamentoCompetencia,
@@ -144,6 +145,7 @@ export default function CrPlanejamentoView({
   onChanged
 }) {
   const [data, setData] = useState(null);
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [step, setStep] = useState(1);
   const [costs, setCosts] = useState([]);
   const [receipts, setReceipts] = useState([]);
@@ -1092,6 +1094,26 @@ export default function CrPlanejamentoView({
     );
   }
 
+  // Mês em que o fiscal não mediu nada (29/09): registra com justificativa e
+  // cumpre a obrigação da medição aprovada.
+  async function registerNoMeasurement() {
+    const obraAlvo = obra;
+    const competenciaAlvo = competencia;
+    const { ok, texto } = await confirmar({
+      titulo: 'Sem medição aprovada neste mês',
+      mensagem: 'Registre por que o fiscal não aprovou medição neste mês. Itens já lançados na medição aprovada serão removidos.',
+      rotuloConfirmar: 'Registrar sem medição',
+      campo: { rotulo: 'Justificativa (mínimo de 10 caracteres)', obrigatorio: true, multilinha: true }
+    });
+    if (!ok) return;
+    await runMutation(
+      'measurement',
+      () => registrarSemMedicaoCompetencia(obraAlvo.id, competenciaAlvo, String(texto || '').trim()),
+      'Mês registrado sem medição aprovada.',
+      'measurement'
+    );
+  }
+
   async function finish() {
     if (!window.confirm(
       'Finalizar congela os valores da competência. Depois disso, qualquer ajuste exigirá reabertura aprovada. Continuar?'
@@ -1771,25 +1793,50 @@ export default function CrPlanejamentoView({
                   />
                 </label>
               ) : null}
+              {data?.medicao_aprovada_estado?.sem_medicao ? (
+                <div className="cr-feedback" data-tone="warning">
+                  Mês registrado sem medição aprovada: {data.medicao_aprovada_estado.sem_medicao.justificativa}
+                </div>
+              ) : null}
+              {data?.medicao_aprovada_estado && !data.medicao_aprovada_estado.editavel ? (
+                <div className="cr-feedback" data-tone="warning">
+                  O prazo da medição aprovada deste mês terminou. Para alterar, solicite reabertura.
+                </div>
+              ) : null}
               <div className="cr-panel-actions">
                 <span>
                   Aprovado: {currency.format(totalApproved)} · Glosa: {currency.format(totalGlosa)}
                 </span>
                 {permissions.measurement ? (
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={
-                      !measurements.length
-                      || Boolean(saving)
-                      || (totalApproved < totalReceipts && measurementJustification.trim().length < 5)
-                    }
-                    onClick={saveMeasurement}
-                  >
-                    {saving === 'measurement' ? 'Registrando...' : 'Registrar medição aprovada'}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-outline"
+                      disabled={
+                        Boolean(saving)
+                        || data?.medicao_aprovada_estado?.editavel === false
+                      }
+                      onClick={registerNoMeasurement}
+                    >
+                      Sem medição neste mês
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={
+                        !measurements.length
+                        || Boolean(saving)
+                        || data?.medicao_aprovada_estado?.editavel === false
+                        || (totalApproved < totalReceipts && measurementJustification.trim().length < 5)
+                      }
+                      onClick={saveMeasurement}
+                    >
+                      {saving === 'measurement' ? 'Registrando...' : 'Registrar medição aprovada'}
+                    </button>
+                  </>
                 ) : null}
               </div>
+              {elementoConfirmacao}
             </>
           ) : (
             <div className="cr-empty-state">

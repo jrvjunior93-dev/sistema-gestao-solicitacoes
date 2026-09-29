@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('assert');
+const { Op } = require('sequelize');
 const fs = require('fs');
 const path = require('path');
 const {
@@ -785,35 +786,56 @@ async function validateMonthlyMacroSubitemsAndForecastMeasurement() {
   assert.strictEqual(savedCosts[0].etapa_macro_codigo, null);
   assert.strictEqual(savedCosts[0].descricao, 'Mobilização da equipe');
 
+  // 5a (29/09): medicao prevista so de itens da planilha contratual.
+  const receiptOverrides = (existingReceipts = []) => ({
+    ...baseOverrides,
+    CrPrevisaoCusto: { findAll: async () => savedCosts },
+    CrMedicaoConsolidada: { findAll: async () => [] },
+    CrPrevisaoReceita: {
+      findAll: async ({ where } = {}) => (where?.previsao_custo_id ? existingReceipts : []),
+      destroy: async () => { savedReceipts = []; },
+      bulkCreate: async (rows) => {
+        savedReceipts = rows;
+        return rows;
+      }
+    }
+  });
+  await assert.rejects(
+    () => salvarRecebiveis(
+      { id: 1 },
+      7,
+      '2099-08',
+      { itens: [{ previsao_custo_id: 501, quantidade_prevista: 1.5 }] },
+      receiptOverrides()
+    ),
+    (error) => error.code === 'CR_RECEBIVEL_ITEM_INVALIDO'
+  );
+  // Linha antiga ligada ao custo, ja gravada no mes, continua aceita.
+  const legacyResult = await salvarRecebiveis(
+    { id: 1 },
+    7,
+    '2099-08',
+    { itens: [{ previsao_custo_id: 501, quantidade_prevista: 1.5 }] },
+    receiptOverrides([{ previsao_custo_id: 501 }])
+  );
+  assert.strictEqual(legacyResult.total, 225);
+  assert.strictEqual(savedReceipts[0].previsao_custo_id, 501);
   const receiptResult = await salvarRecebiveis(
     { id: 1 },
     7,
     '2099-08',
-    {
-      itens: [{ previsao_custo_id: 501, quantidade_prevista: 1.5 }]
-    },
-    {
-      ...baseOverrides,
-      CrPrevisaoCusto: { findAll: async () => savedCosts },
-      CrPrevisaoReceita: {
-        findAll: async () => [],
-        destroy: async () => { savedReceipts = []; },
-        bulkCreate: async (rows) => {
-          savedReceipts = rows;
-          return rows;
-        }
-      }
-    }
+    { itens: [{ plano_item_id: 101, quantidade_prevista: 4 }] },
+    receiptOverrides()
   );
-  assert.strictEqual(receiptResult.total, 225);
-  assert.strictEqual(savedReceipts[0].previsao_custo_id, 501);
-  assert.strictEqual(savedReceipts[0].plano_item_id, null);
-  assert.strictEqual(savedReceipts[0].valor_previsto, 225);
+  assert.strictEqual(receiptResult.total, 400);
+  assert.strictEqual(savedReceipts[0].plano_item_id, 101);
+  assert.strictEqual(savedReceipts[0].previsao_custo_id, null);
 }
 
 async function validateApprovedMeasurementAndGlosa() {
   let createdMeasurement = null;
   let auditPayload = null;
+  let semRegistro = null;
   const competencia = {
     id: 41,
     obra_id: 7,
@@ -866,12 +888,16 @@ async function validateApprovedMeasurementAndGlosa() {
     CrPrevisaoCusto: { findAll: async () => [] },
     CrMedicaoConsolidada: {
       findAll: async () => [],
+      count: async () => 0,
       destroy: async () => 0,
       bulkCreate: async (rows) => {
         [createdMeasurement] = rows;
         return rows;
       }
     },
+    CrMedicaoSemRegistro: { destroy: async () => 0, create: async (row) => { semRegistro = row; } },
+    carregarContextoPrazos: async () => new Map(),
+    CrReabertura: { findOne: async () => null },
     CrAuditoria: {
       findOne: async () => null,
       create: async (payload) => {
@@ -937,6 +963,65 @@ async function validateApprovedMeasurementAndGlosa() {
   assert.strictEqual(independentResult.valor_total, 50);
   assert.strictEqual(createdMeasurement.plano_item_id, 10);
   assert.strictEqual(createdMeasurement.valor_medido, 50);
+
+  // Trava (29/09): ja registrada e prazo (10/09) vencido -> so com reabertura.
+  await assert.rejects(
+    () => consolidarMedicao(
+      { id: 1 },
+      7,
+      '2026-08',
+      { idempotency_key: 'medicao-4', itens: [{ plano_item_id: 9, quantidade_medida: 1 }] },
+      { ...overrides, CrMedicaoConsolidada: { ...overrides.CrMedicaoConsolidada, count: async () => 1 } }
+    ),
+    (error) => error?.code === 'CR_MEDICAO_ENCERRADA'
+  );
+
+  // Sem medicao aprovada: exige justificativa e nao aceita itens.
+  await assert.rejects(
+    () => consolidarMedicao({ id: 1 }, 7, '2026-08', {
+      idempotency_key: 'medicao-5', sem_medicao: true, justificativa_sem_medicao: 'curta', itens: []
+    }, overrides),
+    (error) => error?.code === 'CR_SEM_MEDICAO_JUSTIFICATIVA'
+  );
+  const semMedicao = await consolidarMedicao({ id: 1 }, 7, '2026-08', {
+    idempotency_key: 'medicao-6',
+    sem_medicao: true,
+    justificativa_sem_medicao: 'Fiscal nao realizou a medicao neste mes.',
+    itens: []
+  }, overrides);
+  assert.strictEqual(semMedicao.sem_medicao, true);
+  assert.strictEqual(semMedicao.quantidade_itens, 0);
+  assert.strictEqual(semRegistro.justificativa, 'Fiscal nao realizou a medicao neste mes.');
+  assert.strictEqual(auditPayload.sem_medicao, true);
+
+  // 5b: aprovado anterior somado pelo CODIGO (item 5 da versao antiga = 01.01).
+  const byCodeOverrides = {
+    ...overrides,
+    CrCompetencia: { findOne: async () => competencia, findAll: async () => [{ id: 30 }] },
+    CrMedicaoConsolidada: {
+      ...overrides.CrMedicaoConsolidada,
+      findAll: async ({ where }) => (where?.plano_item_id ? [{ plano_item_id: 5, quantidade_medida: 15 }] : [])
+    },
+    CrPlanoItem: {
+      findAll: async ({ where }) => (Array.isArray(where?.id?.[Op.in])
+        ? [{ id: 5, codigo: '01.01' }]
+        : overrides.CrPlanoItem.findAll())
+    }
+  };
+  await assert.rejects(
+    () => consolidarMedicao({ id: 1 }, 7, '2026-08', {
+      idempotency_key: 'medicao-7',
+      justificativa_glosa_geral: 'Glosa registrada pelo orgao.',
+      itens: [{ plano_item_id: 9, quantidade_medida: 6 }]
+    }, byCodeOverrides),
+    (error) => error?.code === 'CR_MEDICAO_SUPERA_ORCAMENTO'
+  );
+  const withinBalance = await consolidarMedicao({ id: 1 }, 7, '2026-08', {
+    idempotency_key: 'medicao-8',
+    justificativa_glosa_geral: 'Glosa registrada pelo orgao.',
+    itens: [{ plano_item_id: 9, quantidade_medida: 5 }]
+  }, byCodeOverrides);
+  assert.strictEqual(withinBalance.valor_total, 50);
 }
 
 async function run() {

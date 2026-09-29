@@ -77,12 +77,35 @@ proprietario antes da seguinte.
   sem isso o card de obra exibe "Prazos indisponiveis".
 - Classes antigas `.cr-work-card*` e `.cr-planning-deadline` ficaram sem uso
   (limpeza na Fase 6).
-- Transitorio ate a Fase 2: o contador "Prazos" do cabecalho e a tela de
-  Obrigacoes ainda usam o prazo antigo (ultimo dia util do mes, 18h).
 - A confirmar: 40 dias literais a partir do dia 1o (setembro -> 11/10,
   fevereiro -> 13/03).
 
+## Respostas de 29/09 sobre a dilatacao
+
+1. Enquanto o pedido aguarda aprovacao, a obra continua travada.
+2. Pode pedir depois do vencimento.
+3. Sem limite de pedidos.
+
+## Fase 2 - entregue (aguardando aprovacao)
+
+- Migration `202609290001` (3 tabelas novas; rodar no deploy do backend-dev).
+- Prazos por obra (Configuracoes > Prazos por obra); obrigacoes e contador do
+  cabecalho pelos prazos novos; obrigacao da medicao aprovada; "cumprida com
+  atraso" na tela de Obrigacoes.
+- Medicao aprovada: trava apos o prazo, "Sem medicao neste mes", 5a e 5b (com
+  aviso na importacao e na publicacao da planilha).
+- Dilatacao: pedido do engenheiro (faixa de prazos da obra), decisao e
+  historico por mes e periodo (aba Obrigacoes e prazos; fila no topo na Fase 4).
+- Comparativo com custo realizado sincronizado ao consultar.
+
+Definicoes adotadas nesta fase (a confirmar com o proprietario):
+- Prazo dilatado conta do prazo vigente; se ja venceu, da aprovacao.
+- Medicao registrada so muda depois do prazo com reabertura; nao registrada
+  pode ser lancada atrasada.
+- Mes reaberto volta a ser pendencia ate nova finalizacao (regra existente).
+
 ## Proximo passo
 
-Fase 2: configuracao por obra das duas janelas, trava da medicao aprovada pelo
-prazo, custo realizado do Comparativo automatico e dilatacao de prazo.
+Fase 3 (bloqueio por atraso): apresentar onde atua, o que impede, o que continua
+permitido e como a pessoa entende que esta travada; aguardar o ok antes de
+implementar.

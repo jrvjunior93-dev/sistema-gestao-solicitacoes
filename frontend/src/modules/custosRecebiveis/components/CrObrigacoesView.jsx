@@ -18,7 +18,8 @@ import {
 
 const TYPE_LABELS = {
   CUSTO_PREVISTO: 'Custos planejados',
-  RECEITA_PREVISTA: 'Medição prevista'
+  RECEITA_PREVISTA: 'Medição prevista',
+  MEDICAO_CONSOLIDADA: 'Medição aprovada'
 };
 
 const STATE_LABELS = {
@@ -53,6 +54,8 @@ function minBypassDate() {
 
 function CrObligationCard({ item, onOpenPlanning }) {
   const overdue = item.situacao === 'VENCIDA';
+  const lateDone = item.situacao === 'CUMPRIDA' && item.cumprida_em
+    && new Date(item.cumprida_em) > new Date(item.prazo_em);
   return (
     <article className="cr-obligation-card" data-state={item.situacao}>
       <div className="cr-obligation-card__icon" aria-hidden="true">
@@ -63,8 +66,8 @@ function CrObligationCard({ item, onOpenPlanning }) {
       <div className="cr-obligation-card__body">
         <div className="cr-obligation-card__title">
           <strong>{TYPE_LABELS[item.tipo] || item.tipo}</strong>
-          <span className="cr-status-pill" data-status={item.situacao}>
-            {STATE_LABELS[item.situacao] || item.situacao}
+          <span className="cr-status-pill" data-status={lateDone ? 'PRAZO_PROXIMO' : item.situacao}>
+            {lateDone ? 'Cumprida com atraso' : (STATE_LABELS[item.situacao] || item.situacao)}
           </span>
           {item.alerta && item.alerta !== 'NO_PRAZO' ? (
             <span className="cr-deadline-badge" data-alert={item.alerta}>{item.alerta}</span>
@@ -91,7 +94,7 @@ function CrObligationCard({ item, onOpenPlanning }) {
           className="btn btn-outline btn-sm"
           onClick={() => onOpenPlanning(item)}
         >
-          Abrir planejamento
+          {item.tipo === 'MEDICAO_CONSOLIDADA' ? 'Abrir medição' : 'Abrir planejamento'}
         </button>
       ) : null}
     </article>
