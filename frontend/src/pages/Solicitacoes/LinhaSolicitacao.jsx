@@ -420,7 +420,10 @@ function AcoesSolicitacao({
       <button
         type="button"
         className="btn btn-outline"
-        onClick={() => navigate(`/solicitacoes/${solicitacao.id}`)}
+        onClick={() => {
+          void onAtualizar?.({ type: 'mark_attention_read_local', id: solicitacao.id });
+          navigate(`/solicitacoes/${solicitacao.id}`);
+        }}
       >
         Ver
       </button>

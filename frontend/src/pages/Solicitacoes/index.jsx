@@ -756,6 +756,32 @@ export default function Solicitacoes({ arquivadas = false }) {
     aplicarListaLocal(proximaLista, { totalDelta: decrementarTotal ? -1 : 0 });
   }
 
+  function marcarAtencaoComoLidaNaLista(id) {
+    const idNumerico = Number(id);
+    if (!Number.isInteger(idNumerico) || idNumerico <= 0) return;
+
+    setSolicitacoes((prev) => {
+      const indice = prev.findIndex((item) => Number(item.id) === idNumerico);
+      if (indice < 0 || !prev[indice]?.atencao_pendente) return prev;
+
+      const proximaLista = [...prev];
+      proximaLista[indice] = {
+        ...proximaLista[indice],
+        atencao_pendente: null
+      };
+      // A lista permanece montada nas abas internas do sistema. Atualizar
+      // também a referência impede que uma resposta em segundo plano,
+      // iniciada antes da navegação, reaplique o destaque já consumido.
+      solicitacoesRef.current = proximaLista;
+      return proximaLista;
+    });
+  }
+
+  function abrirSolicitacao(item) {
+    marcarAtencaoComoLidaNaLista(item?.id);
+    navigate(`/solicitacoes/${item.id}`);
+  }
+
   async function atualizarSolicitacaoDaLista(id, { permitirInsercao = false } = {}) {
     const idNumerico = Number(id);
     if (!Number.isInteger(idNumerico) || idNumerico <= 0) {
@@ -807,6 +833,11 @@ export default function Solicitacoes({ arquivadas = false }) {
   async function handleAtualizarLista(mutation = null) {
     if (!mutation || typeof mutation !== 'object') {
       await carregarEmSegundoPlano();
+      return;
+    }
+
+    if (mutation.type === 'mark_attention_read_local') {
+      marcarAtencaoComoLidaNaLista(mutation.id);
       return;
     }
 
@@ -2124,7 +2155,7 @@ export default function Solicitacoes({ arquivadas = false }) {
               : urgenciaVencimento(item.data_vencimento)
           )}
           acoesLote={acoesLoteLista}
-          aoAbrirItem={(item) => navigate(`/solicitacoes/${item.id}`)}
+          aoAbrirItem={abrirSolicitacao}
           onSelecaoChange={(ids) => setSelecionadasIds(ids.map(Number))}
         />
       </BlocoConteudo>
