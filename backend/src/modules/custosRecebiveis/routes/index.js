@@ -126,6 +126,16 @@ router.post(
   CustosRecebiveisController.consolidarMedicao
 );
 
+router.post(
+  '/obras/:obraId/competencias/:competencia/previsao/ajustar-saldo',
+  requireAnyCustosRecebiveisPermission([
+    CUSTOS_RECEBIVEIS_PERMISSIONS.MEDICAO_CONSOLIDATE,
+    CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_RECEIVABLES
+  ]),
+  requireCustosRecebiveisObraScope(),
+  CustosRecebiveisController.ajustarPrevisaoAoSaldo
+);
+
 router.get(
   '/obras/:obraId/competencias/:competencia/planilhas/:tipo/modelo',
   requirePlanningSpreadsheetPermission,

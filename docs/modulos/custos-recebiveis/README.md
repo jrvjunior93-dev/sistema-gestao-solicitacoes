@@ -699,6 +699,33 @@ As rotas por obra (`/obras/:obraId/auditoria`, `/obras/:obraId/plano`,
   rotas por obra.
 - Teste: `tests/validarFase4Admin.js`.
 
+## Reforma 2026-09 - Fase 5: planilhas e saldo provavel
+
+- Modelo de custo planejado: livre para editar (linhas 2 em diante nas 4
+  colunas; inserir/excluir linhas permitido); so o cabecalho fica protegido.
+- Modelos de medicao prevista e aprovada: so `quantidade` editavel; a protecao
+  permite selecionar, formatar, arrastar/colar, autofiltro e ordenar; validacao
+  de dados do Excel (0 ate o saldo disponivel da linha) em modo aviso.
+- Importacao aceita formula e usa o valor calculado (inclusive formula
+  compartilhada de arrasto); formula sem valor calculado ->
+  `CR_PLANILHA_FORMULA_SEM_RESULTADO` ("abra e salve no Excel/LibreOffice");
+  formula com erro -> `CR_PLANILHA_FORMULA_ERRO`. O teto vale sobre o valor
+  resultante. Colunas lidas pelo nome do cabecalho; `versao_modelo` 3.
+- Saldo provavel (regra aprovada em 29/09, "A + B"): cada item da medicao
+  prevista traz `quantidade_aprovada_anterior`, `quantidade_prevista_pendente`
+  (previsto de meses anteriores sem medicao aprovada nem "sem medicao"),
+  `competencias_pendentes`, `saldo_disponivel` (teto que bloqueia) e
+  `saldo_provavel`. Acima do provavel so avisa (`avisos` na resposta do
+  salvar); acima do disponivel continua bloqueado. O modelo de medicao
+  prevista ganha `previsto_aguardando_aprovacao` e `saldo_provavel`.
+- Registrar a medicao aprovada do mes M devolve `ajuste_previsao` quando a
+  previsao de M+1 passou do saldo; o detalhe de M+1 traz
+  `ajuste_previsao_pendente`. `POST /obras/:obraId/competencias/:competencia/
+  previsao/ajustar-saldo` (`medicao.consolidar` ou
+  `planejamento.preencher_recebiveis`; `Idempotency-Key`) reduz os itens ao
+  saldo, mesmo com o mes finalizado, sem aumentar nada; auditoria
+  `CR_PREVISAO_AJUSTADA_SALDO`.
+
 ## Regras de evolucao
 
 - Cada fase funcional deve ser entregue e aceita separadamente.

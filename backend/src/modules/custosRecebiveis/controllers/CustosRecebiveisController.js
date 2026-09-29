@@ -12,6 +12,7 @@ const {
 } = require('../services/planoMicroService');
 const {
   consolidarMedicao,
+  ajustarPrevisaoAoSaldo,
   criarCompetencia,
   decidirReabertura,
   finalizarCompetencia,
@@ -301,6 +302,22 @@ class CustosRecebiveisController {
       return res.status(result.idempotente ? 200 : 201).json(result);
     } catch (error) {
       return respondError(res, error, 'Erro ao finalizar a competencia');
+    }
+  }
+
+  // Fase 5 (29/09/2026): reduz a medicao prevista do mes ao saldo depois da
+  // medicao aprovada do mes anterior. So reduz; idempotente pela chave.
+  static async ajustarPrevisaoAoSaldo(req, res) {
+    try {
+      return res.json(await ajustarPrevisaoAoSaldo(
+        req.user,
+        req.params.obraId,
+        req.params.competencia,
+        req.body,
+        req.get('Idempotency-Key')
+      ));
+    } catch (error) {
+      return respondError(res, error, 'Erro ao ajustar a previsao ao saldo');
     }
   }
 

@@ -583,6 +583,167 @@ async function aprovadoAnteriorPorItem(obraId, competenciaCode, planItems, deps,
   return result;
 }
 
+// Quantidade com a precisao gravada no banco (DECIMAL 18,4).
+function quantidade4(value) {
+  return Math.round((number(value) + Number.EPSILON) * 10000) / 10000;
+}
+
+// Saldo provavel (Fase 5, regra "A + B" aprovada em 29/09): medicao PREVISTA
+// dos meses anteriores cuja medicao aprovada ainda NAO foi registrada
+// (registrada = linhas de medicao aprovada ou "sem medicao", o mesmo criterio
+// das obrigacoes). Somada pelo CODIGO do item, como o aprovado anterior.
+// So alimenta o saldo provavel e o aviso; nunca bloqueia.
+// Devolve Map(plano_item_id -> { quantidade, competencias: ['AAAA-MM'] }).
+async function previstoPendentePorItem(obraId, competenciaCode, planItems, deps, transaction) {
+  const result = new Map();
+  const itens = (planItems || []).map((item) => ({ id: Number(item.id), codigo: codigoItemChave(item.codigo) }));
+  if (!itens.length) return result;
+  const previous = await deps.CrCompetencia.findAll({
+    where: { obra_id: obraId, competencia: { [Op.lt]: competenciaCode } },
+    attributes: ['id', 'competencia'],
+    transaction
+  });
+  if (!previous.length) return result;
+  const previousIds = previous.map((item) => Number(item.id));
+  const [measured, semRegistro] = await Promise.all([
+    deps.CrMedicaoConsolidada.findAll({
+      where: { competencia_id: { [Op.in]: previousIds } },
+      attributes: ['competencia_id'],
+      group: ['competencia_id'],
+      raw: true,
+      transaction
+    }),
+    readOptional(() => deps.CrMedicaoSemRegistro.findAll({
+      where: { competencia_id: { [Op.in]: previousIds } },
+      attributes: ['competencia_id'],
+      raw: true,
+      transaction
+    }))
+  ]);
+  const registered = new Set([...(measured || []), ...(semRegistro || [])]
+    .map((item) => Number(plain(item).competencia_id)));
+  const pending = previous.filter((item) => !registered.has(Number(item.id)));
+  if (!pending.length) return result;
+  const competenciaById = new Map(pending.map((item) => [Number(item.id), plain(item).competencia]));
+  const receipts = await deps.CrPrevisaoReceita.findAll({
+    where: {
+      competencia_id: { [Op.in]: [...competenciaById.keys()] },
+      origem: 'MEDICAO',
+      plano_item_id: { [Op.ne]: null }
+    },
+    attributes: ['competencia_id', 'plano_item_id', 'quantidade_prevista'],
+    transaction
+  });
+  const meaningful = receipts.map(plain).filter((item) => (
+    competenciaById.has(Number(item.competencia_id)) && number(item.quantidade_prevista) > 0
+  ));
+  if (!meaningful.length) return result;
+  const predictedIds = [...new Set(meaningful.map((item) => Number(item.plano_item_id)))];
+  const predictedItems = await deps.CrPlanoItem.findAll({
+    where: { id: { [Op.in]: predictedIds } },
+    attributes: ['id', 'codigo'],
+    transaction
+  });
+  const codeById = new Map(predictedItems.map((item) => [Number(item.id), codigoItemChave(item.codigo)]));
+  const byCode = new Map();
+  meaningful.forEach((item) => {
+    const code = codeById.get(Number(item.plano_item_id));
+    if (!code) return;
+    const entry = byCode.get(code) || { quantidade: 0, competencias: new Set() };
+    entry.quantidade += number(item.quantidade_prevista);
+    entry.competencias.add(competenciaById.get(Number(item.competencia_id)));
+    byCode.set(code, entry);
+  });
+  itens.forEach((item) => {
+    const entry = byCode.get(item.codigo);
+    if (!entry) return;
+    result.set(item.id, {
+      quantidade: quantidade4(entry.quantidade),
+      competencias: [...entry.competencias].filter(Boolean).sort()
+    });
+  });
+  return result;
+}
+
+// Campos de saldo expostos para a MEDICAO PREVISTA. saldo_disponivel continua
+// o teto que bloqueia; saldo_provavel desconta o previsto aguardando aprovacao
+// e so gera aviso.
+function saldoMedicaoPrevista(quantidadeOrcada, aprovadaAnterior, pendente = null) {
+  const aprovada = quantidade4(aprovadaAnterior);
+  const prevista = quantidade4(pendente?.quantidade);
+  const saldoDisponivel = quantidade4(Math.max(0, number(quantidadeOrcada) - aprovada));
+  return {
+    quantidade_aprovada_anterior: aprovada,
+    quantidade_prevista_pendente: prevista,
+    competencias_pendentes: pendente?.competencias ? [...pendente.competencias] : [],
+    saldo_disponivel: saldoDisponivel,
+    saldo_provavel: quantidade4(Math.max(0, saldoDisponivel - prevista))
+  };
+}
+
+// Parte B da regra de 29/09: itens da medicao prevista da competencia cuja
+// quantidade passou do saldo disponivel (orcada - aprovado acumulado ate o mes
+// anterior). Usado depois de registrar a medicao aprovada do mes anterior, na
+// consulta do mes e no ajuste. Devolve null quando nada excede.
+async function calcularAjustePrevisao(obraId, competenciaCode, deps, transaction, options = {}) {
+  const competencia = options.competencia
+    || await findCompetencia(obraId, competenciaCode, deps, { transaction });
+  if (!competencia?.id) return null;
+  if (competencia.competencia && competencia.competencia !== competenciaCode) return null;
+  const receipts = await deps.CrPrevisaoReceita.findAll({
+    where: {
+      competencia_id: competencia.id,
+      origem: 'MEDICAO',
+      plano_item_id: { [Op.ne]: null }
+    },
+    transaction,
+    lock: options.lock
+  });
+  const predicted = receipts.filter((item) => (
+    Number(plain(item).competencia_id ?? competencia.id) === Number(competencia.id)
+    && Number(plain(item).plano_item_id) > 0
+    && number(plain(item).quantidade_prevista) > 0
+  ));
+  if (!predicted.length) return null;
+  const itemIds = [...new Set(predicted.map((item) => Number(plain(item).plano_item_id)))];
+  const planItems = (await deps.CrPlanoItem.findAll({
+    where: { id: { [Op.in]: itemIds } },
+    transaction
+  })).map(plain).filter((item) => itemIds.includes(Number(item.id)));
+  const itemById = new Map(planItems.map((item) => [Number(item.id), item]));
+  const approved = await aprovadoAnteriorPorItem(obraId, competenciaCode, planItems, deps, transaction);
+  const itens = [];
+  predicted.forEach((value) => {
+    const receipt = plain(value);
+    const item = itemById.get(Number(receipt.plano_item_id));
+    if (!item) return;
+    const saldo = quantidade4(Math.max(0, number(item.quantidade) - number(approved.get(Number(item.id)))));
+    const prevista = quantidade4(receipt.quantidade_prevista);
+    if (prevista <= saldo + 0.0001) return;
+    itens.push({
+      plano_item_id: Number(item.id),
+      codigo: item.codigo,
+      descricao: item.descricao,
+      unidade: item.unidade || null,
+      quantidade_prevista: prevista,
+      saldo_disponivel: saldo,
+      quantidade_sugerida: saldo,
+      _receipt: value,
+      _item: item
+    });
+  });
+  if (!itens.length) return null;
+  return { competencia: competenciaCode, itens };
+}
+
+function publicAjuste(ajuste) {
+  if (!ajuste) return null;
+  return {
+    competencia: ajuste.competencia,
+    itens: ajuste.itens.map(({ _receipt, _item, ...item }) => item)
+  };
+}
+
 async function getOrCreateCompetencia(obraId, competencia, deps, transaction) {
   let record = await findCompetencia(obraId, competencia, deps, {
     transaction,
@@ -990,7 +1151,7 @@ async function pesquisarItensPlano(
     attributes: ['id']
   });
   const previousIds = previousCompetencies.map((item) => Number(item.id));
-  const [receipts, measurements] = itemIds.length && previousIds.length
+  const [receipts, measurements, pendingPredicted] = itemIds.length && previousIds.length
     ? await Promise.all([
       deps.CrPrevisaoReceita.findAll({
         where: {
@@ -998,9 +1159,10 @@ async function pesquisarItensPlano(
           plano_item_id: { [Op.in]: itemIds }
         }
       }),
-      aprovadoAnteriorPorItem(obraId, competenciaCode, serialized, deps)
+      aprovadoAnteriorPorItem(obraId, competenciaCode, serialized, deps),
+      previstoPendentePorItem(obraId, competenciaCode, serialized, deps)
     ])
-    : [[], new Map()];
+    : [[], new Map(), new Map()];
   const receiptTotals = new Map();
   receipts.forEach((item) => receiptTotals.set(
     Number(item.plano_item_id),
@@ -1011,7 +1173,11 @@ async function pesquisarItensPlano(
     items: serialized.map((item) => ({
       ...item,
       quantidade_apresentada_anterior: number(receiptTotals.get(item.id)),
-      quantidade_aprovada_anterior: number(measurementTotals.get(item.id))
+      ...saldoMedicaoPrevista(
+        item.quantidade_orcada,
+        measurementTotals.get(item.id),
+        pendingPredicted.get(item.id)
+      )
     })),
     pagination: {
       page,
@@ -1100,7 +1266,8 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
     })
     : [];
   const previousIds = previousCompetencies.map((item) => Number(item.id));
-  const [previousReceipts, previousMeasurements] = previousIds.length
+  const selectedStructure = planStructure.filter((item) => selectedItemIds.includes(Number(item.id)));
+  const [previousReceipts, previousMeasurements, pendingPredicted] = previousIds.length
     ? await Promise.all([
       deps.CrPrevisaoReceita.findAll({
         where: {
@@ -1108,14 +1275,10 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
           plano_item_id: { [Op.in]: selectedItemIds }
         }
       }),
-      aprovadoAnteriorPorItem(
-        obraId,
-        competenciaCode,
-        planStructure.filter((item) => selectedItemIds.includes(Number(item.id))),
-        deps
-      )
+      aprovadoAnteriorPorItem(obraId, competenciaCode, selectedStructure, deps),
+      previstoPendentePorItem(obraId, competenciaCode, selectedStructure, deps)
     ])
-    : [[], new Map()];
+    : [[], new Map(), new Map()];
   const previousReceiptByItem = new Map();
   previousReceipts.forEach((item) => previousReceiptByItem.set(
     Number(item.plano_item_id),
@@ -1128,7 +1291,11 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
     return {
       ...item,
       quantidade_apresentada_anterior: number(previousReceiptByItem.get(item.id)),
-      quantidade_aprovada_anterior: number(previousMeasurementByItem.get(item.id))
+      ...saldoMedicaoPrevista(
+        item.quantidade_orcada,
+        previousMeasurementByItem.get(item.id),
+        pendingPredicted.get(item.id)
+      )
     };
   };
 
@@ -1205,9 +1372,16 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
     };
   }
 
+  // Parte B (29/09): previsao deste mes acima do saldo disponivel depois da
+  // medicao aprovada do mes anterior. null quando nada excede.
+  const ajustePrevisaoPendente = String(obra.classificacao).toUpperCase() === 'PUBLICA' && saved?.id
+    ? publicAjuste(await calcularAjustePrevisao(obraId, competenciaCode, deps, undefined, { competencia: saved }))
+    : null;
+
   return {
     obra: serializeObra(obra),
     medicao_aprovada_estado: medicaoAprovada,
+    ajuste_previsao_pendente: ajustePrevisaoPendente,
     plano: {
       id: Number(plan.id),
       versao: Number(plan.versao),
@@ -1568,6 +1742,42 @@ async function salvarRecebiveis(user, obraIdValue, competenciaValue, payload = {
     const competencia = saved
       || await getOrCreateCompetencia(obraId, competenciaCode, deps, transaction);
     await assertEditable(competencia, deps, transaction);
+    // Parte A (29/09): acima do saldo disponivel ja foi barrado acima; acima
+    // do saldo provavel (previsto de meses sem medicao aprovada registrada)
+    // so avisa.
+    const avisos = [];
+    const predictedPlanRows = rows.filter((row) => row.plano_item_id && !row.previsao_custo_id);
+    if (isPublic && predictedPlanRows.length) {
+      const pending = await previstoPendentePorItem(
+        obraId,
+        competenciaCode,
+        predictedPlanRows.map((row) => allowed.get(Number(row.plano_item_id))).filter(Boolean),
+        deps,
+        transaction
+      );
+      predictedPlanRows.forEach((row) => {
+        const item = allowed.get(Number(row.plano_item_id));
+        const pendingEntry = pending.get(Number(row.plano_item_id));
+        if (!item || !pendingEntry) return;
+        const saldo = saldoMedicaoPrevista(
+          item.quantidade,
+          previousQuantities.get(Number(row.plano_item_id)),
+          pendingEntry
+        );
+        if (number(row.quantidade_prevista) <= saldo.saldo_provavel + 0.0001) return;
+        avisos.push({
+          plano_item_id: Number(row.plano_item_id),
+          codigo: item.codigo,
+          quantidade: quantidade4(row.quantidade_prevista),
+          saldo_provavel: saldo.saldo_provavel,
+          competencias_pendentes: saldo.competencias_pendentes,
+          mensagem: `Item ${item.codigo}: a quantidade ${quantidade4(row.quantidade_prevista)} passa do saldo `
+            + `provavel ${saldo.saldo_provavel}, porque ${saldo.quantidade_prevista_pendente} ja foi previsto em `
+            + `${saldo.competencias_pendentes.join(', ')} e aguarda a medicao aprovada. `
+            + 'A previsao foi salva; confira quando a medicao aprovada for registrada.'
+        });
+      });
+    }
 
     await deps.CrPrevisaoReceita.destroy({
       where: { competencia_id: competencia.id },
@@ -1596,10 +1806,11 @@ async function salvarRecebiveis(user, obraIdValue, competenciaValue, payload = {
         competencia: competenciaCode,
         classificacao_obra: obra.classificacao,
         quantidade_itens: rows.length,
-        total
+        total,
+        avisos_saldo_provavel: avisos.length
       }
     });
-    return { competencia: serializeCompetencia(competencia), total };
+    return { competencia: serializeCompetencia(competencia), total, avisos };
   });
 }
 
@@ -1822,7 +2033,13 @@ async function consolidarMedicao(user, obraIdValue, competenciaValue, payload = 
         quantidade_itens: number(previousPayload.quantidade_itens),
         valor_total: money(previousPayload.valor_total),
         valor_glosa: money(previousPayload.valor_glosa),
-        sem_medicao: Boolean(previousPayload.sem_medicao)
+        sem_medicao: Boolean(previousPayload.sem_medicao),
+        ajuste_previsao: publicAjuste(await calcularAjustePrevisao(
+          obraId,
+          competenciaSeguinte(competenciaCode),
+          deps,
+          transaction
+        ))
       };
     }
     // Trava (29/09): medicao ja registrada e prazo (com dilatacao) vencido so
@@ -1978,13 +2195,161 @@ async function consolidarMedicao(user, obraIdValue, competenciaValue, payload = 
         idempotency_key: idempotencyKey
       }
     });
+    // Parte B (29/09): com a medicao aprovada deste mes registrada, a
+    // previsao do mes seguinte pode ter passado do novo saldo disponivel.
+    const ajustePrevisao = publicAjuste(await calcularAjustePrevisao(
+      obraId,
+      competenciaSeguinte(competenciaCode),
+      deps,
+      transaction
+    ));
     return {
       idempotente: false,
       competencia: serializeCompetencia(competencia),
       quantidade_itens: rows.length,
       valor_total: approvedTotal,
       valor_glosa: overallGlosa,
-      sem_medicao: semMedicao
+      sem_medicao: semMedicao,
+      ajuste_previsao: ajustePrevisao
+    };
+  });
+}
+
+const EVENTO_AJUSTE_PREVISAO = 'CR_PREVISAO_AJUSTADA_SALDO';
+
+function auditPayload(value) {
+  const raw = plain(value).payload_json;
+  if (typeof raw !== 'string') return raw || {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+// Parte B (29/09): reduz a medicao prevista dos itens escolhidos ao saldo
+// disponivel (orcada - aprovado acumulado ate o mes anterior). Nunca aumenta;
+// item que ja cabe e ignorado. Vale mesmo com o mes FINALIZADO, sem reabertura
+// (decisao do proprietario). Permissao checada na rota.
+async function ajustarPrevisaoAoSaldo(
+  user,
+  obraIdValue,
+  competenciaValue,
+  payload = {},
+  idempotencyKey = null,
+  overrides = {}
+) {
+  const deps = dependencies(overrides);
+  const obraId = positiveId(obraIdValue, 'Obra');
+  const competenciaCode = normalizeCompetencia(competenciaValue);
+  const key = normalizeText(idempotencyKey, 180);
+  if (!key) {
+    throw createBusinessError(
+      400,
+      'CR_IDEMPOTENCY_REQUIRED',
+      'Idempotency-Key e obrigatoria para ajustar a previsao ao saldo.'
+    );
+  }
+  const requested = Array.isArray(payload?.plano_item_ids) ? payload.plano_item_ids : null;
+  if (!requested || !requested.length) {
+    throw createBusinessError(400, 'CR_AJUSTE_ITENS_INVALIDOS', 'Informe os itens a ajustar.');
+  }
+  const requestedIds = [...new Set(requested.map((value, index) => positiveId(value, `Item ${index + 1}`)))];
+  await assertScope(user, obraId, deps);
+
+  return deps.sequelize.transaction(async (transaction) => {
+    const obra = await findObra(obraId, deps, { transaction, lock: transaction.LOCK.UPDATE });
+    if (String(obra?.classificacao || '').toUpperCase() !== 'PUBLICA') {
+      throw createBusinessError(
+        409,
+        'CR_MEDICAO_APENAS_OBRA_PUBLICA',
+        'Obras privadas usam recebiveis contratuais e nao possuem medicao prevista.'
+      );
+    }
+    const competencia = await findCompetencia(obraId, competenciaCode, deps, {
+      transaction,
+      lock: transaction.LOCK.UPDATE
+    });
+    if (!competencia || (competencia.competencia && competencia.competencia !== competenciaCode)) {
+      throw createBusinessError(404, 'CR_COMPETENCIA_NOT_FOUND', 'Competencia nao encontrada para esta obra.');
+    }
+    const previousAudits = await deps.CrAuditoria.findAll({
+      where: { obra_id: obraId, competencia_id: competencia.id, evento: EVENTO_AJUSTE_PREVISAO },
+      transaction
+    });
+    const repeated = previousAudits.map(auditPayload).find((item) => item?.idempotency_key === key);
+    if (repeated) {
+      return {
+        idempotente: true,
+        competencia: serializeCompetencia(competencia),
+        ajustados: Array.isArray(repeated.ajustados) ? repeated.ajustados : [],
+        ignorados: Array.isArray(repeated.ignorados) ? repeated.ignorados : []
+      };
+    }
+    const ajuste = await calcularAjustePrevisao(obraId, competenciaCode, deps, transaction, {
+      competencia,
+      lock: transaction.LOCK.UPDATE
+    });
+    const toAdjust = (ajuste?.itens || []).filter((item) => requestedIds.includes(item.plano_item_id));
+    const adjustedIds = new Set(toAdjust.map((item) => item.plano_item_id));
+    const ignorados = requestedIds.filter((id) => !adjustedIds.has(id));
+    if (!toAdjust.length) {
+      return {
+        idempotente: false,
+        competencia: serializeCompetencia(competencia),
+        ajustados: [],
+        ignorados
+      };
+    }
+    const totalAntes = money(competencia.total_receita_prevista);
+    const ajustados = [];
+    for (const item of toAdjust) {
+      const antes = {
+        quantidade_prevista: item.quantidade_prevista,
+        valor_previsto: money(plain(item._receipt).valor_previsto)
+      };
+      const novaQuantidade = Math.min(item.quantidade_prevista, item.quantidade_sugerida);
+      const depois = {
+        quantidade_prevista: novaQuantidade,
+        valor_previsto: money(novaQuantidade * number(item._item.custo_unitario))
+      };
+      await item._receipt.update(depois, { transaction });
+      ajustados.push({
+        plano_item_id: item.plano_item_id,
+        codigo: item.codigo,
+        descricao: item.descricao,
+        unidade: item.unidade,
+        saldo_disponivel: item.saldo_disponivel,
+        antes,
+        depois
+      });
+    }
+    const receipts = await deps.CrPrevisaoReceita.findAll({
+      where: { competencia_id: competencia.id },
+      transaction
+    });
+    const totalDepois = money(receipts.reduce((sum, row) => sum + number(plain(row).valor_previsto), 0));
+    await competencia.update({ total_receita_prevista: totalDepois }, { transaction });
+    await audit(deps, transaction, {
+      obraId,
+      competenciaId: competencia.id,
+      userId: user?.id,
+      event: EVENTO_AJUSTE_PREVISAO,
+      description: 'Medicao prevista reduzida ao saldo disponivel apos a medicao aprovada do mes anterior.',
+      payload: {
+        competencia: competenciaCode,
+        estado_competencia: competencia.estado,
+        idempotency_key: key,
+        ajustados,
+        ignorados,
+        total_receita_prevista: { antes: totalAntes, depois: totalDepois }
+      }
+    });
+    return {
+      idempotente: false,
+      competencia: serializeCompetencia(competencia),
+      ajustados,
+      ignorados
     };
   });
 }
@@ -2951,6 +3316,14 @@ async function decidirReabertura(user, reaberturaIdValue, payload = {}, override
 }
 
 module.exports = {
+  ajustarPrevisaoAoSaldo,
+  previstoPendentePorItem: (obraId, competencia, planItems, overrides = {}) => previstoPendentePorItem(
+    obraId,
+    competencia,
+    planItems,
+    dependencies(overrides)
+  ),
+  saldoMedicaoPrevista,
   CONTRACT_ACTIVE_STATUSES,
   assertCompetenciaNovoMes,
   REABERTURA_HORAS,

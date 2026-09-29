@@ -214,14 +214,17 @@ function validateBackendContracts() {
   assert(spreadsheetService.includes("metadata.state = 'veryHidden'"));
   assert(spreadsheetService.includes("['escopo', 'UNIVERSAL']"));
   assert(spreadsheetService.includes("'modelo-custos-planejados-geral.xlsx'"));
-  assert(spreadsheetService.includes("? ['descricao_servico', 'unidade', 'quantidade', 'valor_unitario']"));
-  assert(spreadsheetService.includes('Formulas nao sao permitidas'));
+  assert(spreadsheetService.includes("COST_HEADERS = Object.freeze(['descricao_servico', 'unidade', 'quantidade', 'valor_unitario'])"));
+  // Fase 5 (29/09): formula passa a ser aceita (vale o resultado calculado);
+  // sem resultado calculado, erro legivel pedindo para salvar no Excel.
+  assert(!spreadsheetService.includes('Formulas nao sao permitidas'));
+  assert(spreadsheetService.includes('CR_PLANILHA_FORMULA_SEM_RESULTADO'));
   assert(spreadsheetService.includes('saldo_disponivel'));
-  assert(spreadsheetService.includes("header: 'quantidade_ja_medida'"));
+  assert(spreadsheetService.includes("'quantidade_ja_medida'"));
   assert(spreadsheetService.includes('quantidade_ja_medida: item.quantidade_anterior'));
   assert(spreadsheetService.includes('legacyMeasurementModel'));
   assert(spreadsheetService.includes('quantity === 0'));
-  assert(spreadsheetService.includes('previousRows = await db.CrMedicaoConsolidada.findAll'));
+  assert(spreadsheetService.includes('previousRows = await m.CrMedicaoConsolidada.findAll'));
 }
 
 function validateFrontendContracts() {
