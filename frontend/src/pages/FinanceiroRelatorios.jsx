@@ -345,7 +345,7 @@ function getLastChartValue(serie, key) {
   return 0;
 }
 
-function FluxoComparativoCard({ serie, dataLimiteRealizado }) {
+function FluxoComparativoCard({ serie, dataLimiteRealizado, periodoLabel }) {
   const [view, setView] = useState('COMPARATIVO');
   const [mode, setMode] = useState('ACUMULADO');
 
@@ -424,7 +424,10 @@ function FluxoComparativoCard({ serie, dataLimiteRealizado }) {
       <div className="finance-chart-card__head">
         <div>
           <h2 className="finance-chart-card__title">{modeConfig.title}</h2>
-          <p className="finance-chart-card__subtitle">{modeConfig.subtitle}</p>
+          <p className="finance-chart-card__subtitle">
+            {modeConfig.subtitle}
+            {periodoLabel ? ` Período filtrado: ${periodoLabel}.` : ''}
+          </p>
         </div>
 
         <div className="finance-chart-card__controls">
@@ -729,11 +732,19 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
             <select className="input w-full input-sm" value={filters.periodo}
               onChange={(e) => handlePeriodoChange(e.target.value)}>
               <option value="HOJE">Hoje</option>
-              <option value="7_DIAS">Próximos 7 dias</option>
-              <option value="30_DIAS">Próximos 30 dias</option>
-              <option value="90_DIAS">Próximos 90 dias</option>
+              <optgroup label="Histórico">
+                <option value="ULTIMOS_7_DIAS">Últimos 7 dias</option>
+                <option value="ULTIMOS_30_DIAS">Últimos 30 dias</option>
+                <option value="ULTIMOS_90_DIAS">Últimos 90 dias</option>
+                <option value="MES_ANTERIOR">Mês anterior</option>
+              </optgroup>
+              <optgroup label="Projeção">
+                <option value="7_DIAS">Próximos 7 dias</option>
+                <option value="30_DIAS">Próximos 30 dias</option>
+                <option value="90_DIAS">Próximos 90 dias</option>
+                <option value="PROXIMO_MES">Próximo mês</option>
+              </optgroup>
               <option value="MES_ATUAL">Mês atual</option>
-              <option value="PROXIMO_MES">Próximo mês</option>
               <option value="PERSONALIZADO">Personalizado</option>
             </select>
           </label>
@@ -877,6 +888,7 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
             <FluxoComparativoCard
               serie={relatorio.serie}
               dataLimiteRealizado={relatorio.filtro.data_limite_realizado}
+              periodoLabel={metaPeriodo}
             />
           ) : null}
 

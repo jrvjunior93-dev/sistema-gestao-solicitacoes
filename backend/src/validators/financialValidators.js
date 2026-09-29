@@ -538,7 +538,19 @@ function validateFinanceFluxoCaixaQuery(query = {}) {
     periodo: parseEnum(
       query.periodo,
       'Periodo',
-      ['HOJE', '7_DIAS', '30_DIAS', '90_DIAS', 'MES_ATUAL', 'PROXIMO_MES', 'PERSONALIZADO']
+      [
+        'HOJE',
+        'ULTIMOS_7_DIAS',
+        'ULTIMOS_30_DIAS',
+        'ULTIMOS_90_DIAS',
+        '7_DIAS',
+        '30_DIAS',
+        '90_DIAS',
+        'MES_ANTERIOR',
+        'MES_ATUAL',
+        'PROXIMO_MES',
+        'PERSONALIZADO'
+      ]
     ),
     data_inicial: dataInicial,
     data_final: dataFinal,

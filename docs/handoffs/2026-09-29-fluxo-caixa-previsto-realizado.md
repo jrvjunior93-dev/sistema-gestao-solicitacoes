@@ -63,3 +63,22 @@ o arquivo gerado, sem mudança funcional desta tarefa, foi restaurado.
 
 Após commit/push autorizado, atualizar o backend dev, reiniciar somente `backend-dev`, confirmar
 `/health` e validar visualmente um intervalo que contenha passado, data atual e futuro.
+
+## Complemento — filtros históricos
+
+Após a primeira validação em dev, o seletor de período foi ampliado com `Últimos 7 dias`,
+`Últimos 30 dias`, `Últimos 90 dias` e `Mês anterior`. As opções foram agrupadas em Histórico e
+Projeção, e o gráfico passou a informar no próprio subtítulo o intervalo efetivamente aplicado às
+três visões: Comparativo, Previsto e Realizado.
+
+O backend e o validador aceitam os novos códigos `ULTIMOS_7_DIAS`, `ULTIMOS_30_DIAS`,
+`ULTIMOS_90_DIAS` e `MES_ANTERIOR`. O teste usa 29/09/2026 como data fixa e confirma, entre
+outros casos, que `Últimos 30 dias` resolve para 31/08/2026 a 29/09/2026.
+
+Validações do complemento:
+
+- `cd backend && npm run test:relatorio-financeiro-periodo`
+- `cd backend && node scripts/validarFluxoCaixaPrevistoRealizado.js`
+- `cd frontend && npm run build`
+
+Não há migration, seed ou alteração de dados.

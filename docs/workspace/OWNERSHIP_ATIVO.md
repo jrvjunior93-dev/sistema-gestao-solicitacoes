@@ -1,5 +1,18 @@
 # Ownership Ativo
 
+Ownership temporario da sessao `/root` iniciado em 2026-09-29 para ampliar o
+filtro do fluxo de caixa com periodos retroativos e garantir que o mesmo periodo
+seja aplicado às visoes Comparativo, Previsto e Realizado. Escopo:
+`backend/src/services/relatorioFinanceiroService.js`,
+`backend/src/validators/financialValidators.js`,
+`backend/scripts/validarRelatorioFinanceiroPeriodo.js`,
+`frontend/src/pages/FinanceiroRelatorios.jsx`, handoff e este registro.
+Preservar `outputs/` e alteracoes paralelas; sem migration, banco, deploy, commit
+ou push nesta etapa.
+
+Implementacao local concluida; ownership de edicao liberado. Handoff atualizado:
+`docs/handoffs/2026-09-29-fluxo-caixa-previsto-realizado.md`.
+
 Ownership temporario (sessao Claude) em 29/09/2026: reforma do Painel do Gestor
 (Modo TV, ordenacao de cards, olho com senha de 4 digitos e polimento). Escopo:
 `frontend/src/pages/PainelGestor.jsx`, `frontend/src/pages/painelGestor/`,

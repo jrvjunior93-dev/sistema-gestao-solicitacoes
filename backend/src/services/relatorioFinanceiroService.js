@@ -98,8 +98,16 @@ function getPeriodoDescricao(periodo, inicio, fim) {
       return 'Proximos 30 dias';
     case '90_DIAS':
       return 'Proximos 90 dias';
+    case 'ULTIMOS_7_DIAS':
+      return 'Ultimos 7 dias';
+    case 'ULTIMOS_30_DIAS':
+      return 'Ultimos 30 dias';
+    case 'ULTIMOS_90_DIAS':
+      return 'Ultimos 90 dias';
     case 'MES_ATUAL':
       return 'Mes atual';
+    case 'MES_ANTERIOR':
+      return 'Mes anterior';
     case 'PROXIMO_MES':
       return 'Proximo mes';
     default:
@@ -184,7 +192,7 @@ async function resolveObraScope(req, obraId) {
 
 function resolvePeriodo(filters = {}, options = {}) {
   const maxDays = options.maxDays === undefined ? null : options.maxDays;
-  const hoje = parseDateOnly(getHoje());
+  const hoje = parseDateOnly(options.hoje || getHoje());
   const preset = String(filters.periodo || '').trim().toUpperCase();
   const hasCustomDates = Boolean(filters.data_inicial && filters.data_final);
   const periodo = hasCustomDates ? 'PERSONALIZADO' : (preset || 'MES_ATUAL');
@@ -210,6 +218,18 @@ function resolvePeriodo(filters = {}, options = {}) {
   } else if (periodo === '90_DIAS') {
     inicio = hoje;
     fim = addDays(hoje, 89);
+  } else if (periodo === 'ULTIMOS_7_DIAS') {
+    inicio = addDays(hoje, -6);
+    fim = hoje;
+  } else if (periodo === 'ULTIMOS_30_DIAS') {
+    inicio = addDays(hoje, -29);
+    fim = hoje;
+  } else if (periodo === 'ULTIMOS_90_DIAS') {
+    inicio = addDays(hoje, -89);
+    fim = hoje;
+  } else if (periodo === 'MES_ANTERIOR') {
+    inicio = startOfMonth(addMonths(hoje, -1));
+    fim = endOfMonth(inicio);
   } else if (periodo === 'PROXIMO_MES') {
     inicio = startOfMonth(addMonths(hoje, 1));
     fim = endOfMonth(inicio);
