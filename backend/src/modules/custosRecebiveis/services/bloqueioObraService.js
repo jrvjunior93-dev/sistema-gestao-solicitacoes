@@ -360,10 +360,20 @@ function rotaRegularizacaoBloqueada(req, obrasBloqueadas) {
   return null;
 }
 
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho',
+  'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+// Mensagens vao direto para a tela (campo da obra, faixa): portugues com
+// acento e mes por extenso.
+function mesPorExtenso(competencia) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(competencia || ''));
+  return match ? `${MESES[Number(match[2]) - 1]} de ${match[1]}` : String(competencia || '');
+}
+
 function descreverPendencias(item) {
   return item.pendencias.map((pendencia) => (pendencia.tipo === 'PLANEJAMENTO'
-    ? `planejamento de ${pendencia.competencia} vencido`
-    : `medicao aprovada de ${pendencia.competencia} vencida`)).join(' e ');
+    ? `planejamento de ${mesPorExtenso(pendencia.competencia)} vencido`
+    : `medição aprovada de ${mesPorExtenso(pendencia.competencia)} vencida`)).join(' e ');
 }
 
 function nomeObra(item) {
@@ -371,11 +381,11 @@ function nomeObra(item) {
 }
 
 function mensagemTravada(item) {
-  return `A obra ${nomeObra(item)} esta travada (${descreverPendencias(item)}). Regularize em Custos e Recebiveis para liberar.`;
+  return `A obra ${nomeObra(item)} está travada (${descreverPendencias(item)}). Regularize em Custos e Recebíveis para liberar.`;
 }
 
 function mensagemSolicitacaoNova(item) {
-  return `A obra ${nomeObra(item)} nao recebe solicitacao nova ate o engenheiro responsavel regularizar Custos e Recebiveis (${descreverPendencias(item)}). Solicitacoes ja abertas seguem normalmente; o administrador pode conceder liberacao temporaria de ate 48 horas.`;
+  return `A obra ${nomeObra(item)} não recebe solicitação nova até o engenheiro responsável regularizar Custos e Recebíveis (${descreverPendencias(item)}). Solicitações já abertas seguem normalmente; o administrador pode conceder liberação temporária de até 48 horas.`;
 }
 
 module.exports = {

@@ -101,7 +101,7 @@ async function validateLockedWorks() {
   assert.strictEqual(measurement.length, 1);
   assert.deepStrictEqual(measurement[0].pendencias.map((item) => item.tipo), ['MEDICAO_APROVADA']);
   assert.strictEqual(measurement[0].pendencias[0].dilatacao_pendente, true);
-  assert.match(mensagemTravada(measurement[0]), /OB-1 - Obra atrasada.*medicao aprovada de 2026-09 vencida/);
+  assert.match(mensagemTravada(measurement[0]), /OB-1 - Obra atrasada está travada.*medição aprovada de setembro de 2026 vencida/);
 
   // SUPERADMIN responsavel ve a propria obra travada (regulariza como os demais).
   assert.strictEqual((await calcularObrasTravadas({ id: 1, perfil: 'SUPERADMIN' }, { mode: 'enforce', now }, deps({ permissions: [] }))).length, 1);
@@ -123,7 +123,7 @@ async function validateObraLevel() {
   const travas = await calcularTravaDasObras([1, 2], { mode: 'enforce', now }, base());
   assert.deepStrictEqual([...travas.keys()], [1]);
   assert.strictEqual(travas.get(1).bloqueando, true);
-  assert.match(mensagemSolicitacaoNova(travas.get(1)), /OB-1 - Obra atrasada nao recebe solicitacao nova.*planejamento de 2026-09 vencido/);
+  assert.match(mensagemSolicitacaoNova(travas.get(1)), /OB-1 - Obra atrasada não recebe solicitação nova.*planejamento de setembro de 2026 vencido/);
   // Liberacao concedida a qualquer usuario, para a obra, libera a obra toda.
   const liberada = await calcularTravaDasObras([1], { mode: 'enforce', now }, base({
     CrGuardBypass: { findAll: async () => [{ obra_id: 1, user_id: 999, expira_em: '2026-10-08T12:00:00Z', concedido_em: '2026-10-07T10:00:00Z' }] }

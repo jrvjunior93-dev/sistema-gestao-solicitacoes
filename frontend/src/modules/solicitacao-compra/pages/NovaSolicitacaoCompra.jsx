@@ -2997,7 +2997,7 @@ export default function NovaSolicitacaoCompra({ modoCompraDireta = false }) {
             </button>
             <span className="app-actionbar-apartada">
               <button type="button" className="btn btn-outline" onClick={() => navigate('/solicitacoes-compra')}>Cancelar</button>
-              <button type="button" className="btn btn-primary" onClick={handleSalvar} disabled={loading}>{loading ? 'Preparando...' : 'Revisar solicitação'}</button>
+              <button type="button" className="btn btn-primary" onClick={handleSalvar} disabled={loading || Boolean(obraTravadaMotivo)}>{loading ? 'Preparando...' : 'Revisar solicitação'}</button>
             </span>
           </div>
         </BlocoConteudo>
