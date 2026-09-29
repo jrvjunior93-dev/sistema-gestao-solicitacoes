@@ -22,8 +22,8 @@ const { getOrCreateCompetencia, normalizeCompetencia } = require('./planejamento
   - dilatacao do prazo da medicao aprovada: o engenheiro pede de 2 a 5 dias
     quando o fiscal atrasa (antes ou depois do vencimento, sem limite de
     pedidos, um pendente por vez); o administrador aprova ou nega.
-    Aprovada, o prazo novo conta a partir do prazo vigente — ou da aprovacao,
-    se o prazo ja tiver vencido — e vai ate o fim do dia (Brasilia).
+    Aprovada, os dias contam a partir da APROVACAO (decisao de 29/09) e vao
+    ate o fim do dia (Brasilia); a dilatacao nunca encurta o prazo vigente.
 */
 const DILATACAO_DIAS = Object.freeze({ min: 2, max: 5 });
 
@@ -340,9 +340,9 @@ async function decidirDilatacao(user, dilatacaoIdValue, payload = {}, overrides 
         );
       }
       const vigente = prazoMedicaoEfetivo(competencia, context.config, registro?.dilatacao_prazo);
-      const base = vigente > now ? vigente : now;
+      const daAprovacao = fimDoDiaBrasilia(now, Number(record.dias));
       values.prazo_anterior = vigente;
-      values.prazo_novo = fimDoDiaBrasilia(base, Number(record.dias));
+      values.prazo_novo = daAprovacao > vigente ? daAprovacao : vigente;
     }
     await record.update(values, { transaction });
     await audit(deps, transaction, {

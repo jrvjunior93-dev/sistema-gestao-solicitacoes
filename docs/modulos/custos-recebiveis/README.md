@@ -590,8 +590,9 @@ Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
 - Dilatacao: `POST /obras/:obraId/competencias/:competencia/dilatacoes`
   (`medicao.consolidar`; 2 a 5 dias; antes ou depois do vencimento; um pendente
   por mes), `POST /dilatacoes/:id/decidir` (`reabertura.aprovar`),
-  `GET /dilatacoes`. Prazo novo = prazo vigente (ou a aprovacao, se ja venceu)
-  + dias, ate 23:59 de Brasilia.
+  `GET /dilatacoes`. Prazo novo = data da aprovacao + dias, ate 23:59 de
+  Brasilia (nunca menor que o prazo vigente); enquanto o pedido aguarda, a obra
+  segue travada.
 - Custo realizado do Comparativo: a consulta sincroniza as baixas do mes (mes
   existente e iniciado; no maximo a cada 5 minutos por obra/mes).
 

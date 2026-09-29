@@ -397,14 +397,23 @@ async function validateDilatacao() {
   assert.strictEqual((await decidirDilatacao({ id: 1 }, 90, { decisao: 'APROVADA' }, decideDeps)).idempotente, true);
   await assert.rejects(() => decidirDilatacao({ id: 1 }, 90, { decisao: 'NEGADA' }, decideDeps), (e) => e.code === 'CR_DILATACAO_JA_DECIDIDA');
 
-  // Prazo ainda vigente -> conta do prazo: 11/10 + 2 = 13/10.
+  // Conta da aprovacao: pedido 10/10, aprovado 14/10 + 2 = 16/10 23:59.
+  const late = { id: 92, obra_id: 7, competencia_id: 41, dias: 2, situacao: 'SOLICITADA', update: async function update(values) { Object.assign(this, values); } };
+  await decidirDilatacao({ id: 1 }, 92, { decisao: 'APROVADA' }, {
+    ...deps,
+    now: () => at('2026-10-14T09:00:00-03:00'),
+    CrDilatacao: { findByPk: async (id, options) => (options?.include ? { ...late, competencia: { competencia: '2026-09' } } : late) }
+  });
+  assert.strictEqual(new Date(late.prazo_novo).toISOString(), '2026-10-17T02:59:59.999Z');
+
+  // Aprovada cedo (02/10 + 2 = 04/10) nao encurta o prazo vigente de 11/10.
   const early = { id: 91, obra_id: 7, competencia_id: 41, dias: 2, situacao: 'SOLICITADA', update: async function update(values) { Object.assign(this, values); } };
   await decidirDilatacao({ id: 1 }, 91, { decisao: 'APROVADA' }, {
     ...deps,
     now: () => at('2026-10-02T12:00:00-03:00'),
     CrDilatacao: { findByPk: async (id, options) => (options?.include ? { ...early, competencia: { competencia: '2026-09' } } : early) }
   });
-  assert.strictEqual(new Date(early.prazo_novo).toISOString(), '2026-10-14T02:59:59.999Z');
+  assert.strictEqual(new Date(early.prazo_novo).toISOString(), '2026-10-12T02:59:59.999Z');
 }
 
 async function validateRealizedAutoSync() {

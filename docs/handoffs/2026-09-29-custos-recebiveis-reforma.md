@@ -100,7 +100,9 @@ proprietario antes da seguinte.
 - Comparativo com custo realizado sincronizado ao consultar.
 
 Definicoes adotadas nesta fase (a confirmar com o proprietario):
-- Prazo dilatado conta do prazo vigente; se ja venceu, da aprovacao.
+- (Revisto em 29/09) Prazo dilatado conta da data da aprovacao, sem nunca
+  encurtar o prazo vigente; enquanto aguarda, a obra segue travada.
+- (Confirmado em 29/09) 40 dias literais a partir do dia 1o.
 - Medicao registrada so muda depois do prazo com reabertura; nao registrada
   pode ser lancada atrasada.
 - Mes reaberto volta a ser pendencia ate nova finalizacao (regra existente).
