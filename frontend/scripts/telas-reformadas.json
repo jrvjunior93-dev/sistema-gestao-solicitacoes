@@ -106,6 +106,7 @@
     "src/pages/ConfiguracoesDetalheLayout.jsx",
     "src/pages/ConfiguracoesModulos.jsx",
     "src/pages/ConfiguracoesNotificacoesSistema.jsx",
+    "src/pages/ConfiguracoesPainelGestor.jsx",
     "src/pages/ConfiguracoesProvisionamentoFluxo.jsx",
     "src/pages/ConfiguracoesStatusPedidoCompra.jsx",
     "src/pages/ConfiguracoesSuporte.jsx",

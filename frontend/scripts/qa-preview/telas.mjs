@@ -926,6 +926,20 @@ export const TELAS = [
     }
   },
   {
+    id: 'config-painel-gestor-senha',
+    arquivo: 'src/pages/ConfiguracoesPainelGestor.jsx',
+    rota: '/configuracoes-painel-gestor',
+    tipo: 'form',
+    naoAplica: {
+      F1: "tela de configuração sem caixa de busca — não há duas a conciliar",
+      F2: "idem F1: não há recorte de lista por filtro",
+      F3: "idem F1",
+      F4: "idem F1",
+      C3: "configuração de sistema, não é tela de detalhe de registro",
+      C4: "idem C3"
+    }
+  },
+  {
     id: 'config-status-pedido-compra',
     cadastroInline: 'a tela existe PARA cadastrar os status do pedido de compra (R9 revista em 04/09)',
     arquivo: 'src/pages/ConfiguracoesStatusPedidoCompra.jsx',
