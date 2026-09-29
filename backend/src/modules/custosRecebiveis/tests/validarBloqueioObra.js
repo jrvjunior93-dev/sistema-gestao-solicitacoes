@@ -11,10 +11,17 @@ const { calcularObrasTravadas, mensagemTravada, obrasDaRequisicao } = service;
 const at = (value) => new Date(value);
 const engineer = { id: 77, perfil: 'USUARIO' };
 
-function deps({ bypass = null, contextByObra = {} } = {}) {
+const ALL_PERMISSIONS = [
+  'custos_recebiveis.modulo.acessar',
+  'custos_recebiveis.planejamento.preencher_custos',
+  'custos_recebiveis.medicao.consolidar'
+];
+
+function deps({ bypass = null, contextByObra = {}, permissions = ALL_PERMISSIONS } = {}) {
   return {
     isSuperadmin: (user) => user?.perfil === 'SUPERADMIN',
     isModuleEnabled: async () => true,
+    resolveExplicitPermissions: async () => permissions,
     CrResponsavelObra: {
       findAll: async () => [
         { obra: { id: 1, codigo: 'OB-1', nome: 'Obra atrasada', classificacao: 'PUBLICA' } },
@@ -53,10 +60,24 @@ async function validateLockedWorks() {
   const bypassed = await calcularObrasTravadas(
     engineer,
     { mode: 'enforce', now },
-    deps({ bypass: { obra_id: 1, expira_em: '2026-10-08T12:00:00Z' } })
+    deps({ bypass: { obra_id: 1, expira_em: '2026-10-08T12:00:00Z', concedido_em: '2026-10-07T10:00:00Z' } })
   );
   assert.strictEqual(bypassed[0].bloqueando, false);
   assert.ok(bypassed[0].liberada_ate);
+  // Liberacao antiga de 30 dias: vale so 48h a partir da concessao.
+  const oldBypass = await calcularObrasTravadas(
+    engineer,
+    { mode: 'enforce', now },
+    deps({ bypass: { obra_id: 1, expira_em: '2026-11-01T12:00:00Z', concedido_em: '2026-10-02T12:00:00Z' } })
+  );
+  assert.strictEqual(oldBypass[0].bloqueando, true);
+  // Sem permissao para se regularizar, nao trava (nao prende quem nao sai).
+  assert.strictEqual((await calcularObrasTravadas(engineer, { mode: 'enforce', now }, deps({ permissions: [] }))).length, 0);
+  assert.strictEqual((await calcularObrasTravadas(
+    engineer,
+    { mode: 'enforce', now },
+    deps({ permissions: ['custos_recebiveis.modulo.acessar', 'custos_recebiveis.medicao.consolidar'] })
+  )).length, 0);
 
   // Planejamento em dia, medicao aprovada de setembro vencida (11/10) com
   // dilatacao aguardando decisao: continua travada.
@@ -124,6 +145,13 @@ async function validateMiddleware() {
     assert.strictEqual((await run({ path: '/obras/1/gestao', method: 'GET' })).status, 403);
     // Onde se regulariza: livre.
     assert.strictEqual((await run({ path: '/custos-recebiveis/obras/1/competencias', method: 'POST', body: { obra_id: 1 } })).passed, true);
+    assert.strictEqual((await run({ path: '/custos-recebiveis/obras/1/competencias/2026-09/medicao', method: 'POST' })).passed, true);
+    assert.strictEqual((await run({ path: '/custos-recebiveis/obras/1/competencias/2026-09/dilatacoes', method: 'POST' })).passed, true);
+    // Consultas do modulo que nao regularizam: fechadas para a obra travada.
+    assert.strictEqual((await run({ path: '/custos-recebiveis/obras/1/comparativo', method: 'GET' })).status, 403);
+    assert.strictEqual((await run({ path: '/custos-recebiveis/obras/1/auditoria', method: 'GET' })).status, 403);
+    assert.strictEqual((await run({ path: '/custos-recebiveis/exportacoes/resumo-executivo', method: 'GET', query: { obra_id: '1' } })).status, 403);
+    assert.strictEqual((await run({ path: '/custos-recebiveis/obras/2/comparativo', method: 'GET' })).passed, true);
     // Observacao: nada bloqueia.
     process.env.CR_GUARD_MODE = 'observe';
     assert.strictEqual((await run({ path: '/compras/solicitacoes', method: 'POST', body: { obra_id: 1 } })).passed, true);

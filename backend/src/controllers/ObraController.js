@@ -166,7 +166,12 @@ module.exports = {
       // Custos e Recebiveis (29/09/2026): obra travada por atraso de
       // planejamento/medicao nao aparece para o engenheiro criar nada nela.
       if (modoNormalizado === 'CRIACAO') {
-        const travadas = new Set((await obrasTravadasDoUsuario(req.user))
+        // Falha no calculo nao pode derrubar os seletores de criacao (o
+        // bloqueio em si continua no middleware).
+        const travadas = new Set((await obrasTravadasDoUsuario(req.user).catch((error) => {
+          console.error('Falha segura ao consultar obras travadas:', error.message);
+          return [];
+        }))
           .filter((item) => item.bloqueando)
           .map((item) => Number(item.obra_id)));
         if (travadas.size) {

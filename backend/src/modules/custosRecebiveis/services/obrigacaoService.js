@@ -483,8 +483,9 @@ async function calcularEstadoGuardUsuario(user, options = {}, overrides = {}) {
   const now = options.now || deps.now();
   const expected = await findExpectedObligations(user, deps, { now });
   if (options.persistir) await persistObligations(expected, deps);
-  // Ate a Fase 3 (bloqueio por obra) o guard considera so o planejamento; a
-  // medicao aprovada vencida aparece nas obrigacoes, mas nao bloqueia.
+  // Resumo de obrigacoes (painel e sessao). O BLOQUEIO por obra e decidido em
+  // bloqueioObraService (planejamento e medicao); aqui `bloqueado` e so o
+  // indicador legado e a medicao fica fora da contagem.
   const overdue = expected.filter((item) => (
     item.situacao === 'VENCIDA'
     && !item.reabertura_ativa

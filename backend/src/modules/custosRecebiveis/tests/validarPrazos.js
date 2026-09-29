@@ -91,6 +91,23 @@ function validateSummaries() {
   assert.strictEqual(emDia.medicao.situacao, 'EM_DIA');
   assert.strictEqual(emDia.medicao.competencia, '2026-11');
 
+  // Mes antigo com dilatacao longa nao esconde os meses seguintes vencidos.
+  const dilatadoLongo = resumirPrazosObra({
+    classificacao: 'PUBLICA',
+    temPlanoPublicado: true,
+    inicio: '2026-01',
+    competencias: [
+      { competencia: '2026-01', estado: 'FINALIZADA', dilatacao_prazo: at('2026-06-30T23:59:59-03:00') },
+      { competencia: '2026-02', estado: 'FINALIZADA' },
+      { competencia: '2026-03', estado: 'FINALIZADA' },
+      { competencia: '2026-04', estado: 'FINALIZADA' },
+      { competencia: '2026-05', estado: 'FINALIZADA' }
+    ],
+    now: at('2026-04-15T12:00:00-03:00')
+  });
+  assert.strictEqual(dilatadoLongo.medicao.situacao, 'VENCIDO');
+  assert.strictEqual(dilatadoLongo.medicao.competencia, '2026-02');
+
   const semEstrutura = resumirPrazosObra({ ...base, temPlanoPublicado: false });
   assert.strictEqual(semEstrutura.planejamento.situacao, 'SEM_ESTRUTURA');
   assert.strictEqual(semEstrutura.medicao, null);
@@ -443,14 +460,26 @@ async function validateReopeningWindow() {
   // Janela vencida: o mes volta a FINALIZADA; com reabertura vigente, fica.
   const expired = { id: 41, competencia: '2026-08', estado: 'REABERTA', update: async function update(values) { Object.assign(this, values); } };
   const stillOpen = { id: 42, competencia: '2026-09', estado: 'REABERTA', update: async function update(values) { Object.assign(this, values); } };
+  const byId = { 41: expired, 42: stillOpen };
   const audits = [];
-  await fecharReaberturasExpiradas(7, {
-    CrCompetencia: { findAll: async () => [expired, stillOpen] },
+  const closeDeps = {
+    sequelize: tx,
+    Obra: { findByPk: async () => ({ id: 7, classificacao: 'PUBLICA' }) },
+    CrCompetencia: { findAll: async () => [{ id: 41 }, { id: 42 }], findByPk: async (id) => byId[id] },
     CrReabertura: { findOne: async ({ where }) => (where.competencia_id === 42 ? { id: 9 } : null) },
+    CrPrevisaoCusto: { findAll: async ({ where }) => (where.competencia_id === 41 ? [] : [{ valor_previsto: 10 }]) },
+    CrPrevisaoReceita: { findAll: async () => [{ valor_previsto: 50 }] },
     CrAuditoria: { create: async (values) => audits.push(values) }
-  });
+  };
+  await fecharReaberturasExpiradas(7, closeDeps);
   assert.strictEqual(expired.estado, 'FINALIZADA');
+  assert.strictEqual(expired.total_receita_prevista, 50);
   assert.strictEqual(stillOpen.estado, 'REABERTA');
+  assert.strictEqual(audits.length, 1);
+  // Fechou sem custos: sinalizado na auditoria.
+  assert.strictEqual(audits[0].payload_json.sem_custos, true);
+  // Segunda leitura: ja FINALIZADA, nao fecha nem audita de novo.
+  await fecharReaberturasExpiradas(7, closeDeps);
   assert.strictEqual(audits.length, 1);
 }
 

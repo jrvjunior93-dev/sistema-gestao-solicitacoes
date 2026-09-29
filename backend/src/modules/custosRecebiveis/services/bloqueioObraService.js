@@ -4,8 +4,16 @@ const { Op } = require('sequelize');
 const db = require('../../../models');
 const { isModuleEnabled } = require('../../../services/moduleConfigService');
 const { isSuperadmin } = require('../../../services/authorizationService');
-const { CUSTOS_RECEBIVEIS_MODULE_KEY } = require('../constants/custosRecebiveisConstants');
+const {
+  CUSTOS_RECEBIVEIS_MODULE_KEY,
+  CUSTOS_RECEBIVEIS_PERMISSIONS
+} = require('../constants/custosRecebiveisConstants');
+const { resolveExplicitCustosRecebiveisPermissions } = require('../policies/permissionPolicy');
 const { carregarContextoPrazos, resumirPrazosObra } = require('./prazoService');
+
+// Liberacao temporaria vale no maximo 48h, inclusive as concedidas antes do
+// limite novo (29/09): na leitura, conta o menor entre expira_em e concedido+48h.
+const BYPASS_MAX_MS = 48 * 3600000;
 
 /*
   BLOQUEIO POR ATRASO (reforma de 29/09/2026, Fase 3).
@@ -36,6 +44,7 @@ function dependencies(overrides = {}) {
     carregarContextoPrazos,
     isModuleEnabled,
     isSuperadmin,
+    resolveExplicitPermissions: resolveExplicitCustosRecebiveisPermissions,
     now: () => new Date(),
     ...overrides
   };
@@ -45,9 +54,9 @@ function dateKeyBrasilia(now) {
   return new Date(now.getTime() - 3 * 3600000).toISOString().slice(0, 10);
 }
 
-function pendencias(prazos) {
+function pendencias(prazos, capabilities) {
   const result = [];
-  if (prazos?.planejamento?.situacao === 'VENCIDO') {
+  if (capabilities.planning && prazos?.planejamento?.situacao === 'VENCIDO') {
     result.push({
       tipo: 'PLANEJAMENTO',
       competencia: prazos.planejamento.competencia,
@@ -55,7 +64,7 @@ function pendencias(prazos) {
       prazo_em: prazos.planejamento.prazo_em
     });
   }
-  if (prazos?.medicao?.situacao === 'VENCIDO') {
+  if (capabilities.measurement && prazos?.medicao?.situacao === 'VENCIDO') {
     result.push({
       tipo: 'MEDICAO_APROVADA',
       competencia: prazos.medicao.competencia,
@@ -74,6 +83,19 @@ async function calcularObrasTravadas(user, options = {}, overrides = {}) {
     ? await deps.isModuleEnabled(CUSTOS_RECEBIVEIS_MODULE_KEY)
     : Boolean(options.moduleEnabled);
   if (!enabled) return [];
+  // So trava quem consegue se regularizar: sem a permissao de preencher o
+  // planejamento (ou de registrar a medicao) a pendencia nao prende o usuario.
+  const permissions = new Set((await deps.resolveExplicitPermissions(user))
+    .map((permission) => String(permission || '').trim().toLowerCase()));
+  const capabilities = {
+    planning: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.MODULE_ACCESS) && (
+      permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_COSTS)
+      || permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_RECEIVABLES)
+    ),
+    measurement: permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.MODULE_ACCESS)
+      && permissions.has(CUSTOS_RECEBIVEIS_PERMISSIONS.MEDICAO_CONSOLIDATE)
+  };
+  if (!capabilities.planning && !capabilities.measurement) return [];
   const now = options.now || deps.now();
   const today = dateKeyBrasilia(now);
   const responsaveis = await deps.CrResponsavelObra.findAll({
@@ -105,18 +127,24 @@ async function calcularObrasTravadas(user, options = {}, overrides = {}) {
       revogado_em: null,
       expira_em: { [Op.gt]: now }
     },
-    attributes: ['obra_id', 'expira_em'],
+    attributes: ['obra_id', 'expira_em', 'concedido_em'],
     raw: true
   });
+  const bypassesValidos = bypasses
+    .map((item) => {
+      const limite = item.concedido_em ? new Date(item.concedido_em).getTime() + BYPASS_MAX_MS : Infinity;
+      return { ...item, expira_em: new Date(Math.min(new Date(item.expira_em).getTime(), limite)) };
+    })
+    .filter((item) => item.expira_em > now);
   const mode = guardMode(options.mode);
   const result = [];
   obras.forEach((obra, obraId) => {
     const entry = context.get(obraId);
     if (!entry) return;
     const prazos = resumirPrazosObra({ classificacao: obra.classificacao, ...entry, now });
-    const itens = pendencias(prazos);
+    const itens = pendencias(prazos, capabilities);
     if (!itens.length) return;
-    const bypass = bypasses.find((item) => item.obra_id == null || Number(item.obra_id) === obraId) || null;
+    const bypass = bypassesValidos.find((item) => item.obra_id == null || Number(item.obra_id) === obraId) || null;
     result.push({
       obra_id: obraId,
       obra: { id: obraId, codigo: obra.codigo || null, nome: obra.nome },
@@ -153,6 +181,14 @@ function invalidarObrasTravadas(userId = null) {
 
 const ENTITY_ROUTES = [
   { re: /^\/solicitacoes\/(\d+)(?:\/|$)/, model: 'Solicitacao' },
+  { re: /^\/compras\/solicitacoes\/por-solicitacao\/(\d+)(?:\/|$)/, model: 'Solicitacao' },
+  { re: /^\/financeiro\/fila-pagamentos\/(\d+)(?:\/|$)/, model: 'PagamentoManualFilaItem', viaTitulo: true },
+  { re: /^\/boletos\/titulos\/(\d+)(?:\/|$)/, model: 'TituloFinanceiro', rateios: true },
+  { re: /^\/financeiro\/relatorios\/financeiro-obras\/titulos\/(\d+)(?:\/|$)/, model: 'TituloFinanceiro', rateios: true },
+  { re: /^\/contratos\/fluxo-novo\/aditivos\/(\d+)(?:\/|$)/, model: 'ContratoAditivo', viaContrato: true },
+  { re: /^\/provisoes-financeiras\/(\d+)(?:\/|$)/, model: 'ProvisaoFinanceira' },
+  { re: /^\/sst\/(?:integracoes\/)?obras\/(\d+)(?:\/|$)/, model: null },
+  { re: /^\/configuracoes\/obra-tipo-apropriacao\/obras\/(\d+)(?:\/|$)/, model: null },
   { re: /^\/compras\/solicitacoes\/(\d+)(?:\/|$)/, model: 'SolicitacaoCompra' },
   { re: /^\/compras\/pedidos\/(\d+)(?:\/|$)/, model: 'PedidoCompra' },
   { re: /^\/financeiro\/(?:boletos\/)?titulos\/(\d+)(?:\/|$)/, model: 'TituloFinanceiro', rateios: true },
@@ -180,6 +216,10 @@ async function obraDaEntidade(modelName, id, route) {
   if (!record) return [];
   const ids = [];
   if (record.obra_id) ids.push(Number(record.obra_id));
+  if (route?.viaTitulo && record.titulo_financeiro_id) {
+    (await obraDaEntidade('TituloFinanceiro', Number(record.titulo_financeiro_id), { rateios: true }))
+      .forEach((obraId) => ids.push(obraId));
+  }
   if (route?.viaContrato && record.contrato_id) {
     const contrato = await db.Contrato.findByPk(Number(record.contrato_id), { attributes: ['obra_id'], raw: true });
     if (contrato?.obra_id) ids.push(Number(contrato.obra_id));
@@ -228,11 +268,39 @@ async function obrasDaRequisicao(req) {
     });
     rows.forEach((row) => add(row.obra_id));
   }
+  const tituloIds = toIds(body.titulo_ids || body.titulos || []);
+  for (const tituloId of tituloIds.slice(0, 200)) {
+    (await obraDaEntidade('TituloFinanceiro', tituloId, { rateios: true })).forEach((id) => ids.add(id));
+  }
+  const pedidoIds = toIds(body.pedido_ids || []);
+  if (pedidoIds.length) {
+    const rows = await db.PedidoCompra.findAll({
+      where: { id: { [Op.in]: pedidoIds } },
+      attributes: ['obra_id'],
+      raw: true
+    });
+    rows.forEach((row) => add(row.obra_id));
+  }
   if (body.medicao_id) {
     (await obraDaEntidade('ContratoMedicao', Number(body.medicao_id), { viaContrato: true }))
       .forEach((id) => ids.add(id));
   }
   return [...ids];
+}
+
+// Dentro de Custos e Recebiveis a obra travada so oferece o que regulariza:
+// consultas do mes (comparativo, realizado), auditoria, estrutura e exportacao
+// ficam fechadas ate a liberacao.
+function rotaRegularizacaoBloqueada(req, obrasBloqueadas) {
+  const path = String(req.path || '').split('?')[0];
+  const match = path.match(/^\/custos-recebiveis\/obras\/(\d+)\/(comparativo|realizados|auditoria|plano(?:\/modelo|\/importar.*)?$)/);
+  if (match && obrasBloqueadas.has(Number(match[1]))) return Number(match[1]);
+  if (/^\/custos-recebiveis\/exportacoes\//.test(path)) {
+    const obraId = Number(req.query?.obra_id);
+    if (!obraId) return obrasBloqueadas.size ? [...obrasBloqueadas][0] : null;
+    if (obrasBloqueadas.has(obraId)) return obraId;
+  }
+  return null;
 }
 
 function mensagemTravada(item) {
@@ -250,5 +318,6 @@ module.exports = {
   invalidarObrasTravadas,
   mensagemTravada,
   obrasDaRequisicao,
-  obrasTravadasDoUsuario
+  obrasTravadasDoUsuario,
+  rotaRegularizacaoBloqueada
 };

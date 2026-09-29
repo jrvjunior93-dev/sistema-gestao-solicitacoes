@@ -461,30 +461,70 @@ function medicaoTravada(obra, competencia, prazoContext, now = new Date()) {
 
 const REABERTURA_HORAS = 24;
 
-// Mes reaberto cuja janela de 24h terminou volta a FINALIZADA. Chamado nas
-// leituras do mes (listar/obter) e antes de editar: o fechamento acontece na
-// primeira consulta depois do vencimento, sem job.
-async function fecharReaberturasExpiradas(obraId, deps, transaction = null) {
+// Mes reaberto cuja janela de 24h terminou volta a FINALIZADA. Roda nas
+// leituras do mes (listar/obter): o fechamento acontece na primeira consulta
+// depois do vencimento, sem job. Enquanto nao fecha, a edicao ja esta barrada
+// por assertEditable (REABERTA sem reabertura vigente).
+// Fecha como a finalizacao: recebiveis automaticos (obra privada) regerados e
+// totais recalculados; sem as justificativas de "sem custos/receitas" (nao ha
+// quem as escreva), o fato fica sinalizado na auditoria.
+async function fecharReaberturasExpiradas(obraId, deps) {
   const reopened = await deps.CrCompetencia.findAll({
     where: { obra_id: obraId, estado: 'REABERTA' },
-    transaction
+    attributes: ['id'],
+    raw: true
   });
-  for (const competencia of reopened) {
-    const active = await deps.CrReabertura.findOne({
-      where: { competencia_id: competencia.id, situacao: 'APROVADA', expira_em: { [Op.gt]: new Date() } },
-      transaction
+  if (!reopened.length) return;
+  const obra = await deps.Obra.findByPk(obraId, { attributes: ['id', 'classificacao'] });
+  for (const { id } of reopened) {
+    await deps.sequelize.transaction(async (transaction) => {
+      const competencia = await deps.CrCompetencia.findByPk(id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE
+      });
+      if (!competencia || competencia.estado !== 'REABERTA') return;
+      const active = await deps.CrReabertura.findOne({
+        where: { competencia_id: id, situacao: 'APROVADA', expira_em: { [Op.gt]: new Date() } },
+        transaction
+      });
+      if (active) return;
+      if (String(obra?.classificacao || '').toUpperCase() === 'PRIVADA') {
+        const automaticReceipts = await buildPrivateReceiptRows(obraId, competencia.competencia, null, deps, transaction);
+        await deps.CrPrevisaoReceita.destroy({ where: { competencia_id: id }, transaction });
+        if (automaticReceipts.length) {
+          await deps.CrPrevisaoReceita.bulkCreate(
+            automaticReceipts.map((row) => ({ ...row, competencia_id: id })),
+            { transaction, validate: true }
+          );
+        }
+      }
+      const [costs, receipts] = await Promise.all([
+        deps.CrPrevisaoCusto.findAll({ where: { competencia_id: id }, transaction }),
+        deps.CrPrevisaoReceita.findAll({ where: { competencia_id: id }, transaction })
+      ]);
+      const totalCosts = money(costs.reduce((sum, row) => sum + number(row.valor_previsto), 0));
+      const totalReceipts = money(receipts.reduce((sum, row) => sum + number(row.valor_previsto), 0));
+      await competencia.update({
+        estado: 'FINALIZADA',
+        total_custo_previsto: totalCosts,
+        total_receita_prevista: totalReceipts
+      }, { transaction });
+      await deps.CrAuditoria.create({
+        obra_id: obraId,
+        competencia_id: id,
+        usuario_id: null,
+        evento: 'CR_REABERTURA_ENCERRADA',
+        descricao: 'Janela de reabertura (24h) encerrada; competencia fechada novamente.',
+        payload_json: {
+          competencia: competencia.competencia,
+          total_custo_previsto: totalCosts,
+          total_receita_prevista: totalReceipts,
+          sem_custos: totalCosts === 0,
+          sem_receitas: totalReceipts === 0
+        },
+        origem: 'job'
+      }, { transaction });
     });
-    if (active) continue;
-    await competencia.update({ estado: 'FINALIZADA' }, { transaction });
-    await deps.CrAuditoria.create({
-      obra_id: obraId,
-      competencia_id: competencia.id,
-      usuario_id: null,
-      evento: 'CR_REABERTURA_ENCERRADA',
-      descricao: 'Janela de reabertura (24h) encerrada; competencia fechada novamente.',
-      payload_json: { competencia: competencia.competencia },
-      origem: 'job'
-    }, { transaction });
   }
 }
 

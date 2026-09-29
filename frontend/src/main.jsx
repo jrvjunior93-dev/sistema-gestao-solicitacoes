@@ -15,6 +15,7 @@ import './components/lista-avancada/lista-avancada.css';
 import './styles/escala.css';
 import './styles/componentes-padrao.css';
 import './modules/solicitacao-compra/compras-responsive.css';
+import './modules/custosRecebiveis/styles/cr-travada-faixa.css';
 import './styles/responsive-system.css';
 import { API_URL } from './services/api';
 

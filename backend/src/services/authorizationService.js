@@ -1319,8 +1319,30 @@ async function userHasAnyRhDpCapability(user, capabilities = []) {
   return permissions.some((permission) => expected.has(permission));
 }
 
+// Custos e Recebiveis (29/09/2026): obra travada por atraso de planejamento/
+// medicao sai do escopo do engenheiro responsavel no sistema inteiro (listas,
+// detalhes, selecao). Vale so com CR_GUARD_MODE=enforce; o proprio modulo usa
+// escopo proprio e continua acessivel para ele se regularizar. Require
+// tardio: o servico de bloqueio depende deste arquivo.
+async function obrasTravadasBloqueando(user) {
+  if (String(process.env.CR_GUARD_MODE || '').trim().toLowerCase() !== 'enforce') return null;
+  try {
+    const { obrasTravadasDoUsuario } = require('../modules/custosRecebiveis/services/bloqueioObraService');
+    const travadas = (await obrasTravadasDoUsuario(user)).filter((item) => item.bloqueando);
+    return travadas.length ? new Set(travadas.map((item) => Number(item.obra_id))) : null;
+  } catch (error) {
+    console.error('Falha segura ao consultar obras travadas:', error.message);
+    return null;
+  }
+}
+
 async function hasObraAccess(user, obraId) {
   if (!obraId) {
+    return false;
+  }
+
+  const travadas = await obrasTravadasBloqueando(user);
+  if (travadas?.has(Number(obraId))) {
     return false;
   }
 
@@ -1351,11 +1373,12 @@ async function getUserObraIds(user) {
     attributes: ['obra_id']
   });
 
+  const travadas = await obrasTravadasBloqueando(user);
   return [
     ...new Set(
       vinculos
         .map((item) => Number(item.obra_id))
-        .filter((item) => Number.isInteger(item) && item > 0)
+        .filter((item) => Number.isInteger(item) && item > 0 && !travadas?.has(item))
     )
   ];
 }

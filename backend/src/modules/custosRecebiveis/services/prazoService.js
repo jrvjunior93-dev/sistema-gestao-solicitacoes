@@ -174,9 +174,16 @@ function resumoMedicao({ inicio, byKey, now, config }) {
   const pendentes = listCompetencias(start, atual)
     .filter((competencia) => !byKey.get(competencia)?.tem_medicao_aprovada);
   if (pendentes.length) {
-    const competencia = pendentes[0];
+    // Vale o mes pendente mais antigo JA vencido; sem vencido, o mais antigo.
+    // (Um mes antigo com dilatacao longa nao pode esconder os seguintes.)
+    const prazoDe = (competenciaValue) => prazoMedicaoEfetivo(
+      competenciaValue,
+      config,
+      byKey.get(competenciaValue)?.dilatacao_prazo
+    );
+    const competencia = pendentes.find((item) => prazoDe(item) < now) || pendentes[0];
     const registro = byKey.get(competencia);
-    const prazo = prazoMedicaoEfetivo(competencia, config, registro?.dilatacao_prazo);
+    const prazo = prazoDe(competencia);
     const vencido = prazo < now;
     return {
       situacao: vencido ? 'VENCIDO' : 'ABERTO',

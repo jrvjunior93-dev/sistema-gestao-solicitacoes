@@ -143,9 +143,26 @@ Definicoes adotadas nesta fase (a confirmar com o proprietario):
 - Frontend: card "Travada", meses da obra travada so com acoes de
   regularizacao, reabertura "vale por 24 horas", liberacao ate 48 horas.
 
+### Correcoes do revisor separado (Fase 3)
+
+- Obra travada tambem sai de `getUserObraIds`/`hasObraAccess`
+  (`authorizationService.js`) em `enforce`, fechando consultas por obra.
+- Trava so conta para quem tem a permissao da acao pendente (planejamento ou
+  medicao); liberacao temporaria limitada a 48 horas mesmo se gravada maior.
+- Mais rotas de entidade resolvidas (titulos, pedidos, contratos, medicoes,
+  aditivos, RH, apropriacoes, comprovantes, `titulo_ids`/`pedido_ids`).
+- Dentro do modulo, a obra travada so abre o que regulariza (comparativo,
+  realizados, auditoria, plano e exportacoes ficam fechados).
+- Contador de medicao aponta o mes vencido mais antigo.
+- Fechamento da reabertura de 24h em transacao, com recalculo de totais,
+  ressincronizacao do recebivel privado e auditoria.
+- Faixa global: `role="status"`, atualiza a cada 5 minutos e ao voltar para a
+  aba; falha ao calcular a trava nao derruba o login nem `obras/minhas`.
+
 Limitacoes conhecidas: listas amplas (sem obra no filtro) nao sao recortadas;
-abrir um item da obra travada e bloqueado. Rotas de acao em lote de fila e
-lotes de pagamento sem obra no corpo nao sao resolvidas.
+abrir um item da obra travada e bloqueado. Rotas de acao em lote de fila,
+lotes de pagamento, transferencias de RH e uploads multipart com a obra no
+formulario nao sao resolvidas.
 
 Ativacao: seguir em `observe` no deploy, conferir quem "seria travado" e so
 entao definir `CR_GUARD_MODE=enforce` no ambiente (decisao do proprietario).

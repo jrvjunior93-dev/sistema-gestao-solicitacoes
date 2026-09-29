@@ -108,13 +108,6 @@ async function buildSessionUser(user) {
     });
     // Bloqueio por OBRA (29/09/2026): a sessao leva as obras travadas do
     // usuario (faixa de aviso no topo); o bloqueio global deixa de existir.
-    custosRecebiveisPendencia = {
-      ...custosRecebiveisPendencia,
-      bloqueado: false,
-      obras_travadas: custosRecebiveisEnabled
-        ? await obrasTravadasDoUsuario(userForGuard, { moduleEnabled: true, semCache: true })
-        : []
-    };
   } catch (error) {
     console.error('Falha segura ao calcular pendencia de Custos e Recebiveis:', error.message);
     custosRecebiveisPendencia = {
@@ -125,6 +118,22 @@ async function buildSessionUser(user) {
       indisponivel: true
     };
   }
+  // Bloqueio por OBRA (29/09/2026): a sessao leva as obras travadas do usuario
+  // (faixa de aviso no topo). Calculado a parte: se o resumo de obrigacoes
+  // falhar, a faixa continua refletindo o bloqueio.
+  let obrasTravadas = [];
+  if (custosRecebiveisEnabled) {
+    try {
+      obrasTravadas = await obrasTravadasDoUsuario(userForGuard, { moduleEnabled: true, semCache: true });
+    } catch (error) {
+      console.error('Falha segura ao calcular obras travadas:', error.message);
+    }
+  }
+  custosRecebiveisPendencia = {
+    ...custosRecebiveisPendencia,
+    bloqueado: false,
+    obras_travadas: obrasTravadas
+  };
 
   const sessionUser = {
     id: user.id,

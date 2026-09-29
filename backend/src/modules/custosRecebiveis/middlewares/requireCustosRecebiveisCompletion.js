@@ -4,7 +4,8 @@ const {
   guardMode,
   mensagemTravada,
   obrasDaRequisicao,
-  obrasTravadasDoUsuario
+  obrasTravadasDoUsuario,
+  rotaRegularizacaoBloqueada
 } = require('../services/bloqueioObraService');
 
 /*
@@ -22,8 +23,7 @@ const ALWAYS_ALLOWED_PREFIXES = Object.freeze([
   '/perfil',
   '/ajuda',
   '/suporte',
-  '/live-updates',
-  '/custos-recebiveis'
+  '/live-updates'
 ]);
 
 function isAllowedRoute(req) {
@@ -39,8 +39,17 @@ async function requireCustosRecebiveisCompletion(req, res, next) {
     if (isAllowedRoute(req)) return next();
     const travadas = (await obrasTravadasDoUsuario(req.user)).filter((item) => item.bloqueando);
     if (!travadas.length) return next();
-    const obraIds = await obrasDaRequisicao(req);
-    const hit = travadas.find((item) => obraIds.includes(Number(item.obra_id)));
+    let hit = null;
+    const path = String(req.path || '').split('?')[0];
+    if (path === '/custos-recebiveis' || path.startsWith('/custos-recebiveis/')) {
+      // O modulo e onde se regulariza: so as consultas que nao regularizam
+      // (comparativo, realizado, auditoria, estrutura, exportacao) fecham.
+      const obraId = rotaRegularizacaoBloqueada(req, new Set(travadas.map((item) => Number(item.obra_id))));
+      hit = obraId ? travadas.find((item) => Number(item.obra_id) === obraId) : null;
+    } else {
+      const obraIds = await obrasDaRequisicao(req);
+      hit = travadas.find((item) => obraIds.includes(Number(item.obra_id)));
+    }
     if (!hit) return next();
     return res.status(403).json({
       error: mensagemTravada(hit),

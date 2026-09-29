@@ -45,7 +45,8 @@ implementados no codigo:
 - alertas D-7, D-3, D-1 e vencido calculados pelo horario do servidor;
 - reabertura da competencia vencida ou finalizada e bypass temporario de usuario
   implementados como mecanismos distintos;
-- bypass limitado a 30 dias, sem autoconcessao, sem ocultar ou cumprir a obrigacao;
+- bypass (liberacao temporaria) limitado a 48 horas desde 29/09/2026, sem
+  autoconcessao, sem ocultar ou cumprir a obrigacao;
 - guard frontend e backend com kill-switch `CR_GUARD_MODE`, entregue em `observe`;
 - pagina frontend responsiva em `/custos-recebiveis`, com navegacao operacional por
   `Visao geral`, `Planejamento mensal` e `Obrigacoes e prazos`; comparativo e custo
@@ -294,7 +295,7 @@ As mutacoes usam transacao, bloqueio pessimista quando aplicavel e gravam
 - Repetir a finalizacao retorna o estado existente e nao cria auditoria ou registro
   adicional.
 - Uma competencia `FINALIZADA` rejeita alteracao de custos e recebiveis.
-- Reabertura exige motivo, decisao por permissao separada e `expira_em` futuro.
+- Reabertura exige motivo e decisao por permissao separada; a reabertura aprovada vale 24 horas e depois o mes fecha de novo (planejamento e medicao aprovada).
 - Ao aprovar, a competencia passa a `REABERTA`; qualquer usuario autorizado da obra
   pode editar durante a janela.
 - Expirada a janela, novas mutacoes sao rejeitadas mesmo que o estado continue
