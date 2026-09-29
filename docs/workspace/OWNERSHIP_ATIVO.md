@@ -87,6 +87,23 @@ Implementacao local concluida; ownership de edicao liberado. Handoff: `docs/hand
 
 Ownership temporario /root em 19/09/2026: tornar obrigatorio o envio de documentos na prestacao de contas da Recarga de Cartao e alterar a solicitacao para ATENDIDO no envio. Escopo: `frontend/src/components/recarga-cartao/PrestacaoRecargaCartao.jsx`, `backend/src/controllers/AnexoController.js`, `backend/src/services/recargaCartaoService.js`, `backend/scripts/validarRecargaCartao.js`, validacoes e handoff. Preservar `outputs/`; sem EC2, RDS, migration, commit, push ou deploy nesta tarefa.
 Implementacao local concluida; ownership de edicao liberado. Handoff: `docs/handoffs/2026-09-19-recarga-prestacao-documentos-atendido.md`.
+Ownership temporario da sessao `/root` iniciado em 2026-09-29 para revisar o
+fluxo de caixa previsto x realizado, preservando a previsao historica, limitando
+o realizado a baixas efetivas e separando passado, hoje e futuro na visualizacao.
+Arquivos reservados:
+
+- `backend/src/services/relatorioFinanceiroService.js`
+- `backend/scripts/validarFluxoCaixaPrevistoRealizado.js`
+- `frontend/src/pages/FinanceiroRelatorios.jsx`
+- `frontend/src/index.css`
+- `docs/handoffs/2026-09-29-fluxo-caixa-previsto-realizado.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Preservar `outputs/` e alteracoes nao relacionadas. Sem migration, deploy,
+reinicio, commit ou push nesta etapa.
+
+Implementacao local concluida; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-29-fluxo-caixa-previsto-realizado.md`.
 
 Ownership temporario /root em 18/09/2026: corrigir a prioridade do favorecido informado na solicitacao ao criar titulo no detalhe, sem reaproveitar automaticamente o favorecido bancario do credor. Escopo: `frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx`, `backend/scripts/validarCompraDiretaFrete.js`, validacao e handoff. Preservar `outputs/`; sem EC2, RDS, migration, commit, push ou deploy nesta tarefa.
 Implementacao local concluida; ownership de edicao liberado. Handoff: `docs/handoffs/2026-09-18-favorecido-solicitacao-criar-titulo.md`.

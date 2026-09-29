@@ -80,7 +80,12 @@ function formatBucketLabel(date, agrupamento) {
 }
 
 function getHoje() {
-  return toDateOnly(new Date());
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date());
 }
 
 function getPeriodoDescricao(periodo, inicio, fim) {
@@ -250,15 +255,24 @@ function createBuckets(periodo) {
         label: formatBucketLabel(cursor, 'MES'),
         entradas_previstas: 0,
         saidas_previstas: 0,
+        entradas_previstas_acumuladas: 0,
+        saidas_previstas_acumuladas: 0,
         saldo_previsto: 0,
         saldo_previsto_acumulado: 0,
+        entradas_previstas_comparaveis: 0,
+        saidas_previstas_comparaveis: 0,
+        saldo_previsto_comparavel: 0,
+        saldo_previsto_comparavel_acumulado: 0,
         entradas_realizadas: 0,
         saidas_realizadas: 0,
+        entradas_realizadas_acumuladas: 0,
+        saidas_realizadas_acumuladas: 0,
         juros_realizados: 0,
         multa_realizada: 0,
         desconto_realizado: 0,
         saldo_realizado: 0,
-        saldo_realizado_acumulado: 0
+        saldo_realizado_acumulado: 0,
+        realizado_disponivel: false
       });
       cursor = addMonths(cursor, 1);
     }
@@ -275,15 +289,24 @@ function createBuckets(periodo) {
       label: formatBucketLabel(cursor, 'DIA'),
       entradas_previstas: 0,
       saidas_previstas: 0,
+      entradas_previstas_acumuladas: 0,
+      saidas_previstas_acumuladas: 0,
       saldo_previsto: 0,
       saldo_previsto_acumulado: 0,
+      entradas_previstas_comparaveis: 0,
+      saidas_previstas_comparaveis: 0,
+      saldo_previsto_comparavel: 0,
+      saldo_previsto_comparavel_acumulado: 0,
       entradas_realizadas: 0,
       saidas_realizadas: 0,
+      entradas_realizadas_acumuladas: 0,
+      saidas_realizadas_acumuladas: 0,
       juros_realizados: 0,
       multa_realizada: 0,
       desconto_realizado: 0,
       saldo_realizado: 0,
-      saldo_realizado_acumulado: 0
+      saldo_realizado_acumulado: 0,
+      realizado_disponivel: false
     });
     cursor = addDays(cursor, 1);
   }
@@ -331,10 +354,7 @@ async function carregarTitulosPrevistos(periodo, obraWhere) {
 
   const where = applyIntercompanyExclusion({
     status: {
-      [Op.in]: ['PREVISAO', 'ABERTO', 'PARCIAL']
-    },
-    valor_saldo: {
-      [Op.gt]: 0
+      [Op.in]: ['PREVISAO', 'ABERTO', 'PARCIAL', 'QUITADO']
     },
     data_vencimento: {
       [Op.between]: [periodo.data_inicial, periodo.data_final]
@@ -343,7 +363,17 @@ async function carregarTitulosPrevistos(periodo, obraWhere) {
   }, true);
 
   return require('./tituloRenegociacaoLeitura').buscarTitulos({
-    attributes: ['id', 'tipo', 'data_vencimento', 'valor_saldo', 'intercompany', 'elimina_consolidado'],
+    attributes: [
+      'id',
+      'tipo',
+      'status',
+      'data_vencimento',
+      'valor_original',
+      'valor_saldo',
+      'valor_baixado',
+      'intercompany',
+      'elimina_consolidado'
+    ],
     where,
     include: [{
       model: ContratoComercialParcela,
@@ -405,8 +435,40 @@ async function carregarMovimentosRealizados(periodo, obraWhere) {
   });
 }
 
-function acumularSerie({ buckets, previstos, realizados, agrupamento }) {
+const STATUS_COM_SALDO_PREVISTO = new Set(['PREVISAO', 'ABERTO', 'PARCIAL']);
+const STATUS_COM_HISTORICO_PREVISTO = new Set([...STATUS_COM_SALDO_PREVISTO, 'QUITADO']);
+
+function valorPlanejadoTitulo(item, dataLimiteRealizado) {
+  const vencimento = String(item?.data_vencimento || '');
+  const status = String(item?.status || '').trim().toUpperCase();
+  const saldo = roundCurrency(item?.valor_saldo);
+  const baixado = roundCurrency(item?.valor_baixado);
+  const originalInformado = roundCurrency(item?.valor_original);
+  const valorHistorico = originalInformado > 0
+    ? originalInformado
+    : roundCurrency(saldo + baixado);
+
+  if (status && !STATUS_COM_HISTORICO_PREVISTO.has(status)) {
+    return 0;
+  }
+
+  if (vencimento && dataLimiteRealizado && vencimento <= String(dataLimiteRealizado)) {
+    return valorHistorico;
+  }
+
+  if (!status || STATUS_COM_SALDO_PREVISTO.has(status)) {
+    return saldo;
+  }
+
+  return 0;
+}
+
+function acumularSerie({ buckets, previstos, realizados, agrupamento, dataLimiteRealizado = null }) {
   const bucketsMap = new Map(buckets.map((item) => [item.key, item]));
+  const limiteRealizado = dataLimiteRealizado || buckets[buckets.length - 1]?.referencia || null;
+  const bucketLimiteRealizado = limiteRealizado
+    ? getBucketKey(limiteRealizado, agrupamento)
+    : null;
 
   previstos.forEach((item) => {
     const key = getBucketKey(item.data_vencimento, agrupamento);
@@ -415,11 +477,26 @@ function acumularSerie({ buckets, previstos, realizados, agrupamento }) {
       return;
     }
 
-    const valor = roundCurrency(item.valor_saldo);
+    const valor = valorPlanejadoTitulo(item, limiteRealizado);
+    if (valor <= 0) {
+      return;
+    }
+
+    const comparavel = String(item.data_vencimento) <= String(limiteRealizado);
     if (String(item.tipo || '').toUpperCase() === 'RECEBER') {
       bucket.entradas_previstas = roundCurrency(bucket.entradas_previstas + valor);
+      if (comparavel) {
+        bucket.entradas_previstas_comparaveis = roundCurrency(
+          bucket.entradas_previstas_comparaveis + valor
+        );
+      }
     } else {
       bucket.saidas_previstas = roundCurrency(bucket.saidas_previstas + valor);
+      if (comparavel) {
+        bucket.saidas_previstas_comparaveis = roundCurrency(
+          bucket.saidas_previstas_comparaveis + valor
+        );
+      }
     }
   });
 
@@ -446,38 +523,97 @@ function acumularSerie({ buckets, previstos, realizados, agrupamento }) {
   });
 
   let saldoPrevistoAcumulado = 0;
+  let entradasPrevistasAcumuladas = 0;
+  let saidasPrevistasAcumuladas = 0;
+  let saldoPrevistoComparavelAcumulado = 0;
   let saldoRealizadoAcumulado = 0;
+  let entradasRealizadasAcumuladas = 0;
+  let saidasRealizadasAcumuladas = 0;
 
   buckets.forEach((bucket) => {
     bucket.saldo_previsto = roundCurrency(bucket.entradas_previstas - bucket.saidas_previstas);
-    bucket.saldo_realizado = roundCurrency(bucket.entradas_realizadas - bucket.saidas_realizadas);
+    bucket.saldo_previsto_comparavel = roundCurrency(
+      bucket.entradas_previstas_comparaveis - bucket.saidas_previstas_comparaveis
+    );
     saldoPrevistoAcumulado = roundCurrency(saldoPrevistoAcumulado + bucket.saldo_previsto);
-    saldoRealizadoAcumulado = roundCurrency(saldoRealizadoAcumulado + bucket.saldo_realizado);
+    entradasPrevistasAcumuladas = roundCurrency(
+      entradasPrevistasAcumuladas + bucket.entradas_previstas
+    );
+    saidasPrevistasAcumuladas = roundCurrency(
+      saidasPrevistasAcumuladas + bucket.saidas_previstas
+    );
+    saldoPrevistoComparavelAcumulado = roundCurrency(
+      saldoPrevistoComparavelAcumulado + bucket.saldo_previsto_comparavel
+    );
     bucket.saldo_previsto_acumulado = saldoPrevistoAcumulado;
-    bucket.saldo_realizado_acumulado = saldoRealizadoAcumulado;
+    bucket.entradas_previstas_acumuladas = entradasPrevistasAcumuladas;
+    bucket.saidas_previstas_acumuladas = saidasPrevistasAcumuladas;
+    bucket.saldo_previsto_comparavel_acumulado = saldoPrevistoComparavelAcumulado;
+
+    const realizadoDisponivel = !bucketLimiteRealizado || bucket.key <= bucketLimiteRealizado;
+    bucket.realizado_disponivel = realizadoDisponivel;
+    if (realizadoDisponivel) {
+      bucket.saldo_realizado = roundCurrency(bucket.entradas_realizadas - bucket.saidas_realizadas);
+      saldoRealizadoAcumulado = roundCurrency(saldoRealizadoAcumulado + bucket.saldo_realizado);
+      entradasRealizadasAcumuladas = roundCurrency(
+        entradasRealizadasAcumuladas + bucket.entradas_realizadas
+      );
+      saidasRealizadasAcumuladas = roundCurrency(
+        saidasRealizadasAcumuladas + bucket.saidas_realizadas
+      );
+      bucket.saldo_realizado_acumulado = saldoRealizadoAcumulado;
+      bucket.entradas_realizadas_acumuladas = entradasRealizadasAcumuladas;
+      bucket.saidas_realizadas_acumuladas = saidasRealizadasAcumuladas;
+    } else {
+      bucket.entradas_realizadas = null;
+      bucket.saidas_realizadas = null;
+      bucket.juros_realizados = null;
+      bucket.multa_realizada = null;
+      bucket.desconto_realizado = null;
+      bucket.saldo_realizado = null;
+      bucket.saldo_realizado_acumulado = null;
+      bucket.entradas_realizadas_acumuladas = null;
+      bucket.saidas_realizadas_acumuladas = null;
+      bucket.saldo_previsto_comparavel = null;
+      bucket.saldo_previsto_comparavel_acumulado = null;
+    }
   });
 
   return buckets;
 }
 
-function montarResumo({ previstos, realizados, serie }) {
+function montarResumo({ previstos, realizados, serie, dataLimiteRealizado = null }) {
   const resumo = {
     entradas_previstas: 0,
     saidas_previstas: 0,
     saldo_previsto: 0,
+    entradas_previstas_ate_data: 0,
+    saidas_previstas_ate_data: 0,
+    saldo_previsto_ate_data: 0,
+    entradas_previstas_futuras: 0,
+    saidas_previstas_futuras: 0,
+    saldo_projecao_restante: 0,
     entradas_realizadas: 0,
     saidas_realizadas: 0,
     juros_realizados: 0,
     multa_realizada: 0,
     desconto_realizado: 0,
     saldo_realizado: 0,
-    titulos_previstos: previstos.length,
+    titulos_previstos: previstos.filter(
+      (item) => valorPlanejadoTitulo(item, dataLimiteRealizado) > 0
+    ).length,
     movimentos_realizados: realizados.length
   };
 
   serie.forEach((item) => {
     resumo.entradas_previstas = roundCurrency(resumo.entradas_previstas + item.entradas_previstas);
     resumo.saidas_previstas = roundCurrency(resumo.saidas_previstas + item.saidas_previstas);
+    resumo.entradas_previstas_ate_data = roundCurrency(
+      resumo.entradas_previstas_ate_data + Number(item.entradas_previstas_comparaveis || 0)
+    );
+    resumo.saidas_previstas_ate_data = roundCurrency(
+      resumo.saidas_previstas_ate_data + Number(item.saidas_previstas_comparaveis || 0)
+    );
     resumo.entradas_realizadas = roundCurrency(resumo.entradas_realizadas + item.entradas_realizadas);
     resumo.saidas_realizadas = roundCurrency(resumo.saidas_realizadas + item.saidas_realizadas);
     resumo.juros_realizados = roundCurrency(resumo.juros_realizados + item.juros_realizados);
@@ -486,14 +622,29 @@ function montarResumo({ previstos, realizados, serie }) {
   });
 
   resumo.saldo_previsto = roundCurrency(resumo.entradas_previstas - resumo.saidas_previstas);
+  resumo.saldo_previsto_ate_data = roundCurrency(
+    resumo.entradas_previstas_ate_data - resumo.saidas_previstas_ate_data
+  );
+  resumo.entradas_previstas_futuras = roundCurrency(
+    resumo.entradas_previstas - resumo.entradas_previstas_ate_data
+  );
+  resumo.saidas_previstas_futuras = roundCurrency(
+    resumo.saidas_previstas - resumo.saidas_previstas_ate_data
+  );
+  resumo.saldo_projecao_restante = roundCurrency(
+    resumo.entradas_previstas_futuras - resumo.saidas_previstas_futuras
+  );
   resumo.saldo_realizado = roundCurrency(resumo.entradas_realizadas - resumo.saidas_realizadas);
-  resumo.variacao_realizado_vs_previsto = roundCurrency(resumo.saldo_realizado - resumo.saldo_previsto);
+  resumo.variacao_realizado_vs_previsto = roundCurrency(
+    resumo.saldo_realizado - resumo.saldo_previsto_ate_data
+  );
 
   return resumo;
 }
 
 async function gerarRelatorioFluxoCaixa(req, filters = {}) {
   const periodo = resolvePeriodo(filters);
+  const dataLimiteRealizado = limitarDataFinalRealizados(periodo);
   const obraWhere = await resolveObraScope(req, filters.obra_id);
   const [previstos, realizados] = await Promise.all([
     carregarTitulosPrevistos(periodo, obraWhere),
@@ -506,7 +657,8 @@ async function gerarRelatorioFluxoCaixa(req, filters = {}) {
     buckets: createBuckets(periodo),
     previstos: previstosMonetarios,
     realizados: realizadosMonetarios,
-    agrupamento: periodo.agrupamento
+    agrupamento: periodo.agrupamento,
+    dataLimiteRealizado
   });
 
   return {
@@ -515,13 +667,15 @@ async function gerarRelatorioFluxoCaixa(req, filters = {}) {
       descricao: periodo.descricao,
       data_inicial: periodo.data_inicial,
       data_final: periodo.data_final,
+      data_limite_realizado: dataLimiteRealizado,
       agrupamento: periodo.agrupamento,
       obra_id: filters.obra_id ? Number(filters.obra_id) : null
     },
     resumo: montarResumo({
       previstos: previstosMonetarios,
       realizados: realizadosMonetarios,
-      serie
+      serie,
+      dataLimiteRealizado
     }),
     serie
   };
@@ -5287,9 +5441,12 @@ async function gerarRelatorioConciliacaoContas(req, filters = {}) {
 module.exports = {
   summarizeDreRows,
   acumularSerie,
+  createBuckets,
   isFluxoCaixaPermuta,
   limitarDataFinalRealizados,
+  montarResumo,
   resolvePeriodo,
+  valorPlanejadoTitulo,
   gerarRelatorioAnalitico,
   gerarRelatorioConciliacaoContas,
   gerarRelatorioFinanceiroObras,

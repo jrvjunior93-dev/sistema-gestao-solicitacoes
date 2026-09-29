@@ -6376,6 +6376,21 @@ input[type="file"]:disabled {
   stroke-dasharray: 6 6;
 }
 
+.finance-chart-cutoff {
+  stroke: var(--finance-chart-axis);
+  stroke-width: 1.2;
+  stroke-dasharray: 4 5;
+  opacity: 0.72;
+}
+
+.finance-chart-cutoff-label {
+  fill: var(--finance-chart-axis);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .finance-chart-point {
   filter: drop-shadow(0 0 8px color-mix(in srgb, var(--finance-chart-previsto) 72%, transparent));
 }

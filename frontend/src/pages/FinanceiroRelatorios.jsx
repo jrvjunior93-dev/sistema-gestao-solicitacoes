@@ -46,6 +46,7 @@ const EMPTY_RELATORIO = {
     descricao: '',
     data_inicial: '',
     data_final: '',
+    data_limite_realizado: '',
     agrupamento: 'DIA',
     obra_id: null
   },
@@ -53,6 +54,12 @@ const EMPTY_RELATORIO = {
     entradas_previstas: 0,
     saidas_previstas: 0,
     saldo_previsto: 0,
+    entradas_previstas_ate_data: 0,
+    saidas_previstas_ate_data: 0,
+    saldo_previsto_ate_data: 0,
+    entradas_previstas_futuras: 0,
+    saidas_previstas_futuras: 0,
+    saldo_projecao_restante: 0,
     entradas_realizadas: 0,
     saidas_realizadas: 0,
     juros_realizados: 0,
@@ -71,6 +78,10 @@ function formatCurrency(value) {
     style: 'currency',
     currency: 'BRL'
   });
+}
+
+function formatCurrencyOrDash(value, available = true) {
+  return available && value != null ? formatCurrency(value) : '—';
 }
 
 function formatCompactCurrency(value) {
@@ -166,6 +177,7 @@ function normalizeRelatorio(data) {
       descricao: data.filtro?.descricao || '',
       data_inicial: data.filtro?.data_inicial || '',
       data_final: data.filtro?.data_final || '',
+      data_limite_realizado: data.filtro?.data_limite_realizado || '',
       agrupamento: data.filtro?.agrupamento || 'DIA',
       obra_id: data.filtro?.obra_id ?? null
     },
@@ -173,6 +185,12 @@ function normalizeRelatorio(data) {
       entradas_previstas: Number(data.resumo?.entradas_previstas || 0),
       saidas_previstas: Number(data.resumo?.saidas_previstas || 0),
       saldo_previsto: Number(data.resumo?.saldo_previsto || 0),
+      entradas_previstas_ate_data: Number(data.resumo?.entradas_previstas_ate_data || 0),
+      saidas_previstas_ate_data: Number(data.resumo?.saidas_previstas_ate_data || 0),
+      saldo_previsto_ate_data: Number(data.resumo?.saldo_previsto_ate_data || 0),
+      entradas_previstas_futuras: Number(data.resumo?.entradas_previstas_futuras || 0),
+      saidas_previstas_futuras: Number(data.resumo?.saidas_previstas_futuras || 0),
+      saldo_projecao_restante: Number(data.resumo?.saldo_projecao_restante || 0),
       entradas_realizadas: Number(data.resumo?.entradas_realizadas || 0),
       saidas_realizadas: Number(data.resumo?.saidas_realizadas || 0),
       juros_realizados: Number(data.resumo?.juros_realizados || 0),
@@ -189,15 +207,34 @@ function normalizeRelatorio(data) {
           label: item.label || '',
           entradas_previstas: Number(item.entradas_previstas || 0),
           saidas_previstas: Number(item.saidas_previstas || 0),
+          entradas_previstas_acumuladas: Number(item.entradas_previstas_acumuladas || 0),
+          saidas_previstas_acumuladas: Number(item.saidas_previstas_acumuladas || 0),
           saldo_previsto: Number(item.saldo_previsto || 0),
           saldo_previsto_acumulado: Number(item.saldo_previsto_acumulado || 0),
-          entradas_realizadas: Number(item.entradas_realizadas || 0),
-          saidas_realizadas: Number(item.saidas_realizadas || 0),
-          juros_realizados: Number(item.juros_realizados || 0),
-          multa_realizada: Number(item.multa_realizada || 0),
-          desconto_realizado: Number(item.desconto_realizado || 0),
-          saldo_realizado: Number(item.saldo_realizado || 0),
-          saldo_realizado_acumulado: Number(item.saldo_realizado_acumulado || 0)
+          entradas_previstas_comparaveis: Number(item.entradas_previstas_comparaveis || 0),
+          saidas_previstas_comparaveis: Number(item.saidas_previstas_comparaveis || 0),
+          saldo_previsto_comparavel: item.saldo_previsto_comparavel == null
+            ? null
+            : Number(item.saldo_previsto_comparavel),
+          saldo_previsto_comparavel_acumulado: item.saldo_previsto_comparavel_acumulado == null
+            ? null
+            : Number(item.saldo_previsto_comparavel_acumulado),
+          realizado_disponivel: Boolean(item.realizado_disponivel),
+          entradas_realizadas: item.entradas_realizadas == null ? null : Number(item.entradas_realizadas),
+          saidas_realizadas: item.saidas_realizadas == null ? null : Number(item.saidas_realizadas),
+          entradas_realizadas_acumuladas: item.entradas_realizadas_acumuladas == null
+            ? null
+            : Number(item.entradas_realizadas_acumuladas),
+          saidas_realizadas_acumuladas: item.saidas_realizadas_acumuladas == null
+            ? null
+            : Number(item.saidas_realizadas_acumuladas),
+          juros_realizados: item.juros_realizados == null ? null : Number(item.juros_realizados),
+          multa_realizada: item.multa_realizada == null ? null : Number(item.multa_realizada),
+          desconto_realizado: item.desconto_realizado == null ? null : Number(item.desconto_realizado),
+          saldo_realizado: item.saldo_realizado == null ? null : Number(item.saldo_realizado),
+          saldo_realizado_acumulado: item.saldo_realizado_acumulado == null
+            ? null
+            : Number(item.saldo_realizado_acumulado)
         }))
       : []
   };
@@ -226,7 +263,11 @@ function buildLinePath(points) {
     .join(' ');
 }
 
-function buildComparativoGeometry(serie, previstoKey, realizadoKey) {
+function isChartValue(value) {
+  return value !== null && value !== undefined && Number.isFinite(Number(value));
+}
+
+function buildComparativoGeometry(serie, primaryKey, secondaryKey) {
   if (!serie.length) {
     return null;
   }
@@ -236,11 +277,10 @@ function buildComparativoGeometry(serie, previstoKey, realizadoKey) {
   const padding = { top: 16, right: 20, bottom: 36, left: 20 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const values = serie.flatMap((item) => [
-    Number(item[previstoKey] || 0),
-    Number(item[realizadoKey] || 0),
-    0
-  ]);
+  const values = serie.flatMap((item) => [item[primaryKey], item[secondaryKey]])
+    .filter(isChartValue)
+    .map(Number);
+  values.push(0);
 
   let min = Math.min(...values);
   let max = Math.max(...values);
@@ -252,23 +292,24 @@ function buildComparativoGeometry(serie, previstoKey, realizadoKey) {
   }
 
   const getX = (index) => padding.left + (plotWidth * index) / Math.max(serie.length - 1, 1);
-  const getY = (value) => padding.top + ((max - Number(value || 0)) / Math.max(max - min, 1)) * plotHeight;
+  const getY = (value) => padding.top + ((max - Number(value)) / Math.max(max - min, 1)) * plotHeight;
+  const buildPoints = (key) => serie.reduce((points, item, index) => {
+    if (!isChartValue(item[key])) {
+      return points;
+    }
 
-  const previstoPoints = serie.map((item, index) => ({
-    x: getX(index),
-    y: getY(item[previstoKey]),
-    raw: Number(item[previstoKey] || 0),
-    label: item.label,
-    referencia: item.referencia
-  }));
+    points.push({
+      x: getX(index),
+      y: getY(item[key]),
+      raw: Number(item[key]),
+      label: item.label,
+      referencia: item.referencia
+    });
+    return points;
+  }, []);
 
-  const realizadoPoints = serie.map((item, index) => ({
-    x: getX(index),
-    y: getY(item[realizadoKey]),
-    raw: Number(item[realizadoKey] || 0),
-    label: item.label,
-    referencia: item.referencia
-  }));
+  const primaryPoints = buildPoints(primaryKey);
+  const secondaryPoints = buildPoints(secondaryKey);
 
   const gridValues = Array.from({ length: 5 }, (_, index) => max - ((max - min) / 4) * index);
   const labelStep = Math.max(1, Math.ceil(serie.length / 7));
@@ -284,10 +325,10 @@ function buildComparativoGeometry(serie, previstoKey, realizadoKey) {
     width,
     height,
     padding,
-    previstoPoints,
-    realizadoPoints,
-    previstoPath: buildLinePath(previstoPoints),
-    realizadoPath: buildLinePath(realizadoPoints),
+    primaryPoints,
+    secondaryPoints,
+    primaryPath: buildLinePath(primaryPoints),
+    secondaryPath: buildLinePath(secondaryPoints),
     gridValues,
     footerLabels,
     max,
@@ -295,36 +336,86 @@ function buildComparativoGeometry(serie, previstoKey, realizadoKey) {
   };
 }
 
-function FluxoComparativoCard({ serie }) {
+function getLastChartValue(serie, key) {
+  for (let index = serie.length - 1; index >= 0; index -= 1) {
+    if (isChartValue(serie[index]?.[key])) {
+      return Number(serie[index][key]);
+    }
+  }
+  return 0;
+}
+
+function FluxoComparativoCard({ serie, dataLimiteRealizado }) {
+  const [view, setView] = useState('COMPARATIVO');
   const [mode, setMode] = useState('ACUMULADO');
 
-  const modeConfig =
-    mode === 'SALDO'
-      ? {
-          title: 'Fluxo previsto x realizado',
-          subtitle: 'Comparacao do saldo de cada periodo entre o que foi projetado e o que de fato aconteceu.',
-          previstoKey: 'saldo_previsto',
-          realizadoKey: 'saldo_realizado'
-        }
-      : {
-          title: 'Fluxo previsto x realizado',
-          subtitle: 'Comparacao acumulada do caixa projetado contra o caixa efetivamente baixado no periodo.',
-          previstoKey: 'saldo_previsto_acumulado',
-          realizadoKey: 'saldo_realizado_acumulado'
-        };
-
-  const geometry = buildComparativoGeometry(serie, modeConfig.previstoKey, modeConfig.realizadoKey);
-  const fechamentoPrevisto = Number(serie[serie.length - 1]?.[modeConfig.previstoKey] || 0);
-  const fechamentoRealizado = Number(serie[serie.length - 1]?.[modeConfig.realizadoKey] || 0);
-  const diferenca = fechamentoRealizado - fechamentoPrevisto;
+  const configs = {
+    COMPARATIVO: {
+      title: 'Previsto x realizado',
+      subtitle: 'Compara o planejamento e as baixas somente até a mesma data de corte.',
+      primaryLabel: 'Previsto até a data',
+      secondaryLabel: 'Realizado',
+      primaryKey: mode === 'ACUMULADO'
+        ? 'saldo_previsto_comparavel_acumulado'
+        : 'saldo_previsto_comparavel',
+      secondaryKey: mode === 'ACUMULADO' ? 'saldo_realizado_acumulado' : 'saldo_realizado',
+      resultLabel: 'Variação',
+      difference: (primary, secondary) => secondary - primary
+    },
+    PREVISTO: {
+      title: 'Projeção de caixa',
+      subtitle: 'Entradas e saídas planejadas, incluindo os próximos dias do período selecionado.',
+      primaryLabel: 'Entradas previstas',
+      secondaryLabel: 'Saídas previstas',
+      primaryKey: mode === 'ACUMULADO' ? 'entradas_previstas_acumuladas' : 'entradas_previstas',
+      secondaryKey: mode === 'ACUMULADO' ? 'saidas_previstas_acumuladas' : 'saidas_previstas',
+      resultLabel: 'Saldo projetado',
+      difference: (primary, secondary) => primary - secondary
+    },
+    REALIZADO: {
+      title: 'Fluxo realizado',
+      subtitle: 'Entradas e saídas efetivamente baixadas; datas futuras não são tratadas como realizadas.',
+      primaryLabel: 'Entradas realizadas',
+      secondaryLabel: 'Saídas realizadas',
+      primaryKey: mode === 'ACUMULADO' ? 'entradas_realizadas_acumuladas' : 'entradas_realizadas',
+      secondaryKey: mode === 'ACUMULADO' ? 'saidas_realizadas_acumuladas' : 'saidas_realizadas',
+      resultLabel: 'Saldo realizado',
+      difference: (primary, secondary) => primary - secondary
+    }
+  };
+  const modeConfig = configs[view];
+  const geometry = buildComparativoGeometry(serie, modeConfig.primaryKey, modeConfig.secondaryKey);
+  const fechamentoPrimary = getLastChartValue(serie, modeConfig.primaryKey);
+  const fechamentoSecondary = getLastChartValue(serie, modeConfig.secondaryKey);
+  const diferenca = modeConfig.difference(fechamentoPrimary, fechamentoSecondary);
+  const chartValues = serie.flatMap((item) => [item[modeConfig.primaryKey], item[modeConfig.secondaryKey]])
+    .filter(isChartValue)
+    .map(Number);
   const pico = serie.reduce(
-    (acc, item) => Math.max(acc, Number(item[modeConfig.previstoKey] || 0), Number(item[modeConfig.realizadoKey] || 0)),
-    Number.NEGATIVE_INFINITY
+    (acc, item) => Math.max(
+      acc,
+      isChartValue(item[modeConfig.primaryKey]) ? Number(item[modeConfig.primaryKey]) : acc,
+      isChartValue(item[modeConfig.secondaryKey]) ? Number(item[modeConfig.secondaryKey]) : acc
+    ),
+    chartValues.length ? Number.NEGATIVE_INFINITY : 0
   );
   const piso = serie.reduce(
-    (acc, item) => Math.min(acc, Number(item[modeConfig.previstoKey] || 0), Number(item[modeConfig.realizadoKey] || 0)),
-    Number.POSITIVE_INFINITY
+    (acc, item) => Math.min(
+      acc,
+      isChartValue(item[modeConfig.primaryKey]) ? Number(item[modeConfig.primaryKey]) : acc,
+      isChartValue(item[modeConfig.secondaryKey]) ? Number(item[modeConfig.secondaryKey]) : acc
+    ),
+    chartValues.length ? Number.POSITIVE_INFINITY : 0
   );
+  let cutoffIndex = -1;
+  serie.forEach((item, index) => {
+    if (item.realizado_disponivel) cutoffIndex = index;
+  });
+  const cutoffX = geometry && cutoffIndex >= 0 && cutoffIndex < serie.length - 1
+    ? geometry.padding.left
+      + ((geometry.width - geometry.padding.left - geometry.padding.right) * cutoffIndex)
+        / Math.max(serie.length - 1, 1)
+    : null;
 
   return (
     <section className="finance-chart-card finance-chart-card--comparison">
@@ -337,6 +428,23 @@ function FluxoComparativoCard({ serie }) {
         </div>
 
         <div className="finance-chart-card__controls">
+          <div className="finance-chart-toggle-group" aria-label="Visão do fluxo de caixa">
+            {[
+              ['COMPARATIVO', 'Comparativo'],
+              ['PREVISTO', 'Previsto'],
+              ['REALIZADO', 'Realizado']
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className={`finance-chart-toggle ${view === value ? 'finance-chart-toggle--active' : ''}`}
+                onClick={() => setView(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="finance-chart-toggle-group">
             <button
               type="button"
@@ -350,18 +458,18 @@ function FluxoComparativoCard({ serie }) {
               className={`finance-chart-toggle ${mode === 'SALDO' ? 'finance-chart-toggle--active' : ''}`}
               onClick={() => setMode('SALDO')}
             >
-              Saldo do período
+              Movimento do período
             </button>
           </div>
 
           <div className="finance-chart-legend">
             <span className="finance-chart-legend-item">
               <span className="finance-chart-legend-dot finance-chart-legend-dot--previsto" />
-              Previsto
+              {modeConfig.primaryLabel}
             </span>
             <span className="finance-chart-legend-item">
               <span className="finance-chart-legend-dot finance-chart-legend-dot--realizado" />
-              Realizado
+              {modeConfig.secondaryLabel}
             </span>
           </div>
         </div>
@@ -373,15 +481,15 @@ function FluxoComparativoCard({ serie }) {
         <>
           <div className="finance-chart-stats">
             <div className="finance-chart-stat">
-              <span>Previsto</span>
-              <strong>{formatCompactCurrency(fechamentoPrevisto)}</strong>
+              <span>{modeConfig.primaryLabel}</span>
+              <strong>{formatCompactCurrency(fechamentoPrimary)}</strong>
             </div>
             <div className="finance-chart-stat">
-              <span>Realizado</span>
-              <strong>{formatCompactCurrency(fechamentoRealizado)}</strong>
+              <span>{modeConfig.secondaryLabel}</span>
+              <strong>{formatCompactCurrency(fechamentoSecondary)}</strong>
             </div>
             <div className="finance-chart-stat">
-              <span>Variacao</span>
+              <span>{modeConfig.resultLabel}</span>
               <strong>{formatCompactCurrency(diferenca)}</strong>
             </div>
             <div className="finance-chart-stat">
@@ -436,8 +544,27 @@ function FluxoComparativoCard({ serie }) {
                 );
               })}
 
+              {cutoffX != null ? (
+                <g>
+                  <line
+                    x1={cutoffX}
+                    y1={geometry.padding.top}
+                    x2={cutoffX}
+                    y2={geometry.height - geometry.padding.bottom}
+                    className="finance-chart-cutoff"
+                  />
+                  <text
+                    x={Math.min(cutoffX + 6, geometry.width - 112)}
+                    y={geometry.padding.top + 10}
+                    className="finance-chart-cutoff-label"
+                  >
+                    {`Até ${formatDate(dataLimiteRealizado)}`}
+                  </text>
+                </g>
+              ) : null}
+
               <path
-                d={geometry.previstoPath}
+                d={geometry.primaryPath}
                 fill="none"
                 stroke="var(--finance-chart-previsto)"
                 strokeWidth="3.4"
@@ -446,7 +573,7 @@ function FluxoComparativoCard({ serie }) {
                 filter="url(#finance-chart-previsto-glow)"
               />
               <path
-                d={geometry.realizadoPath}
+                d={geometry.secondaryPath}
                 fill="none"
                 stroke="var(--finance-chart-realizado)"
                 strokeWidth="3.4"
@@ -455,27 +582,29 @@ function FluxoComparativoCard({ serie }) {
                 filter="url(#finance-chart-realizado-glow)"
               />
 
-              {geometry.previstoPoints.map((point, index) => (
-                <g key={`pair-${point.referencia}-${index}`}>
-                  <circle
-                    cx={point.x}
-                    cy={point.y}
-                    r="4.2"
-                    fill="var(--finance-chart-previsto)"
-                    className="finance-chart-point"
-                  >
-                    <title>{`${point.label} - Previsto ${formatCurrency(point.raw)}`}</title>
-                  </circle>
-                  <circle
-                    cx={geometry.realizadoPoints[index].x}
-                    cy={geometry.realizadoPoints[index].y}
-                    r="4.2"
-                    fill="var(--finance-chart-realizado)"
-                    className="finance-chart-point finance-chart-point--secondary"
-                  >
-                    <title>{`${point.label} - Realizado ${formatCurrency(geometry.realizadoPoints[index].raw)}`}</title>
-                  </circle>
-                </g>
+              {geometry.primaryPoints.map((point, index) => (
+                <circle
+                  key={`primary-${point.referencia}-${index}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r="4.2"
+                  fill="var(--finance-chart-previsto)"
+                  className="finance-chart-point"
+                >
+                  <title>{`${point.label} - ${modeConfig.primaryLabel} ${formatCurrency(point.raw)}`}</title>
+                </circle>
+              ))}
+              {geometry.secondaryPoints.map((point, index) => (
+                <circle
+                  key={`secondary-${point.referencia}-${index}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r="4.2"
+                  fill="var(--finance-chart-realizado)"
+                  className="finance-chart-point finance-chart-point--secondary"
+                >
+                  <title>{`${point.label} - ${modeConfig.secondaryLabel} ${formatCurrency(point.raw)}`}</title>
+                </circle>
               ))}
             </svg>
           </div>
@@ -556,6 +685,8 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
   const saldoProjetadoPositivo = relatorio.resumo.saldo_previsto >= 0;
   const saldoRealizadoPositivo = relatorio.resumo.saldo_realizado >= 0;
   const variacaoPositiva = relatorio.resumo.variacao_realizado_vs_previsto >= 0;
+  const projecaoRestantePositiva = relatorio.resumo.saldo_projecao_restante >= 0;
+  const dataLimiteLabel = formatDate(relatorio.filtro.data_limite_realizado);
 
   function handlePeriodoChange(periodo) {
     setFilters((current) => ({
@@ -677,17 +808,17 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
         <RelatorioMetric
           label="Entradas previstas"
           value={formatCurrency(relatorio.resumo.entradas_previstas)}
-          detail={`${relatorio.resumo.titulos_previstos} titulo(s) no periodo`}
+          detail={`${relatorio.resumo.titulos_previstos} título(s) planejado(s) no período`}
         />
         <RelatorioMetric
           label="Saídas previstas"
           value={formatCurrency(relatorio.resumo.saidas_previstas)}
-          detail="Baseado no saldo atual dos titulos"
+          detail="Histórico planejado e saldo futuro dos títulos"
         />
         <RelatorioMetric
           label="Saldo projetado"
           value={formatCurrency(relatorio.resumo.saldo_previsto)}
-          detail="Receber menos pagar"
+          detail="Entradas previstas menos saídas previstas"
           positive={saldoProjetadoPositivo}
         />
         <RelatorioMetric
@@ -722,15 +853,16 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
           detail="Descontos aplicados nas baixas"
         />
         <RelatorioMetric
-          label="Variacao"
+          label="Variação até a data"
           value={formatCurrency(relatorio.resumo.variacao_realizado_vs_previsto)}
-          detail="Delta entre saldos liquidos"
+          detail={`Realizado menos previsto até ${dataLimiteLabel}`}
           positive={variacaoPositiva}
         />
         <RelatorioMetric
-          label="Movimentos ativos"
-          value={String(relatorio.resumo.movimentos_realizados)}
-          detail={`${relatorio.serie.length} ponto(s) na visualizacao`}
+          label="Projeção restante"
+          value={formatCurrency(relatorio.resumo.saldo_projecao_restante)}
+          detail={`Saldo previsto após ${dataLimiteLabel}`}
+          positive={projecaoRestantePositiva}
         />
       </StatGrid>
       ) : null}
@@ -742,7 +874,10 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
       ) : (
         <>
           {isVisible('financeiro.fluxo_caixa.grafico') ? (
-            <FluxoComparativoCard serie={relatorio.serie} />
+            <FluxoComparativoCard
+              serie={relatorio.serie}
+              dataLimiteRealizado={relatorio.filtro.data_limite_realizado}
+            />
           ) : null}
 
           {isVisible('financeiro.fluxo_caixa.detalhamento') ? (
@@ -750,7 +885,7 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
             <div className="border-b border-[var(--c-border)] px-4 py-3">
               <h2 className="text-lg font-semibold text-[var(--c-text)]">Detalhamento por período</h2>
               <p className="text-sm text-[var(--c-muted)]">
-                Série consolidada para acompanhar entradas, saídas e saldo acumulado.
+                Previsto usa o vencimento dos títulos; realizado usa exclusivamente a data das baixas.
               </p>
             </div>
 
@@ -770,19 +905,39 @@ function FluxoCaixaRelatorioConteudo({ isVisible }) {
                   )
                 },
                 { id: 'acumulado_previsto', titulo: 'Acumulado previsto', tipo: 'valor', render: (item) => formatCurrency(item.saldo_previsto_acumulado) },
-                { id: 'entradas_realizadas', titulo: 'Entradas realizadas', tipo: 'valor', render: (item) => formatCurrency(item.entradas_realizadas) },
-                { id: 'saidas_realizadas', titulo: 'Saídas realizadas', tipo: 'valor', render: (item) => formatCurrency(item.saidas_realizadas) },
+                {
+                  id: 'entradas_realizadas',
+                  titulo: 'Entradas realizadas',
+                  tipo: 'valor',
+                  render: (item) => formatCurrencyOrDash(item.entradas_realizadas, item.realizado_disponivel)
+                },
+                {
+                  id: 'saidas_realizadas',
+                  titulo: 'Saídas realizadas',
+                  tipo: 'valor',
+                  render: (item) => formatCurrencyOrDash(item.saidas_realizadas, item.realizado_disponivel)
+                },
                 {
                   id: 'saldo_realizado',
                   titulo: 'Saldo realizado',
                   tipo: 'valor',
                   render: (item) => (
-                    <span className={`font-medium ${getSaldoTone(item.saldo_realizado)}`}>
-                      {formatCurrency(item.saldo_realizado)}
-                    </span>
+                    item.realizado_disponivel ? (
+                      <span className={`font-medium ${getSaldoTone(item.saldo_realizado)}`}>
+                        {formatCurrency(item.saldo_realizado)}
+                      </span>
+                    ) : '—'
                   )
                 },
-                { id: 'acumulado_realizado', titulo: 'Acumulado realizado', tipo: 'valor', render: (item) => formatCurrency(item.saldo_realizado_acumulado) }
+                {
+                  id: 'acumulado_realizado',
+                  titulo: 'Acumulado realizado',
+                  tipo: 'valor',
+                  render: (item) => formatCurrencyOrDash(
+                    item.saldo_realizado_acumulado,
+                    item.realizado_disponivel
+                  )
+                }
               ]}
               itens={relatorio.serie}
               getId={(item) => item.referencia}
