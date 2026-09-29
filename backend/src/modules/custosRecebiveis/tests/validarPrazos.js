@@ -190,6 +190,11 @@ async function validateReopeningEligibility() {
     CrReabertura: { findOne: async () => null, create: async (values) => ({ id: 9, ...values }) },
     CrAuditoria: { create: async () => null }
   };
+  const locked = async () => new Map([[7, {
+    competencias: [{ competencia: '2026-08', tem_medicao_aprovada: true }]
+  }]]);
+  base.Obra = { findByPk: async () => ({ id: 7, classificacao: 'PUBLICA' }) };
+  base.carregarContextoPrazos = async () => new Map();
   const request = (estado, overrides = {}) => solicitarReabertura(
     { id: 1 },
     41,
@@ -208,6 +213,8 @@ async function validateReopeningEligibility() {
   assert.strictEqual((await request('REABERTA')).idempotente, false);
   // Mes em preenchimento (mesmo atrasado) nao precisa de reabertura.
   await assert.rejects(() => request('EM_PREENCHIMENTO'), (error) => error.code === 'CR_REABERTURA_ESTADO_INVALIDO');
+  // ...salvo para corrigir medicao aprovada ja encerrada pelo prazo.
+  assert.strictEqual((await request('EM_PREENCHIMENTO', { carregarContextoPrazos: locked })).idempotente, false);
 }
 
 async function validateMonthListFlags() {
@@ -228,6 +235,7 @@ async function validateMonthListFlags() {
     MovimentoFinanceiro: { findAll: async () => [] },
     CrReabertura: { findAll: async () => [] },
     CrMedicaoSemRegistro: { findAll: async () => [{ competencia_id: 2 }] },
+    carregarContextoPrazos: async () => new Map(),
     competenciasLiberadasObra: async () => ['2026-10']
   });
   const byMonth = new Map(response.items.map((item) => [item.competencia, item]));
@@ -358,6 +366,11 @@ async function validateDilatacao() {
   };
   decideDeps.CrDilatacao.findByPk = async (id, options) => (options?.include ? { ...record, competencia: { competencia: '2026-09' } } : record);
   await assert.rejects(() => decidirDilatacao({ id: 1 }, 90, { decisao: 'TALVEZ' }, decideDeps), (e) => e.code === 'CR_DILATACAO_DECISAO_INVALIDA');
+  // Medicao registrada depois do pedido: nao aprova (reabriria a edicao).
+  await assert.rejects(
+    () => decidirDilatacao({ id: 1 }, 90, { decisao: 'APROVADA' }, { ...decideDeps, carregarContextoPrazos: context({ tem_medicao_aprovada: true }) }),
+    (e) => e.code === 'CR_DILATACAO_MEDICAO_REGISTRADA'
+  );
   const approved = await decidirDilatacao({ id: 1 }, 90, { decisao: 'APROVADA' }, decideDeps);
   assert.strictEqual(approved.dilatacao.situacao, 'APROVADA');
   assert.strictEqual(new Date(record.prazo_novo).toISOString(), '2026-10-19T02:59:59.999Z');

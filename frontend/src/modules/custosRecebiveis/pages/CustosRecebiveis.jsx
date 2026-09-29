@@ -884,10 +884,12 @@ export default function CustosRecebiveis() {
             canGrantBypass={canGrantBypass}
             onOpenPlanning={handleOpenObligationPlanning}
           />
-          <CrDilatacoesView
-            key={`dilatacoes-${refreshToken}`}
-            canDecide={planningPermissions.reopenApprove}
-          />
+          {planningPermissions.reopenApprove || canOpenPlanning ? (
+            <CrDilatacoesView
+              key={`dilatacoes-${refreshToken}`}
+              canDecide={planningPermissions.reopenApprove}
+            />
+          ) : null}
         </>
       ) : null}
 

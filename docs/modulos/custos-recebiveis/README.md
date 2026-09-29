@@ -574,8 +574,8 @@ Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
 
 - Migration `202609290001_custos_recebiveis_prazos_dilatacao.js` (tabelas novas,
   `cr_competencias` nao muda): `cr_prazos_obra`, `cr_dilatacoes`,
-  `cr_medicao_sem_registro`. Sem a migration o modulo continua abrindo com os
-  prazos padrao; "sem medicao" e dilatacao dependem dela.
+  `cr_medicao_sem_registro`. O backend nao sobe com migration pendente
+  (`assertMigrationsUpToDate`): rodar a migration no deploy do backend-dev.
 - Prazos por obra: `GET /prazos` e `PUT /obras/:obraId/prazos` (Configuracoes;
   `{ padrao: true }` volta ao padrao). Limites: dias 1 a 28; medicao 1 a 120.
 - Obrigacoes passam a usar a janela da obra; nova obrigacao `MEDICAO_CONSOLIDADA`

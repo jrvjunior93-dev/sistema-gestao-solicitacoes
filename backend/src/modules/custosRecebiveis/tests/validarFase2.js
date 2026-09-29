@@ -971,10 +971,34 @@ async function validateApprovedMeasurementAndGlosa() {
       7,
       '2026-08',
       { idempotency_key: 'medicao-4', itens: [{ plano_item_id: 9, quantidade_medida: 1 }] },
-      { ...overrides, CrMedicaoConsolidada: { ...overrides.CrMedicaoConsolidada, count: async () => 1 } }
+      {
+        ...overrides,
+        carregarContextoPrazos: async () => new Map([[7, {
+          competencias: [{ competencia: '2026-08', tem_medicao_aprovada: true }]
+        }]])
+      }
     ),
     (error) => error?.code === 'CR_MEDICAO_ENCERRADA'
   );
+  // Reabertura vigente (mesmo sem o mes estar REABERTA) libera a correcao.
+  const reopened = await consolidarMedicao(
+    { id: 1 },
+    7,
+    '2026-08',
+    {
+      idempotency_key: 'medicao-4b',
+      justificativa_glosa_geral: 'Glosa registrada pelo orgao.',
+      itens: [{ plano_item_id: 9, quantidade_medida: 1 }]
+    },
+    {
+      ...overrides,
+      CrReabertura: { findOne: async () => ({ id: 3 }) },
+      carregarContextoPrazos: async () => new Map([[7, {
+        competencias: [{ competencia: '2026-08', tem_medicao_aprovada: true }]
+      }]])
+    }
+  );
+  assert.strictEqual(reopened.valor_total, 10);
 
   // Sem medicao aprovada: exige justificativa e nao aceita itens.
   await assert.rejects(

@@ -32,13 +32,14 @@ export default function CrDilatacoesView({ canDecide = false }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [historyObra, setHistoryObra] = useState(null);
+  const [historyItems, setHistoryItems] = useState([]);
   const [aviso, setAviso] = useState(null);
   const [deciding, setDeciding] = useState(null);
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await listarDilatacoes();
+      const response = await listarDilatacoes({ situacao: 'SOLICITADA' });
       setItems(Array.isArray(response?.items) ? response.items : []);
     } catch (error) {
       setAviso({ id: 'dilatacoes', tipo: 'error', mensagem: error.message || 'Erro ao carregar dilatações.' });
@@ -49,10 +50,21 @@ export default function CrDilatacoesView({ canDecide = false }) {
 
   useEffect(() => { void load(); }, [load]);
 
+  async function openHistory(obraRef) {
+    setHistoryObra(obraRef);
+    setHistoryItems([]);
+    try {
+      const response = await listarDilatacoes({ obra_id: obraRef.id });
+      setHistoryItems(Array.isArray(response?.items) ? response.items : []);
+    } catch (error) {
+      setAviso({ id: 'dilatacoes', tipo: 'error', mensagem: error.message || 'Erro ao carregar o histórico.' });
+    }
+  }
+
   const pending = useMemo(() => items.filter((item) => item.situacao === 'SOLICITADA'), [items]);
   const history = useMemo(() => {
     if (!historyObra) return null;
-    const rows = items.filter((item) => item.obra_id === historyObra.id);
+    const rows = historyItems;
     const approvedDays = rows.filter((item) => item.situacao === 'APROVADA')
       .reduce((sum, item) => sum + Number(item.dias || 0), 0);
     const byMonth = new Map();
@@ -66,7 +78,7 @@ export default function CrDilatacoesView({ canDecide = false }) {
       byMonth.set(item.competencia, entry);
     });
     return { rows, approvedDays, byMonth: [...byMonth.entries()].sort(([a], [b]) => b.localeCompare(a)) };
-  }, [historyObra, items]);
+  }, [historyObra, historyItems]);
 
   async function decide(item, decisao) {
     const alvo = item;
@@ -88,6 +100,7 @@ export default function CrDilatacoesView({ canDecide = false }) {
         mensagem: decisao === 'APROVADA' ? 'Dilatação aprovada.' : 'Dilatação negada.'
       });
       await load();
+      if (historyObra?.id === alvo.obra_id) await openHistory(historyObra);
     } catch (error) {
       setAviso({ id: 'dilatacoes', tipo: 'error', mensagem: error.message || 'Erro ao decidir dilatação.' });
     } finally {
@@ -129,7 +142,7 @@ export default function CrDilatacoesView({ canDecide = false }) {
         vazio="Nenhuma dilatação aguardando decisão."
         acoesLinha={(item) => (
           <>
-            <button type="button" className="btn btn-outline" onClick={() => setHistoryObra(item.obra || { id: item.obra_id })}>
+            <button type="button" className="btn btn-outline" onClick={() => openHistory(item.obra || { id: item.obra_id })}>
               Histórico
             </button>
             {canDecide ? (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Avisos,
+  useConfirmacao,
   BarraFiltros,
   BlocoConteudo,
   CampoForm,
@@ -21,6 +22,7 @@ function normalize(value) {
 }
 
 export default function CrPrazosObrasView() {
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [busca, setBusca] = useState('');
@@ -63,6 +65,14 @@ export default function CrPrazosObrasView() {
   async function save(payload) {
     const obraAlvo = editing?.obra;
     if (!obraAlvo || saving) return;
+    // O prazo vale para todos os meses da obra, inclusive os já passados
+    // (contadores e obrigações são recalculados).
+    const { ok } = await confirmar({
+      titulo: payload.padrao ? 'Restaurar prazos padrão' : 'Salvar prazos da obra',
+      mensagem: `${obraAlvo.nome}: os novos prazos passam a valer para todos os meses da obra, inclusive os já registrados.`,
+      rotuloConfirmar: payload.padrao ? 'Restaurar padrão' : 'Salvar prazos'
+    });
+    if (!ok) return;
     try {
       setSaving(true);
       await salvarPrazosObra(obraAlvo.id, payload);
@@ -173,6 +183,7 @@ export default function CrPrazosObrasView() {
         )}
         larguraAcoes={120}
       />
+      {elementoConfirmacao}
     </BlocoConteudo>
   );
 }

@@ -1106,9 +1106,14 @@ export default function CrPlanejamentoView({
       campo: { rotulo: 'Justificativa (mínimo de 10 caracteres)', obrigatorio: true, multilinha: true }
     });
     if (!ok) return;
+    const justificativa = String(texto || '').trim();
+    if (justificativa.length < 10) {
+      setError('Informe uma justificativa com pelo menos 10 caracteres para registrar o mês sem medição.');
+      return;
+    }
     await runMutation(
       'measurement',
-      () => registrarSemMedicaoCompetencia(obraAlvo.id, competenciaAlvo, String(texto || '').trim()),
+      () => registrarSemMedicaoCompetencia(obraAlvo.id, competenciaAlvo, justificativa),
       'Mês registrado sem medição aprovada.',
       'measurement'
     );

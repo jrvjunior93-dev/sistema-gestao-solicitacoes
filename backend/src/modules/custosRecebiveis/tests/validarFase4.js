@@ -196,7 +196,8 @@ async function validateGuardModesAndBypass() {
       ]
     })
   );
-  assert.strictEqual(lateMeasurement.quantidade_vencidas, 1);
+  // Ate a Fase 3 o guard nao conta a medicao aprovada vencida (so avisa).
+  assert.strictEqual(lateMeasurement.quantidade_vencidas, 0);
 
   const enforced = await calcularEstadoGuardUsuario(
     user,

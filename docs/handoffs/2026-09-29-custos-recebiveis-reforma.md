@@ -88,7 +88,8 @@ proprietario antes da seguinte.
 
 ## Fase 2 - entregue (aguardando aprovacao)
 
-- Migration `202609290001` (3 tabelas novas; rodar no deploy do backend-dev).
+- Migration `202609290001` (3 tabelas novas). O backend nao sobe com migration
+  pendente: rodar no deploy do backend-dev antes do restart.
 - Prazos por obra (Configuracoes > Prazos por obra); obrigacoes e contador do
   cabecalho pelos prazos novos; obrigacao da medicao aprovada; "cumprida com
   atraso" na tela de Obrigacoes.
@@ -103,6 +104,24 @@ Definicoes adotadas nesta fase (a confirmar com o proprietario):
 - Medicao registrada so muda depois do prazo com reabertura; nao registrada
   pode ser lancada atrasada.
 - Mes reaberto volta a ser pendencia ate nova finalizacao (regra existente).
+
+### Correcoes do revisor separado (Fase 2)
+
+- Obrigacoes deixaram de ser regravadas a cada consulta (prazo com
+  milissegundos x DATETIME do banco).
+- "Registrada" = linhas de medicao ou "sem medicao" em todos os pontos (trava,
+  obrigacao e tela); gravacao sem linhas nao trava mais o mes.
+- Reabertura tambem para corrigir medicao encerrada pelo prazo com o
+  planejamento ainda aberto; aprovar reabertura so muda para REABERTA mes
+  finalizado.
+- Dilatacao nao e aprovada se a medicao ja foi registrada; fila e historico
+  consultados separados (sem corte em 500).
+- Status "Vencida" do mes usa o prazo configurado da obra; mes seguinte nao e
+  mais criado automaticamente pelas obrigacoes; mes corrente em Brasilia.
+- Guard (modo observe) nao conta medicao vencida ate a Fase 3.
+- Dashboard reconhece "sem medicao"; codigo do item comparado sem diferenca de
+  caixa; confirmacao ao salvar/restaurar prazos (valem para todos os meses);
+  mensagens de validacao legiveis.
 
 ## Proximo passo
 

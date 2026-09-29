@@ -446,8 +446,17 @@ async function findPlanForCompetencia(obraId, competencia, deps, options = {}) {
 // Planejamento atrasado (decisao de 29/09): mes nunca finalizado continua
 // editavel depois do prazo, sem reabertura; e registrar o atraso que destrava.
 // Reabertura so e necessaria para mes FINALIZADO ou REABERTO ja expirado.
-function planejamentoVencido(competencia, now = new Date()) {
-  return janelaPlanejamento(competencia).fecha_em < now;
+function planejamentoVencido(competencia, now = new Date(), config = null) {
+  return janelaPlanejamento(competencia, config).fecha_em < now;
+}
+
+// Medicao aprovada ja registrada cujo prazo (com dilatacao) terminou: so muda
+// com reabertura. Mesmo criterio em listar, obter, reabrir e consolidar.
+function medicaoTravada(obra, competencia, prazoContext, now = new Date()) {
+  if (String(obra?.classificacao || '').toUpperCase() !== 'PUBLICA') return false;
+  const registro = (prazoContext?.competencias || []).find((item) => item.competencia === competencia) || null;
+  if (!registro?.tem_medicao_aprovada) return false;
+  return prazoMedicaoEfetivo(competencia, prazoContext?.config, registro.dilatacao_prazo) < now;
 }
 
 function podeEditarPlanejamento(estado, validReopening) {
@@ -460,12 +469,18 @@ function podeSolicitarReabertura(estado, validReopening) {
   return estado === 'FINALIZADA' || (estado === 'REABERTA' && !validReopening);
 }
 
+// Chave de codigo do item: sem espacos nas pontas e sem diferenca de caixa
+// (o indice do MySQL ja trata "1.1.a" e "1.1.A" como iguais).
+function codigoItemChave(value) {
+  return String(value ?? '').trim().toLocaleLowerCase('pt-BR');
+}
+
 // Aprovado acumulado dos meses anteriores, somado pelo CODIGO do item: uma
 // nova versao da planilha cria ids novos, e somar por id zerava o saldo
 // (decisao 5b de 29/09). Codigo novo recomeca do zero.
 async function aprovadoAnteriorPorItem(obraId, competenciaCode, planItems, deps, transaction) {
   const result = new Map();
-  const itens = (planItems || []).map((item) => ({ id: Number(item.id), codigo: String(item.codigo ?? '').trim() }));
+  const itens = (planItems || []).map((item) => ({ id: Number(item.id), codigo: codigoItemChave(item.codigo) }));
   if (!itens.length) return result;
   const previous = await deps.CrCompetencia.findAll({
     where: { obra_id: obraId, competencia: { [Op.lt]: competenciaCode } },
@@ -486,7 +501,7 @@ async function aprovadoAnteriorPorItem(obraId, competenciaCode, planItems, deps,
     attributes: ['id', 'codigo'],
     transaction
   });
-  const codeById = new Map(measuredItems.map((item) => [Number(item.id), String(item.codigo ?? '').trim()]));
+  const codeById = new Map(measuredItems.map((item) => [Number(item.id), codigoItemChave(item.codigo)]));
   const byCode = new Map();
   measurements.forEach((item) => {
     const code = codeById.get(Number(item.plano_item_id));
@@ -655,6 +670,7 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
   const obraId = positiveId(obraIdValue, 'Obra');
   await assertScope(user, obraId, deps);
   const obra = await findObra(obraId, deps);
+  const prazoContext = (await deps.carregarContextoPrazos([obraId])).get(obraId) || {};
   const rows = await deps.CrCompetencia.findAll({
     where: { obra_id: obraId },
     order: [['competencia', 'DESC'], ['id', 'DESC']]
@@ -729,7 +745,8 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
     const reopeningState = row.estado === 'FINALIZADA' && mappedReopeningState === 'APROVADA'
       ? null
       : mappedReopeningState;
-    const expired = planejamentoVencido(row.competencia, now);
+    const expired = planejamentoVencido(row.competencia, now, prazoContext.config);
+    const measurementLocked = medicaoTravada(obra, row.competencia, prazoContext, now);
     const activeApprovedReopening = mappedReopeningState === 'APROVADA';
     return {
       ...serializeCompetencia(row),
@@ -746,8 +763,11 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
       // Vencida = planejamento ainda nao finalizado depois da janela; continua
       // editavel (registro atrasado), mas o card sinaliza o atraso.
       vencida: expired && !['FINALIZADA', 'REABERTA'].includes(row.estado),
-      reabertura_permitida: reopeningState !== 'SOLICITADA'
-        && podeSolicitarReabertura(row.estado, activeApprovedReopening)
+      medicao_travada: measurementLocked && !activeApprovedReopening,
+      reabertura_permitida: reopeningState !== 'SOLICITADA' && (
+        podeSolicitarReabertura(row.estado, activeApprovedReopening)
+        || (measurementLocked && !activeApprovedReopening)
+      )
     };
   });
   return {
@@ -1059,7 +1079,8 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
   const validReopening = reopenings.some((item) => (
     item.situacao === 'APROVADA' && item.expira_em && new Date(item.expira_em) > new Date()
   ));
-  const expired = planejamentoVencido(competenciaCode);
+  const prazoContext = (await deps.carregarContextoPrazos([obraId])).get(obraId) || {};
+  const expired = planejamentoVencido(competenciaCode, new Date(), prazoContext.config);
 
   const publicReceipts = receipts.map((savedValue) => {
     const savedReceipt = plain(savedValue);
@@ -1091,7 +1112,6 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
   // se a alteracao ja depende de reabertura.
   let medicaoAprovada = null;
   if (String(obra.classificacao).toUpperCase() === 'PUBLICA') {
-    const prazoContext = (await deps.carregarContextoPrazos([obraId])).get(obraId) || {};
     const registro = (prazoContext.competencias || []).find((item) => item.competencia === competenciaCode) || null;
     const prazo = prazoMedicaoEfetivo(competenciaCode, prazoContext.config, registro?.dilatacao_prazo);
     const semRegistro = saved?.id
@@ -1110,7 +1130,7 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
         justificativa: semRegistro.justificativa,
         registrado_em: semRegistro.registrado_em
       } : null,
-      editavel: !registrada || prazo >= new Date() || (saved?.estado === 'REABERTA' && validReopening)
+      editavel: !registrada || prazo >= new Date() || Boolean(validReopening)
     };
   }
 
@@ -1183,7 +1203,8 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
         ? 'MEDICAO'
         : 'CONTRATO',
       vencida: expired && saved?.estado !== 'FINALIZADA',
-      exige_reabertura: podeSolicitarReabertura(saved?.estado, validReopening),
+      exige_reabertura: podeSolicitarReabertura(saved?.estado, validReopening)
+        || Boolean(medicaoAprovada && !medicaoAprovada.editavel),
       editavel: podeEditarPlanejamento(saved?.estado, validReopening)
     }
   };
@@ -1736,29 +1757,20 @@ async function consolidarMedicao(user, obraIdValue, competenciaValue, payload = 
     // Trava (29/09): medicao ja registrada e prazo (com dilatacao) vencido so
     // muda com reabertura vigente. Ainda nao registrada: registro atrasado e
     // aceito — e o que regulariza a obra.
-    const alreadyRegistered = Boolean(previousAudit) || await deps.CrMedicaoConsolidada.count({
-      where: { competencia_id: competencia.id },
-      transaction
-    }) > 0;
-    if (alreadyRegistered) {
-      const prazoContext = (await deps.carregarContextoPrazos([obraId])).get(obraId) || {};
-      const registro = (prazoContext.competencias || [])
-        .find((item) => item.competencia === competenciaCode) || null;
-      const deadline = prazoMedicaoEfetivo(competenciaCode, prazoContext.config, registro?.dilatacao_prazo);
-      if (deadline < new Date()) {
-        const validReopening = competencia.estado === 'REABERTA'
-          ? await deps.CrReabertura.findOne({
-            where: { competencia_id: competencia.id, situacao: 'APROVADA', expira_em: { [Op.gt]: new Date() } },
-            transaction
-          })
-          : null;
-        if (!validReopening) {
-          throw createBusinessError(
-            409,
-            'CR_MEDICAO_ENCERRADA',
-            'O prazo da medicao aprovada deste mes terminou. Solicite reabertura para alterar.'
-          );
-        }
+    // Registrada = linhas de medicao ou "sem medicao" (mesmo criterio das
+    // obrigacoes e da tela). Gravacao sem nenhuma linha nao conta.
+    const prazoContext = (await deps.carregarContextoPrazos([obraId])).get(obraId) || {};
+    if (medicaoTravada(obra, competenciaCode, prazoContext)) {
+      const validReopening = await deps.CrReabertura.findOne({
+        where: { competencia_id: competencia.id, situacao: 'APROVADA', expira_em: { [Op.gt]: new Date() } },
+        transaction
+      });
+      if (!validReopening) {
+        throw createBusinessError(
+          409,
+          'CR_MEDICAO_ENCERRADA',
+          'O prazo da medicao aprovada deste mes terminou. Solicite reabertura para alterar.'
+        );
       }
     }
     const presentedRows = await deps.CrPrevisaoReceita.findAll({
@@ -2281,6 +2293,18 @@ async function buildDashboardRows(obras, competencias, deps) {
     current.exists = true;
     approvedByCompetencia.set(id, current);
   });
+  // "Sem medicao neste mes" conta como medicao registrada com valor zero
+  // (nao gera o alerta de medicao aguardando aprovacao).
+  if (competenciaIds.length) {
+    (await readOptional(() => deps.CrMedicaoSemRegistro.findAll({
+      where: { competencia_id: { [Op.in]: competenciaIds } },
+      attributes: ['competencia_id'],
+      raw: true
+    }))).forEach((item) => {
+      const id = Number(item.competencia_id);
+      if (!approvedByCompetencia.has(id)) approvedByCompetencia.set(id, { total: 0, exists: true });
+    });
+  }
   const costByWork = new Map(costEntries);
   const receivedByWork = new Map(receivedEntries);
   const today = dataAtualSaoPaulo();
@@ -2716,7 +2740,7 @@ async function solicitarReabertura(user, competenciaIdValue, payload = {}, overr
       transaction,
       lock: transaction.LOCK.UPDATE
     });
-    const validReopening = competencia?.estado === 'REABERTA'
+    const validReopening = competencia
       ? await deps.CrReabertura.findOne({
         where: {
           competencia_id: competenciaId,
@@ -2726,11 +2750,23 @@ async function solicitarReabertura(user, competenciaIdValue, payload = {}, overr
         transaction
       })
       : null;
-    if (!competencia || !podeSolicitarReabertura(competencia.estado, validReopening)) {
+    // Tambem cabe reabertura para corrigir medicao aprovada ja travada pelo
+    // prazo, mesmo com o planejamento do mes ainda aberto.
+    let measurementLocked = false;
+    if (competencia && !validReopening) {
+      const obraRecord = await deps.Obra.findByPk(Number(competencia.obra_id), {
+        attributes: ['id', 'classificacao'],
+        transaction
+      });
+      const prazoContext = (await deps.carregarContextoPrazos([Number(competencia.obra_id)]))
+        .get(Number(competencia.obra_id)) || {};
+      measurementLocked = medicaoTravada(obraRecord, competencia.competencia, prazoContext);
+    }
+    if (!competencia || !(podeSolicitarReabertura(competencia.estado, validReopening) || measurementLocked)) {
       throw createBusinessError(
         409,
         'CR_REABERTURA_ESTADO_INVALIDO',
-        'Somente competencias finalizadas (ou com reabertura expirada) podem solicitar reabertura.'
+        'Somente competencias finalizadas, com reabertura expirada ou com medicao aprovada encerrada podem solicitar reabertura.'
       );
     }
     const activeReopeningConditions = [{ situacao: 'SOLICITADA' }];
@@ -2824,7 +2860,10 @@ async function decidirReabertura(user, reaberturaIdValue, payload = {}, override
       aprovado_em: new Date(),
       expira_em: expiraEm
     }, { transaction });
-    if (decisao === 'APROVADA') {
+    // So mes finalizado vira REABERTA. Mes ainda em preenchimento reaberto
+    // para corrigir a medicao aprovada mantem o estado (o planejamento dele
+    // continua editavel sem depender da janela da reabertura).
+    if (decisao === 'APROVADA' && competencia.estado === 'FINALIZADA') {
       await competencia.update({ estado: 'REABERTA' }, { transaction });
     }
     await audit(deps, transaction, {

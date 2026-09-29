@@ -133,7 +133,8 @@ async function resolveContext(obraIdValue, competenciaValue, typeValue) {
       raw: true
     })
     : [];
-  const codeById = new Map(measuredItems.map((item) => [Number(item.id), String(item.codigo ?? '').trim()]));
+  const codeKey = (value) => String(value ?? '').trim().toLocaleLowerCase('pt-BR');
+  const codeById = new Map(measuredItems.map((item) => [Number(item.id), codeKey(item.codigo)]));
   const previousByCode = new Map();
   previousRows.forEach((row) => {
     const code = codeById.get(Number(row.plano_item_id));
@@ -142,7 +143,7 @@ async function resolveContext(obraIdValue, competenciaValue, typeValue) {
   });
   const items = leaves.map((item) => {
     const budgetQuantity = number(item.quantidade);
-    const previousQuantity = number(previousByCode.get(String(item.codigo ?? '').trim()));
+    const previousQuantity = number(previousByCode.get(codeKey(item.codigo)));
     return {
       plano_item_id: Number(item.id),
       etapa_macro_codigo: text(item.etapa_macro_codigo, 80),

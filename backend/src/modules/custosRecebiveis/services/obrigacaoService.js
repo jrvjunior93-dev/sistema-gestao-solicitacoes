@@ -15,6 +15,7 @@ const {
 } = require('../policies/permissionPolicy');
 const {
   carregarContextoPrazos,
+  competenciaNoInstante,
   janelaPlanejamento,
   prazoMedicaoEfetivo
 } = require('./prazoService');
@@ -74,8 +75,10 @@ function normalizeCompetencia(value) {
   return normalized;
 }
 
+// Mes corrente em Brasilia (mesma regua de prazoService), e nao no fuso do
+// servidor: na EC2 em UTC a virada vinha 3 horas antes.
 function competenciaAtual(now = new Date()) {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return competenciaNoInstante(now);
 }
 
 function addMonth(competencia, amount = 1) {
@@ -392,7 +395,10 @@ async function persistObligations(expected, deps) {
     const competencyByKey = new Map();
     for (const item of expected) {
       const competencyKey = `${item.obra_id}:${item.competencia}`;
-      if (!item.competencia_id && !competencyByKey.has(competencyKey)) {
+      // Obrigacao do mes seguinte (janela ja aberta) nao cria a competencia:
+      // o mes nasce pelo "Novo mes", com o snapshot do plano.
+      if (!item.competencia_id && !competencyByKey.has(competencyKey)
+        && item.competencia <= competenciaAtual(deps.now())) {
         const [record] = await deps.CrCompetencia.findOrCreate({
           where: { obra_id: item.obra_id, competencia: item.competencia },
           defaults: { estado: 'ABERTA' },
@@ -422,7 +428,10 @@ async function persistObligations(expected, deps) {
       if (!created) {
         const current = plain(existing);
         const changed = String(current.situacao) !== String(values.situacao)
-          || new Date(current.prazo_em).getTime() !== new Date(values.prazo_em).getTime()
+          // DATETIME do banco nao guarda milissegundos (prazo termina em
+          // 23:59:59.999): comparar em segundos evita regravar a cada leitura.
+          || Math.floor(new Date(current.prazo_em).getTime() / 1000)
+            !== Math.floor(new Date(values.prazo_em).getTime() / 1000)
           || String(current.cumprida_em || '') !== String(values.cumprida_em || '');
         if (changed) await existing.update(values, { transaction });
       }
@@ -472,8 +481,12 @@ async function calcularEstadoGuardUsuario(user, options = {}, overrides = {}) {
   const now = options.now || deps.now();
   const expected = await findExpectedObligations(user, deps, { now });
   if (options.persistir) await persistObligations(expected, deps);
+  // Ate a Fase 3 (bloqueio por obra) o guard considera so o planejamento; a
+  // medicao aprovada vencida aparece nas obrigacoes, mas nao bloqueia.
   const overdue = expected.filter((item) => (
-    item.situacao === 'VENCIDA' && !item.reabertura_ativa
+    item.situacao === 'VENCIDA'
+    && !item.reabertura_ativa
+    && item.tipo !== OBRIGACAO_TYPES.MEDICAO_APROVADA
   ));
   const bypasses = overdue.length ? await findActiveBypasses(user.id, deps, now) : [];
   const uncovered = overdue.filter((item) => (

@@ -131,10 +131,15 @@ async function listarPrazosObras(user, overrides = {}) {
 function validarConfig(payload = {}) {
   const values = {};
   const errors = [];
+  const rotulos = {
+    planejamento_dia_abertura: 'Dia de abertura do planejamento',
+    planejamento_dia_fechamento: 'Dia de fechamento do planejamento',
+    medicao_prazo_dias: 'Prazo da medicao aprovada (dias)'
+  };
   Object.entries(LIMITES_PRAZOS).forEach(([key, [min, max]]) => {
     const value = Number(payload[key]);
     if (!Number.isInteger(value) || value < min || value > max) {
-      errors.push(`${key} deve ser inteiro entre ${min} e ${max}.`);
+      errors.push(`${rotulos[key]}: informe um numero inteiro de ${min} a ${max}.`);
     }
     values[key] = value;
   });
@@ -325,6 +330,15 @@ async function decidirDilatacao(user, dilatacaoIdValue, payload = {}, overrides 
     };
     if (decisao === 'APROVADA') {
       const { context, registro } = await contextoMedicao(obraId, competencia, deps);
+      // Medicao registrada depois do pedido: aprovar reabriria a edicao sem
+      // reabertura. O administrador nega (o pedido perdeu o objeto).
+      if (registro?.tem_medicao_aprovada) {
+        throw createBusinessError(
+          409,
+          'CR_DILATACAO_MEDICAO_REGISTRADA',
+          'A medicao aprovada deste mes ja foi registrada; negue o pedido de dilatacao.'
+        );
+      }
       const vigente = prazoMedicaoEfetivo(competencia, context.config, registro?.dilatacao_prazo);
       const base = vigente > now ? vigente : now;
       values.prazo_anterior = vigente;
@@ -367,9 +381,11 @@ async function listarDilatacoes(user, query = {}, overrides = {}) {
   const rows = await deps.CrDilatacao.findAll({
     where,
     include: dilatacaoIncludes(deps),
-    // Fila por ordem de pedido; historico tambem em ordem cronologica.
+    // Fila por ordem de pedido; historico tambem em ordem cronologica. A tela
+    // pede a fila (situacao=SOLICITADA) e o historico por obra (obra_id)
+    // separados, entao o limite nao corta pendentes nem o periodo da obra.
     order: [['createdAt', 'ASC'], ['id', 'ASC']],
-    limit: 500
+    limit: 2000
   });
   return { items: rows.map(serializeDilatacao) };
 }
