@@ -96,7 +96,7 @@ export default function PainelGestorSaldosRegistro() {
       {/* Olho fechado: a contagem "N de M" sai (os campos vêm vazios de
           propósito e ela diria "0 de 2" com as contas já informadas), e o
           aviso é de uma linha, com o caminho para abrir os valores. */}
-      <PageHeader titulo="Informar saldos disponíveis" contagem={valoresOcultos ? undefined : `${filled.length} de ${contasManuais.length} conta(s) manual(is)`} descricao="Contas com controle diário usam o saldo do sistema; as demais recebem a posição informada nesta tela." />
+      <PageHeader titulo="Informar saldos disponíveis" voltar={{ to: `/painel-gestor?aba=saldos&data=${data}`, title: 'Voltar ao Painel do Gestor' }} contagem={valoresOcultos ? undefined : `${filled.length} de ${contasManuais.length} conta(s) manual(is)`} descricao="Contas com controle diário usam o saldo do sistema; as demais recebem a posição informada nesta tela." />
       <Avisos avisos={avisos} aoFechar={fechar} />
       {valoresOcultos ? (
         <p className="pg-aviso-olho" role="status">

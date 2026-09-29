@@ -618,7 +618,7 @@ export default function PainelGestor() {
 
   return (
     <Pagina className={`pg-painel${modoTv ? ' pg-modo-tv' : ''}`} data-valores-ocultos={oculto || undefined}>
-      <PageHeader titulo="Painel do Gestor" secundarias={secundarias} />
+      <PageHeader titulo="Painel do Gestor" contagem={oculto ? 'Valores ocultos' : 'Valores visíveis'} secundarias={secundarias} />
       <Avisos avisos={avisos} aoFechar={fechar} />
       {!olho.pronto ? <div className="app-empty-card">Carregando painel...</div> : (
         <>

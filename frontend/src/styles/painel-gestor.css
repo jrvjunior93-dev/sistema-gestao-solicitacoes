@@ -463,7 +463,7 @@
   gap: var(--esp-2);
   min-width: 0;
   margin: 0;
-  color: var(--c-muted);
+  color: var(--texto-apoio-aa, var(--c-muted));
   font-size: var(--fonte-detalhe);
   font-weight: 600;
   white-space: nowrap;
@@ -1103,4 +1103,20 @@ input.input.pg-pin-campo {
 .pg-obra-card__linha > .pg-obra-metrica:nth-child(3) .tooltip-content {
   left: auto;
   right: 0;
+}
+
+/* Telas estreitas: a grade de métricas muda de colunas, então a dica se
+   ancora na linha do card (largura toda da linha), não no rótulo. */
+@media (max-width: 640px) {
+  .pg-obra-card .tooltip-wrap { position: static; }
+  .pg-obra-card__linha,
+  .pg-obra-card__destaque,
+  .pg-obra-progresso { position: relative; }
+  .pg-obra-card .tooltip-content,
+  .pg-obra-card__linha > .pg-obra-metrica:nth-child(3) .tooltip-content {
+    left: var(--esp-3);
+    right: var(--esp-3);
+    width: auto;
+    max-width: none;
+  }
 }
