@@ -71,6 +71,10 @@ module.exports = {
   async importar(req, res) {
     try {
       await exigirObraNoEscopoDoUsuario(req, req.body?.obra_id);
+      // Custos e Recebiveis (29/09/2026): obra travada nao recebe jornada nova.
+      // Multipart: a obra so existe depois do multer, por isso a checagem e aqui.
+      await require('../modules/custosRecebiveis/services/bloqueioObraService')
+        .assertObrasSemTrava([req.body?.obra_id], 'POST /rh/jornada/importar');
       const contexto = contextoDe(req);
       contexto.obraIds = await getRhDpObraScopeIds(req.user);
       contexto.podeDecidir = await userHasAreaPermission(req.user, ['rh_dp.solicitacoes.decidir']);

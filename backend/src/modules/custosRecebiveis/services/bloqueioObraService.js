@@ -49,6 +49,7 @@ function dependencies(overrides = {}) {
     CrResponsavelObra: db.CrResponsavelObra,
     CrGuardBypass: db.CrGuardBypass,
     RhColaborador: db.RhColaborador,
+    Contrato: db.Contrato,
     carregarContextoPrazos,
     isModuleEnabled,
     isSuperadmin,
@@ -294,10 +295,17 @@ function invalidarObrasTravadas(userId = null) {
 // Rotas que ABREM solicitacao nova para uma obra (decisao de 29/09). Contrato
 // entra porque a "Nova solicitacao" abre contrato por esta rota; transferencia
 // de RH e cotacao avulsa com obra tambem sao pedidos novos para a obra.
-// Ficam FORA (continuidade/folha, decisao registrada): jornada e tickets de
-// RH, aditivo de contrato existente. Comparacao sem diferenca de caixa, como
-// o roteador do Express.
+// Decisao do proprietario (29/09, revista): jornada e tickets de RH e aditivo
+// de contrato tambem sao barrados — a trava existe para pressionar o
+// engenheiro a regularizar. Tickets e importacao de jornada chegam em
+// multipart (o middleware nao le o formulario): a checagem fica nos
+// controllers, por assertObrasSemTrava. Comparacao sem diferenca de caixa,
+// como o roteador do Express.
+const ROTA_ADITIVO = /^\/contratos\/(?:fluxo-novo\/)?(\d+)\/aditivos\/?$/i;
 const ROTAS_SOLICITACAO_NOVA = [
+  /^\/rh\/jornada\/?$/i,
+  /^\/rh\/jornada\/individual\/?$/i,
+  ROTA_ADITIVO,
   /^\/solicitacoes\/?$/i,
   /^\/compras\/solicitacoes\/?$/i,
   /^\/compras\/solicitacoes-diretas\/?$/i,
@@ -338,6 +346,11 @@ async function obrasDaAbertura(req, overrides = {}) {
       : [value?.itens, value?.linhas].find(Array.isArray) || [];
     linhas.forEach((item) => add(item?.obra_id));
   });
+  const aditivo = String(req.path || '').split('?')[0].match(ROTA_ADITIVO);
+  if (aditivo && deps.Contrato) {
+    const contrato = await deps.Contrato.findByPk(Number(aditivo[1]), { attributes: ['obra_id'], raw: true });
+    add(contrato?.obra_id);
+  }
   if (body.colaborador_id && deps.RhColaborador) {
     const colaborador = await deps.RhColaborador.findByPk(Number(body.colaborador_id), { attributes: ['obra_id'], raw: true });
     add(colaborador?.obra_id);
@@ -388,8 +401,36 @@ function mensagemSolicitacaoNova(item) {
   return `A obra ${nomeObra(item)} não recebe solicitação nova até o engenheiro responsável regularizar Custos e Recebíveis (${descreverPendencias(item)}). Solicitações já abertas seguem normalmente; o administrador pode conceder liberação temporária de até 48 horas.`;
 }
 
+// Para rotas multipart (tickets, importacao de jornada): mesma regra do
+// middleware, chamada pelo controller depois do multer. Em observe so registra.
+async function assertObrasSemTrava(obraIds, contexto = '', overrides = {}) {
+  const ids = [...new Set(toIds(obraIds))];
+  if (!ids.length) return;
+  let travas;
+  try {
+    travas = await (overrides.travaDasObras || travaDasObras)(ids);
+  } catch (error) {
+    console.error('Falha segura ao avaliar bloqueio de obra (Custos e Recebiveis):', error.message);
+    return;
+  }
+  const hit = ids.map((id) => travas.get(id)).find(Boolean);
+  if (!hit) return;
+  if (!hit.bloqueando) {
+    if (guardMode() === 'observe') {
+      console.info(`[custos-recebiveis] observe: abertura seria barrada (${contexto}) obras=${ids.filter((id) => travas.has(id)).join(',')}`);
+    }
+    return;
+  }
+  const error = new Error(mensagemSolicitacaoNova(hit));
+  error.status = 403;
+  error.code = 'OBRA_TRAVADA_SOLICITACAO_NOVA';
+  error.obra_travada = hit;
+  throw error;
+}
+
 module.exports = {
   CACHE_TTL_MS,
+  assertObrasSemTrava,
   ROTAS_SOLICITACAO_NOVA,
   calcularObrasTravadas,
   calcularTravaDasObras,

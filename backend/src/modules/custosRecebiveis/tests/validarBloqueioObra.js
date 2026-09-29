@@ -174,7 +174,16 @@ async function validateRequestWorks() {
   assert.strictEqual(ehAberturaDeSolicitacao(post('/SOLICITACOES')), true);
   assert.strictEqual(ehAberturaDeSolicitacao(post('/rh/transferencias')), true);
   assert.strictEqual(ehAberturaDeSolicitacao(post('/compras/cotacoes/avulsa')), true);
-  assert.strictEqual(ehAberturaDeSolicitacao(post('/rh/jornada')), false);
+  // Revisto em 29/09: jornada, tickets e aditivo tambem sao barrados.
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/rh/jornada')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/rh/jornada/individual')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/contratos/15/aditivos')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/contratos/fluxo-novo/15/aditivos')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/contratos/15/aditivos/3/aprovar')), false);
+  assert.deepStrictEqual(
+    await obrasDaAbertura({ path: '/contratos/fluxo-novo/15/aditivos', body: {} }, { Contrato: { findByPk: async (id) => (id === 15 ? { obra_id: 4 } : null) } }),
+    [4]
+  );
   assert.deepStrictEqual(await obrasDaAbertura({ body: { dados: { obra_id: 8 } } }), [8]);
   assert.deepStrictEqual(
     await obrasDaAbertura({ body: { colaborador_id: 3 } }, { RhColaborador: { findByPk: async () => ({ obra_id: 6 }) } }),
@@ -250,7 +259,23 @@ async function validateMiddleware() {
   }
 }
 
+// Rotas multipart (tickets, importacao de jornada) usam assertObrasSemTrava.
+async function validateAssertHelper() {
+  const { assertObrasSemTrava } = service;
+  const locked = { obra_id: 1, obra: { id: 1, codigo: 'OB-1', nome: 'Obra atrasada' }, pendencias: [{ tipo: 'PLANEJAMENTO', competencia: '2026-09' }] };
+  await assertObrasSemTrava([2], 't', { travaDasObras: async () => new Map() });
+  await assert.rejects(
+    () => assertObrasSemTrava([2, 1], 't', { travaDasObras: async () => new Map([[1, { ...locked, bloqueando: true }]]) }),
+    (e) => e.status === 403 && e.code === 'OBRA_TRAVADA_SOLICITACAO_NOVA' && /setembro de 2026/.test(e.message)
+  );
+  // Liberada/observe: nao barra. Falha no calculo: fail-open.
+  await assertObrasSemTrava([1], 't', { travaDasObras: async () => new Map([[1, { ...locked, bloqueando: false }]]) });
+  await assertObrasSemTrava([1], 't', { travaDasObras: async () => { throw new Error('x'); } });
+  await assertObrasSemTrava([], 't');
+}
+
 async function run() {
+  await validateAssertHelper();
   await validateLockedWorks();
   await validateObraLevel();
   await validateRequestWorks();

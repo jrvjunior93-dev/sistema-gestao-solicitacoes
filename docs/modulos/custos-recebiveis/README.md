@@ -614,8 +614,12 @@ Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
   caixa no caminho, como o Express). Obra lida de `obra_id`, `dados.obra_id`,
   `obra_origem_id`/`obra_destino_id`, `distribuicao_centro_custo.itens` e do
   colaborador (RH). Distribuicao "todas as obras" e custo do centro de custo e
-  nao trava. Ficam fora: jornada e tickets de RH e aditivo de contrato
-  existente (continuidade/folha). Em `observe`, a abertura que seria barrada
+  nao trava. Revisto em 29/09 pelo proprietario: jornada (`/rh/jornada`,
+  `/rh/jornada/individual`, e a importacao, checada no controller), tickets
+  de RH (`/rh/tickets`, obra dos colaboradores, checada no controller por ser
+  multipart) e aditivo de contrato (`/contratos/:id/aditivos` e
+  `/contratos/fluxo-novo/:id/aditivos`, obra do contrato) tambem sao barrados
+  — a trava serve para pressionar a regularizacao. Em `observe`, a abertura que seria barrada
   vai para o log (`observe: abertura seria barrada`).
 - `GET /obras/minhas?modo=CRIACAO` mantem a obra e acrescenta
   `bloqueio_solicitacao_nova.motivo`; Nova Solicitacao e Nova Solicitacao de
