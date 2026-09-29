@@ -34,6 +34,7 @@ import { contextoValorTotalObras, valorTotalObra } from './FinanceiroResultadoOb
 import CardObraPainel from './painelGestor/CardObraPainel';
 import ConsolidadoPeriodo from './painelGestor/ConsolidadoPeriodo';
 import ContaSaldoCard, { formatarDataHora } from './painelGestor/ContaSaldoCard';
+import FiltrosRecolhiveis from './painelGestor/FiltrosRecolhiveis';
 import { ControleOrdenacao, GradeOrdenavel, useOrdemCards } from './painelGestor/OrdenacaoCards';
 import { ModalPinPainel, useOlhoPainel } from './painelGestor/OlhoPainel';
 import { ORDEM_CUSTOS_RECEBIVEIS, ORDEM_RESULTADO, ORDEM_SALDOS } from './painelGestor/criterios';
@@ -91,6 +92,19 @@ function monthsBetween(start, end) {
     if (month > 12) { month = 1; year += 1; }
   }
   return values;
+}
+
+const ROTULO_CLASSIFICACAO = { '': 'Públicas e privadas', PUBLICA: 'Públicas', PRIVADA: 'Privadas' };
+
+function nomeDaObra(obras, id) {
+  if (!id) return 'todas';
+  const obra = obras.find((item) => String(item.id) === String(id));
+  return obra ? [obra.codigo, obra.nome].filter(Boolean).join(' · ') : 'selecionada';
+}
+
+function formatMonth(value) {
+  const [year, month] = String(value || '').split('-');
+  return year && month ? `${month}/${year}` : '—';
 }
 
 function formatDate(value) {
@@ -165,7 +179,7 @@ function SaldoExecutivoPrincipal({ snapshot, loading, onOpenBalances, oculto }) 
   );
 }
 
-function ResultadoObrasTab({ avisar, oculto, sinalRecarga }) {
+function ResultadoObrasTab({ avisar, oculto, sinalRecarga, modoTv }) {
   const [obras, setObras] = useState([]);
   const [dados, setDados] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -231,6 +245,10 @@ function ResultadoObrasTab({ avisar, oculto, sinalRecarga }) {
 
   return (
     <div className="pg-tab-stack">
+      <FiltrosRecolhiveis
+        modoTv={modoTv}
+        resumo={`Obra: ${nomeDaObra(obras, applied.obra_id)} · ${ROTULO_CLASSIFICACAO[applied.classificacao || '']} · ${formatDate(applied.data_inicial)} a ${formatDate(applied.data_final)}`}
+      >
       <BlocoConteudo titulo="Filtros do resultado">
         <form className="pg-filter-grid" onSubmit={apply}>
           <label>
@@ -256,6 +274,7 @@ function ResultadoObrasTab({ avisar, oculto, sinalRecarga }) {
           </div>
         </form>
       </BlocoConteudo>
+      </FiltrosRecolhiveis>
 
       <BlocoConteudo titulo="Consolidado do período" descricao={`${formatDate(applied.data_inicial)} a ${formatDate(applied.data_final)} · ${dados.length} obra(s)`} variante="primario" cor="var(--module-financeiro)">
         <ConsolidadoPeriodo resumo={resumo} contextoValorTotal={contextoValorTotal} oculto={oculto} carregando={loading} />
@@ -280,7 +299,7 @@ function ResultadoObrasTab({ avisar, oculto, sinalRecarga }) {
   );
 }
 
-function CustosRecebiveisTab({ avisar, oculto, sinalRecarga }) {
+function CustosRecebiveisTab({ avisar, oculto, sinalRecarga, modoTv }) {
   const [obras, setObras] = useState([]);
   const [obraId, setObraId] = useState('');
   const [classificacao, setClassificacao] = useState('');
@@ -307,6 +326,10 @@ function CustosRecebiveisTab({ avisar, oculto, sinalRecarga }) {
 
   return (
     <div className="pg-tab-stack pg-cr custos-recebiveis-layout-scope">
+      <FiltrosRecolhiveis
+        modoTv={modoTv}
+        resumo={`Obra: ${nomeDaObra(obras, obraId)} · ${ROTULO_CLASSIFICACAO[classificacao || '']} · ${periodStart === periodEnd ? formatMonth(periodEnd) : `${formatMonth(periodStart)} a ${formatMonth(periodEnd)}`}`}
+      >
       <CrExecutiveFilters
         obras={obras}
         obraId={obraId}
@@ -326,6 +349,7 @@ function CustosRecebiveisTab({ avisar, oculto, sinalRecarga }) {
         onPeriodChange={(start, end) => { setPeriodStart(start); setPeriodEnd(end); }}
         onClear={clearFilters}
       />
+      </FiltrosRecolhiveis>
       <CrDashboardView
         competencia={periodEnd}
         competencias={competencias}
@@ -604,8 +628,8 @@ export default function PainelGestor() {
             return <button type="button" key={tab.id} className={active === tab.id ? 'is-active' : ''} onClick={() => selectTab(tab.id)}><Icon />{tab.label}</button>;
           })}</nav>
           {!active ? <div className="app-empty-card">Seu acesso ao Painel do Gestor ainda não possui nenhuma visão liberada.</div> : null}
-          {active === 'resultado-obras' ? <ResultadoObrasTab key={`resultado-${chave}`} avisar={avisar} oculto={oculto} sinalRecarga={sinalRecarga} /> : null}
-          {active === 'custos-recebiveis' ? <CustosRecebiveisTab key={`custos-${chave}`} avisar={avisar} oculto={oculto} sinalRecarga={sinalRecarga} /> : null}
+          {active === 'resultado-obras' ? <ResultadoObrasTab key={`resultado-${chave}`} avisar={avisar} oculto={oculto} sinalRecarga={sinalRecarga} modoTv={modoTv} /> : null}
+          {active === 'custos-recebiveis' ? <CustosRecebiveisTab key={`custos-${chave}`} avisar={avisar} oculto={oculto} sinalRecarga={sinalRecarga} modoTv={modoTv} /> : null}
           {active === 'saldos' ? <SaldosTab key={`saldos-${chave}`} avisar={avisar} canInform={canInformPainelGestorSaldos(user)} onSaved={loadMainBalance} oculto={oculto} sinalRecarga={sinalRecarga} /> : null}
         </>
       )}

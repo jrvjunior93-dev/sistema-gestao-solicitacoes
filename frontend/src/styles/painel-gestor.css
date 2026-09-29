@@ -882,8 +882,12 @@ input.input.pg-pin-campo {
   text-overflow: clip;
 }
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-ops-ledger { grid-template-columns: minmax(0, 1fr); }
-.pg-modo-tv .cr-ops-dashboard--gestor .cr-portfolio-planning__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metrics { grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); }
+/* Cards por obra na TV: UM por linha e métricas numa grade FIXA de 3
+   colunas — pública (6 métricas) e privada (5) ficam com as mesmas
+   colunas e as mesmas linhas, sem o desalinhamento de dois cards de
+   alturas diferentes lado a lado. */
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-portfolio-planning__grid { grid-template-columns: minmax(0, 1fr); }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-dashboard-trends { grid-template-columns: minmax(0, 1fr); }
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-trend-row { grid-template-columns: auto minmax(0, 1fr); }
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-trend-row > strong { grid-column: 1 / -1; text-align: left; }
@@ -1012,4 +1016,56 @@ input.input.pg-pin-campo {
 
 @media (max-width: 700px) {
   .pg-modo-tv .pg-obra-card__linha { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ===================================================================
+   MODO TV — PRIMEIRA TELA (29/09/2026, prova em 1920×1080)
+   =================================================================== */
+
+/* CR dentro do painel: a barra de filtros rola junto com a página (no
+   módulo ela continua presa, `position: sticky`). Com e sem Modo TV. */
+.pg-cr .cr-context-bar { position: static; }
+
+/* Filtros recolhidos na TV: faixa de uma linha com o resumo aplicado. */
+.pg-filtros-recolhiveis { display: grid; gap: var(--esp-3); min-width: 0; }
+.pg-filtros-faixa {
+  display: flex;
+  align-items: center;
+  gap: var(--esp-3);
+  min-width: 0;
+  padding: var(--esp-2) var(--esp-3);
+  border: 1px solid var(--ui-border, var(--c-border));
+  border-radius: var(--raio-2);
+  background: var(--ui-surface, var(--c-surface));
+  color: var(--c-muted);
+  font-size: var(--fonte-detalhe);
+}
+.pg-filtros-faixa > svg { flex: 0 0 auto; width: 1.25em; height: 1.25em; }
+.pg-filtros-faixa__resumo { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-filtros-faixa .btn { flex: 0 0 auto; white-space: nowrap; }
+.pg-filtros-faixa .btn svg { width: 1em; height: 1em; }
+
+/* Saldo do topo na TV: menos altura. As ações vão para a direita, em
+   coluna, em vez de ocuparem uma linha própria; o número segue no D5. */
+.pg-modo-tv .pg-main-balance { gap: var(--esp-2); padding: var(--esp-2) var(--esp-3); }
+.pg-modo-tv .pg-main-balance > .pg-balance-summary { padding: var(--esp-1) var(--esp-2); }
+.pg-modo-tv .pg-balance-summary > div { gap: 0; }
+.pg-modo-tv .pg-balance-summary dl div { padding: var(--esp-1) var(--esp-4); }
+.pg-modo-tv .pg-main-balance__actions { padding-top: var(--esp-2); }
+@media (min-width: 1500px) {
+  .pg-modo-tv .pg-main-balance { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .pg-modo-tv .pg-main-balance__actions { flex-direction: column; align-items: stretch; padding: 0 0 0 var(--esp-3); border-top: 0; border-left: 1px solid var(--c-border); }
+  .pg-modo-tv .pg-main-balance__details { grid-column: 1 / -1; }
+  /* Consolidado: os 4 números de apoio numa linha só (cabem a partir de
+     1500px com o degrau D4), o que traz os cards para a primeira tela. */
+  .pg-modo-tv .pg-consolidado__secundarios { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .pg-modo-tv .pg-consolidado__principal { padding: var(--esp-2) var(--esp-4); }
+}
+
+@media (max-width: 1050px) {
+  .pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metrics { grid-template-columns: minmax(0, 1fr); }
+  .pg-filtros-faixa { flex-wrap: wrap; }
 }
