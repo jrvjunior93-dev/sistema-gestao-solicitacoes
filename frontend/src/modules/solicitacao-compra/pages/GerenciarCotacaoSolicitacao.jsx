@@ -2875,7 +2875,6 @@ export default function GerenciarCotacaoSolicitacao() {
       }
 
       const fechamentoParcial = saldoTotalDepois > 0.0001;
-      let justificativa = '';
       let justificativaExcedente = '';
       if (itensExcedentes.length) {
         const confirmadoExcedente = window.confirm([
@@ -2910,12 +2909,6 @@ export default function GerenciarCotacaoSolicitacao() {
           'Deseja gerar os pedidos selecionados e manter o restante aberto para uma proxima rodada?'
         ].join('\n'));
         if (!confirmado) return;
-
-        justificativa = String(window.prompt('Informe a justificativa obrigatoria do fechamento parcial:') || '').trim();
-        if (!justificativa) {
-          alert('A justificativa e obrigatoria para o fechamento parcial.');
-          return;
-        }
       } else if (!podeEncerrarCotacao) {
         alert('A selecao consome todo o saldo e exige permissao para encerrar definitivamente a cotacao.');
         return;
@@ -2932,7 +2925,7 @@ export default function GerenciarCotacaoSolicitacao() {
         {
           alocacoes,
           fechamento_parcial_confirmado: fechamentoParcial,
-          justificativa: fechamentoParcial ? justificativa : null,
+          justificativa: null,
           fechamento_excedente_confirmado: itensExcedentes.length > 0,
           justificativa_excedente: itensExcedentes.length ? justificativaExcedente : null
         },

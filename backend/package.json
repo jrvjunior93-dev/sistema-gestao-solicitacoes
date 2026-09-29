@@ -11,6 +11,7 @@
     "test:fiscal-dfe-processor": "node scripts/validarFiscalDfeProcessor.js",
     "test:compra-cotacao-envio": "node scripts/validarCompraCotacaoEnvio.js",
     "test:compra-remanejamento": "node scripts/validarCompraRemanejamento.js",
+    "repair:pedido-cancelado": "node scripts/regularizarPedidoCancelado.js",
     "test:compra-importacao-itens": "node scripts/validarImportacaoItensSolicitacaoCompra.js",
     "test:compra-direta-frete": "node scripts/validarCompraDiretaFrete.js",
     "test:compras-performance": "node scripts/validarComprasPerformance.js",

@@ -461,6 +461,9 @@ export default function PedidoCompraDetalhe() {
       ]);
       setPedido(data || null);
       setStatusOptions(Array.isArray(dataStatus) ? dataStatus : []);
+      if (String(data?.status || '').toUpperCase() === 'CANCELADO') {
+        setFiltrosItens({ situacao: new Set() });
+      }
 
       const proximasEdicoes = {};
       (data?.itens || []).forEach((item) => {
@@ -540,6 +543,7 @@ export default function PedidoCompraDetalhe() {
   const edicaoBloqueadaPorStatus = Boolean(statusAtual?.bloqueia_edicao || pedido?.edicao_bloqueada);
   const pedidoBloqueado = Boolean(edicaoBloqueadaPorStatus || !podeEditarItensPedido);
   const pedidoCancelado = String(pedido?.status || '').toUpperCase() === 'CANCELADO';
+  const remanejamentoBloqueado = Boolean(!podeRemanejarPedido || (edicaoBloqueadaPorStatus && !pedidoCancelado));
   const podeReabrirCotacao = Boolean(podeReabrirPedido && edicaoBloqueadaPorStatus && !pedidoCancelado);
   const permiteFreteEmbutido = !edicaoBloqueadaPorStatus;
   const statusSelectOptions = useMemo(() => {
@@ -1023,6 +1027,11 @@ export default function PedidoCompraDetalhe() {
       return;
     }
 
+    if (String(status).toUpperCase() === 'CANCELADO') {
+      await handleCancelarPedido();
+      return;
+    }
+
     try {
       setSavingStatus(true);
       const data = await atualizarStatusPedidoCompra(id, { status });
@@ -1262,7 +1271,9 @@ export default function PedidoCompraDetalhe() {
       return;
     }
 
-    const quantidadeMaxima = Number(itemEditando.quantidade_pedido || 0);
+    const quantidadeMaxima = Number(
+      itemEditando.quantidade_disponivel_remanejamento ?? itemEditando.quantidade_pedido ?? 0
+    );
     const candidatoDestino = (pedido.candidatos_remanejamento || []).find(
       (candidato) => Number(candidato.resposta_item_id) === Number(remanejoSelecionado)
     );
@@ -1345,8 +1356,13 @@ export default function PedidoCompraDetalhe() {
   );
   const quantidadeMaximaRemanejamento = itemEditando
     ? Math.min(
-        Number(itemEditando.quantidade_pedido || 0),
-        Number(candidatoRemanejamentoSelecionado?.saldo_disponivel_fornecedor ?? itemEditando.quantidade_pedido ?? 0)
+        Number(itemEditando.quantidade_disponivel_remanejamento ?? itemEditando.quantidade_pedido ?? 0),
+        Number(
+          candidatoRemanejamentoSelecionado?.saldo_disponivel_fornecedor
+          ?? itemEditando.quantidade_disponivel_remanejamento
+          ?? itemEditando.quantidade_pedido
+          ?? 0
+        )
       )
     : 0;
 
@@ -1964,8 +1980,9 @@ export default function PedidoCompraDetalhe() {
             <div className="overflow-y-auto px-4 py-3 sm:px-5 sm:py-4">
               {itemEditando.removido ? (
                 <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-[var(--c-muted)]">
-                  Este item foi removido do pedido. Ele permanece visivel para consulta, mas a trilha detalhada agora fica no
-                  painel administrativo de relatorios.
+                  {pedidoCancelado
+                    ? 'Este item pertence a um pedido cancelado. O histórico permanece preservado e o saldo liberado pode ser remanejado para outro fornecedor da mesma cotação.'
+                    : 'Este item foi removido do pedido. Ele permanece visível para consulta, mas a trilha detalhada agora fica no painel administrativo de relatórios.'}
                 </div>
               ) : null}
 
@@ -2116,13 +2133,15 @@ export default function PedidoCompraDetalhe() {
               </div>
             </div>
 
-            {podeRemanejarPedido && !itemEditando.removido ? (
+            {podeRemanejarPedido && (!itemEditando.removido || pedidoCancelado) ? (
               <div className="mt-4 rounded-xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h3 className="font-semibold">Remanejar quantidade para outro fornecedor</h3>
                     <p className="mt-0.5 text-xs text-[var(--c-muted)]">
-                      Use quando parte ou todo o item precisar voltar para a cotacao e seguir em outro pedido.
+                      {pedidoCancelado
+                        ? 'Selecione outro fornecedor respondido. O pedido cancelado continua preservado e um pedido de destino recebe a quantidade escolhida.'
+                        : 'Use quando parte ou todo o item precisar voltar para a cotação e seguir em outro pedido.'}
                     </p>
                   </div>
                   <span className="app-status-pill bg-blue-50 text-blue-700">
@@ -2134,7 +2153,7 @@ export default function PedidoCompraDetalhe() {
                     className="input h-11"
                     value={remanejoSelecionado}
                     onChange={(event) => setRemanejoSelecionado(event.target.value)}
-                    disabled={pedidoBloqueado || remanejandoItem || candidatosRemanejamentoItem.length === 0}
+                    disabled={remanejamentoBloqueado || remanejandoItem || candidatosRemanejamentoItem.length === 0}
                   >
                     <option value="">
                       {candidatosRemanejamentoItem.length ? 'Selecione a resposta de destino' : 'Sem fornecedor alternativo respondido'}
@@ -2153,13 +2172,13 @@ export default function PedidoCompraDetalhe() {
                     onChange={(event) => setRemanejoQuantidade(maskBrazilianQuantityInput(event.target.value))}
                     onBlur={(event) => setRemanejoQuantidade(normalizeBrazilianQuantityOnBlur(event.target.value))}
                     placeholder={formatBrazilianQuantity(quantidadeMaximaRemanejamento)}
-                    disabled={pedidoBloqueado || remanejandoItem}
+                    disabled={remanejamentoBloqueado || remanejandoItem}
                   />
                   <button
                     type="button"
                     className="btn btn-outline"
                     onClick={handleRemanejarItemAtual}
-                    disabled={pedidoBloqueado || remanejandoItem || !remanejoSelecionado}
+                    disabled={remanejamentoBloqueado || remanejandoItem || !remanejoSelecionado || quantidadeMaximaRemanejamento <= 0}
                   >
                     {remanejandoItem ? 'Remanejando...' : 'Remanejar'}
                   </button>

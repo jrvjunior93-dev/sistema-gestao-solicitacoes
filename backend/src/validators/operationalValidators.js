@@ -1112,10 +1112,11 @@ function validateCompraPedidoItemAddBody(body = {}) {
 }
 
 function validateCompraPedidoStatusBody(body = {}) {
-  ensureAllowedKeys(body, ['status'], 'Atualizacao de status do pedido');
+  ensureAllowedKeys(body, ['status', 'motivo'], 'Atualizacao de status do pedido');
 
   return {
-    status: parseOptionalText(body.status, 'Status do pedido', 40, { required: true })
+    status: parseOptionalText(body.status, 'Status do pedido', 40, { required: true }),
+    motivo: parseOptionalText(body.motivo, 'Motivo do cancelamento', 5000)
   };
 }
 
