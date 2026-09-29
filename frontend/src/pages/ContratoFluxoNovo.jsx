@@ -174,7 +174,8 @@ export default function ContratoFluxoNovo() {
 
   async function salvar() {
     // Obra travada em Custos e Recebiveis nao recebe contrato novo (29/09/2026);
-    // o servidor tambem recusa.
+    // o servidor tambem recusa. O botao ja fica desabilitado e o motivo aparece
+    // no erro do campo Obra; este aviso e so defesa para outro caminho de envio.
     if (obraTravadaMotivo) {
       avisar.erro(obraTravadaMotivo, 'Obra travada');
       return;
@@ -310,7 +311,7 @@ export default function ContratoFluxoNovo() {
         acaoPrincipal={{
           rotulo: salvando ? 'Criando...' : 'Criar contrato',
           onClick: salvar,
-          desabilitada: salvando
+          desabilitada: salvando || Boolean(obraTravadaMotivo)
         }}
       />
 

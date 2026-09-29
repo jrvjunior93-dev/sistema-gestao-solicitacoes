@@ -235,6 +235,9 @@ export default function CrFilaDecisoes({ versao = 0, onOpenMonth, onDecided }) {
           storageKey="tabela:custos-recebiveis-fila-decisoes"
           rotuloRolagem="Decisões pendentes"
           vazio="Nenhuma decisão pendente."
+          // A contagem já está no título do bloco e 4 colunas não pedem painel.
+          rodapeContagem={false}
+          colunasConfiguraveis={false}
           acoesLinha={(item) => {
             const chave = `${item.tipo}-${item.id}`;
             return (
@@ -250,9 +253,10 @@ export default function CrFilaDecisoes({ versao = 0, onOpenMonth, onDecided }) {
                 >
                   Negar
                 </button>
+                {/* Contorno na linha: o primário fica só dentro da confirmação. */}
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="btn btn-outline"
                   disabled={Boolean(decidindo)}
                   onClick={() => decidir(item, 'APROVADA')}
                 >

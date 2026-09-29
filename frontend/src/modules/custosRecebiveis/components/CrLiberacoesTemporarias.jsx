@@ -25,6 +25,15 @@ function minBypassDate() {
 
 const FORM_VAZIO = { eligible_key: '', motivo: '', expira_em: '' };
 
+// A liberação vale para a OBRA (todos passam a poder abrir solicitação nela).
+// O backend ainda recebe o par user_id + obra_id; o responsável aparece só como
+// informação secundária.
+function rotuloObraLiberada(item) {
+  const obra = rotuloObra(item.obra, item.obra_id);
+  const responsavel = item.usuario?.nome;
+  return responsavel ? `${obra} (resp.: ${responsavel})` : obra;
+}
+
 /*
   Liberações temporárias (bypass) da obra travada: conceder e revogar, com
   prazo e auditoria. Era a coluna lateral de Obrigações; agora é uma faixa
@@ -60,9 +69,10 @@ export default function CrLiberacoesTemporarias() {
     if (saving) return;
     const [userId, obraId] = form.eligible_key.split(':').map(Number);
     if (!userId || !obraId) {
-      setAviso({ id: 'bypass', tipo: 'error', mensagem: 'Selecione o usuário e a obra.' });
+      setAviso({ id: 'bypass', tipo: 'error', mensagem: 'Selecione a obra.' });
       return;
     }
+    const expiraEm = new Date(form.expira_em);
     try {
       setSaving(true);
       setAviso(null);
@@ -70,9 +80,13 @@ export default function CrLiberacoesTemporarias() {
         user_id: userId,
         obra_id: obraId,
         motivo: form.motivo,
-        expira_em: new Date(form.expira_em).toISOString()
+        expira_em: expiraEm.toISOString()
       });
-      setAviso({ id: 'bypass', tipo: 'success', mensagem: 'Liberação concedida. A pendência continua visível.' });
+      setAviso({
+        id: 'bypass',
+        tipo: 'success',
+        mensagem: `Liberação concedida. A obra fica liberada para todos até ${formatarDataHora(expiraEm)}. A pendência continua visível.`
+      });
       setForm(FORM_VAZIO);
       setShowForm(false);
       await load();
@@ -88,7 +102,7 @@ export default function CrLiberacoesTemporarias() {
     const alvo = item;
     const { ok } = await confirmar({
       titulo: 'Revogar liberação',
-      mensagem: `Revogar a liberação de ${alvo.usuario?.nome || 'usuário'} em ${rotuloObra(alvo.obra, alvo.obra_id)}? A obra volta a ficar travada se a pendência continuar.`,
+      mensagem: `Revogar a liberação da obra ${rotuloObra(alvo.obra, alvo.obra_id)}? Ela volta a não receber solicitação nova.`,
       rotuloConfirmar: 'Revogar',
       destrutiva: true
     });
@@ -123,7 +137,7 @@ export default function CrLiberacoesTemporarias() {
       {showForm ? (
         <form className="cr-bypass-form" onSubmit={handleGrant}>
           <label className="cr-field">
-            <span>Usuário e obra</span>
+            <span>Obra</span>
             <select
               required
               value={form.eligible_key}
@@ -132,7 +146,7 @@ export default function CrLiberacoesTemporarias() {
               <option value="">Selecione</option>
               {(data?.usuarios_elegiveis || []).map((item) => (
                 <option key={`${item.user_id}:${item.obra_id}`} value={`${item.user_id}:${item.obra_id}`}>
-                  {item.usuario?.nome} · {rotuloObra(item.obra, item.obra_id)}
+                  {rotuloObraLiberada(item)}
                 </option>
               ))}
             </select>
@@ -166,14 +180,14 @@ export default function CrLiberacoesTemporarias() {
       <TabelaPadrao
         colunas={[
           {
-            id: 'usuario',
-            titulo: 'Usuário',
+            id: 'obra',
+            titulo: 'Obra',
             tipo: 'identidade',
             noCard: 'titulo',
             render: (item) => (
               <CelulaDupla
-                principal={item.usuario?.nome || `Usuário ${item.user_id}`}
-                sub={item.obra ? rotuloObra(item.obra) : 'Todas as obras'}
+                principal={item.obra || item.obra_id ? rotuloObra(item.obra, item.obra_id) : 'Todas as obras'}
+                sub={item.usuario?.nome ? `Resp.: ${item.usuario.nome}` : ''}
               />
             )
           },

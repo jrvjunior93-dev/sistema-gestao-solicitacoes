@@ -101,6 +101,13 @@ export default function CrPlanejamentoMensalView({
     && existingMonths.has(prazos.medicao.competencia)
     ? prazos.medicao.competencia
     : null;
+  const showRegisterPlanning = Boolean(pendingPlanning) && canCreate && (
+    existingMonths.has(pendingPlanning) || availableNewMonths.includes(pendingPlanning)
+  );
+  // Um primário só na tela: com planejamento pendente e urgente (obra travada
+  // ou prazo vencido) o destaque é "Registrar planejamento"; senão, "Novo mês".
+  const registerPlanningPrimary = showRegisterPlanning
+    && (obraTravada || prazos?.planejamento?.situacao === 'VENCIDO');
   // Dilatação: medição do mês ainda não registrada (em prazo ou vencida).
   const measurementDue = ['ABERTO', 'VENCIDO'].includes(prazos?.medicao?.situacao)
     ? prazos.medicao
@@ -222,7 +229,7 @@ export default function CrPlanejamentoMensalView({
         {canCreate && nextNewMonth ? (
           <button
             type="button"
-            className="btn btn-primary"
+            className={registerPlanningPrimary ? 'btn btn-outline' : 'btn btn-primary'}
             disabled={creating}
             onClick={() => createMonth()}
           >
@@ -241,12 +248,10 @@ export default function CrPlanejamentoMensalView({
             </span>
           ))}
           <div className="cr-deadline-strip__actions">
-            {pendingPlanning && canCreate && (
-              existingMonths.has(pendingPlanning) || availableNewMonths.includes(pendingPlanning)
-            ) ? (
+            {showRegisterPlanning ? (
               <button
                 type="button"
-                className="btn btn-primary"
+                className={registerPlanningPrimary ? 'btn btn-primary' : 'btn btn-outline'}
                 disabled={creating}
                 onClick={registerPendingPlanning}
               >

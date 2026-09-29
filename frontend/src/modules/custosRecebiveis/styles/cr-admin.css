@@ -5,6 +5,17 @@
   min-width: 0;
 }
 
+/* O shell da TabelaPadrao (borda, raio, sombra, padding de card) vira
+   superficie plana dentro do bloco: sem moldura dupla. */
+.cr-page .cr-fila-decisoes .app-table-shell.app-tabela {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
 .cr-page .cr-fila-indisponivel {
   display: flex;
   flex-wrap: wrap;
@@ -56,6 +67,19 @@
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Prazos por obra: obra e motivo do prazo quebram linha em vez de cortar. */
+.cr-page .cr-prazo-motivo {
+  min-width: 0;
+}
+
+.cr-page .cr-prazo-motivo .app-celula-dupla-principal,
+.cr-page .cr-prazo-motivo .app-celula-dupla-sub {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* Liberacoes temporarias (faixa de Obrigacoes e prazos). */

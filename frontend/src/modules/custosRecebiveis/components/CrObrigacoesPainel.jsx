@@ -204,10 +204,12 @@ function PrazosPorObra({ obras, carregando, erro, onOpenObra }) {
             tipo: 'identidade',
             noCard: 'titulo',
             render: ({ obra }) => (
-              <CelulaDupla
-                principal={rotuloObra(obra)}
-                sub={String(obra.classificacao || '').toUpperCase() === 'PUBLICA' ? 'Obra pública' : 'Obra privada'}
-              />
+              <div className="cr-prazo-motivo">
+                <CelulaDupla
+                  principal={rotuloObra(obra)}
+                  sub={String(obra.classificacao || '').toUpperCase() === 'PUBLICA' ? 'Obra pública' : 'Obra privada'}
+                />
+              </div>
             )
           },
           {
@@ -216,13 +218,21 @@ function PrazosPorObra({ obras, carregando, erro, onOpenObra }) {
             tipo: 'status',
             render: ({ situacao }) => situacaoPill(situacao.status, situacao.label)
           },
+          // O motivo do prazo é o conteúdo desta tabela: a sobra de largura vai
+          // para Planejamento (flex: 2), não para Obra, e Obra, Planejamento e
+          // Medição quebram linha em vez de cortar com reticências.
           {
             id: 'planejamento',
             titulo: 'Planejamento',
             tipo: 'texto',
+            flex: 2,
             render: ({ obra }) => {
               const aviso = avisoPlanejamento(obra.prazos);
-              return aviso ? <CelulaDupla principal={aviso.texto} sub={aviso.rotulo} /> : '—';
+              return aviso ? (
+                <div className="cr-prazo-motivo">
+                  <CelulaDupla principal={aviso.texto} sub={aviso.rotulo} />
+                </div>
+              ) : '—';
             }
           },
           {
@@ -232,7 +242,11 @@ function PrazosPorObra({ obras, carregando, erro, onOpenObra }) {
             render: ({ obra }) => {
               if (String(obra.classificacao || '').toUpperCase() !== 'PUBLICA') return '—';
               const aviso = avisoMedicao(obra.prazos);
-              return aviso ? <CelulaDupla principal={aviso.texto} sub={aviso.rotulo} /> : '—';
+              return aviso ? (
+                <div className="cr-prazo-motivo">
+                  <CelulaDupla principal={aviso.texto} sub={aviso.rotulo} />
+                </div>
+              ) : '—';
             }
           }
         ]}

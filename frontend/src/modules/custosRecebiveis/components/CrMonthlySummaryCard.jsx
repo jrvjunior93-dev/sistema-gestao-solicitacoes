@@ -66,12 +66,14 @@ export default function CrMonthlySummaryCard({
   const deltaTone = !hasPlanning || costDelta === 0
     ? 'neutral'
     : (costDelta > 0 ? 'negative' : (presentation === 'gestor' ? 'positive' : 'context'));
-  const approvedValue = isPublic && semMedicao
-    ? 'Sem medição'
-    : (isPublic && !medicaoAprovadaInformada
-      ? 'Aguardando'
-      : currency.format(isPublic ? recognized : received));
-  const approvedTone = isPublic && !semMedicao && !medicaoAprovadaInformada ? 'warning' : 'neutral';
+  // "Aguardando" (laranja) só quando havia medição prevista e a aprovada
+  // ainda não foi registrada. Sem previsão não há o que aguardar: "—" neutro.
+  const hasForecast = Number(recebivelPrevisto || 0) > 0;
+  const awaitingApproval = isPublic && !semMedicao && !medicaoAprovadaInformada;
+  let approvedValue = currency.format(isPublic ? recognized : received);
+  if (isPublic && semMedicao) approvedValue = 'Sem medição';
+  else if (awaitingApproval) approvedValue = hasForecast ? 'Aguardando' : '—';
+  const approvedTone = awaitingApproval && hasForecast ? 'warning' : 'neutral';
   const showBalance = !isPublic || medicaoAprovadaInformada;
 
   return (
