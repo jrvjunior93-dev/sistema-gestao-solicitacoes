@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { HiOutlineCheckCircle, HiOutlineWallet } from 'react-icons/hi2';
+import { HiOutlineCheckCircle, HiOutlineEyeSlash, HiOutlineWallet } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
 import { canCorrectPainelGestorSaldos } from '../utils/acessoProduto';
 import { Avisos, BlocoConteudo, Pagina, PageHeader, useAvisos } from '../components/padrao';
@@ -93,9 +93,18 @@ export default function PainelGestorSaldosRegistro() {
 
   return (
     <Pagina>
-      <PageHeader titulo="Informar saldos disponíveis" contagem={`${filled.length} de ${contasManuais.length} conta(s) manual(is)`} descricao="Contas com controle diário usam o saldo do sistema; as demais recebem a posição informada nesta tela." />
+      {/* Olho fechado: a contagem "N de M" sai (os campos vêm vazios de
+          propósito e ela diria "0 de 2" com as contas já informadas), e o
+          aviso é de uma linha, com o caminho para abrir os valores. */}
+      <PageHeader titulo="Informar saldos disponíveis" contagem={valoresOcultos ? undefined : `${filled.length} de ${contasManuais.length} conta(s) manual(is)`} descricao="Contas com controle diário usam o saldo do sistema; as demais recebem a posição informada nesta tela." />
       <Avisos avisos={avisos} aoFechar={fechar} />
-      {valoresOcultos ? <div className="app-empty-card" role="status" data-alert="true">Valores ocultos no Painel do Gestor. Para informar saldos, use "Mostrar valores" no painel.</div> : null}
+      {valoresOcultos ? (
+        <p className="pg-aviso-olho" role="status">
+          <HiOutlineEyeSlash aria-hidden="true" />
+          <span>Valores ocultos: mostre os valores no painel para informar saldos.</span>
+          <Link to="/painel-gestor?aba=saldos">Abrir o Painel do Gestor</Link>
+        </p>
+      ) : null}
       <BlocoConteudo titulo="Data de referência" descricao="A consulta e o consolidado usam somente os saldos registrados nesta data.">
         <div className="pg-register-date"><label><span>Data</span><DateInputBR value={data} max={localDate()} onChange={(event) => setData(event.target.value)} /></label>{isPast ? <p data-alert="true">Correção retroativa: justificativa obrigatória e histórico preservado.</p> : <p>Os valores podem ser atualizados durante o dia e cada alteração ficará registrada.</p>}</div>
       </BlocoConteudo>

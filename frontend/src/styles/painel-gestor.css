@@ -396,7 +396,7 @@
   font-weight: 800;
   line-height: var(--lh-destaque);
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .pg-consolidado__secundarios {
@@ -413,7 +413,7 @@
   font-weight: 800;
   line-height: var(--lh-titulo);
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .pg-painel [data-tom="positivo"] > strong,
@@ -621,11 +621,14 @@
 .pg-obra-card__identidade > span { color: var(--c-muted); font-size: var(--fonte-detalhe); }
 .pg-obra-card__identidade > h3 {
   margin: 0;
+  overflow: hidden;
   color: var(--c-text);
   font-size: var(--fonte-corpo);
   font-weight: 800;
   line-height: var(--lh-corpo);
+  text-overflow: ellipsis;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .pg-obra-card__classificacao {
@@ -660,6 +663,7 @@
   font-weight: 800;
   line-height: var(--lh-titulo);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .pg-obra-card__linha {
@@ -678,7 +682,7 @@
   font-weight: 800;
   line-height: var(--lh-corpo);
   font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 .pg-obra-metrica[data-tom="positivo"] > .pg-obra-metrica__valor,
 .pg-obra-metrica[data-tom="recebido"] > .pg-obra-metrica__valor { color: var(--c-success); }
@@ -686,7 +690,14 @@
 .pg-obra-metrica[data-tom="executado"] > .pg-obra-metrica__valor { color: var(--c-danger); }
 .pg-obra-metrica[data-tom="pendente"] > .pg-obra-metrica__valor { color: var(--c-warning); }
 .pg-obra-metrica[data-tom="vendido"] > .pg-obra-metrica__valor { color: var(--c-primary); }
-.pg-obra-metrica__alerta { color: var(--c-warning); font-size: var(--fonte-detalhe); }
+/* Alerta "VGV não calculado": ícone no rótulo, texto inteiro no tooltip. */
+.pg-obra-metrica__alerta {
+  width: 1em;
+  height: 1em;
+  margin-left: var(--esp-1);
+  color: var(--c-warning);
+  vertical-align: -0.125em;
+}
 
 .pg-obra-card__rodape {
   display: grid;
@@ -711,8 +722,15 @@
   border-radius: var(--raio-3);
   background: var(--ui-border, var(--c-border));
 }
-.pg-obra-progresso__trilha > span { display: block; height: 100%; border-radius: inherit; background: var(--c-danger); }
-.pg-obra-progresso + .pg-obra-progresso .pg-obra-progresso__trilha > span { background: var(--c-success); }
+/* Cor da barra = semântica do indicador (não a posição dela no card):
+   recebido é progresso bom; executado sobre orçamento é normal até 90%,
+   atenção de 90% a 100% e ruim acima de 100%. Sem base/oculto: vazia. */
+.pg-obra-progresso__trilha > span { display: block; height: 100%; border-radius: inherit; background: var(--c-primary); }
+.pg-obra-progresso[data-estado="bom"] .pg-obra-progresso__trilha > span { background: var(--c-success); }
+.pg-obra-progresso[data-estado="atencao"] .pg-obra-progresso__trilha > span { background: var(--c-warning); }
+.pg-obra-progresso[data-estado="ruim"] .pg-obra-progresso__trilha > span { background: var(--c-danger); }
+.pg-obra-progresso[data-estado="ruim"] .pg-obra-progresso__pct { color: var(--c-danger); font-weight: 700; }
+.pg-obra-progresso__pct { white-space: nowrap; }
 
 /* ---- Olho: aviso no "Informar saldos" e modal do PIN ----------------- */
 .pg-balance-entry[data-indisponivel="true"] .pg-balance-entry__toggle { cursor: default; }
@@ -726,10 +744,21 @@
 }
 .pg-balance-entry__aviso svg { width: 1rem; height: 1rem; }
 
-.pg-pin input {
+/* Campos de 4 dígitos (modal e configuração): largura de 4 dígitos, não
+   a linha inteira. */
+.app-confirmacao.pg-pin .app-confirmacao-campo input {
+  justify-self: start;
+  width: 9rem;
+  max-width: 100%;
   letter-spacing: .6em;
   text-align: center;
   font-size: var(--fonte-bloco);
+  font-variant-numeric: tabular-nums;
+}
+input.input.pg-pin-campo {
+  width: 9rem;
+  max-width: 100%;
+  letter-spacing: .4em;
   font-variant-numeric: tabular-nums;
 }
 .app-confirmacao .pg-pin__erro { margin: 0; color: var(--c-danger); font-size: var(--fonte-corpo); font-weight: 700; }
@@ -775,45 +804,45 @@
   --fonte-destaque: 4.5rem;
 }
 
+/* Cabeçalho da página e botões: degrau INTERMEDIÁRIO — crescem com o
+   Modo TV, mas menos que os números (pedido do proprietário). */
 .pg-modo-tv .app-page-header {
-  --fonte-detalhe: 0.75rem;
-  --fonte-corpo: 0.875rem;
-  --fonte-bloco: 1.125rem;
-  --fonte-pagina: 1.375rem;
-  --fonte-destaque: 1.875rem;
+  --fonte-detalhe: 1rem;
+  --fonte-corpo: 1.125rem;
+  --fonte-bloco: 1.375rem;
+  --fonte-pagina: 1.75rem;
+  --fonte-destaque: 2.25rem;
 }
+.pg-modo-tv .btn { --fonte-corpo: 1.125rem; }
 
 .pg-modo-tv .pg-tabs button svg,
 .pg-modo-tv .pg-main-balance__actions svg { width: 1em; height: 1em; }
 
 /* Saldo do topo */
-.pg-modo-tv .pg-balance-summary { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+.pg-modo-tv .pg-balance-summary { grid-template-columns: minmax(0, 1fr) auto; }
 .pg-modo-tv .pg-balance-summary dd { font-size: var(--fonte-bloco); }
+.pg-modo-tv .pg-balance-summary dt,
+.pg-modo-tv .pg-balance-summary dd { white-space: nowrap; }
+@media (min-width: 701px) {
+  .pg-modo-tv .pg-balance-summary dl { grid-template-columns: repeat(3, auto); }
+}
 
-/* Consolidado: principal no D5, apoio no D4 em 2×2 */
-.pg-modo-tv .pg-consolidado { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); }
-.pg-modo-tv .pg-consolidado__secundarios { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Consolidado: principal no D5 em linha própria, apoio no D4 em 2×2
+   abaixo — número de 72px não cabe numa coluna ao lado sem quebrar. */
+.pg-modo-tv .pg-consolidado { grid-template-columns: minmax(0, 1fr); }
+.pg-modo-tv .pg-consolidado__secundarios { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; }
 .pg-modo-tv .pg-consolidado__item > strong { font-size: var(--fonte-pagina); }
 
-/* Cards de obra: um por linha, destaque à esquerda e as duas linhas à
-   direita — com número de 40px, três colunas só cabem na largura inteira. */
+/* Cards de obra: um por linha, as MESMAS regiões do modo normal, uma
+   abaixo da outra (cabeçalho, número principal, duas linhas de métricas,
+   rodapé com as duas barras lado a lado). O número principal tem a largura
+   inteira do card: nunca quebra. */
 .pg-modo-tv .pg-obra-grid { grid-template-columns: minmax(0, 1fr); }
-.pg-modo-tv .pg-obra-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr);
-  grid-template-areas:
-    "cab cab"
-    "destaque linha1"
-    "destaque linha2"
-    "rodape rodape";
-}
-.pg-modo-tv .pg-obra-card__cabecalho { grid-area: cab; }
-.pg-modo-tv .pg-obra-card__destaque { grid-area: destaque; align-content: center; padding: var(--esp-4); border-right: 1px solid var(--ui-border, var(--c-border)); }
-.pg-modo-tv .pg-obra-card__linha:nth-of-type(1) { grid-area: linha1; }
-.pg-modo-tv .pg-obra-card__linha { padding: var(--esp-4) var(--esp-6); }
-.pg-modo-tv .pg-obra-card__linha + .pg-obra-card__linha { grid-area: linha2; padding-top: 0; }
-.pg-modo-tv .pg-obra-card__rodape { grid-area: rodape; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--esp-6); }
-.pg-modo-tv .pg-obra-card__destaque > strong { font-size: var(--fonte-destaque); line-height: var(--lh-destaque); overflow-wrap: anywhere; }
+.pg-modo-tv .pg-obra-card__destaque { padding: var(--esp-4) var(--esp-6) 0; }
+.pg-modo-tv .pg-obra-card__linha { padding: var(--esp-4) var(--esp-6); gap: var(--esp-4) var(--esp-6); }
+.pg-modo-tv .pg-obra-card__linha + .pg-obra-card__linha { padding-top: 0; }
+.pg-modo-tv .pg-obra-card__rodape { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--esp-6); padding: var(--esp-4) var(--esp-6); }
+.pg-modo-tv .pg-obra-card__destaque > strong { font-size: var(--fonte-destaque); line-height: var(--lh-destaque); }
 .pg-modo-tv .pg-obra-metrica__valor { font-size: var(--fonte-pagina); line-height: var(--lh-destaque); }
 .pg-modo-tv .pg-obra-card__identidade > h3 { font-size: var(--fonte-bloco); }
 .pg-modo-tv .pg-obra-progresso__trilha { height: var(--esp-2); }
@@ -827,8 +856,9 @@
 /* Custos e Recebíveis dentro do painel (não está sob .cr-page, então o
    cr-admin.css não vale aqui). Números: principal (carteira e Desvio do
    card de mês) no D5; demais valores no D4; rótulos no D1 da TV.
-   Robustez (proposta testada pelo FRONT-CR): número grande QUEBRA linha em
-   vez de vazar/cortar; grades com coluna mínima maior. */
+   Valor monetário NUNCA quebra linha (revisão 29/09: "R$ 33.333,2 / 4" e o
+   "-" sozinho acima do número eram lidos errado de longe); as grades têm
+   coluna mínima maior para o número caber. */
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-valor--principal { font-size: var(--fonte-destaque); line-height: var(--lh-destaque); }
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metric dd.cr-valor,
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metric dd,
@@ -846,16 +876,14 @@
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__header h3 { font-size: var(--fonte-bloco); }
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-valor {
   min-width: 0;
-  max-width: 100%;
   overflow: visible;
-  overflow-wrap: anywhere;
-  white-space: normal;
+  overflow-wrap: normal;
+  white-space: nowrap;
   text-overflow: clip;
 }
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-ops-ledger { grid-template-columns: minmax(0, 1fr); }
-.pg-modo-tv .cr-ops-dashboard--gestor .cr-ops-metrics { grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); }
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-portfolio-planning__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metrics { grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metrics { grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); }
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-dashboard-trends { grid-template-columns: minmax(0, 1fr); }
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-trend-row { grid-template-columns: auto minmax(0, 1fr); }
 .pg-modo-tv .cr-ops-dashboard--gestor .cr-trend-row > strong { grid-column: 1 / -1; text-align: left; }
@@ -870,8 +898,7 @@
 .pg-modo-tv .pg-cr .cr-valor[data-oculto="true"] { white-space: nowrap; }
 
 @media (max-width: 1050px) {
-  .pg-modo-tv .pg-obra-card { display: flex; }
-  .pg-modo-tv .pg-obra-card__destaque { border-right: 0; }
+  .pg-modo-tv .pg-obra-card__linha { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pg-modo-tv .pg-consolidado,
   .pg-modo-tv .pg-balance-summary,
   .pg-modo-tv .pg-account-grid,
@@ -884,3 +911,105 @@
 .pg-account-card__heading strong { font-size: var(--fonte-corpo); }
 .pg-current-accounts > header > .pg-current-accounts__acoes { display: flex; }
 .pg-current-accounts > header .pg-ordem span { font-size: var(--fonte-detalhe); }
+
+/* ===================================================================
+   REVISÃO DO PAINEL (29/09/2026) — achados do revisor
+   =================================================================== */
+
+/* Olho fechado: o marcador tem a cor do texto (nenhum tom semântico) e o
+   mesmo espaçamento do marcador do CR; o tamanho é o do valor que ele
+   substitui (herda o degrau do lugar). */
+.pg-painel[data-valores-ocultos="true"] :is(
+  .pg-obra-card__destaque > strong,
+  .pg-obra-metrica__valor,
+  .pg-consolidado__principal > strong,
+  .pg-consolidado__item > strong,
+  .pg-balance-summary > div > strong,
+  .pg-account-card > p
+) {
+  color: var(--c-text);
+  letter-spacing: .08em;
+}
+
+/* Registro de saldos: o form ocupa a largura da página, alinhado com os
+   blocos de cima (a regra do sistema limita todo form a 940px e centraliza;
+   aqui o form é uma lista de contas, não um campo de digitação solto). */
+.solicitacoes-page:not(.solicitacao-nova-page) form.pg-register-form {
+  width: 100%;
+  max-width: 100%;
+  margin-inline: 0;
+}
+
+/* Aviso de olho fechado no registro: uma linha, cor de alerta legível. */
+.pg-aviso-olho {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--esp-1) var(--esp-3);
+  margin: 0;
+  padding: var(--esp-2) var(--esp-3);
+  border: 1px solid color-mix(in srgb, var(--sem-warning) 35%, var(--ui-border));
+  border-radius: var(--raio-2);
+  background: var(--sem-warning-bg);
+  color: var(--sem-warning);
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+}
+.pg-aviso-olho svg { flex: 0 0 auto; width: 1rem; height: 1rem; }
+.pg-aviso-olho a { color: inherit; font-weight: 800; text-decoration: underline; }
+
+/* Carteira consolidada (CR dentro do painel): o Desvio — o mesmo número
+   principal do card de mês — vira a linha de destaque do grupo Custos; as
+   demais métricas fluem em linhas que se completam (flex com crescimento),
+   então não sobram células cinzas vazias em nenhuma largura. */
+.pg-cr .cr-ops-metrics { display: flex; flex-wrap: wrap; }
+.pg-cr .cr-ops-metric { flex: 1 1 9rem; }
+.pg-cr .cr-ops-metric[data-metric="resultado"] { order: -1; flex-basis: 100%; }
+.pg-cr .cr-ops-metric[data-metric="resultado"] > strong {
+  font-size: var(--fonte-destaque);
+  line-height: var(--lh-destaque);
+  white-space: nowrap;
+}
+.pg-modo-tv .pg-cr .cr-ops-metric { flex-basis: 22rem; }
+.pg-modo-tv .pg-cr .cr-ops-metric[data-metric="resultado"] { flex-basis: 100%; }
+.pg-modo-tv .cr-ops-dashboard--gestor .cr-ops-metric[data-metric="resultado"] > strong.cr-valor.cr-valor--principal {
+  font-size: var(--fonte-destaque);
+}
+
+/* Evolução de custos/recebíveis: a competência ("set de 26") não quebra. */
+.pg-cr .cr-trend-row { grid-template-columns: max-content minmax(0, 1fr) auto; }
+.pg-cr .cr-trend-row > span { white-space: nowrap; text-transform: none; }
+
+/* Filtros do CR no painel: o período ganha largura para o mês e o ano não
+   serem cortados (só onde o módulo usa as 5 colunas). */
+@media (min-width: 1181px) {
+  .pg-cr .cr-context-bar--executive.cr-context-bar--with-actions {
+    grid-template-columns:
+      minmax(12rem, 1.1fr)
+      minmax(9rem, .6fr)
+      minmax(20rem, 1.1fr)
+      minmax(10rem, .7fr)
+      auto;
+  }
+}
+
+/* Modo TV — filtros: menos colunas (a barra quebra em mais linhas) e os
+   controles no degrau de corpo, para nenhum texto ficar cortado. */
+.pg-modo-tv .pg-filter-grid :is(input, select),
+.pg-modo-tv .pg-cr .cr-field :is(input, select) {
+  min-height: 2.5em;
+  font-size: var(--fonte-corpo);
+}
+@media (min-width: 761px) {
+  .pg-modo-tv .pg-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pg-modo-tv .pg-filter-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .pg-modo-tv .pg-cr .cr-context-bar--executive,
+  .pg-modo-tv .pg-cr .cr-context-bar--executive.cr-context-bar--with-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pg-modo-tv .pg-cr .cr-context-actions { grid-column: 1 / -1; justify-content: flex-end; }
+}
+
+@media (max-width: 700px) {
+  .pg-modo-tv .pg-obra-card__linha { grid-template-columns: minmax(0, 1fr); }
+}

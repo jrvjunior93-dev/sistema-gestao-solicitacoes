@@ -36,7 +36,7 @@ export default function ConsolidadoPeriodo({ resumo, contextoValorTotal, oculto,
         <strong>{valor(resumo.resultado)}</strong>
       </div>
       <div className="pg-consolidado__secundarios">
-        <Secundario rotulo={contextoValorTotal.rotulo} valor={valor(resumo.valorTotalObras)} tom="info" dica={contextoValorTotal.apoio} />
+        <Secundario rotulo={contextoValorTotal.rotulo} valor={valor(resumo.valorTotalObras)} tom={oculto ? 'neutro' : 'info'} dica={contextoValorTotal.apoio} />
         <Secundario rotulo="Executado" valor={valor(resumo.executado)} tom={oculto ? 'neutro' : 'executado'} />
         <Secundario rotulo="Recebido" valor={valor(resumo.recebido)} tom={oculto ? 'neutro' : 'recebido'} />
         <Secundario rotulo="Falta receber" valor={valor(resumo.faltaReceber)} tom={oculto ? 'neutro' : 'pendente'} dica="Posição acumulada até a data final." />

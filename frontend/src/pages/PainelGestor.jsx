@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  HiOutlineArrowPath,
   HiOutlineBanknotes,
   HiOutlineChartBarSquare,
   HiOutlineChevronDown,
@@ -118,7 +119,14 @@ function useCargaAtual() {
   }, []);
 }
 
-function SaldoExecutivoPrincipal({ snapshot, loading, onReload, onOpenBalances, oculto }) {
+/*
+  Saldo do topo. O "Atualizar" daqui foi para o cabeçalho da página (um só
+  por tela, no mesmo lugar em todas as abas). O botão que levava à aba
+  "Saldos e Contas" repetia o nome da aba: agora é um atalho comum
+  ("Abrir contas") e some quando essa aba já está aberta. O detalhe por
+  conta continua nascendo recolhido, como antes da reforma.
+*/
+function SaldoExecutivoPrincipal({ snapshot, loading, onOpenBalances, oculto }) {
   const [expanded, setExpanded] = useState(false);
   const resumo = snapshot?.resumo || {};
   const ordem = useOrdemCards({
@@ -145,9 +153,8 @@ function SaldoExecutivoPrincipal({ snapshot, loading, onReload, onOpenBalances, 
         </dl>
       </div>
       <div className="pg-main-balance__actions">
-        <button type="button" className="btn btn-outline" onClick={onReload} disabled={loading}>Atualizar</button>
         <button type="button" className="btn btn-outline" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? <HiOutlineChevronUp /> : <HiOutlineChevronDown />}{expanded ? 'Recolher contas' : 'Detalhar por conta'}</button>
-        <button type="button" className="btn btn-primary" onClick={onOpenBalances}>Saldos e Contas</button>
+        {onOpenBalances ? <button type="button" className="btn btn-outline" onClick={onOpenBalances} title="Abrir a aba Saldos e Contas">Abrir contas</button> : null}
       </div>
       {expanded ? <div className="pg-main-balance__details">
         {snapshot?.contas?.length
@@ -158,7 +165,7 @@ function SaldoExecutivoPrincipal({ snapshot, loading, onReload, onOpenBalances, 
   );
 }
 
-function ResultadoObrasTab({ avisar, oculto }) {
+function ResultadoObrasTab({ avisar, oculto, sinalRecarga }) {
   const [obras, setObras] = useState([]);
   const [dados, setDados] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -179,6 +186,14 @@ function ResultadoObrasTab({ avisar, oculto }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [applied, avisar]);
+
+  // "Atualizar" do cabeçalho: recarrega com os filtros já aplicados.
+  const recargaAnterior = useRef(sinalRecarga);
+  useEffect(() => {
+    if (recargaAnterior.current === sinalRecarga) return;
+    recargaAnterior.current = sinalRecarga;
+    setApplied((current) => ({ ...current }));
+  }, [sinalRecarga]);
 
   const resumo = useMemo(() => dados.reduce((acc, obra) => {
     acc.valorTotalObras += valorTotalObra(obra);
@@ -265,7 +280,7 @@ function ResultadoObrasTab({ avisar, oculto }) {
   );
 }
 
-function CustosRecebiveisTab({ avisar, oculto }) {
+function CustosRecebiveisTab({ avisar, oculto, sinalRecarga }) {
   const [obras, setObras] = useState([]);
   const [obraId, setObraId] = useState('');
   const [classificacao, setClassificacao] = useState('');
@@ -322,12 +337,15 @@ function CustosRecebiveisTab({ avisar, oculto }) {
         valoresOcultos={oculto}
         buscarPrazos={false}
         ordemStorageKey={ORDEM_CUSTOS_RECEBIVEIS}
+        textosApoio={false}
+        botaoAtualizar={false}
+        sinalRecarga={sinalRecarga}
       />
     </div>
   );
 }
 
-function SaldosTab({ avisar, canInform, onSaved, oculto }) {
+function SaldosTab({ avisar, canInform, onSaved, oculto, sinalRecarga }) {
   const data = localDate();
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -354,6 +372,12 @@ function SaldosTab({ avisar, canInform, onSaved, oculto }) {
   }, [avisar, cargaAtual, data, oculto]);
 
   useEffect(() => { load(); }, [load]);
+  const recargaAnterior = useRef(sinalRecarga);
+  useEffect(() => {
+    if (recargaAnterior.current === sinalRecarga) return;
+    recargaAnterior.current = sinalRecarga;
+    load();
+  }, [load, sinalRecarga]);
   const contasManuais = useMemo(() => (snapshot?.contas || []).filter((item) => !item.saldo_automatico), [snapshot?.contas]);
   const preenchidas = useMemo(() => contasManuais.filter((item) => String(values[item.id] || '').trim()), [contasManuais, values]);
   const pendentes = contasManuais.filter((item) => !item.saldo).length;
@@ -435,10 +459,11 @@ function SaldosTab({ avisar, canInform, onSaved, oculto }) {
       <section className="pg-current-accounts">
         <header>
           <div><strong>Saldo atual por conta</strong><span>Posição de {formatDate(data)}</span></div>
-          <div className="pg-current-accounts__acoes">
-            {snapshot?.contas?.length ? <ControleOrdenacao ordem={ordem} rotuloAcessivel="Ordenar contas por" /> : null}
-            <button type="button" className="btn btn-outline" onClick={load} disabled={loading}>Atualizar</button>
-          </div>
+          {snapshot?.contas?.length ? (
+            <div className="pg-current-accounts__acoes">
+              <ControleOrdenacao ordem={ordem} rotuloAcessivel="Ordenar contas por" />
+            </div>
+          ) : null}
         </header>
         {loading && !snapshot ? <div className="app-empty-card">Carregando saldos...</div> : snapshot?.contas?.length ? (
           <GradeOrdenavel
@@ -452,7 +477,7 @@ function SaldosTab({ avisar, canInform, onSaved, oculto }) {
       </section>
 
       {snapshot?.historico?.length ? (
-        <BlocoConteudo titulo="Histórico do saldo diário" descricao="Inclusões, atualizações e correções desta data.">
+        <BlocoConteudo titulo="Histórico do saldo diário">
           <div className="pg-history-scroll">
             <table className="pg-history-table">
               <thead><tr><th>Horário</th><th>Conta</th><th>Ação</th><th>Saldo anterior</th><th>Novo saldo</th><th>Responsável</th><th>Justificativa</th></tr></thead>
@@ -483,6 +508,7 @@ export default function PainelGestor() {
   const [mainBalance, setMainBalance] = useState(null);
   const [loadingMainBalance, setLoadingMainBalance] = useState(canViewBalances);
   const [pinAberto, setPinAberto] = useState(false);
+  const [sinalRecarga, setSinalRecarga] = useState(0);
   const olho = useOlhoPainel();
   const oculto = olho.disponivel && olho.fechado;
   const cargaAtual = useCargaAtual();
@@ -533,7 +559,19 @@ export default function PainelGestor() {
     setPinAberto(true);
   }
 
+  function atualizarTudo() {
+    loadMainBalance();
+    setSinalRecarga((atual) => atual + 1);
+  }
+
   const secundarias = [
+    olho.pronto ? {
+      rotulo: 'Atualizar',
+      icone: <HiOutlineArrowPath aria-hidden="true" />,
+      onClick: atualizarTudo,
+      desabilitada: loadingMainBalance,
+      title: 'Atualizar os dados do painel'
+    } : null,
     olho.disponivel ? {
       rotulo: oculto ? 'Mostrar valores' : 'Ocultar valores',
       icone: oculto ? <HiOutlineEyeSlash aria-hidden="true" /> : <HiOutlineEye aria-hidden="true" />,
@@ -556,19 +594,19 @@ export default function PainelGestor() {
 
   return (
     <Pagina className={`pg-painel${modoTv ? ' pg-modo-tv' : ''}`} data-valores-ocultos={oculto || undefined}>
-      <PageHeader titulo="Painel do Gestor" contagem="Visão executiva" descricao="Resultado das obras, desempenho mensal e disponibilidade financeira do grupo." secundarias={secundarias} />
+      <PageHeader titulo="Painel do Gestor" secundarias={secundarias} />
       <Avisos avisos={avisos} aoFechar={fechar} />
       {!olho.pronto ? <div className="app-empty-card">Carregando painel...</div> : (
         <>
-          {canViewBalances ? <SaldoExecutivoPrincipal key={`saldo-${chave}`} snapshot={mainBalance} loading={loadingMainBalance} onReload={loadMainBalance} onOpenBalances={() => selectTab('saldos')} oculto={oculto} /> : null}
+          {canViewBalances ? <SaldoExecutivoPrincipal key={`saldo-${chave}`} snapshot={mainBalance} loading={loadingMainBalance} onOpenBalances={active === 'saldos' || !tabs.some((tab) => tab.id === 'saldos') ? null : () => selectTab('saldos')} oculto={oculto} /> : null}
           <nav className="pg-tabs" aria-label="Visões do Painel do Gestor">{tabs.map((tab) => {
             const Icon = tab.icon;
             return <button type="button" key={tab.id} className={active === tab.id ? 'is-active' : ''} onClick={() => selectTab(tab.id)}><Icon />{tab.label}</button>;
           })}</nav>
           {!active ? <div className="app-empty-card">Seu acesso ao Painel do Gestor ainda não possui nenhuma visão liberada.</div> : null}
-          {active === 'resultado-obras' ? <ResultadoObrasTab key={`resultado-${chave}`} avisar={avisar} oculto={oculto} /> : null}
-          {active === 'custos-recebiveis' ? <CustosRecebiveisTab key={`custos-${chave}`} avisar={avisar} oculto={oculto} /> : null}
-          {active === 'saldos' ? <SaldosTab key={`saldos-${chave}`} avisar={avisar} canInform={canInformPainelGestorSaldos(user)} onSaved={loadMainBalance} oculto={oculto} /> : null}
+          {active === 'resultado-obras' ? <ResultadoObrasTab key={`resultado-${chave}`} avisar={avisar} oculto={oculto} sinalRecarga={sinalRecarga} /> : null}
+          {active === 'custos-recebiveis' ? <CustosRecebiveisTab key={`custos-${chave}`} avisar={avisar} oculto={oculto} sinalRecarga={sinalRecarga} /> : null}
+          {active === 'saldos' ? <SaldosTab key={`saldos-${chave}`} avisar={avisar} canInform={canInformPainelGestorSaldos(user)} onSaved={loadMainBalance} oculto={oculto} sinalRecarga={sinalRecarga} /> : null}
         </>
       )}
       <ModalPinPainel aberto={pinAberto} onFechar={() => setPinAberto(false)} onConfirmar={olho.abrir} />

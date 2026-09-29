@@ -135,6 +135,7 @@ export function ControleOrdenacao({ ordem, rotuloAcessivel }) {
           value={ordem.criterio}
           onChange={(evento) => ordem.alterarCriterio(evento.target.value)}
           aria-label={rotuloAcessivel}
+          title="A ordem escolhida fica salva para você. Na ordem manual, arraste os cards ou use os botões de mover."
         >
           {ordem.criterios.map((opcao) => (
             <option key={opcao.id} value={opcao.id}>{opcao.rotulo}</option>
@@ -195,13 +196,8 @@ export function GradeOrdenavel({ ordem, getId, getNome, className, renderItem })
 
   return (
     <>
-      {ordem.modoManual && ids.length ? (
-        <p className="pg-ordem__dica">
-          {podeArrastar
-            ? 'Arraste os cards ou use os botões de mover. A ordem fica salva para você.'
-            : 'Use os botões de mover. A ordem fica salva para você.'}
-        </p>
-      ) : null}
+      {/* Sem texto de apoio: a alça "≡ 1º" e os botões de mover são o
+          controle; a instrução completa fica no title/aria de cada um. */}
       <span className="sr-only" aria-live="polite">{anuncio}</span>
       <div
         className={className}
@@ -252,6 +248,9 @@ export function GradeOrdenavel({ ordem, getId, getNome, className, renderItem })
                 <button
                   type="button"
                   className="pg-ordem-item__alca"
+                  title={podeArrastar
+                    ? 'Arraste o card ou use os botões de mover. A ordem fica salva para você.'
+                    : 'Use os botões de mover. A ordem fica salva para você.'}
                   ref={(elemento) => {
                     if (elemento) alcasRef.current.set(id, elemento);
                     else alcasRef.current.delete(id);

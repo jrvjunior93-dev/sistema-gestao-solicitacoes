@@ -328,7 +328,18 @@ export default function CrDashboardView({
   //    "Pendências primeiro" ordena pelos alertas do dashboard e o nome.
   valoresOcultos = false,
   ordemStorageKey = CHAVE_ORDEM_OBRAS,
-  buscarPrazos = true
+  buscarPrazos = true,
+  // Painel do Gestor (revisão de 29/09/2026). Ausentes = comportamento do
+  // módulo, sem nenhuma mudança visual:
+  //  - textosApoio: false tira as frases explicativas (realizados/baixas,
+  //    "os mesmos filtros…", instrução de arrastar, "Somente situações…").
+  //  - botaoAtualizar: false tira o "Atualizar" da carteira (o painel tem
+  //    um só, no cabeçalho, igual em todas as abas).
+  //  - sinalRecarga: número; quando muda, a visão recarrega (é o
+  //    "Atualizar" do cabeçalho do painel).
+  textosApoio = true,
+  botaoAtualizar = true,
+  sinalRecarga = 0
 }) {
   const oculto = Boolean(valoresOcultos);
   const money = (value) => (oculto ? VALOR_OCULTO : currency.format(value || 0));
@@ -358,6 +369,13 @@ export default function CrDashboardView({
   useEffect(() => {
     void load();
   }, [load]);
+
+  const recargaAnterior = useRef(sinalRecarga);
+  useEffect(() => {
+    if (recargaAnterior.current === sinalRecarga) return;
+    recargaAnterior.current = sinalRecarga;
+    void load();
+  }, [load, sinalRecarga]);
 
   const history = Array.isArray(data?.historico) ? data.historico : [];
   const alerts = Array.isArray(data?.alertas) ? data.alertas : [];
@@ -645,15 +663,15 @@ export default function CrDashboardView({
         descricao={`${competencias.length > 1
           ? `${competencias.length} competências selecionadas`
           : `Competência ${formatMonth(competencias[0] || competencia)}`
-        } · valores realizados consideram baixas financeiras ativas.`}
+        }${textosApoio ? ' · valores realizados consideram baixas financeiras ativas.' : ''}`}
         variante="primario"
         cor="var(--cr-accent)"
-        acoes={(
+        acoes={botaoAtualizar ? (
           <button type="button" className="btn btn-outline" onClick={load} disabled={loading}>
             <HiOutlineArrowPath className="h-4 w-4" />
             {loading ? 'Atualizando...' : 'Atualizar'}
           </button>
-        )}
+        ) : null}
       >
         <div className="cr-ops-ledger">
           <div className="cr-ops-ledger__group">
@@ -764,7 +782,7 @@ export default function CrDashboardView({
               {competencias.length > 1
                 ? `${competencias.length} competências selecionadas`
                 : `Competência ${formatMonth(competencias[0] || competencia)}`}
-              {' '}· os mesmos filtros também compõem a carteira consolidada acima.
+              {textosApoio ? ' · os mesmos filtros também compõem a carteira consolidada acima.' : null}
             </p>
           </div>
           <div className="cr-ordem-obras">
@@ -784,7 +802,7 @@ export default function CrDashboardView({
           </div>
         </div>
 
-        {modoManual && visibleWorkSummaries.length ? (
+        {textosApoio && modoManual && visibleWorkSummaries.length ? (
           <p className="cr-ordem-obras__dica">
             {podeArrastar
               ? 'Arraste os cards ou use os botões de mover. A ordem fica salva para você.'
@@ -986,7 +1004,7 @@ export default function CrDashboardView({
         <div className="cr-section-heading">
           <div>
             <h2>Pontos de atenção</h2>
-            <p>Somente situações que exigem conferência ou ação operacional.</p>
+            {textosApoio ? <p>Somente situações que exigem conferência ou ação operacional.</p> : null}
           </div>
           <span className="cr-attention-count" data-empty={!alerts.length}>
             {alerts.length} {alerts.length === 1 ? 'ocorrência' : 'ocorrências'}

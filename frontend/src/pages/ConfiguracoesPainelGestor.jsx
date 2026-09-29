@@ -10,6 +10,7 @@ import {
   useAvisos,
   useConfirmacao
 } from '../components/padrao';
+import '../styles/painel-gestor.css';
 
 /**
  * SENHA DO PAINEL DO GESTOR — uma senha única do sistema (4 dígitos), pedida
@@ -132,7 +133,7 @@ export default function ConfiguracoesPainelGestor() {
               <FormSecao legenda={configurado ? 'Trocar senha' : 'Definir senha'}>
                 <CampoForm label="Nova senha" obrigatorio erro={erroPin} hint="4 dígitos numéricos">
                   <input
-                    className="input"
+                    className="input pg-pin-campo"
                     type="password"
                     inputMode="numeric"
                     autoComplete="new-password"
@@ -145,7 +146,7 @@ export default function ConfiguracoesPainelGestor() {
                 </CampoForm>
                 <CampoForm label="Confirmar senha" obrigatorio erro={erroConfirmacao}>
                   <input
-                    className="input"
+                    className="input pg-pin-campo"
                     type="password"
                     inputMode="numeric"
                     autoComplete="new-password"

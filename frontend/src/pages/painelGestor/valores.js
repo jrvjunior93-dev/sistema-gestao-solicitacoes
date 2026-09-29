@@ -24,7 +24,8 @@ export function dinheiroOuTraco(valor, oculto) {
 export function percentual(valor, oculto, casas = 1) {
   if (oculto) return VALOR_OCULTO;
   if (valor == null || !Number.isFinite(Number(valor))) return '—';
-  return `${Number(valor).toFixed(casas)}%`;
+  // pt-BR: vírgula decimal ("15,0%"), como o resto do sistema.
+  return `${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`;
 }
 
 export function numero(valor) {
