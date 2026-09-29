@@ -27,7 +27,9 @@ const OBRIGACAO_TYPES = Object.freeze({
   MEDICAO_APROVADA: 'MEDICAO_CONSOLIDADA'
 });
 const ACTIVE_OBLIGATION_STATES = Object.freeze(['PENDENTE', 'VENCIDA']);
-const MAX_BYPASS_DAYS = 30;
+// Liberacao temporaria do bloqueio: no maximo 48 horas (decisao de 29/09).
+const MAX_BYPASS_HOURS = 48;
+const MAX_BYPASS_DAYS = MAX_BYPASS_HOURS / 24;
 
 function dependencies(overrides = {}) {
   return {
@@ -358,8 +360,8 @@ async function findExpectedObligations(user, deps, options = {}) {
         reabertura_ativa: Boolean(competency?.id && reopeningByCompetency.has(Number(competency.id)))
       };
       // Planejamento (custos + medicao prevista): janela da obra, cumprido
-      // ao finalizar. Reabrir torna a obrigacao visivel ate nova finalizacao.
-      const complete = competency?.estado === 'FINALIZADA';
+      // ao finalizar. Mes reaberto para correcao continua cumprido (29/09).
+      const complete = ['FINALIZADA', 'REABERTA'].includes(competency?.estado);
       const planningDeadline = janelaPlanejamento(competencia, prazoObra.config).fecha_em;
       const planningState = complete ? 'CUMPRIDA' : (planningDeadline <= now ? 'VENCIDA' : 'PENDENTE');
       for (const type of obligationTypes.filter((item) => item !== OBRIGACAO_TYPES.MEDICAO_APROVADA)) {
@@ -651,12 +653,12 @@ async function concederBypass(user, payload = {}, idempotencyKey = null, overrid
   }
   const expiresAt = new Date(payload.expira_em);
   const now = deps.now();
-  const maxExpiration = new Date(now.getTime() + (MAX_BYPASS_DAYS * 86400000));
+  const maxExpiration = new Date(now.getTime() + (MAX_BYPASS_HOURS * 3600000));
   if (!payload.expira_em || Number.isNaN(expiresAt.getTime()) || expiresAt <= now || expiresAt > maxExpiration) {
     throw createBusinessError(
       422,
       'CR_BYPASS_EXPIRATION_INVALID',
-      `A expiracao deve ser futura e limitada a ${MAX_BYPASS_DAYS} dias.`
+      `A expiracao deve ser futura e limitada a ${MAX_BYPASS_HOURS} horas.`
     );
   }
   const scope = await deps.resolverEscopoObras(user);
@@ -767,6 +769,7 @@ async function revogarBypass(user, bypassIdValue, idempotencyKey = null, overrid
 module.exports = {
   ACTIVE_OBLIGATION_STATES,
   MAX_BYPASS_DAYS,
+  MAX_BYPASS_HOURS,
   OBRIGACAO_TYPES,
   addMonth,
   alertLevel,

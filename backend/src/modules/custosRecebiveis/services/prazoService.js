@@ -121,10 +121,11 @@ function competenciaAlvoPlanejamento(now = new Date(), config) {
   return janelaPlanejamento(seguinte, config).abre_em <= now ? seguinte : atual;
 }
 
-// Mesmo criterio das obrigacoes: cumprido = FINALIZADA. Mes reaberto volta a
-// contar como pendente ate nova finalizacao (regra de reabertura da Fase 4).
+// Cumprido = entregue (FINALIZADA). Mes REABERTO para correcao continua
+// contando como entregue e nao trava a obra (decisao de 29/09); a reabertura
+// dura 24h e o mes fecha de novo.
 function planejamentoCumprido(competencia) {
-  return competencia?.estado === 'FINALIZADA';
+  return ['FINALIZADA', 'REABERTA'].includes(competencia?.estado);
 }
 
 function inicioEfetivo(inicio, competencias, limite) {

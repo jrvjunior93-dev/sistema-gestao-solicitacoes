@@ -88,6 +88,10 @@ export default function CrPlanejamentoMensalView({
   const canCreate = permissions.costs || permissions.receipts;
   const isPublic = obra?.classificacao === 'PUBLICA';
   const nextNewMonth = availableNewMonths[0] || '';
+  // Obra travada (Fase 3): só o que regulariza fica disponível — planejamento,
+  // medição aprovada e dilatação. Detalhes e reabertura esperam a liberação.
+  const obraTravada = Boolean(prazos?.travada);
+  const travadaReason = 'obra travada; regularize o planejamento ou a medição primeiro';
   const planningNotice = avisoPlanejamento(prazos);
   const measurementNotice = avisoMedicao(prazos);
   const pendingPlanning = ['ABERTO', 'VENCIDO'].includes(prazos?.planejamento?.situacao)
@@ -327,9 +331,12 @@ export default function CrPlanejamentoMensalView({
                 ? 'Ver aprovação'
                 : (item.medicao_aprovada != null ? 'Revisar aprovação' : 'Registrar aprovação')}
               onRequestReopening={() => setReopeningTarget({ obra, competencia: item.competencia })}
-              reopeningDisabled={!permissions.reopenRequest || !item.reabertura_permitida}
+              openDisabledReason={obraTravada ? travadaReason : ''}
+              reopeningDisabled={obraTravada || !permissions.reopenRequest || !item.reabertura_permitida}
               reopeningStatus={item.reabertura_situacao}
-              reopeningActionLabel={!permissions.reopenRequest
+              reopeningActionLabel={obraTravada
+                ? travadaReason
+                : !permissions.reopenRequest
                 ? 'sem permissão para solicitar'
                 : item.reabertura_situacao === 'SOLICITADA'
                   ? 'aguardando decisão do administrador'

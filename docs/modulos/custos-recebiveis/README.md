@@ -594,6 +594,29 @@ Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
 - Custo realizado do Comparativo: a consulta sincroniza as baixas do mes (mes
   existente e iniciado; no maximo a cada 5 minutos por obra/mes).
 
+## Reforma 2026-09 - Fase 3: bloqueio por obra
+
+- Substitui o guard global: so a OBRA atrasada fica fechada, e so para o
+  engenheiro RESPONSAVEL/SUBSTITUTO vigente dela. Outras obras dele e os demais
+  usuarios seguem normais. Superadmin nunca e travado.
+- Trava com planejamento vencido e nao entregue, ou medicao aprovada vencida
+  (prazo com dilatacao) sem registro nem "sem medicao". Dilatacao aguardando
+  decisao nao destrava. Mes reaberto para correcao nao trava.
+- Impede qualquer requisicao (leitura ou escrita) ligada a obra, fora de
+  `/custos-recebiveis` (onde se regulariza). A obra e resolvida por
+  `obra_id`/`obra_ids`/rateios no corpo, `obra_id` na query, ou pela entidade do
+  caminho (solicitacao, compra, pedido, titulo e rateios, contrato, medicao e
+  aditivo de contrato, RH, apropriacao, comprovante, obra). Resposta 403
+  `OBRA_TRAVADA_CUSTOS_RECEBIVEIS`. `GET /obras/minhas?modo=CRIACAO` omite a
+  obra travada. Listas amplas sem obra no filtro nao sao recortadas.
+- Sessao (`/auth/me`) leva `custos_recebiveis_pendencia.obras_travadas`; faixa
+  fixa no topo de todas as telas com "Regularizar". O redirecionamento global
+  deixou de existir (`bloqueado` e sempre `false`).
+- `CR_GUARD_MODE=observe` (padrao) so avisa ("seria travada");
+  `enforce` bloqueia. Cache de 30s por usuario, limpo a cada gravacao do modulo.
+- Reabertura aprovada vale 24 horas; depois o mes fecha sozinho (primeira
+  consulta apos o vencimento). Liberacao temporaria (bypass): ate 48 horas.
+
 ## Regras de evolucao
 
 - Cada fase funcional deve ser entregue e aceita separadamente.
@@ -617,6 +640,7 @@ npm.cmd run test:custos-recebiveis-fase3
 npm.cmd run test:custos-recebiveis-fase4
 npm.cmd run test:custos-recebiveis-prontidao
 npm.cmd run test:custos-recebiveis-prazos
+npm.cmd run test:custos-recebiveis-bloqueio
 npm.cmd run test:docs
 npm.cmd run test:compra-cotacao-envio
 npm.cmd run test:compra-remanejamento

@@ -64,7 +64,8 @@ function validateSummaries() {
   assert.strictEqual(vencido.planejamento.situacao, 'VENCIDO');
   assert.strictEqual(vencido.planejamento.dias, 2);
 
-  // Mes reaberto volta a ser pendencia ate nova finalizacao.
+  // Mes reaberto para correcao continua entregue: nao volta a ser pendencia
+  // nem trava a obra (decisao de 29/09).
   const reaberto = resumirPrazosObra({
     ...base,
     competencias: [
@@ -73,8 +74,8 @@ function validateSummaries() {
     ],
     now: at('2026-10-10T12:00:00-03:00')
   });
-  assert.strictEqual(reaberto.planejamento.situacao, 'VENCIDO');
-  assert.strictEqual(reaberto.planejamento.competencia, '2026-10');
+  assert.strictEqual(reaberto.planejamento.situacao, 'AGUARDANDO_JANELA');
+  assert.strictEqual(reaberto.planejamento.competencia, '2026-11');
 
   const emDia = resumirPrazosObra({
     ...base,
@@ -223,11 +224,13 @@ async function validateMonthListFlags() {
     resolverEscopoObras: scope,
     Obra: { findByPk: async () => ({ id: 7, classificacao: 'PUBLICA' }) },
     CrCompetencia: {
-      findAll: async () => [
-        month(1, '2020-01', 'EM_PREENCHIMENTO'),
-        month(2, '2020-02', 'FINALIZADA'),
-        month(3, '2020-03', 'REABERTA')
-      ]
+      findAll: async ({ where } = {}) => (where?.estado === 'REABERTA'
+        ? []
+        : [
+          month(1, '2020-01', 'EM_PREENCHIMENTO'),
+          month(2, '2020-02', 'FINALIZADA'),
+          month(3, '2020-03', 'REABERTA')
+        ])
     },
     CrMedicaoConsolidada: { findAll: async () => [] },
     TituloFinanceiro: { findAll: async () => [] },
@@ -409,6 +412,48 @@ async function validateRealizedAutoSync() {
   assert.strictEqual((await sincronizarRealizadosAoConsultar({ id: 1 }, 56, '2026-08', deps())).sincronizado, true);
 }
 
+async function validateReopeningWindow() {
+  const {
+    REABERTURA_HORAS,
+    decidirReabertura,
+    fecharReaberturasExpiradas
+  } = require('../services/planejamentoService');
+  const { MAX_BYPASS_HOURS } = require('../services/obrigacaoService');
+  assert.strictEqual(REABERTURA_HORAS, 24);
+  assert.strictEqual(MAX_BYPASS_HOURS, 48);
+
+  // Aprovar reabertura ignora data informada: vale 24h.
+  const reopening = { id: 5, competencia_id: 41, situacao: 'SOLICITADA', update: async function update(values) { Object.assign(this, values); } };
+  const competencia = { id: 41, obra_id: 7, estado: 'FINALIZADA', update: async function update(values) { Object.assign(this, values); } };
+  const before = Date.now();
+  await decidirReabertura({ id: 1 }, 5, { decisao: 'APROVADA', expira_em: '2099-01-01T00:00:00Z' }, {
+    sequelize: tx,
+    resolverEscopoObras: scope,
+    CrReabertura: {
+      findByPk: async (id, options) => (options?.include ? { ...reopening, competencia: { obra_id: 7 } } : reopening),
+      findOne: async () => null
+    },
+    CrCompetencia: { findByPk: async () => competencia, findOne: async () => ({ id: 41, obra_id: 7 }) },
+    CrAuditoria: { create: async () => null }
+  });
+  const hours = (new Date(reopening.expira_em).getTime() - before) / 3600000;
+  assert(hours > 23.9 && hours < 24.1, `reabertura deveria valer 24h, vale ${hours}`);
+  assert.strictEqual(competencia.estado, 'REABERTA');
+
+  // Janela vencida: o mes volta a FINALIZADA; com reabertura vigente, fica.
+  const expired = { id: 41, competencia: '2026-08', estado: 'REABERTA', update: async function update(values) { Object.assign(this, values); } };
+  const stillOpen = { id: 42, competencia: '2026-09', estado: 'REABERTA', update: async function update(values) { Object.assign(this, values); } };
+  const audits = [];
+  await fecharReaberturasExpiradas(7, {
+    CrCompetencia: { findAll: async () => [expired, stillOpen] },
+    CrReabertura: { findOne: async ({ where }) => (where.competencia_id === 42 ? { id: 9 } : null) },
+    CrAuditoria: { create: async (values) => audits.push(values) }
+  });
+  assert.strictEqual(expired.estado, 'FINALIZADA');
+  assert.strictEqual(stillOpen.estado, 'REABERTA');
+  assert.strictEqual(audits.length, 1);
+}
+
 function validateMigration() {
   const migration = require('../../../../migrations/202609290001_custos_recebiveis_prazos_dilatacao');
   const db = require('../../../models');
@@ -431,6 +476,7 @@ async function run() {
   await validateConfigSave();
   await validateDilatacao();
   await validateRealizedAutoSync();
+  await validateReopeningWindow();
   validateMigration();
   console.log('Prazos de Custos e Recebiveis validados com sucesso.');
 }

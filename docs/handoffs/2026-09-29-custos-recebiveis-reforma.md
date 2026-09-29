@@ -123,8 +123,34 @@ Definicoes adotadas nesta fase (a confirmar com o proprietario):
   caixa; confirmacao ao salvar/restaurar prazos (valem para todos os meses);
   mensagens de validacao legiveis.
 
+## Decisoes da Fase 3 (29/09)
+
+1. Obra travada fica fechada inclusive para consulta; para o engenheiro so fica
+   o que regulariza (planejamento, medicao aprovada/sem medicao, dilatacao).
+2. Mes reaberto nao trava a obra; reabertura aprovada dura 24 horas e depois o
+   mes fecha de novo (vale para planejamento e medicao aprovada).
+3. Liberacao temporaria (bypass) mantida, so para o administrador, ate 48 horas.
+
+## Fase 3 - entregue (aguardando aprovacao)
+
+- `services/bloqueioObraService.js`: obras travadas por usuario (cache 30s),
+  resolucao da obra da requisicao e mensagem.
+- `requireCustosRecebiveisCompletion` passa a bloquear por obra (mesmo ponto de
+  montagem em `routes.js`).
+- Fora do modulo: `AuthController` (obras travadas na sessao),
+  `ObraController.minhas` (modo CRIACAO omite obra travada), `Layout.jsx`
+  (faixa global `CrObrasTravadasAviso`).
+- Frontend: card "Travada", meses da obra travada so com acoes de
+  regularizacao, reabertura "vale por 24 horas", liberacao ate 48 horas.
+
+Limitacoes conhecidas: listas amplas (sem obra no filtro) nao sao recortadas;
+abrir um item da obra travada e bloqueado. Rotas de acao em lote de fila e
+lotes de pagamento sem obra no corpo nao sao resolvidas.
+
+Ativacao: seguir em `observe` no deploy, conferir quem "seria travado" e so
+entao definir `CR_GUARD_MODE=enforce` no ambiente (decisao do proprietario).
+
 ## Proximo passo
 
-Fase 3 (bloqueio por atraso): apresentar onde atua, o que impede, o que continua
-permitido e como a pessoa entende que esta travada; aguardar o ok antes de
-implementar.
+Fase 4: tela do administrador (abas, fila de reaberturas e dilatacoes no topo,
+Obrigacoes e prazos em faixas, remocao da tela orfa).

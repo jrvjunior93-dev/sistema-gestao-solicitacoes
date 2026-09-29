@@ -45,7 +45,8 @@ function toLocalDateTimeInput(date) {
 }
 
 function maxBypassDate() {
-  return toLocalDateTimeInput(new Date(Date.now() + (30 * 86400000)));
+  // Liberação temporária: no máximo 48 horas (29/09/2026).
+  return toLocalDateTimeInput(new Date(Date.now() + (48 * 3600000)));
 }
 
 function minBypassDate() {
@@ -290,7 +291,7 @@ export default function CrObrigacoesView({ canGrantBypass, onOpenPlanning }) {
           <section className="cr-section">
             <div className="cr-section-heading">
               <div>
-                <h2>Bypasses temporários</h2>
+                <h2>Liberações temporárias</h2>
                 <p>Exceção administrativa por usuário, com prazo e auditoria.</p>
               </div>
               <button
@@ -343,7 +344,7 @@ export default function CrObrigacoesView({ canGrantBypass, onOpenPlanning }) {
                       expira_em: event.target.value
                     }))}
                   />
-                  <small>Obrigatório e limitado a 30 dias.</small>
+                  <small>Obrigatório e limitado a 48 horas.</small>
                 </label>
                 <label className="cr-field">
                   <span>Justificativa</span>

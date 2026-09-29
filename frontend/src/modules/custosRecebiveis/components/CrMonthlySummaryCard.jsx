@@ -45,7 +45,8 @@ export default function CrMonthlySummaryCard({
   reopeningActionLabel = 'Solicitar reabertura',
   reopeningStatus = null,
   approvedActionLabel,
-  actionLabel = 'Ver detalhes'
+  actionLabel = 'Ver detalhes',
+  openDisabledReason = ''
 }) {
   const isPublic = String(classification || '').toUpperCase() === 'PUBLICA';
   const costDelta = Number(custoRealizado || 0) - Number(custoPlanejado || 0);
@@ -173,6 +174,8 @@ export default function CrMonthlySummaryCard({
               icon={HiOutlineEye}
               label={actionLabel}
               onClick={onOpen}
+              disabled={Boolean(openDisabledReason)}
+              disabledReason={openDisabledReason}
               contextLabel={title}
             />
           ) : null}

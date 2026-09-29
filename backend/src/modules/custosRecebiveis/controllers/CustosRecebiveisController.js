@@ -38,6 +38,7 @@ const {
 } = require('../services/realizadoService');
 const { gerarExportacao } = require('../services/exportacaoService');
 const { calcularPrazosObras } = require('../services/prazoService');
+const { obrasTravadasDoUsuario } = require('../services/bloqueioObraService');
 const {
   decidirDilatacao,
   listarDilatacoes,
@@ -100,6 +101,15 @@ class CustosRecebiveisController {
       const prazosByWork = result.items?.length
         ? await calcularPrazosObras(result.items)
         : new Map();
+      const travadas = new Map((await obrasTravadasDoUsuario(req.user))
+        .map((item) => [Number(item.obra_id), item]));
+      prazosByWork.forEach((prazos, obraId) => {
+        const travada = travadas.get(obraId);
+        // travada = bloqueando de fato; em modo observacao so avisa.
+        prazos.travada = Boolean(travada?.bloqueando);
+        prazos.travaria = Boolean(travada && !travada.bloqueando && !travada.liberada_ate);
+        prazos.liberada_ate = travada?.liberada_ate || null;
+      });
       return res.json({
         ...result,
         items: (result.items || []).map((obra) => ({

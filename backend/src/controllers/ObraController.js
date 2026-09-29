@@ -1,3 +1,4 @@
+const { obrasTravadasDoUsuario } = require('../modules/custosRecebiveis/services/bloqueioObraService');
 const { Obra, UsuarioObra, Setor, ConfiguracaoSistema, EmpresaGrupo, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const {
@@ -162,6 +163,19 @@ module.exports = {
       const { id: usuarioId, perfil } = req.user;
       const { codigo, descricao, modo } = req.query;
       const modoNormalizado = String(modo || '').trim().toUpperCase();
+      // Custos e Recebiveis (29/09/2026): obra travada por atraso de
+      // planejamento/medicao nao aparece para o engenheiro criar nada nela.
+      if (modoNormalizado === 'CRIACAO') {
+        const travadas = new Set((await obrasTravadasDoUsuario(req.user))
+          .filter((item) => item.bloqueando)
+          .map((item) => Number(item.obra_id)));
+        if (travadas.size) {
+          const originalJson = res.json.bind(res);
+          res.json = (body) => originalJson(Array.isArray(body)
+            ? body.filter((obra) => !travadas.has(Number(obra?.id)))
+            : body);
+        }
+      }
       const defaultScope = String(req.query?.escopo || '').trim()
         ? req.query.escopo
         : 'TODOS';

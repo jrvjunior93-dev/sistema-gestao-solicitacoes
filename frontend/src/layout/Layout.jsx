@@ -28,6 +28,7 @@ import { getFallbackRoute, hasSafeBrowserHistory } from '../utils/navigation';
 import { nomeProprio } from '../utils/texto';
 import OperationalAuditTracker from '../modules/governanca/components/OperationalAuditTracker';
 import DevUserSwitcher from '../components/DevUserSwitcher';
+import CrObrasTravadasAviso from '../modules/custosRecebiveis/components/CrObrasTravadasAviso';
 import cscLogo from '../assets/CSC_logo_lockup_cropped.png';
 import fluxyMark from '../assets/fluxy_mark_cropped.png';
 
@@ -477,6 +478,9 @@ export default function Layout() {
                 onNewTab={abrirBuscaNovaAba}
               />
             </header>
+
+            {/* Custos e Recebíveis: obra travada por atraso (29/09/2026). */}
+            <CrObrasTravadasAviso />
 
             <Suspense fallback={<AppRouteFallback />}>
               <Outlet />

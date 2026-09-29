@@ -459,6 +459,35 @@ function medicaoTravada(obra, competencia, prazoContext, now = new Date()) {
   return prazoMedicaoEfetivo(competencia, prazoContext?.config, registro.dilatacao_prazo) < now;
 }
 
+const REABERTURA_HORAS = 24;
+
+// Mes reaberto cuja janela de 24h terminou volta a FINALIZADA. Chamado nas
+// leituras do mes (listar/obter) e antes de editar: o fechamento acontece na
+// primeira consulta depois do vencimento, sem job.
+async function fecharReaberturasExpiradas(obraId, deps, transaction = null) {
+  const reopened = await deps.CrCompetencia.findAll({
+    where: { obra_id: obraId, estado: 'REABERTA' },
+    transaction
+  });
+  for (const competencia of reopened) {
+    const active = await deps.CrReabertura.findOne({
+      where: { competencia_id: competencia.id, situacao: 'APROVADA', expira_em: { [Op.gt]: new Date() } },
+      transaction
+    });
+    if (active) continue;
+    await competencia.update({ estado: 'FINALIZADA' }, { transaction });
+    await deps.CrAuditoria.create({
+      obra_id: obraId,
+      competencia_id: competencia.id,
+      usuario_id: null,
+      evento: 'CR_REABERTURA_ENCERRADA',
+      descricao: 'Janela de reabertura (24h) encerrada; competencia fechada novamente.',
+      payload_json: { competencia: competencia.competencia },
+      origem: 'job'
+    }, { transaction });
+  }
+}
+
 function podeEditarPlanejamento(estado, validReopening) {
   if (estado === 'FINALIZADA') return false;
   if (estado === 'REABERTA') return Boolean(validReopening);
@@ -670,6 +699,7 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
   const obraId = positiveId(obraIdValue, 'Obra');
   await assertScope(user, obraId, deps);
   const obra = await findObra(obraId, deps);
+  await fecharReaberturasExpiradas(obraId, deps);
   const prazoContext = (await deps.carregarContextoPrazos([obraId])).get(obraId) || {};
   const rows = await deps.CrCompetencia.findAll({
     where: { obra_id: obraId },
@@ -958,6 +988,7 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
   const obraId = positiveId(obraIdValue, 'Obra');
   const competenciaCode = normalizeCompetencia(competenciaValue);
   await assertScope(user, obraId, deps);
+  await fecharReaberturasExpiradas(obraId, deps);
   const [obra, saved] = await Promise.all([
     findObra(obraId, deps),
     findCompetencia(obraId, competenciaCode, deps)
@@ -2829,14 +2860,9 @@ async function decidirReabertura(user, reaberturaIdValue, payload = {}, override
   if (!['APROVADA', 'NEGADA'].includes(decisao)) {
     throw createBusinessError(400, 'CR_REABERTURA_DECISAO_INVALIDA', 'Decisao invalida.');
   }
-  const expiraEm = decisao === 'APROVADA' ? new Date(payload.expira_em) : null;
-  if (decisao === 'APROVADA' && (!payload.expira_em || Number.isNaN(expiraEm.getTime()) || expiraEm <= new Date())) {
-    throw createBusinessError(
-      422,
-      'CR_REABERTURA_EXPIRACAO_INVALIDA',
-      'Informe uma data futura para o encerramento da reabertura.'
-    );
-  }
+  // Reabertura aprovada vale 24 horas (decisao de 29/09); depois o mes volta
+  // a fechar sozinho (fecharReaberturasExpiradas).
+  const expiraEm = decisao === 'APROVADA' ? new Date(Date.now() + REABERTURA_HORAS * 3600000) : null;
   const obraId = await resolverObraIdPorReabertura(reaberturaId, overrides);
   if (!obraId) throw createBusinessError(404, 'CR_REABERTURA_NOT_FOUND', 'Reabertura nao encontrada.');
   await assertScope(user, obraId, deps);
@@ -2887,7 +2913,9 @@ async function decidirReabertura(user, reaberturaIdValue, payload = {}, override
 module.exports = {
   CONTRACT_ACTIVE_STATUSES,
   assertCompetenciaNovoMes,
+  REABERTURA_HORAS,
   assertEditable,
+  fecharReaberturasExpiradas,
   competenciaAtual,
   getOrCreateCompetencia,
   competenciaSeguinte,

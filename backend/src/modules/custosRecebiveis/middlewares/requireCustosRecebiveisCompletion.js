@@ -1,14 +1,28 @@
 'use strict';
 
-const { calcularEstadoGuardUsuario, guardMode } = require('../services/obrigacaoService');
+const {
+  guardMode,
+  mensagemTravada,
+  obrasDaRequisicao,
+  obrasTravadasDoUsuario
+} = require('../services/bloqueioObraService');
 
+/*
+  Bloqueio por obra (reforma de 29/09/2026, Fase 3). Substitui o guard
+  antigo, que travava o usuario no sistema inteiro: agora so a OBRA atrasada
+  fica fechada para o engenheiro responsavel por ela; as demais seguem livres.
+  Continua liberado o que regulariza (todo o modulo Custos e Recebiveis) e o
+  basico da sessao. Falha inesperada e fail-open, como antes.
+*/
 const ALWAYS_ALLOWED_PREFIXES = Object.freeze([
   '/auth/logout',
   '/auth/heartbeat',
+  '/auth/me',
   '/usuarios/me',
   '/perfil',
   '/ajuda',
   '/suporte',
+  '/live-updates',
   '/custos-recebiveis'
 ]);
 
@@ -22,18 +36,19 @@ function isAllowedRoute(req) {
 async function requireCustosRecebiveisCompletion(req, res, next) {
   if (guardMode() === 'observe') return next();
   try {
-    const state = await calcularEstadoGuardUsuario(req.user, {
-      mode: 'enforce',
-      persistir: false
-    });
-    if (!state.bloqueado || isAllowedRoute(req)) return next();
+    if (isAllowedRoute(req)) return next();
+    const travadas = (await obrasTravadasDoUsuario(req.user)).filter((item) => item.bloqueando);
+    if (!travadas.length) return next();
+    const obraIds = await obrasDaRequisicao(req);
+    const hit = travadas.find((item) => obraIds.includes(Number(item.obra_id)));
+    if (!hit) return next();
     return res.status(403).json({
-      error: state.motivo || 'Existe uma obrigacao mensal pendente.',
-      code: 'MONTHLY_REQUIREMENT_PENDING',
-      custos_recebiveis_pendencia: state
+      error: mensagemTravada(hit),
+      code: 'OBRA_TRAVADA_CUSTOS_RECEBIVEIS',
+      obra_travada: hit
     });
   } catch (error) {
-    console.error('Falha segura ao avaliar guard de Custos e Recebiveis:', error.message);
+    console.error('Falha segura ao avaliar bloqueio de obra (Custos e Recebiveis):', error.message);
     return next();
   }
 }

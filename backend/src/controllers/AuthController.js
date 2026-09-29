@@ -43,6 +43,9 @@ const {
 const {
   calcularEstadoGuardUsuario
 } = require('../modules/custosRecebiveis/services/obrigacaoService');
+const {
+  obrasTravadasDoUsuario
+} = require('../modules/custosRecebiveis/services/bloqueioObraService');
 const { obterTelaInicialValidada } = require('../services/telaInicialService');
 const {
   buildDevUserSwitchSessionState,
@@ -103,6 +106,15 @@ async function buildSessionUser(user) {
       moduleEnabled: custosRecebiveisEnabled,
       persistir: custosRecebiveisEnabled
     });
+    // Bloqueio por OBRA (29/09/2026): a sessao leva as obras travadas do
+    // usuario (faixa de aviso no topo); o bloqueio global deixa de existir.
+    custosRecebiveisPendencia = {
+      ...custosRecebiveisPendencia,
+      bloqueado: false,
+      obras_travadas: custosRecebiveisEnabled
+        ? await obrasTravadasDoUsuario(userForGuard, { moduleEnabled: true, semCache: true })
+        : []
+    };
   } catch (error) {
     console.error('Falha segura ao calcular pendencia de Custos e Recebiveis:', error.message);
     custosRecebiveisPendencia = {

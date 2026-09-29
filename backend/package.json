@@ -70,6 +70,7 @@
     "test:custos-recebiveis-custos-gerais": "node src/modules/custosRecebiveis/tests/validarCustosPlanejadosGerais.js",
     "test:custos-recebiveis-prontidao": "node src/modules/custosRecebiveis/tests/validarProntidao.js",
     "test:custos-recebiveis-prazos": "node src/modules/custosRecebiveis/tests/validarPrazos.js",
+    "test:custos-recebiveis-bloqueio": "node src/modules/custosRecebiveis/tests/validarBloqueioObra.js",
     "test:banking-enterprise": "node scripts/validarBankingEnterprise.js",
     "test:compras-delegacao": "node scripts/validarComprasDelegacao.js",
     "test:compra-oferta-saldo-mesmo-fornecedor": "node scripts/validarCompraOfertaSaldoMesmoFornecedor.js",

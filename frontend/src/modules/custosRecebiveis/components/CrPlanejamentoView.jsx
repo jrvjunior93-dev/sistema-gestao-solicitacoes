@@ -76,12 +76,6 @@ function draftSignature(value) {
   return JSON.stringify(value ?? null);
 }
 
-function localExpiryDefault() {
-  const date = new Date(Date.now() + (7 * 24 * 60 * 60 * 1000));
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - (offset * 60 * 1000)).toISOString().slice(0, 16);
-}
-
 function usePlanItemSearch(obraId, competencia, macroCode, query) {
   const [state, setState] = useState({ items: [], loading: false, error: '' });
 
@@ -155,7 +149,6 @@ export default function CrPlanejamentoView({
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [reopenReason, setReopenReason] = useState('');
-  const [decisionExpiry, setDecisionExpiry] = useState(localExpiryDefault);
   const [measurementPickerMacro, setMeasurementPickerMacro] = useState('');
   /*
     SÓ O ESC (06/09, decisão do cliente — D5).
@@ -1157,14 +1150,10 @@ export default function CrPlanejamentoView({
   async function decideReopening(reopeningId, decision) {
     await runMutation(
       `decision-${reopeningId}`,
-      () => decidirReaberturaCompetencia(reopeningId, {
-        decisao: decision,
-        expira_em: decision === 'APROVADA'
-          ? new Date(decisionExpiry).toISOString()
-          : null
-      }),
+      // A reabertura aprovada vale 24 horas (regra do servidor, 29/09).
+      () => decidirReaberturaCompetencia(reopeningId, { decisao: decision }),
       decision === 'APROVADA'
-        ? 'Reabertura aprovada com prazo temporário.'
+        ? 'Reabertura aprovada por 24 horas.'
         : 'Solicitação de reabertura negada.'
     );
   }
@@ -1222,14 +1211,7 @@ export default function CrPlanejamentoView({
             </div>
             {permissions.reopenApprove
               && data.reaberturas.some((item) => item.situacao === 'SOLICITADA') ? (
-                <label className="cr-field cr-expiry-field">
-                  <span>Janela de edição até</span>
-                  <input
-                    type="datetime-local"
-                    value={decisionExpiry}
-                    onChange={(event) => setDecisionExpiry(event.target.value)}
-                  />
-                </label>
+                <small className="cr-warning-text">Aprovada, a reabertura vale por 24 horas.</small>
               ) : null}
             {data.reaberturas.map((item) => (
               <article key={item.id} className="cr-reopening-row">

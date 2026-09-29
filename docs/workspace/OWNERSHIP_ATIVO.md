@@ -7,9 +7,11 @@ planilhas e polimento). Escopo: `backend/src/modules/custosRecebiveis/`,
 teste do modulo), registro dos models do modulo em `backend/src/models/index.js`,
 a migration `backend/migrations/202609290001_custos_recebiveis_prazos_dilatacao.js`,
 `docs/modulos/custos-recebiveis/README.md` e o handoff
-`docs/handoffs/2026-09-29-custos-recebiveis-reforma.md`. Sem EC2, RDS,
-migration em ambiente compartilhado ou deploy. Fases 1 e 2 implementadas;
-ownership mantido ate o fim da reforma.
+`docs/handoffs/2026-09-29-custos-recebiveis-reforma.md`; na Fase 3 tambem
+`backend/src/controllers/AuthController.js`, `backend/src/controllers/ObraController.js`
+e `frontend/src/layout/Layout.jsx` (pontos de integracao do bloqueio por obra).
+Sem EC2, RDS, migration em ambiente compartilhado ou deploy. Fases 1 a 3
+implementadas; ownership mantido ate o fim da reforma.
 
 Ownership temporario `/root` em 23/09/2026: adicionar consulta completa de
 apropriacoes por obra, acionada por icone de lupa nos campos de selecao, com

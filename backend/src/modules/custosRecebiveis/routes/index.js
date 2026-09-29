@@ -16,11 +16,23 @@ const {
 } = require('../services/planejamentoService');
 const { resolverObraIdPorRealizado } = require('../services/realizadoService');
 const { resolverObraIdPorDilatacao } = require('../services/prazoGestaoService');
+const { invalidarObrasTravadas } = require('../services/bloqueioObraService');
 const {
   resolverObraIdPorResponsabilidade
 } = require('../services/governancaService');
 
 const router = express.Router();
+
+// Toda gravacao bem-sucedida do modulo pode travar ou destravar obras
+// (finalizar, medicao, dilatacao, reabertura, prazos, responsaveis, bypass).
+router.use((req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.on('finish', () => {
+      if (res.statusCode < 400) invalidarObrasTravadas();
+    });
+  }
+  next();
+});
 
 const planningSpreadsheetPermission = Object.freeze({
   custos: CUSTOS_RECEBIVEIS_PERMISSIONS.PLANEJAMENTO_COSTS,
