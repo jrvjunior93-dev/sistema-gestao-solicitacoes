@@ -1,15 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   HiOutlineBanknotes,
-  HiOutlineBuildingOffice2,
   HiOutlineChartBarSquare,
   HiOutlineChevronDown,
   HiOutlineChevronUp,
   HiOutlineCheckCircle,
+  HiOutlineEye,
+  HiOutlineEyeSlash,
+  HiOutlineTv,
   HiOutlineWallet
 } from 'react-icons/hi2';
 import { useAuth } from '../contexts/AuthContext';
+import { TIPO_GERAL, usePreferenciaDeLista } from '../contexts/PreferenciasContext';
 import {
   canInformPainelGestorSaldos,
   canViewPainelGestorCustosRecebiveis,
@@ -21,19 +24,19 @@ import {
   BlocoConteudo,
   Pagina,
   PageHeader,
-  StatGrid,
-  StatTile,
   useAvisos
 } from '../components/padrao';
 import DateInputBR from '../components/DateInputBR';
 import ObraAutocomplete from '../components/ui/ObraAutocomplete';
 import { normalizeCurrencyTyping, parseCurrencyInput } from '../utils/formatters';
-import {
-  ObraBloco,
-  contextoValorTotalObras,
-  formatCurrency,
-  valorTotalObra
-} from './FinanceiroResultadoObras';
+import { contextoValorTotalObras, valorTotalObra } from './FinanceiroResultadoObras';
+import CardObraPainel from './painelGestor/CardObraPainel';
+import ConsolidadoPeriodo from './painelGestor/ConsolidadoPeriodo';
+import ContaSaldoCard, { formatarDataHora } from './painelGestor/ContaSaldoCard';
+import { ControleOrdenacao, GradeOrdenavel, useOrdemCards } from './painelGestor/OrdenacaoCards';
+import { ModalPinPainel, useOlhoPainel } from './painelGestor/OlhoPainel';
+import { ORDEM_CUSTOS_RECEBIVEIS, ORDEM_RESULTADO, ORDEM_SALDOS } from './painelGestor/criterios';
+import { VALOR_OCULTO, dinheiro } from './painelGestor/valores';
 import CrDashboardView from '../modules/custosRecebiveis/components/CrDashboardView';
 import CrExecutiveFilters from '../modules/custosRecebiveis/components/CrExecutiveFilters';
 import {
@@ -95,50 +98,67 @@ function formatDate(value) {
   return `${day}/${month}/${year}`;
 }
 
-function formatDateTime(value) {
-  if (!value) return 'Sem atualização';
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo'
-  }).format(new Date(value));
+
+const getIdObra = (obra) => obra.id;
+const getNomeObra = (obra) => obra.nome;
+const getIdConta = (conta) => conta.id;
+const getNomeConta = (conta) => conta.nome;
+
+/*
+  Carga com descarte: cada pedido leva um número; resposta de pedido
+  antigo (ex.: saiu antes de o olho fechar) é ignorada, para nunca repor
+  na tela um valor que já deveria estar oculto.
+*/
+function useCargaAtual() {
+  const contador = useRef(0);
+  return useCallback(() => {
+    contador.current += 1;
+    const meu = contador.current;
+    return () => meu === contador.current;
+  }, []);
 }
 
-function ContaSaldoCard({ item }) {
-  const saldo = item.saldo;
-  return (
-    <article className="pg-account-card" data-pendente={saldo ? 'false' : 'true'}>
-      <div className="pg-account-card__heading"><HiOutlineBuildingOffice2 /><div><strong>{item.nome}</strong><span>{item.empresa?.nome || 'Sem empresa vinculada'}</span></div><em>{saldo?.automatico ? 'Automático' : saldo?.corrigido ? 'Corrigido' : saldo ? 'Informado' : 'Pendente'}</em></div>
-      <p>{saldo ? formatCurrency(saldo.valor) : 'Não informado'}</p>
-      <footer><span>{item.tipo_operacional === 'CAIXA_INTERNO' ? 'Caixa interno' : item.banco || 'Conta bancária'}</span><span>{saldo?.automatico ? `Saldo do sistema · ${formatDateTime(saldo.atualizado_em)}` : saldo ? `${saldo.atualizado_por?.nome || saldo.informado_por?.nome || 'Usuário não identificado'} · ${formatDateTime(saldo.atualizado_em)}` : 'Aguardando informação do dia'}</span></footer>
-    </article>
-  );
-}
-
-function SaldoExecutivoPrincipal({ snapshot, loading, onReload, onOpenBalances }) {
+function SaldoExecutivoPrincipal({ snapshot, loading, onReload, onOpenBalances, oculto }) {
   const [expanded, setExpanded] = useState(false);
   const resumo = snapshot?.resumo || {};
+  const ordem = useOrdemCards({
+    storageKey: ORDEM_SALDOS.chave,
+    criterios: ORDEM_SALDOS.criterios,
+    padrao: ORDEM_SALDOS.padrao,
+    itens: snapshot?.contas,
+    getId: getIdConta,
+    getNome: getNomeConta,
+    oculto
+  });
   return (
     <section className="pg-main-balance" data-completo={resumo.completo ? 'true' : 'false'} aria-busy={loading}>
       <div className="pg-balance-summary">
-        <div><span>{resumo.completo ? 'Saldo consolidado do grupo' : 'Saldo parcial disponível'}</span><strong>{loading ? 'Carregando...' : formatCurrency(resumo.saldo_informado || 0)}</strong><small>Posição diária em {formatDate(snapshot?.data_referencia || localDate())}</small></div>
+        <div>
+          <span>{resumo.completo ? 'Saldo consolidado do grupo' : 'Saldo parcial disponível'}</span>
+          <strong>{loading ? 'Carregando...' : dinheiro(resumo.saldo_informado, oculto)}</strong>
+          <small>Posição diária em {formatDate(snapshot?.data_referencia || localDate())}</small>
+        </div>
         <dl>
           <div><dt>Contas com saldo</dt><dd>{resumo.contas_informadas || 0} de {resumo.contas_total || 0}</dd></div>
           <div><dt>Pendentes</dt><dd>{resumo.contas_pendentes || 0}</dd></div>
-          <div><dt>Última atualização</dt><dd>{formatDateTime(resumo.ultima_atualizacao)}</dd></div>
+          <div><dt>Última atualização</dt><dd>{formatarDataHora(resumo.ultima_atualizacao)}</dd></div>
         </dl>
       </div>
       <div className="pg-main-balance__actions">
         <button type="button" className="btn btn-outline" onClick={onReload} disabled={loading}>Atualizar</button>
-        <button type="button" className="btn btn-outline" onClick={() => setExpanded((current) => !current)}>{expanded ? <HiOutlineChevronUp /> : <HiOutlineChevronDown />}{expanded ? 'Recolher contas' : 'Detalhar por conta'}</button>
+        <button type="button" className="btn btn-outline" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? <HiOutlineChevronUp /> : <HiOutlineChevronDown />}{expanded ? 'Recolher contas' : 'Detalhar por conta'}</button>
         <button type="button" className="btn btn-primary" onClick={onOpenBalances}>Saldos e Contas</button>
       </div>
       {expanded ? <div className="pg-main-balance__details">
-        {snapshot?.contas?.length ? <div className="pg-account-grid">{snapshot.contas.map((item) => <ContaSaldoCard key={item.id} item={item} />)}</div> : <div className="app-empty-card">Nenhuma conta disponível no seu escopo.</div>}
+        {snapshot?.contas?.length
+          ? <div className="pg-account-grid">{ordem.ordenados.map((item) => <ContaSaldoCard key={item.id} item={item} oculto={oculto} />)}</div>
+          : <div className="app-empty-card">Nenhuma conta disponível no seu escopo.</div>}
       </div> : null}
     </section>
   );
 }
 
-function ResultadoObrasTab({ avisar }) {
+function ResultadoObrasTab({ avisar, oculto }) {
   const [obras, setObras] = useState([]);
   const [dados, setDados] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -169,6 +189,15 @@ function ResultadoObrasTab({ avisar }) {
     return acc;
   }, { valorTotalObras: 0, executado: 0, recebido: 0, faltaReceber: 0, resultado: 0 }), [dados]);
   const contextoValorTotal = useMemo(() => contextoValorTotalObras(dados), [dados]);
+  const ordem = useOrdemCards({
+    storageKey: ORDEM_RESULTADO.chave,
+    criterios: ORDEM_RESULTADO.criterios,
+    padrao: ORDEM_RESULTADO.padrao,
+    itens: dados,
+    getId: getIdObra,
+    getNome: getNomeObra,
+    oculto
+  });
 
   function apply(event) {
     event.preventDefault();
@@ -187,7 +216,7 @@ function ResultadoObrasTab({ avisar }) {
 
   return (
     <div className="pg-tab-stack">
-      <BlocoConteudo titulo="Filtros do resultado" descricao="Movimentos são recortados pelo período; posições estruturais permanecem atuais.">
+      <BlocoConteudo titulo="Filtros do resultado">
         <form className="pg-filter-grid" onSubmit={apply}>
           <label>
             <span>Obra</span>
@@ -214,33 +243,29 @@ function ResultadoObrasTab({ avisar }) {
       </BlocoConteudo>
 
       <BlocoConteudo titulo="Consolidado do período" descricao={`${formatDate(applied.data_inicial)} a ${formatDate(applied.data_final)} · ${dados.length} obra(s)`} variante="primario" cor="var(--module-financeiro)">
-        <StatGrid colunas={3}>
-          <StatTile
-            label={contextoValorTotal.rotulo}
-            valor={formatCurrency(resumo.valorTotalObras)}
-            sub={contextoValorTotal.apoio}
-            tom="info"
-          />
-          <StatTile label="Executado no período" valor={formatCurrency(resumo.executado)} tom="info" />
-          <StatTile label="Recebido no período" valor={formatCurrency(resumo.recebido)} tom="success" />
-          <StatTile label="Falta receber" valor={formatCurrency(resumo.faltaReceber)} sub="Posição acumulada até a data final" tom="warning" />
-          <StatTile
-            label="Resultado do período"
-            valor={formatCurrency(resumo.resultado)}
-            sub="Recebido menos executado"
-            tom={resumo.resultado < 0 ? 'danger' : resumo.resultado > 0 ? 'success' : undefined}
-          />
-        </StatGrid>
+        <ConsolidadoPeriodo resumo={resumo} contextoValorTotal={contextoValorTotal} oculto={oculto} carregando={loading} />
       </BlocoConteudo>
 
       {loading ? <div className="app-empty-card">Carregando resultado de obras...</div> : dados.length ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{dados.map((obra) => <ObraBloco key={obra.id} obra={obra} />)}</div>
+        <section className="pg-grade-cards" aria-label="Obras">
+          <div className="pg-grade-cards__topo">
+            <strong>{dados.length} obra(s)</strong>
+            <ControleOrdenacao ordem={ordem} rotuloAcessivel="Ordenar obras por" />
+          </div>
+          <GradeOrdenavel
+            ordem={ordem}
+            getId={getIdObra}
+            getNome={getNomeObra}
+            className="pg-obra-grid"
+            renderItem={(obra) => <CardObraPainel obra={obra} oculto={oculto} />}
+          />
+        </section>
       ) : <div className="app-empty-card">Nenhuma obra encontrada para o período e filtros selecionados.</div>}
     </div>
   );
 }
 
-function CustosRecebiveisTab({ avisar }) {
+function CustosRecebiveisTab({ avisar, oculto }) {
   const [obras, setObras] = useState([]);
   const [obraId, setObraId] = useState('');
   const [classificacao, setClassificacao] = useState('');
@@ -266,7 +291,7 @@ function CustosRecebiveisTab({ avisar }) {
   }
 
   return (
-    <div className="pg-tab-stack custos-recebiveis-layout-scope">
+    <div className="pg-tab-stack pg-cr custos-recebiveis-layout-scope">
       <CrExecutiveFilters
         obras={obras}
         obraId={obraId}
@@ -282,6 +307,7 @@ function CustosRecebiveisTab({ avisar }) {
           setPeriodEnd(ordered.at(-1) || currentMonth());
         }}
         operational
+        buscarObrasRemotas={false}
         onPeriodChange={(start, end) => { setPeriodStart(start); setPeriodEnd(end); }}
         onClear={clearFilters}
       />
@@ -293,39 +319,57 @@ function CustosRecebiveisTab({ avisar }) {
         presentation="gestor"
         loadDashboard={loader}
         canOpenPlanning={false}
+        valoresOcultos={oculto}
+        buscarPrazos={false}
+        ordemStorageKey={ORDEM_CUSTOS_RECEBIVEIS}
       />
     </div>
   );
 }
 
-function SaldosTab({ avisar, canInform, onSaved }) {
+function SaldosTab({ avisar, canInform, onSaved, oculto }) {
   const data = localDate();
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [values, setValues] = useState({});
+  const cargaAtual = useCargaAtual();
 
   const load = useCallback(() => {
+    const vale = cargaAtual();
     setLoading(true);
     return obterSaldosPainelGestor(data)
       .then((payload) => {
+        if (!vale()) return;
         setSnapshot(payload);
-        setValues(Object.fromEntries((payload?.contas || [])
+        // Olho fechado: o valor chega null e o formulário nem abre — não
+        // preencher (Number(null) viraria "0,00").
+        setValues(oculto ? {} : Object.fromEntries((payload?.contas || [])
           .filter((item) => !item.saldo_automatico)
-          .map((item) => [item.id, item.saldo ? Number(item.saldo.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''])));
+          .map((item) => [item.id, item.saldo?.valor != null ? Number(item.saldo.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''])));
       })
-      .catch((error) => avisar.erro(error.message))
-      .finally(() => setLoading(false));
-  }, [avisar, data]);
+      .catch((error) => { if (vale()) avisar.erro(error.message); })
+      .finally(() => { if (vale()) setLoading(false); });
+  }, [avisar, cargaAtual, data, oculto]);
 
   useEffect(() => { load(); }, [load]);
   const contasManuais = useMemo(() => (snapshot?.contas || []).filter((item) => !item.saldo_automatico), [snapshot?.contas]);
   const preenchidas = useMemo(() => contasManuais.filter((item) => String(values[item.id] || '').trim()), [contasManuais, values]);
   const pendentes = contasManuais.filter((item) => !item.saldo).length;
+  const ordem = useOrdemCards({
+    storageKey: ORDEM_SALDOS.chave,
+    criterios: ORDEM_SALDOS.criterios,
+    padrao: ORDEM_SALDOS.padrao,
+    itens: snapshot?.contas,
+    getId: getIdConta,
+    getNome: getNomeConta,
+    oculto
+  });
 
   async function salvar(event) {
     event.preventDefault();
+    if (saving || oculto) return;
     if (!preenchidas.length) {
       avisar.alerta('Informe o saldo de pelo menos uma conta.');
       return;
@@ -353,12 +397,24 @@ function SaldosTab({ avisar, canInform, onSaved }) {
     }
   }
 
+  const resumoPendencia = pendentes
+    ? `${pendentes} conta(s) manual(is) pendente(s) em ${formatDate(data)}`
+    : `Saldos manuais conferidos em ${formatDate(data)}`;
+
   return (
     <div className="pg-tab-stack">
-      {canInform ? <section className="pg-balance-entry" data-expanded={expanded ? 'true' : 'false'}>
+      {canInform && oculto ? (
+        <section className="pg-balance-entry" data-indisponivel="true">
+          <div className="pg-balance-entry__toggle">
+            <span><HiOutlineWallet aria-hidden="true" /><span><strong>Informar saldos das contas</strong><small>{resumoPendencia}</small></span></span>
+            <span className="pg-balance-entry__aviso"><HiOutlineEyeSlash aria-hidden="true" />Abra os valores para informar saldos</span>
+          </div>
+        </section>
+      ) : null}
+      {canInform && !oculto ? <section className="pg-balance-entry" data-expanded={expanded ? 'true' : 'false'}>
         <button type="button" className="pg-balance-entry__toggle" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>
-          <span><HiOutlineWallet /><span><strong>Informar saldos das contas</strong><small>{pendentes ? `${pendentes} conta(s) manual(is) pendente(s) em ${formatDate(data)}` : `Saldos manuais conferidos em ${formatDate(data)}`}</small></span></span>
-          <span className="pg-balance-entry__action">{expanded ? 'Recolher' : 'Expandir'}{expanded ? <HiOutlineChevronUp /> : <HiOutlineChevronDown />}</span>
+          <span><HiOutlineWallet /><span><strong>Informar saldos das contas</strong><small>{resumoPendencia}</small></span></span>
+          <span className="pg-balance-entry__action"><span>{expanded ? 'Recolher' : 'Expandir'}</span>{expanded ? <HiOutlineChevronUp /> : <HiOutlineChevronDown />}</span>
         </button>
         <div className="pg-balance-entry__content">
           <div>
@@ -377,22 +433,36 @@ function SaldosTab({ avisar, canInform, onSaved }) {
       </section> : null}
 
       <section className="pg-current-accounts">
-        <header><div><strong>Saldo atual por conta</strong><span>Posição registrada em {formatDate(data)}. Contas automáticas são identificadas nos cards.</span></div><button type="button" className="btn btn-outline" onClick={load} disabled={loading}>Atualizar</button></header>
-        {loading ? <div className="app-empty-card">Carregando saldos...</div> : snapshot?.contas?.length ? <div className="pg-account-grid">{snapshot.contas.map((item) => <ContaSaldoCard key={item.id} item={item} />)}</div> : <div className="app-empty-card">Nenhuma conta disponível no seu escopo.</div>}
+        <header>
+          <div><strong>Saldo atual por conta</strong><span>Posição de {formatDate(data)}</span></div>
+          <div className="pg-current-accounts__acoes">
+            {snapshot?.contas?.length ? <ControleOrdenacao ordem={ordem} rotuloAcessivel="Ordenar contas por" /> : null}
+            <button type="button" className="btn btn-outline" onClick={load} disabled={loading}>Atualizar</button>
+          </div>
+        </header>
+        {loading && !snapshot ? <div className="app-empty-card">Carregando saldos...</div> : snapshot?.contas?.length ? (
+          <GradeOrdenavel
+            ordem={ordem}
+            getId={getIdConta}
+            getNome={getNomeConta}
+            className="pg-account-grid"
+            renderItem={(item) => <ContaSaldoCard item={item} oculto={oculto} />}
+          />
+        ) : <div className="app-empty-card">Nenhuma conta disponível no seu escopo.</div>}
       </section>
 
       {snapshot?.historico?.length ? (
-        <BlocoConteudo titulo="Histórico do saldo diário" descricao="Cada inclusão, atualização e correção desta data permanece rastreável.">
+        <BlocoConteudo titulo="Histórico do saldo diário" descricao="Inclusões, atualizações e correções desta data.">
           <div className="pg-history-scroll">
             <table className="pg-history-table">
               <thead><tr><th>Horário</th><th>Conta</th><th>Ação</th><th>Saldo anterior</th><th>Novo saldo</th><th>Responsável</th><th>Justificativa</th></tr></thead>
               <tbody>{snapshot.historico.map((item) => (
                 <tr key={item.id}>
-                  <td>{formatDateTime(item.realizado_em)}</td>
+                  <td>{formatarDataHora(item.realizado_em)}</td>
                   <td>{item.conta_nome}</td>
                   <td><span data-action={item.acao}>{item.acao === 'CRIADO' ? 'Informado' : item.acao === 'CORRIGIDO' ? 'Corrigido' : 'Atualizado'}</span></td>
-                  <td>{item.saldo_anterior == null ? '—' : formatCurrency(item.saldo_anterior)}</td>
-                  <td>{formatCurrency(item.saldo_novo)}</td>
+                  <td>{oculto ? VALOR_OCULTO : item.saldo_anterior == null ? '—' : dinheiro(item.saldo_anterior, false)}</td>
+                  <td>{dinheiro(item.saldo_novo, oculto)}</td>
                   <td>{item.usuario?.nome || 'Usuário não identificado'}</td>
                   <td>{item.justificativa || '—'}</td>
                 </tr>
@@ -412,6 +482,14 @@ export default function PainelGestor() {
   const canViewBalances = canViewPainelGestorSaldos(user);
   const [mainBalance, setMainBalance] = useState(null);
   const [loadingMainBalance, setLoadingMainBalance] = useState(canViewBalances);
+  const [pinAberto, setPinAberto] = useState(false);
+  const olho = useOlhoPainel();
+  const oculto = olho.disponivel && olho.fechado;
+  const cargaAtual = useCargaAtual();
+  /* Modo TV: preferência POR USUÁRIO no banco (lista `painel-gestor`,
+     tipo `geral`, valor `{ modoTv }`). */
+  const [preferenciaGeral, , remendarPreferenciaGeral] = usePreferenciaDeLista('painel-gestor', TIPO_GERAL);
+  const modoTv = Boolean(preferenciaGeral?.modoTv);
   const tabs = useMemo(() => [
     canViewPainelGestorResultadoObras(user) ? { id: 'resultado-obras', label: 'Resultado de Obras', icon: HiOutlineChartBarSquare } : null,
     canViewPainelGestorCustosRecebiveis(user) ? { id: 'custos-recebiveis', label: 'Custos e Recebíveis', icon: HiOutlineBanknotes } : null,
@@ -428,28 +506,72 @@ export default function PainelGestor() {
 
   const loadMainBalance = useCallback(() => {
     if (!canViewBalances) return Promise.resolve();
+    const vale = cargaAtual();
     setLoadingMainBalance(true);
     return obterSaldosPainelGestor(localDate())
-      .then(setMainBalance)
-      .catch((error) => avisar.erro(error.message))
-      .finally(() => setLoadingMainBalance(false));
-  }, [avisar, canViewBalances]);
+      .then((payload) => { if (vale()) setMainBalance(payload); })
+      .catch((error) => { if (vale()) avisar.erro(error.message); })
+      .finally(() => { if (vale()) setLoadingMainBalance(false); });
+  }, [avisar, canViewBalances, cargaAtual]);
 
-  useEffect(() => { loadMainBalance(); }, [loadMainBalance]);
+  // O olho mudou (versao): descarta o saldo em memória e busca de novo.
+  useEffect(() => {
+    if (!olho.pronto) return;
+    setMainBalance(null);
+    loadMainBalance();
+  }, [loadMainBalance, olho.pronto, olho.versao]);
+
+  async function alternarOlho() {
+    if (!oculto) {
+      try {
+        await olho.fechar();
+      } catch (error) {
+        avisar.erro(error.message);
+      }
+      return;
+    }
+    setPinAberto(true);
+  }
+
+  const secundarias = [
+    olho.disponivel ? {
+      rotulo: oculto ? 'Mostrar valores' : 'Ocultar valores',
+      icone: oculto ? <HiOutlineEyeSlash aria-hidden="true" /> : <HiOutlineEye aria-hidden="true" />,
+      onClick: alternarOlho,
+      desabilitada: olho.alternando,
+      title: oculto ? 'Valores ocultos. Clique para mostrar (pede a senha do painel).' : 'Ocultar os valores financeiros do painel',
+      rotuloAcessivel: oculto ? 'Mostrar valores do painel (pede senha)' : 'Ocultar valores do painel',
+      classe: 'pg-botao-olho'
+    } : null,
+    {
+      rotulo: 'Modo TV',
+      icone: <HiOutlineTv aria-hidden="true" />,
+      onClick: () => remendarPreferenciaGeral({ modoTv: !modoTv }),
+      pressionada: modoTv,
+      title: modoTv ? 'Voltar ao tamanho normal' : 'Aumentar o texto para leitura à distância'
+    }
+  ];
+
+  const chave = `${olho.versao}`;
 
   return (
-    <Pagina>
-      <PageHeader titulo="Painel do Gestor" contagem="Visão executiva" descricao="Resultado das obras, desempenho mensal e disponibilidade financeira do grupo." />
+    <Pagina className={`pg-painel${modoTv ? ' pg-modo-tv' : ''}`} data-valores-ocultos={oculto || undefined}>
+      <PageHeader titulo="Painel do Gestor" contagem="Visão executiva" descricao="Resultado das obras, desempenho mensal e disponibilidade financeira do grupo." secundarias={secundarias} />
       <Avisos avisos={avisos} aoFechar={fechar} />
-      {canViewBalances ? <SaldoExecutivoPrincipal snapshot={mainBalance} loading={loadingMainBalance} onReload={loadMainBalance} onOpenBalances={() => selectTab('saldos')} /> : null}
-      <nav className="pg-tabs" aria-label="Visões do Painel do Gestor">{tabs.map((tab) => {
-        const Icon = tab.icon;
-        return <button type="button" key={tab.id} className={active === tab.id ? 'is-active' : ''} onClick={() => selectTab(tab.id)}><Icon />{tab.label}</button>;
-      })}</nav>
-      {!active ? <div className="app-empty-card">Seu acesso ao Painel do Gestor ainda não possui nenhuma visão liberada.</div> : null}
-      {active === 'resultado-obras' ? <ResultadoObrasTab avisar={avisar} /> : null}
-      {active === 'custos-recebiveis' ? <CustosRecebiveisTab avisar={avisar} /> : null}
-      {active === 'saldos' ? <SaldosTab avisar={avisar} canInform={canInformPainelGestorSaldos(user)} onSaved={loadMainBalance} /> : null}
+      {!olho.pronto ? <div className="app-empty-card">Carregando painel...</div> : (
+        <>
+          {canViewBalances ? <SaldoExecutivoPrincipal key={`saldo-${chave}`} snapshot={mainBalance} loading={loadingMainBalance} onReload={loadMainBalance} onOpenBalances={() => selectTab('saldos')} oculto={oculto} /> : null}
+          <nav className="pg-tabs" aria-label="Visões do Painel do Gestor">{tabs.map((tab) => {
+            const Icon = tab.icon;
+            return <button type="button" key={tab.id} className={active === tab.id ? 'is-active' : ''} onClick={() => selectTab(tab.id)}><Icon />{tab.label}</button>;
+          })}</nav>
+          {!active ? <div className="app-empty-card">Seu acesso ao Painel do Gestor ainda não possui nenhuma visão liberada.</div> : null}
+          {active === 'resultado-obras' ? <ResultadoObrasTab key={`resultado-${chave}`} avisar={avisar} oculto={oculto} /> : null}
+          {active === 'custos-recebiveis' ? <CustosRecebiveisTab key={`custos-${chave}`} avisar={avisar} oculto={oculto} /> : null}
+          {active === 'saldos' ? <SaldosTab key={`saldos-${chave}`} avisar={avisar} canInform={canInformPainelGestorSaldos(user)} onSaved={loadMainBalance} oculto={oculto} /> : null}
+        </>
+      )}
+      <ModalPinPainel aberto={pinAberto} onFechar={() => setPinAberto(false)} onConfirmar={olho.abrir} />
     </Pagina>
   );
 }
