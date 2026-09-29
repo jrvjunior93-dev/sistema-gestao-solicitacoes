@@ -250,7 +250,9 @@ function styleDataRows(worksheet, lastRow, editableColumns = []) {
 // bloqueadas). Selecionar qualquer celula (para montar formula como =H2),
 // formatar, filtrar e ordenar ficam liberados: a importacao le por nome de
 // cabecalho e casa a linha pelo item_codigo, entao ordenar nao quebra a
-// leitura. Inserir/excluir linhas so no modelo livre de custos.
+// leitura. Observacao: o Excel so ordena faixa SEM celula bloqueada, entao na
+// pratica ordenar funciona no modelo livre de custos; nos de medicao vale o
+// autofiltro. Inserir/excluir linhas so no modelo livre de custos.
 const PROTECTION_OPTIONS = Object.freeze({
   selectLockedCells: true,
   selectUnlockedCells: true,
