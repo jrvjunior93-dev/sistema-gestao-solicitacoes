@@ -8,7 +8,13 @@ const {
   prazoMedicaoAprovada,
   resumirPrazosObra
 } = require('../services/prazoService');
-const { assertEditable } = require('../services/planejamentoService');
+const {
+  assertEditable,
+  criarCompetencia,
+  listarCompetencias,
+  salvarCustos,
+  solicitarReabertura
+} = require('../services/planejamentoService');
 
 const at = (value) => new Date(value);
 
@@ -69,6 +75,7 @@ function validateSummaries() {
 
   const semEstrutura = resumirPrazosObra({ ...base, temPlanoPublicado: false });
   assert.strictEqual(semEstrutura.planejamento.situacao, 'SEM_ESTRUTURA');
+  assert.strictEqual(semEstrutura.medicao, null);
 
   const privada = resumirPrazosObra({ ...base, classificacao: 'PRIVADA', now: at('2026-09-29T12:00:00-03:00') });
   assert.strictEqual(privada.medicao, null);
@@ -95,25 +102,136 @@ function validateReleasedMonths() {
   assert.deepStrictEqual(competenciasLiberadas({ temPlanoPublicado: true, inicio: '2026-12', now }), []);
 }
 
-async function validateReopenedEditable() {
-  const competencia = { id: 7, competencia: '2999-01', estado: 'REABERTA' };
+const tx = { transaction: async (callback) => callback({ LOCK: { UPDATE: 'UPDATE' } }) };
+const scope = async () => ({ todas: true, obraIds: null });
+
+async function validateEditRules() {
+  const reopened = { id: 7, competencia: '2026-08', estado: 'REABERTA' };
   const withReopening = { CrReabertura: { findOne: async () => ({ id: 1 }) } };
   const withoutReopening = { CrReabertura: { findOne: async () => null } };
-  // Reaberta dentro do prazo com reabertura vigente: editavel.
-  await assertEditable(competencia, withReopening);
-  await assert.rejects(() => assertEditable(competencia, withoutReopening), (error) => error.code === 'CR_REABERTURA_EXPIRADA');
+  // Reaberta com reabertura vigente: editavel, mesmo com prazo vencido.
+  await assertEditable(reopened, withReopening);
+  await assert.rejects(() => assertEditable(reopened, withoutReopening), (error) => error.code === 'CR_REABERTURA_EXPIRADA');
+  // Finalizada nunca e editavel, nem com reabertura ainda vigente.
   await assert.rejects(
-    () => assertEditable({ ...competencia, estado: 'FINALIZADA' }, withoutReopening),
+    () => assertEditable({ ...reopened, estado: 'FINALIZADA' }, withReopening),
     (error) => error.code === 'CR_COMPETENCIA_IMUTAVEL'
   );
-  await assertEditable({ ...competencia, estado: 'EM_PREENCHIMENTO' }, withoutReopening);
+  // Planejamento atrasado e nunca finalizado: editavel sem reabertura.
+  await assertEditable({ ...reopened, competencia: '2020-01', estado: 'EM_PREENCHIMENTO' }, withoutReopening);
+  await assertEditable({ ...reopened, competencia: '2020-01', estado: 'ABERTA' }, withoutReopening);
+}
+
+async function validateNewMonthIdempotency() {
+  const existing = { id: 5, obra_id: 7, competencia: '2026-10', estado: 'ABERTA', plano_versao_snapshot: 2 };
+  let created = 0;
+  const deps = {
+    sequelize: tx,
+    resolverEscopoObras: scope,
+    Obra: { findByPk: async () => ({ id: 7, classificacao: 'PUBLICA' }) },
+    CrPlanoObra: { findOne: async () => ({ id: 3, versao: 2 }) },
+    CrCompetencia: { findOne: async () => existing, create: async () => { created += 1; } },
+    CrAuditoria: { create: async () => null },
+    competenciasLiberadasObra: async () => []
+  };
+  // O mes ja existe e saiu das liberadas: repetir o pedido devolve o registro.
+  const result = await criarCompetencia({ id: 1 }, 7, { competencia: '2026-10' }, 'k1', deps);
+  assert.strictEqual(result.idempotente, true);
+  assert.strictEqual(created, 0);
+  // Mes inexistente fora da janela continua recusado.
+  await assert.rejects(
+    () => criarCompetencia({ id: 1 }, 7, { competencia: '2027-06' }, 'k2', {
+      ...deps,
+      CrCompetencia: { findOne: async () => null, create: async () => { created += 1; } }
+    }),
+    (error) => error.code === 'CR_COMPETENCIA_FORA_JANELA'
+  );
+  assert.strictEqual(created, 0);
+}
+
+async function validateSaveCannotCreateFutureMonth() {
+  let created = 0;
+  await assert.rejects(
+    () => salvarCustos({ id: 1 }, 7, '2027-06', { itens: [] }, {
+      sequelize: tx,
+      resolverEscopoObras: scope,
+      Obra: { findByPk: async () => ({ id: 7, classificacao: 'PUBLICA' }) },
+      CrPlanoObra: { findOne: async () => ({ id: 3, versao: 2, situacao: 'PUBLICADA' }) },
+      CrPlanoItem: { findAll: async () => [] },
+      CrCompetencia: { findOne: async () => null, create: async () => { created += 1; } },
+      competenciasLiberadasObra: async () => ['2026-10']
+    }),
+    (error) => error.code === 'CR_COMPETENCIA_FORA_JANELA'
+  );
+  assert.strictEqual(created, 0);
+}
+
+async function validateReopeningEligibility() {
+  const base = {
+    sequelize: tx,
+    resolverEscopoObras: scope,
+    CrReabertura: { findOne: async () => null, create: async (values) => ({ id: 9, ...values }) },
+    CrAuditoria: { create: async () => null }
+  };
+  const request = (estado, overrides = {}) => solicitarReabertura(
+    { id: 1 },
+    41,
+    { motivo: 'Corrigir quantidade do aço' },
+    {
+      ...base,
+      CrCompetencia: {
+        findByPk: async () => ({ id: 41, obra_id: 7, competencia: '2026-08', estado }),
+        findOne: async () => ({ id: 41, obra_id: 7 })
+      },
+      ...overrides
+    }
+  );
+  assert.strictEqual((await request('FINALIZADA')).idempotente, false);
+  // Reaberta cuja janela expirou pode pedir de novo.
+  assert.strictEqual((await request('REABERTA')).idempotente, false);
+  // Mes em preenchimento (mesmo atrasado) nao precisa de reabertura.
+  await assert.rejects(() => request('EM_PREENCHIMENTO'), (error) => error.code === 'CR_REABERTURA_ESTADO_INVALIDO');
+}
+
+async function validateMonthListFlags() {
+  const month = (id, competencia, estado) => ({ id, obra_id: 7, competencia, estado });
+  const response = await listarCompetencias({ id: 1 }, 7, {
+    resolverEscopoObras: scope,
+    Obra: { findByPk: async () => ({ id: 7, classificacao: 'PUBLICA' }) },
+    CrCompetencia: {
+      findAll: async () => [
+        month(1, '2020-01', 'EM_PREENCHIMENTO'),
+        month(2, '2020-02', 'FINALIZADA'),
+        month(3, '2020-03', 'REABERTA')
+      ]
+    },
+    CrMedicaoConsolidada: { findAll: async () => [] },
+    TituloFinanceiro: { findAll: async () => [] },
+    TituloFinanceiroRateio: { findAll: async () => [] },
+    MovimentoFinanceiro: { findAll: async () => [] },
+    CrReabertura: { findAll: async () => [] },
+    competenciasLiberadasObra: async () => ['2026-10']
+  });
+  const byMonth = new Map(response.items.map((item) => [item.competencia, item]));
+  assert.strictEqual(byMonth.get('2020-01').planejamento_editavel, true);
+  assert.strictEqual(byMonth.get('2020-01').vencida, true);
+  assert.strictEqual(byMonth.get('2020-01').reabertura_permitida, false);
+  assert.strictEqual(byMonth.get('2020-02').planejamento_editavel, false);
+  assert.strictEqual(byMonth.get('2020-02').reabertura_permitida, true);
+  assert.strictEqual(byMonth.get('2020-03').planejamento_editavel, false);
+  assert.strictEqual(byMonth.get('2020-03').reabertura_permitida, true);
+  assert.deepStrictEqual(response.competencias_permitidas, ['2026-10']);
 }
 
 async function run() {
   validateWindows();
   validateSummaries();
   validateReleasedMonths();
-  await validateReopenedEditable();
+  await validateEditRules();
+  await validateNewMonthIdempotency();
+  await validateSaveCannotCreateFutureMonth();
+  await validateReopeningEligibility();
+  await validateMonthListFlags();
   console.log('Prazos de Custos e Recebiveis validados com sucesso.');
 }
 

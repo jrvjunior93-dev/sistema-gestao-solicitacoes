@@ -106,7 +106,9 @@ export function situacaoObra(prazos) {
   if (prazos.planejamento?.situacao === 'SEM_ESTRUTURA') {
     return { status: 'NAO_INICIADA', label: 'Sem planilha' };
   }
-  if (items.some((item) => item.situacao === 'ABERTO')) {
+  // Só o planejamento dá o rótulo "aberto": a medição do mês corrente está
+  // sempre em curso numa obra pública e isso não é pendência a destacar.
+  if (prazos.planejamento?.situacao === 'ABERTO') {
     return { status: 'ABERTO', label: 'Planejamento aberto' };
   }
   return { status: 'CUMPRIDA', label: 'Em dia' };

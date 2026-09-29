@@ -87,7 +87,6 @@ export default function CustosRecebiveis() {
   const [feedback, setFeedback] = useState(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [obligationSummary, setObligationSummary] = useState(null);
-  const [obligationData, setObligationData] = useState(null);
 
   const hasAdministrativeCapability = [
     CUSTOS_RECEBIVEIS_PERMISSIONS.ESTRUTURA_IMPORT,
@@ -312,16 +311,13 @@ export default function CustosRecebiveis() {
   const loadObligationSummary = useCallback(async () => {
     if (!canViewObligations) {
       setObligationSummary(null);
-      setObligationData(null);
       return;
     }
     try {
       const response = await listarMinhasObrigacoesCustosRecebiveis();
       setObligationSummary(response?.resumo || null);
-      setObligationData(response || null);
     } catch {
       setObligationSummary(null);
-      setObligationData(null);
     }
   }, [canViewObligations]);
 
@@ -696,7 +692,10 @@ export default function CustosRecebiveis() {
                 activeTab === tab.id
                 || (engineerMonths && tab.id === 'obras')
               ) ? 'is-active' : ''}
-              onClick={() => updateQuery({ aba: tab.id })}
+              // Engenheiro: "Minhas obras" volta à lista, sem obra aberta.
+              onClick={() => updateQuery(obraExperience && tab.id === 'obras'
+                ? { aba: 'obras', obra: null, competencia: null, detalhe: null, painel: null, bloqueio: null }
+                : { aba: tab.id })}
             >
               <Icon className="h-4 w-4" />
               {tab.label}
@@ -796,7 +795,7 @@ export default function CustosRecebiveis() {
             cardMode={obraExperience}
             showAdministrationLink={!obraExperience && canViewStructure}
           />
-          {!operationalExperience && Number.isInteger(selectedObraId) && selectedObraId > 0 ? (
+          {!obraExperience && Number.isInteger(selectedObraId) && selectedObraId > 0 ? (
             <div id="cr-workspace-anchor">
               <CrPlanoWorkspace
                 data={planData}

@@ -4,12 +4,9 @@ const { Op } = require('sequelize');
 const db = require('../../../models');
 const { createBusinessError } = require('./planoMicroService');
 const { resolverEscopoObras } = require('../policies/obraScopePolicy');
-const {
-  listarMinhasObrigacoes,
-  prazoCompetencia
-} = require('./obrigacaoService');
+const { listarMinhasObrigacoes } = require('./obrigacaoService');
 const { totalTitulosEmitidosPorCompetencia } = require('./realizadoService');
-const { competenciasLiberadasObra } = require('./prazoService');
+const { competenciasLiberadasObra, janelaPlanejamento } = require('./prazoService');
 
 const VALID_COMPETENCIA = /^\d{4}-(0[1-9]|1[0-2])$/;
 const CONTRACT_ACTIVE_STATUSES = ['RASCUNHO', 'ATIVO', 'INADIMPLENTE', 'QUITADO'];
@@ -437,12 +434,32 @@ async function findPlanForCompetencia(obraId, competencia, deps, options = {}) {
   return { saved, plan };
 }
 
+// Planejamento atrasado (decisao de 29/09): mes nunca finalizado continua
+// editavel depois do prazo, sem reabertura; e registrar o atraso que destrava.
+// Reabertura so e necessaria para mes FINALIZADO ou REABERTO ja expirado.
+function planejamentoVencido(competencia, now = new Date()) {
+  return janelaPlanejamento(competencia).fecha_em < now;
+}
+
+function podeEditarPlanejamento(estado, validReopening) {
+  if (estado === 'FINALIZADA') return false;
+  if (estado === 'REABERTA') return Boolean(validReopening);
+  return true;
+}
+
+function podeSolicitarReabertura(estado, validReopening) {
+  return estado === 'FINALIZADA' || (estado === 'REABERTA' && !validReopening);
+}
+
 async function getOrCreateCompetencia(obraId, competencia, deps, transaction) {
   let record = await findCompetencia(obraId, competencia, deps, {
     transaction,
     lock: transaction.LOCK.UPDATE
   });
   if (record) return record;
+  // Mes novo so nasce dentro da regra do "Novo mes": sem isso, salvar em
+  // qualquer AAAA-MM (futuro inclusive) criava a competencia por fora.
+  assertCompetenciaNovoMes(competencia, await deps.competenciasLiberadasObra(obraId));
   try {
     record = await deps.CrCompetencia.create(
       { obra_id: obraId, competencia, estado: 'ABERTA' },
@@ -460,37 +477,32 @@ async function getOrCreateCompetencia(obraId, competencia, deps, transaction) {
 
 async function assertEditable(competencia, deps, transaction) {
   if (!competencia) return;
-  const expired = prazoCompetencia(competencia.competencia) <= new Date();
-  const reopened = competencia.estado === 'REABERTA';
-  // REABERTA tambem precisa consultar a reabertura vigente: antes, um mes
-  // finalizado e reaberto DENTRO do prazo caia direto no erro de expiracao.
-  if (competencia.estado === 'FINALIZADA' || reopened || expired) {
-    const validReopening = await deps.CrReabertura.findOne({
-      where: {
-        competencia_id: competencia.id,
-        situacao: 'APROVADA',
-        expira_em: { [Op.gt]: new Date() }
-      },
-      order: [['aprovado_em', 'DESC']],
-      transaction,
-      lock: transaction?.LOCK?.UPDATE
-    });
-    if (validReopening) return;
-    if (reopened) {
-      throw createBusinessError(
-        409,
-        'CR_REABERTURA_EXPIRADA',
-        'A janela aprovada de reabertura expirou. Solicite uma nova reabertura.'
-      );
-    }
+  if (competencia.estado !== 'FINALIZADA' && competencia.estado !== 'REABERTA') return;
+  if (competencia.estado === 'FINALIZADA') {
+    // Finalizado nunca e editavel: a reabertura aprovada leva o mes a REABERTA
+    // e uma nova finalizacao encerra a janela, mesmo com prazo restante.
     throw createBusinessError(
       409,
-      expired ? 'CR_COMPETENCIA_VENCIDA' : 'CR_COMPETENCIA_IMUTAVEL',
-      expired
-        ? 'O prazo da competencia venceu. Solicite e aprove uma reabertura antes de editar.'
-        : 'A competencia esta finalizada. Solicite e aprove uma reabertura antes de editar.'
+      'CR_COMPETENCIA_IMUTAVEL',
+      'A competencia esta finalizada. Solicite e aprove uma reabertura antes de editar.'
     );
   }
+  const validReopening = await deps.CrReabertura.findOne({
+    where: {
+      competencia_id: competencia.id,
+      situacao: 'APROVADA',
+      expira_em: { [Op.gt]: new Date() }
+    },
+    order: [['aprovado_em', 'DESC']],
+    transaction,
+    lock: transaction?.LOCK?.UPDATE
+  });
+  if (validReopening) return;
+  throw createBusinessError(
+    409,
+    'CR_REABERTURA_EXPIRADA',
+    'A janela aprovada de reabertura expirou. Solicite uma nova reabertura.'
+  );
 }
 
 async function audit(deps, transaction, {
@@ -662,26 +674,24 @@ async function listarCompetencias(user, obraIdValue, overrides = {}) {
     const reopeningState = row.estado === 'FINALIZADA' && mappedReopeningState === 'APROVADA'
       ? null
       : mappedReopeningState;
-    const expired = prazoCompetencia(row.competencia) <= now;
+    const expired = planejamentoVencido(row.competencia, now);
     const activeApprovedReopening = mappedReopeningState === 'APROVADA';
     return {
       ...serializeCompetencia(row),
       // Mesmo criterio de assertEditable, mas mes FINALIZADO nunca e
       // "planejamento a editar": o caminho dele e a reabertura.
-      planejamento_editavel: row.estado !== 'FINALIZADA' && (
-        activeApprovedReopening
-        || (['ABERTA', 'EM_PREENCHIMENTO'].includes(row.estado) && !expired)
-      ),
+      planejamento_editavel: podeEditarPlanejamento(row.estado, activeApprovedReopening),
       medicao_apresentada: presented,
       medicao_aprovada: hasApprovedMeasurement ? approved : null,
       glosa: hasApprovedMeasurement ? money(Math.max(0, presented - approved)) : null,
       custo_realizado: money(costsByMonth.get(row.competencia)),
       receita_recebida: money(receivedByMonth.get(row.competencia)),
       reabertura_situacao: reopeningState,
-      vencida: expired && row.estado !== 'FINALIZADA' && reopeningState !== 'APROVADA',
-      reabertura_permitida: !reopeningState && (
-        row.estado === 'FINALIZADA' || expired
-      )
+      // Vencida = planejamento ainda nao finalizado depois da janela; continua
+      // editavel (registro atrasado), mas o card sinaliza o atraso.
+      vencida: expired && !['FINALIZADA', 'REABERTA'].includes(row.estado),
+      reabertura_permitida: reopeningState !== 'SOLICITADA'
+        && podeSolicitarReabertura(row.estado, activeApprovedReopening)
     };
   });
   return {
@@ -710,7 +720,7 @@ async function criarCompetencia(
     );
   }
   await assertScope(user, obraId, deps);
-  assertCompetenciaNovoMes(competenciaCode, await deps.competenciasLiberadasObra(obraId));
+  const liberadas = await deps.competenciasLiberadasObra(obraId);
 
   return deps.sequelize.transaction(async (transaction) => {
     await findObra(obraId, deps, { transaction, lock: transaction.LOCK.UPDATE });
@@ -744,6 +754,9 @@ async function criarCompetencia(
         competencia: serializeCompetencia(existingCompetencia)
       };
     }
+    // A janela so vale para CRIAR: repetir o pedido de um mes ja criado
+    // (retry, outra aba) devolve o mesmo registro, como antes.
+    assertCompetenciaNovoMes(competenciaCode, liberadas);
     let record;
     try {
       record = await deps.CrCompetencia.create({
@@ -1004,7 +1017,7 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
   const validReopening = reopenings.some((item) => (
     item.situacao === 'APROVADA' && item.expira_em && new Date(item.expira_em) > new Date()
   ));
-  const expired = prazoCompetencia(competenciaCode) <= new Date();
+  const expired = planejamentoVencido(competenciaCode);
 
   const publicReceipts = receipts.map((savedValue) => {
     const savedReceipt = plain(savedValue);
@@ -1099,19 +1112,9 @@ async function obterPlanejamento(user, obraIdValue, competenciaValue, overrides 
       recebivel_origem: String(obra.classificacao).toUpperCase() === 'PUBLICA'
         ? 'MEDICAO'
         : 'CONTRATO',
-      vencida: expired,
-      exige_reabertura: Boolean((
-        saved?.estado === 'FINALIZADA'
-        || expired
-        || saved?.estado === 'REABERTA'
-      ) && !validReopening),
-      editavel: ((!saved && !expired) || (
-        saved
-        &&
-        saved.estado !== 'FINALIZADA'
-        && saved.estado !== 'REABERTA'
-        && !expired
-      )) || validReopening
+      vencida: expired && saved?.estado !== 'FINALIZADA',
+      exige_reabertura: podeSolicitarReabertura(saved?.estado, validReopening),
+      editavel: podeEditarPlanejamento(saved?.estado, validReopening)
     }
   };
 }
@@ -2607,12 +2610,21 @@ async function solicitarReabertura(user, competenciaIdValue, payload = {}, overr
       transaction,
       lock: transaction.LOCK.UPDATE
     });
-    const expired = competencia && prazoCompetencia(competencia.competencia) <= new Date();
-    if (!competencia || (competencia.estado !== 'FINALIZADA' && !expired)) {
+    const validReopening = competencia?.estado === 'REABERTA'
+      ? await deps.CrReabertura.findOne({
+        where: {
+          competencia_id: competenciaId,
+          situacao: 'APROVADA',
+          expira_em: { [Op.gt]: new Date() }
+        },
+        transaction
+      })
+      : null;
+    if (!competencia || !podeSolicitarReabertura(competencia.estado, validReopening)) {
       throw createBusinessError(
         409,
         'CR_REABERTURA_ESTADO_INVALIDO',
-        'Somente competencias finalizadas ou vencidas podem solicitar reabertura.'
+        'Somente competencias finalizadas (ou com reabertura expirada) podem solicitar reabertura.'
       );
     }
     const activeReopeningConditions = [{ situacao: 'SOLICITADA' }];

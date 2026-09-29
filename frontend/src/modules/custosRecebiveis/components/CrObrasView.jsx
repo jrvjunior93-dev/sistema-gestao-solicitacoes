@@ -97,7 +97,10 @@ function EngineerWorks({ obras, loading, error, onReload, onOpen }) {
   // lista; a lista escolhe obras específicas dentro do que sobrou.
   const opcoesObra = (Array.isArray(obras) ? obras : [])
     .filter((obra) => matchesQuery(obra) || selecionadas.has(String(obra.id)))
-    .map((obra) => ({ valor: String(obra.id), rotulo: obra.nome }));
+    .map((obra) => ({
+      valor: String(obra.id),
+      rotulo: obra.codigo ? `${obra.codigo} · ${obra.nome}` : obra.nome
+    }));
   const filtered = (Array.isArray(obras) ? obras : []).filter((obra) => (
     matchesQuery(obra) && (!selecionadas.size || selecionadas.has(String(obra.id)))
   ));

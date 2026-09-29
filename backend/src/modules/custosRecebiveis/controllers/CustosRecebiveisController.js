@@ -20,7 +20,6 @@ const {
   obterPlanejamento,
   listarCompetencias,
   pesquisarItensPlano,
-  resumirObrasCompetencia,
   salvarCustos,
   salvarRecebiveis,
   solicitarReabertura,
@@ -90,13 +89,6 @@ class CustosRecebiveisController {
       const compact = ['1', 'true'].includes(String(req.query.compacto || '').toLowerCase());
       if (compact) return res.json(result);
 
-      const competencia = result.items?.[0]?.competencia_referencia || req.query.competencia;
-      const summaries = result.items?.length && competencia
-        ? await resumirObrasCompetencia(req.user, result.items, competencia)
-        : [];
-      const summaryByWork = new Map(
-        summaries.map((item) => [Number(item.obra?.id), item])
-      );
       const prazosByWork = result.items?.length
         ? await calcularPrazosObras(result.items)
         : new Map();
@@ -104,7 +96,6 @@ class CustosRecebiveisController {
         ...result,
         items: (result.items || []).map((obra) => ({
           ...obra,
-          resumo_competencia: summaryByWork.get(Number(obra.id)) || null,
           prazos: prazosByWork.get(Number(obra.id)) || null
         }))
       });

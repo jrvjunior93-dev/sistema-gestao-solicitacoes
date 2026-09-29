@@ -240,7 +240,10 @@ function validateContracts() {
   assert(globalRoutes.includes('requireCustosRecebiveisCompletion'));
   assert(middleware.includes("'MONTHLY_REQUIREMENT_PENDING'"));
   assert(middleware.includes("guardMode() === 'observe'"));
-  assert(planning.includes("'CR_COMPETENCIA_VENCIDA'"));
+  // Decisao de 29/09: planejamento atrasado e registrado sem reabertura; so
+  // mes finalizado (ou com reabertura expirada) exige reabertura.
+  assert(planning.includes('function podeEditarPlanejamento'));
+  assert(!planning.includes("'CR_COMPETENCIA_VENCIDA'"));
   assert(privateRoute.includes('crPending?.bloqueado'));
   assert(constants.includes("id: 'obrigacoes'"));
   assert(page.includes('<CrObrigacoesView'));

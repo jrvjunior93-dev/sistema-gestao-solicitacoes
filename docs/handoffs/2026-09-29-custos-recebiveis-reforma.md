@@ -57,12 +57,30 @@ proprietario antes da seguinte.
   nao navega, "Novo mes" faz um unico POST, acoes sem sobreposicao em 1440,
   1100 e 390px.
 
+### Correcoes do revisor separado (mesma fase)
+
+- "Novo mes" repetido volta a ser idempotente (a janela so vale para criar).
+- Decisao 2 aplicada na edicao: mes nao finalizado e editavel mesmo atrasado,
+  sem reabertura; finalizado nunca e editavel; reabertura so para mes
+  FINALIZADO ou REABERTO com janela expirada (antes ficava sem saida).
+- Salvar/finalizar/medicao/reabertura nao criam mais mes fora da regra do
+  "Novo mes" (antes criavam qualquer AAAA-MM, futuro inclusive).
+- Obra sem planilha publicada nao cobra medicao; rotulo "Planejamento aberto"
+  so pelo planejamento (obra publica voltou a poder ficar "Em dia").
+- `GET /obras` deixou de calcular `resumo_competencia` (sem uso no frontend).
+- CSS dos icones de 44px restrito as acoes novas; aba "Minhas obras" limpa a
+  obra aberta; lista de obras mostra "codigo · nome".
+
 ### Riscos e pendencias
 
 - O preview so mostra os prazos depois de o `backend-dev` subir com este codigo;
   sem isso o card de obra exibe "Prazos indisponiveis".
 - Classes antigas `.cr-work-card*` e `.cr-planning-deadline` ficaram sem uso
   (limpeza na Fase 6).
+- Transitorio ate a Fase 2: o contador "Prazos" do cabecalho e a tela de
+  Obrigacoes ainda usam o prazo antigo (ultimo dia util do mes, 18h).
+- A confirmar: 40 dias literais a partir do dia 1o (setembro -> 11/10,
+  fevereiro -> 13/03).
 
 ## Proximo passo
 

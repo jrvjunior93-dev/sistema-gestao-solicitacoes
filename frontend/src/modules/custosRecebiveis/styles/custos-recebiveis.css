@@ -4888,9 +4888,13 @@
   margin-left: auto;
 }
 
-/* Acoes de icone: 44px, icone 22px. Disponivel = contorno e icone na cor
-   de acao; indisponivel = tracejado, sem fundo e icone apagado. */
-.cr-icon-button {
+/* Acoes de icone (CrIconAction e o voltar da obra): 44px, icone 22px.
+   Disponivel = contorno e icone na cor de acao; indisponivel = tracejado,
+   sem fundo e icone apagado. Escopo restrito: os demais .cr-icon-button do
+   modulo (fechar modal, voltar do detalhe) ficam como estavam. */
+.cr-icon-tip .cr-icon-button,
+.cr-workspace-heading__title .cr-icon-button,
+.cr-month-detail-surface__actions .cr-icon-button {
   width: 2.75rem;
   height: 2.75rem;
   flex-basis: 2.75rem;
@@ -4898,7 +4902,9 @@
   color: var(--cr-primary);
 }
 
-.cr-icon-button svg {
+.cr-icon-tip .cr-icon-button svg,
+.cr-workspace-heading__title .cr-icon-button svg,
+.cr-month-detail-surface__actions .cr-icon-button svg {
   width: 1.375rem;
   height: 1.375rem;
 }

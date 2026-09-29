@@ -183,7 +183,8 @@ function resumirPrazosObra({
   const publica = String(classificacao || '').trim().toUpperCase() === 'PUBLICA';
   return {
     planejamento: resumoPlanejamento({ temPlanoPublicado, inicio, byKey, now, config }),
-    medicao: publica ? resumoMedicao({ inicio, byKey, now, config }) : null,
+    // Sem planilha publicada nao ha como registrar medicao: nada a cobrar.
+    medicao: publica && temPlanoPublicado ? resumoMedicao({ inicio, byKey, now, config }) : null,
     // O bloqueio por atraso entra na Fase 3; ate la nenhuma obra e travada.
     travada: false,
     server_time: new Date(now).toISOString()

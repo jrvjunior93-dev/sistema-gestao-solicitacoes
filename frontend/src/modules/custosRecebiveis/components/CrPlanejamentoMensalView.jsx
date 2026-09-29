@@ -16,18 +16,17 @@ import CrPlanejamentoView from './CrPlanejamentoView';
 import CrReopeningRequestModal from './CrReopeningRequestModal';
 
 // Por que o lápis está apagado. Espelha `planejamento_editavel` do servidor
-// (mesmo critério de assertEditable); o fallback cobre API ainda sem o campo.
+// (mesmo critério de assertEditable): mês não finalizado é editável mesmo
+// atrasado; finalizado ou com reabertura expirada exige reabertura.
 function editBlockReason(item) {
   const editable = typeof item.planejamento_editavel === 'boolean'
     ? item.planejamento_editavel
-    : item.estado !== 'FINALIZADA' && (
-      item.reabertura_situacao === 'APROVADA'
-      || (['ABERTA', 'EM_PREENCHIMENTO'].includes(item.estado) && !item.vencida)
-    );
+    : item.estado !== 'FINALIZADA'
+      && (item.estado !== 'REABERTA' || item.reabertura_situacao === 'APROVADA');
   if (editable) return '';
-  if (item.estado === 'FINALIZADA') return 'planejamento finalizado; solicite reabertura';
+  if (item.reabertura_situacao === 'SOLICITADA') return 'reabertura aguardando decisão do administrador';
   if (item.estado === 'REABERTA') return 'reabertura expirada; solicite nova reabertura';
-  return 'prazo vencido; solicite reabertura';
+  return 'planejamento finalizado; solicite reabertura';
 }
 
 export default function CrPlanejamentoMensalView({
@@ -315,7 +314,7 @@ export default function CrPlanejamentoMensalView({
                   ? 'aguardando decisão do administrador'
                   : (item.reabertura_situacao === 'APROVADA'
                     ? 'mês já reaberto para edição'
-                    : 'disponível quando o mês estiver finalizado ou vencido')}
+                    : 'disponível para mês finalizado')}
             />
           ))}
         </div>
