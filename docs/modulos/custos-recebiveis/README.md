@@ -609,9 +609,14 @@ Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
   trava.
 - Rotas de abertura barradas (403 `OBRA_TRAVADA_SOLICITACAO_NOVA`):
   `POST /solicitacoes`, `/compras/solicitacoes`, `/compras/solicitacoes-diretas`,
-  `/contratos/fluxo-novo` (a "Nova solicitacao" abre contrato por ela) e
-  `/rh/solicitacoes`. Obra lida de `obra_id`, `dados.obra_id`, linhas de
-  distribuicao/rateio e do colaborador (RH).
+  `/compras/cotacoes/avulsa`, `/contratos/fluxo-novo` (a "Nova solicitacao" abre
+  contrato por ela), `/rh/solicitacoes` e `/rh/transferencias` (sem diferenca de
+  caixa no caminho, como o Express). Obra lida de `obra_id`, `dados.obra_id`,
+  `obra_origem_id`/`obra_destino_id`, `distribuicao_centro_custo.itens` e do
+  colaborador (RH). Distribuicao "todas as obras" e custo do centro de custo e
+  nao trava. Ficam fora: jornada e tickets de RH e aditivo de contrato
+  existente (continuidade/folha). Em `observe`, a abertura que seria barrada
+  vai para o log (`observe: abertura seria barrada`).
 - `GET /obras/minhas?modo=CRIACAO` mantem a obra e acrescenta
   `bloqueio_solicitacao_nova.motivo`; Nova Solicitacao e Nova Solicitacao de
   Compra mostram o motivo no campo da obra e nao enviam.
@@ -619,7 +624,9 @@ Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
   acessa o que regulariza (403 `OBRA_TRAVADA_CUSTOS_RECEBIVEIS` em comparativo,
   realizados, auditoria, estrutura e exportacoes).
 - Excecao unica: liberacao temporaria do administrador, ate 48 horas, que
-  libera a obra para todos.
+  libera a obra para todos (liberacao antiga com prazo maior vale ate
+  concedido_em + 48h tambem na listagem e na concessao). Responsavel com
+  usuario desativado nao conta para travar.
 - Sessao (`/auth/me`) leva `custos_recebiveis_pendencia.obras_travadas` (obras
   em que o usuario e responsavel); faixa fixa no topo com "Regularizar". O
   redirecionamento global deixou de existir (`bloqueado` e sempre `false`).

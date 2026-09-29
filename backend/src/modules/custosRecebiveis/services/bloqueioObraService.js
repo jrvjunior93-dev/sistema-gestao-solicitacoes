@@ -110,10 +110,13 @@ function responsaveisVigentes(where, deps, now, includeUser = false) {
     required: true
   }];
   if (includeUser) {
+    // Responsavel com usuario desativado nao consegue regularizar: nao conta.
     include.push({
       model: deps.User,
       as: 'usuario',
       attributes: ['id', 'perfil', 'setor_id'],
+      where: { ativo: true },
+      required: true,
       include: deps.Setor ? [{ model: deps.Setor, as: 'setor', attributes: ['id', 'codigo', 'nome'] }] : []
     });
   }
@@ -180,7 +183,7 @@ async function moduloLigado(options, deps) {
 // que a faixa global e os cards de obra mostram a ele.
 async function calcularObrasTravadas(user, options = {}, overrides = {}) {
   const deps = dependencies(overrides);
-  if (!user?.id || deps.isSuperadmin(user)) return [];
+  if (!user?.id) return [];
   if (!(await moduloLigado(options, deps))) return [];
   const capabilities = await capacidadesDoUsuario(user, deps);
   if (!capabilities.planning && !capabilities.measurement) return [];
@@ -289,13 +292,19 @@ function invalidarObrasTravadas(userId = null) {
 /* ------------------------------------------ abertura de solicitacao nova */
 
 // Rotas que ABREM solicitacao nova para uma obra (decisao de 29/09). Contrato
-// entra porque a "Nova solicitacao" abre contrato por esta rota.
+// entra porque a "Nova solicitacao" abre contrato por esta rota; transferencia
+// de RH e cotacao avulsa com obra tambem sao pedidos novos para a obra.
+// Ficam FORA (continuidade/folha, decisao registrada): jornada e tickets de
+// RH, aditivo de contrato existente. Comparacao sem diferenca de caixa, como
+// o roteador do Express.
 const ROTAS_SOLICITACAO_NOVA = [
-  /^\/solicitacoes\/?$/,
-  /^\/compras\/solicitacoes\/?$/,
-  /^\/compras\/solicitacoes-diretas\/?$/,
-  /^\/contratos\/fluxo-novo\/?$/,
-  /^\/rh\/solicitacoes\/?$/
+  /^\/solicitacoes\/?$/i,
+  /^\/compras\/solicitacoes\/?$/i,
+  /^\/compras\/solicitacoes-diretas\/?$/i,
+  /^\/compras\/cotacoes\/avulsa\/?$/i,
+  /^\/contratos\/fluxo-novo\/?$/i,
+  /^\/rh\/solicitacoes\/?$/i,
+  /^\/rh\/transferencias\/?$/i
 ];
 
 function toIds(values) {
@@ -317,9 +326,16 @@ async function obrasDaAbertura(req, overrides = {}) {
   const add = (values) => toIds(values).forEach((id) => ids.add(id));
   add(body.obra_id);
   add(body.dados?.obra_id);
+  add(body.obra_origem_id);
+  add(body.obra_destino_id);
+  // Distribuicao do centro de custo: a tela manda { criterio, todas, itens: [] }.
+  // "todas as obras" e custo do centro de custo, nao pedido de uma obra: nao
+  // entra (decisao registrada); obras listadas uma a uma entram.
   ['distribuicoes', 'rateios', 'centros_custo', 'distribuicao_centro_custo', 'distribuicao_centros_custo'].forEach((key) => {
     const value = body[key];
-    const linhas = Array.isArray(value) ? value : (Array.isArray(value?.linhas) ? value.linhas : []);
+    const linhas = Array.isArray(value)
+      ? value
+      : [value?.itens, value?.linhas].find(Array.isArray) || [];
     linhas.forEach((item) => add(item?.obra_id));
   });
   if (body.colaborador_id && deps.RhColaborador) {
@@ -334,9 +350,9 @@ async function obrasDaAbertura(req, overrides = {}) {
 // e exportacao ficam fechadas ate a liberacao.
 function rotaRegularizacaoBloqueada(req, obrasBloqueadas) {
   const path = String(req.path || '').split('?')[0];
-  const match = path.match(/^\/custos-recebiveis\/obras\/(\d+)\/(comparativo|realizados|auditoria|plano(?:\/modelo|\/importar.*)?$)/);
+  const match = path.match(/^\/custos-recebiveis\/obras\/(\d+)\/(comparativo|realizados|auditoria|plano(?:\/modelo|\/importar.*)?$)/i);
   if (match && obrasBloqueadas.has(Number(match[1]))) return Number(match[1]);
-  if (/^\/custos-recebiveis\/exportacoes\//.test(path)) {
+  if (/^\/custos-recebiveis\/exportacoes\//i.test(path)) {
     const obraId = Number(req.query?.obra_id);
     if (!obraId) return obrasBloqueadas.size ? [...obrasBloqueadas][0] : null;
     if (obrasBloqueadas.has(obraId)) return obraId;

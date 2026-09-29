@@ -103,8 +103,8 @@ async function validateLockedWorks() {
   assert.strictEqual(measurement[0].pendencias[0].dilatacao_pendente, true);
   assert.match(mensagemTravada(measurement[0]), /OB-1 - Obra atrasada.*medicao aprovada de 2026-09 vencida/);
 
-  // Mes reaberto nao trava; superadmin nunca trava.
-  assert.strictEqual((await calcularObrasTravadas({ id: 1, perfil: 'SUPERADMIN' }, { mode: 'enforce', now }, deps())).length, 0);
+  // SUPERADMIN responsavel ve a propria obra travada (regulariza como os demais).
+  assert.strictEqual((await calcularObrasTravadas({ id: 1, perfil: 'SUPERADMIN' }, { mode: 'enforce', now }, deps({ permissions: [] }))).length, 1);
 }
 
 // Situacao da OBRA (independe de quem abre a solicitacao): decisao de 29/09.
@@ -158,10 +158,23 @@ async function validateRequestWorks() {
   assert.strictEqual(ehAberturaDeSolicitacao(post('/financeiro/titulos')), false);
   assert.strictEqual(ehAberturaDeSolicitacao({ method: 'GET', path: '/solicitacoes' }), false);
   assert.deepStrictEqual(await obrasDaAbertura({ body: { obra_id: '5' } }), [5]);
+  // Formato real da tela Nova Solicitacao: { criterio, todas, itens: [...] }.
   assert.deepStrictEqual(
-    (await obrasDaAbertura({ body: { obra_id: 2, distribuicao_centro_custo: { linhas: [{ obra_id: 3 }, { obra_id: 4 }] } } })).sort(),
+    (await obrasDaAbertura({ body: { obra_id: 2, distribuicao_centro_custo: { criterio: 'PERCENTUAL', todas: false, itens: [{ obra_id: 3 }, { obra_id: 4 }] } } })).sort(),
     [2, 3, 4]
   );
+  // "Todas as obras" e custo do centro de custo: nao aponta obra.
+  assert.deepStrictEqual(await obrasDaAbertura({ body: { obra_id: 2, distribuicao_centro_custo: { todas: true, itens: [] } } }), [2]);
+  // Transferencia de RH: origem (do colaborador) e destino.
+  assert.deepStrictEqual(
+    (await obrasDaAbertura({ body: { colaborador_id: 3, obra_destino_id: 9 } }, { RhColaborador: { findByPk: async () => ({ obra_id: 6 }) } })).sort(),
+    [6, 9]
+  );
+  // Caixa diferente chega ao mesmo controller no Express: tambem e abertura.
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/SOLICITACOES')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/rh/transferencias')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/compras/cotacoes/avulsa')), true);
+  assert.strictEqual(ehAberturaDeSolicitacao(post('/rh/jornada')), false);
   assert.deepStrictEqual(await obrasDaAbertura({ body: { dados: { obra_id: 8 } } }), [8]);
   assert.deepStrictEqual(
     await obrasDaAbertura({ body: { colaborador_id: 3 } }, { RhColaborador: { findByPk: async () => ({ obra_id: 6 }) } }),
@@ -204,7 +217,9 @@ async function validateMiddleware() {
     // Qualquer usuario (inclusive SUPERADMIN) e qualquer rota de abertura.
     const outro = { id: 5, perfil: 'SUPERADMIN' };
     assert.strictEqual((await run({ path: '/solicitacoes', method: 'POST', body: { obra_id: 1 } }, outro)).status, 403);
-    assert.strictEqual((await run({ path: '/solicitacoes', method: 'POST', body: { obra_id: 2, distribuicao_centro_custo: [{ obra_id: 1 }] } })).status, 403);
+    assert.strictEqual((await run({ path: '/solicitacoes', method: 'POST', body: { obra_id: 2, distribuicao_centro_custo: { criterio: 'VALOR', itens: [{ obra_id: 1 }] } } })).status, 403);
+    assert.strictEqual((await run({ path: '/Solicitacoes', method: 'POST', body: { obra_id: 1 } })).status, 403);
+    assert.strictEqual((await run({ path: '/custos-recebiveis/obras/1/Comparativo', method: 'GET' })).status, 403);
     assert.strictEqual((await run({ path: '/contratos/fluxo-novo', method: 'POST', body: { obra_id: 1 } })).status, 403);
     assert.strictEqual((await run({ path: '/rh/solicitacoes', method: 'POST', body: { dados: { obra_id: 1 } } })).status, 403);
     // Outra obra: livre.

@@ -162,6 +162,14 @@ function serializeObligation(value, context = {}) {
   };
 }
 
+// Teto de 48h tambem na leitura: liberacao antiga gravada com prazo maior
+// vale ate concedido_em + 48h (mesma regra do bloqueio por obra).
+function expiracaoEfetivaBypass(item) {
+  const expira = new Date(item.expira_em).getTime();
+  const limite = item.concedido_em ? new Date(item.concedido_em).getTime() + (MAX_BYPASS_HOURS * 3600000) : Infinity;
+  return new Date(Math.min(expira, limite));
+}
+
 function serializeBypass(value, context = {}) {
   const item = plain(value);
   return {
@@ -185,10 +193,10 @@ function serializeBypass(value, context = {}) {
       nome: item.concedidoPor.nome
     } : null,
     concedido_em: item.concedido_em,
-    expira_em: item.expira_em,
+    expira_em: item.expira_em ? expiracaoEfetivaBypass(item) : item.expira_em,
     revogado_por: item.revogado_por ? Number(item.revogado_por) : null,
     revogado_em: item.revogado_em || null,
-    ativo: !item.revogado_em && new Date(item.expira_em) > new Date(context.now || Date.now()),
+    ativo: !item.revogado_em && Boolean(item.expira_em) && expiracaoEfetivaBypass(item) > new Date(context.now || Date.now()),
     recorrente: Boolean(context.recorrente)
   };
 }
@@ -685,7 +693,9 @@ async function concederBypass(user, payload = {}, idempotencyKey = null, overrid
         throw createBusinessError(422, 'CR_BYPASS_RESPONSIBILITY_REQUIRED', 'O usuario nao possui responsabilidade ativa nessa obra.');
       }
     }
-    const existing = await deps.CrGuardBypass.findOne({
+    // So conta como "ja existe" a liberacao que ainda vale dentro do teto de
+    // 48h; uma antiga de 30 dias nao impede conceder uma nova.
+    const candidatas = await deps.CrGuardBypass.findAll({
       where: {
         user_id: targetUserId,
         obra_id: obraId,
@@ -695,6 +705,7 @@ async function concederBypass(user, payload = {}, idempotencyKey = null, overrid
       transaction,
       lock: transaction.LOCK.UPDATE
     });
+    const existing = (candidatas || []).find((item) => expiracaoEfetivaBypass(plain(item)) > now) || null;
     if (existing) {
       return { idempotente: true, bypass: serializeBypass(existing, { now }) };
     }

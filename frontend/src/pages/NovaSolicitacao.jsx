@@ -1607,6 +1607,13 @@ export default function NovaSolicitacao() {
       return;
     }
 
+    // Obra travada em Custos e Recebiveis nao recebe solicitacao nova: alem do
+    // botao desabilitado, o envio por Enter ou pela conferencia tambem para.
+    if (obraSelecionada?.bloqueio_solicitacao_nova) {
+      reprovarCampo('obra_id', obraSelecionada.bloqueio_solicitacao_nova.motivo);
+      return;
+    }
+
     // Condição de CONTEXTO, não de campo: o contrato está noutro setor. Já
     // aparece na faixa do bloco do contrato; aqui vai para Avisos porque não
     // há campo desta tela para receber a frase.

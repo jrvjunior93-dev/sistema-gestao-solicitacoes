@@ -111,8 +111,11 @@ class CustosRecebiveisController {
       const prazosByWork = result.items?.length
         ? await calcularPrazosObras(result.items)
         : new Map();
-      const travadas = new Map((await obrasTravadasDoUsuario(req.user))
-        .map((item) => [Number(item.obra_id), item]));
+      // Falha no calculo da trava nao derruba a tela onde se regulariza.
+      const travadas = new Map((await obrasTravadasDoUsuario(req.user).catch((error) => {
+        console.error('Falha segura ao calcular obras travadas:', error.message);
+        return [];
+      })).map((item) => [Number(item.obra_id), item]));
       prazosByWork.forEach((prazos, obraId) => {
         const travada = travadas.get(obraId);
         // travada = bloqueando de fato; em modo observacao so avisa.

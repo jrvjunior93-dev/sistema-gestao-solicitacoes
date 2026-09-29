@@ -25,8 +25,27 @@ function recusar(res, item, code, error) {
   return res.status(403).json({ error, code, obra_travada: item });
 }
 
+// Em observacao nada e barrado, mas a abertura que SERIA barrada fica no log
+// (sem atrasar a requisicao), para medir o impacto antes de ligar o enforce.
+function registrarSeriaBarrada(req) {
+  if (!ehAberturaDeSolicitacao(req)) return;
+  obrasDaAbertura(req)
+    .then((obraIds) => (obraIds.length ? travaDasObras(obraIds).then((travas) => ({ obraIds, travas })) : null))
+    .then((result) => {
+      if (!result) return;
+      const obras = result.obraIds.filter((id) => result.travas.has(id));
+      if (obras.length) {
+        console.info(`[custos-recebiveis] observe: abertura seria barrada (${req.method} ${req.path}) usuario=${req.user?.id || '-'} obras=${obras.join(',')}`);
+      }
+    })
+    .catch(() => null);
+}
+
 async function requireCustosRecebiveisCompletion(req, res, next) {
-  if (guardMode() === 'observe') return next();
+  if (guardMode() === 'observe') {
+    registrarSeriaBarrada(req);
+    return next();
+  }
   try {
     const path = String(req.path || '').split('?')[0];
     if (ehAberturaDeSolicitacao(req)) {

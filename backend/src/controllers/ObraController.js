@@ -174,11 +174,17 @@ module.exports = {
       // derruba os seletores.
       if (modoNormalizado === 'CRIACAO' && guardMode() === 'enforce') {
         const originalJson = res.json.bind(res);
+        let respondido = false;
+        const responder = (payload) => {
+          if (respondido || res.headersSent) return res;
+          respondido = true;
+          return originalJson(payload);
+        };
         res.json = (body) => {
-          if (!Array.isArray(body) || !body.length) return originalJson(body);
+          if (!Array.isArray(body) || !body.length) return responder(body);
           const lista = body.map((obra) => (obra?.toJSON ? obra.toJSON() : obra));
           travaDasObras(lista.map((obra) => obra?.id))
-            .then((travas) => originalJson(lista.map((obra) => {
+            .then((travas) => responder(lista.map((obra) => {
               const trava = travas.get(Number(obra?.id));
               return trava?.bloqueando
                 ? { ...obra, bloqueio_solicitacao_nova: { motivo: mensagemSolicitacaoNova(trava), obra_travada: trava } }
@@ -186,7 +192,7 @@ module.exports = {
             })))
             .catch((error) => {
               console.error('Falha segura ao consultar obras travadas:', error.message);
-              originalJson(lista);
+              responder(lista);
             });
           return res;
         };

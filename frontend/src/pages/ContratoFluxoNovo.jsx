@@ -169,7 +169,16 @@ export default function ContratoFluxoNovo() {
     setParcelas(lista.map(({ cent, ...p }) => ({ ...p, valor: cent / 100 })));
   }
 
+  const obraTravadaMotivo = obras.find((obra) => String(obra.id) === String(form.obra_id))
+    ?.bloqueio_solicitacao_nova?.motivo || '';
+
   async function salvar() {
+    // Obra travada em Custos e Recebiveis nao recebe contrato novo (29/09/2026);
+    // o servidor tambem recusa.
+    if (obraTravadaMotivo) {
+      avisar.erro(obraTravadaMotivo, 'Obra travada');
+      return;
+    }
     setSalvando(true); setContratoCriado(null);
     try {
       const r = await criarContratoFluxoNovo({
@@ -356,7 +365,7 @@ export default function ContratoFluxoNovo() {
         descricao="Acima do limite do Jurídico a negociação detalhada e obrigatória e vira documento anexado depois da criação."
       >
         <FormSecao legenda="Identificação do contrato" colunas={3}>
-          <CampoForm label="Obra" obrigatorio>
+          <CampoForm label="Obra" obrigatorio erro={obraTravadaMotivo || undefined}>
             <select className="input w-full" value={form.obra_id} onChange={campo('obra_id')}>
               <option value="">Selecione</option>
               {obras.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
