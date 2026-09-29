@@ -1,5 +1,19 @@
 # Ownership Ativo
 
+Ownership temporario (sessao Claude) em 29/09/2026: reforma do Painel do Gestor
+(Modo TV, ordenacao de cards, olho com senha de 4 digitos e polimento). Escopo:
+`frontend/src/pages/PainelGestor.jsx`, `frontend/src/pages/painelGestor/`,
+`frontend/src/pages/PainelGestorSaldosRegistro.jsx`,
+`frontend/src/pages/ConfiguracoesPainelGestor.jsx`,
+`frontend/src/services/painelGestor.js`, `frontend/src/services/painelGestorConfig.js`,
+`frontend/src/styles/painel-gestor.css`, props opcionais do Dashboard em
+`frontend/src/modules/custosRecebiveis/` (CrDashboardView, CrMonthlySummaryCard,
+CrExecutiveFilters, utils/resultadoMes), `backend/src/controllers/PainelGestorController.js`,
+`backend/src/services/painelGestorOlhoService.js`, rotas do painel em
+`backend/src/routes.js`, `exposedHeaders` do CORS em `backend/src/app.js` e
+`backend/scripts/validarPainelGestorOlho.js`. Sem EC2, RDS, migration ou deploy.
+Handoff: `docs/handoffs/2026-09-29-painel-gestor-reforma.md`.
+
 Ownership temporario (sessao Claude) em 29/09/2026: reforma do modulo Custos e
 Recebiveis em fases (prazos, tela do engenheiro, tela do administrador,
 planilhas e polimento). Escopo: `backend/src/modules/custosRecebiveis/`,

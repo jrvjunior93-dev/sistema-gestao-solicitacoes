@@ -654,6 +654,24 @@ controle diário usam o fechamento do sistema; as demais dependem do lançamento
 Revisar `painel_gestor.acessar`, as três permissões de visualização, o escopo de todas as
 Obras e as permissões de informar/corrigir saldo.
 
+Recursos de exibição (29/09/2026), válidos para as três abas:
+
+- **Modo TV**: botão no topo que amplia o texto para leitura à distância (números
+  crescem mais que rótulos). Salvo por usuário em `/me/preferencias`.
+- **Ordenação dos cards**: por arrasto ou por critério, salva por usuário e por aba.
+  A ordem manual vale até que se escolha um critério; é possível voltar ao manual.
+- **Olho (ocultar valores)**: ocultar não pede senha; mostrar pede a senha de 4 dígitos
+  do painel, única do sistema, definida em Configurações > Financeiro > Senha do Painel
+  do Gestor (critério das configurações de status/vínculos). O estado fica no banco,
+  por usuário (`configuracoes_sistema`, chave `PAINEL_GESTOR_OLHO_FECHADO:<id>`), e
+  sobrevive a recarregar, sair/entrar e outro dispositivo. Com o olho fechado o
+  servidor devolve os valores das rotas do painel como `null` (cabeçalho
+  `X-Painel-Valores-Ocultos: 1`) e recusa informar saldos (423). Tentativas de senha:
+  5 por usuário e 20 por IP a cada 15 min, contadas em memória do processo.
+- Sem migration: tudo usa `configuracoes_sistema`. Após o deploy do backend, o
+  administrador precisa definir a senha antes que alguém consiga mostrar valores já
+  ocultos.
+
 ### Apropriações por Obra
 
 - cada Obra define se os formulários exibem Etapa, Serviço ou Subserviço;
