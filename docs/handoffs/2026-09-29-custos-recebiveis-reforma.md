@@ -182,7 +182,50 @@ entao definir `CR_GUARD_MODE=enforce` no ambiente (decisao do proprietario).
 - Previsao x medicao do mes anterior (40 dias): aprovado A + B (saldo provavel
   com aviso e acerto ao registrar a medicao aprovada) — entra na Fase 5.
 
+## Revisao separada da Fase 3 (29/09) — corrigido em ecd6bb75 e 216e5dc4
+
+- Distribuicao do centro de custo lida no formato real ({ itens }); rotas
+  comparadas sem diferenca de caixa; transferencia de RH e cotacao avulsa
+  entram; liberacao antiga nao impede nova; responsavel inativo nao trava;
+  mensagem com acento e mes por extenso; Nova Solicitacao de Compra desabilita
+  o envio; Contrato (fluxo novo) mostra o motivo.
+- Prova de ponta a ponta LOCAL (MariaDB + backend + frontend, CR_GUARD_MODE=
+  enforce): os 6 caminhos do bloqueio passaram. Scripts reutilizaveis ficaram
+  fora do repositorio (scratchpad da sessao).
+
+## Fase 4 - tela do administrador (ae4e4388, f2def32d, 7a64dc40)
+
+- Backend: GET /decisoes/pendentes, /reaberturas, /auditoria, /planos,
+  /responsaveis, /obrigacoes (somente leitura, escopo, paginacao).
+- Frontend: abas Dashboard, Obrigacoes e prazos, Importacoes e exportacoes,
+  Auditoria, Configuracoes; fila de decisoes no topo; Obrigacoes em faixas
+  (BlocosPersonalizaveis); tela orfa ?aba=obras removida e estrutura da
+  planilha (Publicar versao) em Importacoes.
+
+## Fase 5 - planilhas e saldo provavel (ee2a7184, f2def32d)
+
+- Modelos corrigidos (custo livre; medicao so quantidade, formula e arrasto
+  aceitos, teto no valor calculado).
+- Saldo provavel com aviso; ajuste da previsao do mes seguinte ao saldo apos
+  registrar a medicao aprovada (POST .../previsao/ajustar-saldo).
+
+## Fase 6 - polimento (da6b77d9, f2def32d, 7a64dc40)
+
+- Card de mes com hierarquia (desvio em destaque; "Sem planejamento" neutro);
+  "Salvar e continuar"; importacao ja grava; revisao com totais gravados;
+  detalhe do mes so com acabamento visual; textos obvios e CSS sem uso
+  removidos.
+
+## Para publicar (depende do proprietario / infraestrutura)
+
+1. backend-dev: `git pull` desta branch, `npm install`, rodar a migration
+   202609290001 (tabelas cr_prazos_obra, cr_dilatacoes,
+   cr_medicao_sem_registro) e `pm2 restart backend-dev --update-env`. Sem isso
+   o preview (refactor-dev) mostra as telas novas com "Consulta indisponivel".
+2. Manter `CR_GUARD_MODE=observe` no primeiro deploy e acompanhar no log as
+   linhas "observe: abertura seria barrada"; so depois ligar `enforce`.
+
 ## Proximo passo
 
-Fase 4: tela do administrador (abas, fila de reaberturas e dilatacoes no topo,
-Obrigacoes e prazos em faixas, remocao da tela orfa).
+Validar no preview real apos a publicacao do backend-dev (item 1 acima):
+matriz completa e os caminhos do bloqueio com dados reais.

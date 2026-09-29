@@ -12,9 +12,11 @@ a migration `backend/migrations/202609290001_custos_recebiveis_prazos_dilatacao.
 `frontend/src/layout/Layout.jsx`, `frontend/src/main.jsx` (CSS da faixa global),
 `frontend/src/pages/NovaSolicitacao.jsx` e
 `frontend/src/modules/solicitacao-compra/pages/NovaSolicitacaoCompra.jsx` (aviso de
-obra que nao recebe solicitacao nova) (pontos de integracao do bloqueio por obra).
-Sem EC2, RDS, migration em ambiente compartilhado ou deploy. Fases 1 a 3
-implementadas; ownership mantido ate o fim da reforma.
+obra que nao recebe solicitacao nova), `frontend/src/pages/ContratoFluxoNovo.jsx`,
+`frontend/scripts/trinco-dialogos.json` e `frontend/scripts/trinco-fantasmas.json`
+(pontos de integracao do bloqueio por obra e trincos de validacao).
+Sem EC2, RDS, migration em ambiente compartilhado ou deploy. Fases 1 a 6
+implementadas; ownership mantido ate a validacao no preview real.
 
 Ownership temporario `/root` em 23/09/2026: adicionar consulta completa de
 apropriacoes por obra, acionada por icone de lupa nos campos de selecao, com
