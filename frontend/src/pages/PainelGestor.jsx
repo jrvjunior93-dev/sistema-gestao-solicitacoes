@@ -455,7 +455,7 @@ function SaldosTab({ avisar, canInform, onSaved, oculto, sinalRecarga }) {
         <section className="pg-balance-entry" data-indisponivel="true">
           <div className="pg-balance-entry__toggle">
             <span><HiOutlineWallet aria-hidden="true" /><span><strong>Informar saldos das contas</strong><small>{resumoPendencia}</small></span></span>
-            <span className="pg-balance-entry__aviso"><HiOutlineEyeSlash aria-hidden="true" />Abra os valores para informar saldos</span>
+            <span className="pg-balance-entry__aviso"><HiOutlineEyeSlash aria-hidden="true" />Use “Mostrar valores” no topo para informar saldos</span>
           </div>
         </section>
       ) : null}

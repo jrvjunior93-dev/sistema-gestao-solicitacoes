@@ -1069,3 +1069,20 @@ input.input.pg-pin-campo {
   .pg-modo-tv .cr-ops-dashboard--gestor .cr-period-card__metrics { grid-template-columns: minmax(0, 1fr); }
   .pg-filtros-faixa { flex-wrap: wrap; }
 }
+
+/* Aba Custos e Recebíveis do painel: fica fora de `.cr-page`, então recebe
+   aqui os mesmos tokens de cor do módulo (sem eles o Desvio perde a cor do
+   sinal no card). Só cores; largura e grade continuam as do painel. */
+.pg-cr {
+  --cr-accent: var(--accent-blue, #315ce8);
+  --cr-success: var(--accent-green, #07845a);
+  --cr-warning: #b76b09;
+  --cr-danger: var(--accent-red, #d92d20);
+  --cr-primary: var(--cr-accent);
+  --cr-surface: var(--ui-surface);
+  --cr-border: var(--ui-border);
+  --cr-border-strong: color-mix(in srgb, var(--ui-border) 72%, var(--c-text));
+  --cr-text: var(--c-text);
+  --cr-ink: var(--c-text);
+  --cr-muted: var(--c-muted);
+}
