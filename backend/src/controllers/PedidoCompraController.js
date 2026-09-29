@@ -400,6 +400,7 @@ module.exports = {
       await atualizarStatusPedido({
         pedidoId: req.params.id,
         status: req.body?.status,
+        motivo: req.body?.motivo,
         usuarioId: usuario.id,
         transaction
       });

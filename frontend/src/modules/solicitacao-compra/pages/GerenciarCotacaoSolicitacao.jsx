@@ -3617,19 +3617,17 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
 
     Antes desta migração ele encadeava SEIS caixas do navegador:
     confirm → prompt → confirm → prompt → confirm (+ alerts de erro). Duas
-    dessas caixas coletavam justificativa OBRIGATÓRIA que vai para a
-    AUDITORIA — comprar acima do solicitado e fechamento parcial — sem
-    nenhuma validação além de `if (!texto)` depois do fato.
+    uma dessas caixas coletava a justificativa OBRIGATÓRIA que vai para a
+    AUDITORIA ao comprar acima do solicitado. O fechamento parcial é uma
+    prática operacional recorrente e exige apenas confirmação.
 
     O que mudou, e por quê:
 
-    1. As duas justificativas passaram a usar `pedirJustificativa`, que
-       aplica o MESMO piso do caso menos crítico da tela (10 caracteres +
-       marcação de ciência, botão desabilitado até as duas). O que antes se
-       checava DEPOIS agora se impede ANTES.
-    2. Confirmação e coleta viraram UM passo: o modal já mostra os itens
-       excedentes / o saldo que fica aberto e pede a justificativa na mesma
-       superfície. Seis caixas viraram, no pior caso, dois modais.
+    1. A justificativa de excedente usa `pedirJustificativa`, com 10
+       caracteres + marcação de ciência. O que antes se checava DEPOIS agora
+       se impede ANTES.
+    2. Excedente e fechamento parcial usam confirmações próprias, mostrando
+       exatamente os itens ou o saldo que permanece aberto.
     3. R21 — todo `confirmar()` é DESESTRUTURADO. Este é o handler em que
        ler o objeto como booleano faria "Cancelar" GERAR OS PEDIDOS.
     4. R26 — `alocacoes`, `itensExcedentes`, `fechamentoParcial` e as
@@ -3704,7 +3702,6 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
       // é fixado aqui, antes do primeiro `await`.
       const fechamentoParcial = saldoTotalDepois > 0.0001;
       const houveExcedente = itensExcedentes.length > 0;
-      let justificativa = '';
       let justificativaExcedente = '';
 
       if (houveExcedente) {
@@ -3733,24 +3730,12 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
           avisar.alerta('Seu usuário não possui permissão para fechar parcialmente a cotação.');
           return;
         }
-        /*
-          Justificativa de AUDITORIA nº 2 — fechamento parcial. Mesmo piso.
-        */
-        const { ok, texto } = await pedirJustificativa({
+        const { ok } = await confirmar({
           titulo: 'Fechar parcialmente a cotação',
-          mensagem: 'Nem todo o saldo foi selecionado. Os pedidos marcados são gerados agora e o restante fica aberto para uma próxima rodada.',
-          detalhes: [
-            `Saldo atual: ${formatNumeroCompra(saldoTotalAntes)}`,
-            `Saldo que permanecera aberto: ${formatNumeroCompra(saldoTotalDepois)}`
-          ],
-          rotuloCampo: 'Justificativa do fechamento parcial',
-          placeholder: 'Explique por que a rodada fecha sem consumir todo o saldo.',
-          rotuloCiencia: 'Confirmo o fechamento parcial e que esta justificativa vai para a auditoria.',
+          mensagem: `Nem todo o saldo foi selecionado. Os pedidos marcados são gerados agora e o restante fica aberto para uma próxima rodada. Saldo atual: ${formatNumeroCompra(saldoTotalAntes)}. Saldo que permanecerá aberto: ${formatNumeroCompra(saldoTotalDepois)}.`,
           rotuloConfirmar: 'Gerar pedidos e manter o saldo',
-          tom: 'warning'
         });
         if (!ok) return;
-        justificativa = texto;
       } else if (!podeEncerrarCotacao) {
         avisar.alerta('A seleção consome todo o saldo e exige permissão para encerrar definitivamente a cotação.');
         return;
@@ -3780,7 +3765,7 @@ export default function GerenciarCotacaoSolicitacao({ solicitacaoCompraId = null
           alocacoes,
           fechamento_parcial_confirmado: fechamentoParcial,
           previsoes_entrega: previsoesConfirmadas,
-          justificativa: fechamentoParcial ? justificativa : null,
+          justificativa: null,
           fechamento_excedente_confirmado: houveExcedente,
           justificativa_excedente: houveExcedente ? justificativaExcedente : null
         },

@@ -1774,12 +1774,6 @@ async function gerarPedidosDosVencedores({
         saldo_restante: saldoRestante
       });
     }
-    if (!String(justificativa || '').trim()) {
-      throw Object.assign(new Error('Informe a justificativa do fechamento parcial.'), {
-        statusCode: 400,
-        code: 'COMPRA_FECHAMENTO_PARCIAL_REQUER_JUSTIFICATIVA'
-      });
-    }
   } else if (!permitirFinal) {
     throw Object.assign(new Error('Acesso negado para encerrar definitivamente a cotacao.'), {
       statusCode: 403,
@@ -2802,8 +2796,9 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
 
   const statusConfig = await findPedidoCompraStatusConfig(pedido.status);
   const bloqueadoPorStatus = Boolean(statusConfig?.bloqueia_edicao);
+  const pedidoCancelado = isPedidoCancelado(pedido.status);
   const cotacaoEncerradaMinima = isSolicitacaoCompraEncerrada(pedido.solicitacao);
-  const precisaSolicitacaoOperacional = !bloqueadoPorStatus && !cotacaoEncerradaMinima;
+  const precisaSolicitacaoOperacional = (!bloqueadoPorStatus || pedidoCancelado) && !cotacaoEncerradaMinima;
   const solicitacao = precisaSolicitacaoOperacional
     ? await carregarSolicitacaoPedidos(pedido.solicitacao_compra_id, null, { incluirPedidos: false })
     : pedido.solicitacao;
@@ -2843,7 +2838,7 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
         };
       });
 
-  const candidatosRemanejamento = edicaoBloqueada
+  const candidatosRemanejamento = edicaoBloqueada && !pedidoCancelado
     ? []
     : (solicitacao?.fornecedores || [])
       .flatMap((fornecedor) => (fornecedor.respostas || []).map((resposta) => ({ fornecedor, resposta })))
@@ -2889,14 +2884,50 @@ async function obterPedidoDetalhe(id, { obraIdsHistoricoPreco = null } = {}) {
     obraIdsHistoricoPreco,
     pedido.solicitacao_compra_id
   );
+  const saldosRemanejamentoCancelado = pedidoCancelado
+    ? montarMapaSaldosSolicitacao(solicitacao)
+    : null;
 
   const itens = (pedido.itens || []).map((item) => {
     const itemJson = item.toJSON();
     const { itemCadastrado, ...itemData } = itemJson;
     const insumoId = Number(itemCadastrado?.insumo_id || 0) || null;
+    const quantidadeJaRemanejada = pedidoCancelado
+      ? (itemJson.logs || [])
+        .filter((log) => log.acao === 'ITEM_CANCELADO_REMANEJADO')
+        .reduce((total, log) => total + asNumber(safeJsonParse(log.dados_novos, {})?.quantidade_remanejada), 0)
+      : 0;
+    const quantidadeCanceladaBase = Math.max(
+      roundPedidoQty(itemJson.quantidade_cancelada),
+      roundPedidoQty(itemJson.quantidade_pedido)
+    );
+    const quantidadePresaNoPedidoCancelado = pedidoCancelado
+      ? (solicitacao?.alocacoes || [])
+        .filter((alocacao) => (
+          normalizeText(alocacao.status) === 'ATIVA'
+          && Number(alocacao.pedido_compra_id || 0) === Number(pedido.id)
+          && buildRespostaKey(
+            alocacao.item_tipo,
+            alocacao.solicitacao_compra_item_id || alocacao.solicitacao_compra_item_manual_id
+          ) === buildItemKeyFromPedidoItem(item)
+        ))
+        .reduce((total, alocacao) => total + asNumber(alocacao.quantidade_alocada), 0)
+      : 0;
+    const saldoItemCancelado = pedidoCancelado
+      ? Math.max(0, roundPedidoQty(
+        asNumber(saldosRemanejamentoCancelado?.get(buildItemKeyFromPedidoItem(item))?.saldo)
+        + quantidadePresaNoPedidoCancelado
+      ))
+      : roundPedidoQty(itemJson.quantidade_pedido);
 
     return {
       ...itemData,
+      quantidade_disponivel_remanejamento: pedidoCancelado
+        ? Math.min(
+          Math.max(0, roundPedidoQty(quantidadeCanceladaBase - quantidadeJaRemanejada)),
+          saldoItemCancelado
+        )
+        : roundPedidoQty(itemJson.quantidade_pedido),
       contexto_preco: {
         insumo_id: insumoId,
         preco_cotado: itemJson.respostaItem?.preco != null ? roundMoney(itemJson.respostaItem.preco) : null,
@@ -3062,7 +3093,7 @@ async function adicionarRespostaAoPedido({ pedidoId, respostaItemId, usuarioId, 
   });
 }
 
-async function atualizarStatusPedido({ pedidoId, status, usuarioId, transaction }) {
+async function atualizarStatusPedido({ pedidoId, status, motivo, usuarioId, transaction }) {
   const pedido = await PedidoCompra.findByPk(Number(pedidoId), { transaction });
   if (!pedido) {
     throw new Error('Pedido nao encontrado.');
@@ -3076,6 +3107,15 @@ async function atualizarStatusPedido({ pedidoId, status, usuarioId, transaction 
 
   if (!statusConfig) {
     throw new Error('Status do pedido invalido ou inativo.');
+  }
+
+  if (statusConfig.codigo === 'CANCELADO') {
+    return cancelarPedidoCompra({
+      pedidoId: pedido.id,
+      motivo,
+      usuarioId,
+      transaction
+    });
   }
 
   const statusAnterior = String(pedido.status || '');
@@ -3297,10 +3337,8 @@ async function cancelarPedidoCompra({ pedidoId, motivo, usuarioId, transaction }
   if (!pedido) {
     throw new Error('Pedido de compra nao encontrado.');
   }
-  if (isPedidoCancelado(pedido.status)) {
-    throw new Error('Pedido de compra ja esta cancelado.');
-  }
-  const motivoNormalizado = String(motivo || '').trim();
+  const pedidoJaCancelado = isPedidoCancelado(pedido.status);
+  const motivoNormalizado = String(motivo || pedido.motivo_cancelamento || '').trim();
   if (!motivoNormalizado) {
     throw new Error('Informe o motivo do cancelamento do pedido.');
   }
@@ -3311,17 +3349,24 @@ async function cancelarPedidoCompra({ pedidoId, motivo, usuarioId, transaction }
   await assertItensSemRecebimento(itensComEntrega.map((i) => i.id), transaction);
 
   const statusAnterior = pedido.status;
+  const agora = new Date();
+  const pedidoPrecisavaRegularizacao = !pedidoJaCancelado
+    || !pedido.cancelado_em
+    || !pedido.encerrado_em
+    || !pedido.motivo_cancelamento;
 
-  await pedido.update(
-    {
-      status: 'CANCELADO',
-      cancelado_por: usuarioId || null,
-      cancelado_em: new Date(),
-      encerrado_em: new Date(),
-      motivo_cancelamento: motivoNormalizado
-    },
-    { transaction }
-  );
+  if (pedidoPrecisavaRegularizacao) {
+    await pedido.update(
+      {
+        status: 'CANCELADO',
+        cancelado_por: pedido.cancelado_por || usuarioId || null,
+        cancelado_em: pedido.cancelado_em || agora,
+        encerrado_em: pedido.encerrado_em || agora,
+        motivo_cancelamento: pedido.motivo_cancelamento || motivoNormalizado
+      },
+      { transaction }
+    );
+  }
 
   const itens = await PedidoCompraItem.findAll({
     where: { pedido_compra_id: pedido.id, removido: false },
@@ -3334,7 +3379,7 @@ async function cancelarPedidoCompra({ pedidoId, motivo, usuarioId, transaction }
         removido: true,
         quantidade_cancelada: item.quantidade_pedido,
         cancelado_por: usuarioId || null,
-        cancelado_em: new Date(),
+        cancelado_em: agora,
         motivo_cancelamento: motivoNormalizado
       },
       { transaction }
@@ -3352,47 +3397,65 @@ async function cancelarPedidoCompra({ pedidoId, motivo, usuarioId, transaction }
     });
   }
 
-  await SolicitacaoCompraAlocacao.update(
+  const [alocacoesCanceladas] = await SolicitacaoCompraAlocacao.update(
     {
       status: 'CANCELADA',
       cancelado_por: usuarioId || null,
-      cancelado_em: new Date(),
+      cancelado_em: agora,
       motivo_cancelamento: motivoNormalizado
     },
     { where: { pedido_compra_id: pedido.id, status: 'ATIVA' }, transaction }
   );
 
   const fretesCancelados = await cancelarFretesPendentesSemTituloDoPedido(pedido.id, transaction);
+  const houveRegularizacao = pedidoPrecisavaRegularizacao
+    || itens.length > 0
+    || Number(alocacoesCanceladas || 0) > 0
+    || Number(fretesCancelados || 0) > 0;
 
-  await registrarLogSolicitacaoCompra({
-    solicitacaoCompraId: pedido.solicitacao_compra_id,
-    usuarioId,
-    fornecedorCompraId: pedido.fornecedor_compra_id,
-    tipoAcao: 'PEDIDO_CANCELADO',
-    descricao: `${buildPedidoCodigo(pedido.id)} cancelado: ${motivoNormalizado}`,
-    metadados: {
-      pedido_compra_id: pedido.id,
-      motivo: motivoNormalizado,
-      fretes_cancelados: Number(fretesCancelados || 0)
-    },
-    transaction
-  });
+  if (houveRegularizacao) {
+    await registrarLogSolicitacaoCompra({
+      solicitacaoCompraId: pedido.solicitacao_compra_id,
+      usuarioId,
+      fornecedorCompraId: pedido.fornecedor_compra_id,
+      tipoAcao: pedidoJaCancelado ? 'PEDIDO_CANCELAMENTO_REGULARIZADO' : 'PEDIDO_CANCELADO',
+      descricao: pedidoJaCancelado
+        ? `${buildPedidoCodigo(pedido.id)} teve o cancelamento regularizado: ${motivoNormalizado}`
+        : `${buildPedidoCodigo(pedido.id)} cancelado: ${motivoNormalizado}`,
+      metadados: {
+        pedido_compra_id: pedido.id,
+        motivo: motivoNormalizado,
+        itens_regularizados: itens.length,
+        alocacoes_canceladas: Number(alocacoesCanceladas || 0),
+        fretes_cancelados: Number(fretesCancelados || 0),
+        pedido_ja_cancelado: pedidoJaCancelado
+      },
+      transaction
+    });
+  }
 
   const solicitacao = await SolicitacaoCompra.findByPk(pedido.solicitacao_compra_id, { transaction });
-  await registrarHistoricoPedidoNaSolicitacaoPrincipal({
-    solicitacao,
-    pedido,
-    usuarioId,
-    acao: 'PEDIDO_COMPRA_CANCELADO',
-    descricao: `${buildPedidoCodigo(pedido.id)} cancelado: ${motivoNormalizado}`,
-    statusAnterior,
-    statusNovo: 'CANCELADO',
-    metadados: {
-      motivo: motivoNormalizado,
-      fretes_cancelados: Number(fretesCancelados || 0)
-    },
-    transaction
-  });
+  if (houveRegularizacao) {
+    await registrarHistoricoPedidoNaSolicitacaoPrincipal({
+      solicitacao,
+      pedido,
+      usuarioId,
+      acao: pedidoJaCancelado ? 'PEDIDO_COMPRA_CANCELAMENTO_REGULARIZADO' : 'PEDIDO_COMPRA_CANCELADO',
+      descricao: pedidoJaCancelado
+        ? `${buildPedidoCodigo(pedido.id)} teve o cancelamento regularizado: ${motivoNormalizado}`
+        : `${buildPedidoCodigo(pedido.id)} cancelado: ${motivoNormalizado}`,
+      statusAnterior,
+      statusNovo: 'CANCELADO',
+      metadados: {
+        motivo: motivoNormalizado,
+        itens_regularizados: itens.length,
+        alocacoes_canceladas: Number(alocacoesCanceladas || 0),
+        fretes_cancelados: Number(fretesCancelados || 0),
+        pedido_ja_cancelado: pedidoJaCancelado
+      },
+      transaction
+    });
+  }
 
   await sincronizarStatusFechamentoPorPedido(pedido, transaction);
   await sincronizarStatusSolicitacaoCompraPorSaldo({
@@ -3940,6 +4003,13 @@ async function atualizarStatusPedidosEmLote({ pedidoIds = [], status, usuarioId,
     throw new Error('Selecione ao menos um pedido.');
   }
 
+  if (normalizeStatusCode(status) === 'CANCELADO') {
+    const error = new Error('Cancele cada pedido individualmente para registrar o motivo e liberar corretamente os itens da cotacao.');
+    error.statusCode = 409;
+    error.code = 'CANCELAMENTO_PEDIDO_EXIGE_FLUXO_INDIVIDUAL';
+    throw error;
+  }
+
   const atualizados = [];
   for (const pedidoId of ids) {
     await atualizarStatusPedido({ pedidoId, status, usuarioId, transaction });
@@ -4042,9 +4112,30 @@ async function remanejarPedidoItem({ pedidoId, itemId, respostaItemIdDestino, qu
     transaction,
     lock: transaction?.LOCK?.UPDATE
   });
-  const pedidoOrigem = await assertPedidoEditavel(pedidoOrigemTravado, transaction);
+  if (!pedidoOrigemTravado) {
+    throw new Error('Pedido de origem nao encontrado.');
+  }
+  const origemCancelada = isPedidoCancelado(pedidoOrigemTravado.status);
+  if (origemCancelada) {
+    await cancelarPedidoCompra({
+      pedidoId: pedidoOrigemTravado.id,
+      motivo: pedidoOrigemTravado.motivo_cancelamento || 'Regularizacao automatica antes do remanejamento',
+      usuarioId,
+      transaction
+    });
+  } else {
+    await assertPedidoEditavel(pedidoOrigemTravado, transaction);
+  }
+  const pedidoOrigem = await PedidoCompra.findByPk(Number(pedidoId), {
+    transaction,
+    lock: transaction?.LOCK?.UPDATE
+  });
   const itemOrigem = await PedidoCompraItem.findOne({
-    where: { id: Number(itemId), pedido_compra_id: Number(pedidoId), removido: false },
+    where: {
+      id: Number(itemId),
+      pedido_compra_id: Number(pedidoId),
+      ...(origemCancelada ? {} : { removido: false })
+    },
     transaction,
     lock: transaction?.LOCK?.UPDATE
   });
@@ -4052,12 +4143,7 @@ async function remanejarPedidoItem({ pedidoId, itemId, respostaItemIdDestino, qu
     throw new Error('Item de origem nao encontrado.');
   }
 
-  const quantidadeRemanejada = roundPedidoQty(quantidade || itemOrigem.quantidade_pedido);
   await assertItensSemRecebimento([itemOrigem.id], transaction);
-  if (quantidadeRemanejada <= 0 || quantidadeRemanejada > roundPedidoQty(itemOrigem.quantidade_pedido)) {
-    throw new Error('Quantidade remanejada invalida para o item de origem.');
-  }
-
   await assertPedidoSemVinculoFinanceiroParaCancelamento(pedidoOrigem.id, transaction);
 
   await SolicitacaoCompra.findByPk(pedidoOrigem.solicitacao_compra_id, {
@@ -4067,6 +4153,36 @@ async function remanejarPedidoItem({ pedidoId, itemId, respostaItemIdDestino, qu
   });
 
   const solicitacao = await carregarSolicitacaoPedidos(pedidoOrigem.solicitacao_compra_id, transaction);
+  const saldosSolicitacao = montarMapaSaldosSolicitacao(solicitacao);
+  const itemKeyOrigem = buildItemKeyFromPedidoItem(itemOrigem);
+  let quantidadeDisponivelOrigem = roundPedidoQty(itemOrigem.quantidade_pedido);
+  if (origemCancelada) {
+    const logsRemanejamento = await PedidoCompraItemLog.findAll({
+      where: {
+        pedido_compra_item_id: itemOrigem.id,
+        acao: 'ITEM_CANCELADO_REMANEJADO'
+      },
+      attributes: ['dados_novos'],
+      transaction
+    });
+    const quantidadeJaRemanejada = roundPedidoQty(logsRemanejamento.reduce((total, log) => {
+      const dados = safeJsonParse(log.dados_novos, {});
+      return total + asNumber(dados?.quantidade_remanejada);
+    }, 0));
+    const quantidadeCanceladaBase = Math.max(
+      roundPedidoQty(itemOrigem.quantidade_cancelada),
+      roundPedidoQty(itemOrigem.quantidade_pedido)
+    );
+    quantidadeDisponivelOrigem = Math.min(
+      Math.max(0, roundPedidoQty(quantidadeCanceladaBase - quantidadeJaRemanejada)),
+      Math.max(0, roundPedidoQty(saldosSolicitacao.get(itemKeyOrigem)?.saldo || 0))
+    );
+  }
+  const quantidadeRemanejada = roundPedidoQty(quantidade || quantidadeDisponivelOrigem);
+  if (quantidadeRemanejada <= 0 || quantidadeRemanejada > quantidadeDisponivelOrigem) {
+    throw new Error('Quantidade remanejada invalida ou sem saldo liberado para o item de origem.');
+  }
+
   const respostaDestino = (solicitacao?.fornecedores || [])
     .flatMap((fornecedor) => (fornecedor.respostas || []).map((resposta) => ({ fornecedor, resposta })))
     .find(({ resposta }) => Number(resposta.id) === Number(respostaItemIdDestino));
@@ -4097,8 +4213,8 @@ async function remanejarPedidoItem({ pedidoId, itemId, respostaItemIdDestino, qu
       resposta_item_id: Number(respostaItemIdDestino),
       quantidade_alocada: quantidadeRemanejada
     }],
-    null,
-    { permitirExcedente: true }
+    origemCancelada ? saldosSolicitacao : null,
+    { permitirExcedente: !origemCancelada }
   );
   if (!alocacaoDestino) {
     throw new Error('Nao foi possivel calcular a alocacao do fornecedor de destino.');
@@ -4179,64 +4295,84 @@ async function remanejarPedidoItem({ pedidoId, itemId, respostaItemIdDestino, qu
     );
   }
 
-  const quantidadeRestante = roundPedidoQty(asNumber(itemOrigem.quantidade_pedido) - quantidadeRemanejada);
-  const custosRemovidos = await reduzirAlocacoesAtivasDoItem({
-    pedidoItemId: itemOrigem.id,
-    quantidade: quantidadeRemanejada,
-    usuarioId,
-    motivo: String(motivo || '').trim() || 'Item remanejado para outro fornecedor',
-    transaction
-  });
-  await itemOrigem.update(
-    {
-      quantidade_pedido: quantidadeRestante,
-      valor_total: roundMoney(quantidadeRestante * asNumber(itemOrigem.preco_unitario)),
-      ipi_valor: roundMoney(Math.max(0, asNumber(itemOrigem.ipi_valor) - custosRemovidos.ipi_rateado)),
-      icms_valor: roundMoney(Math.max(0, asNumber(itemOrigem.icms_valor) - custosRemovidos.icms_rateado)),
-      st_valor: roundMoney(Math.max(0, asNumber(itemOrigem.st_valor) - custosRemovidos.st_rateado)),
-      difal_rateado: roundMoney(Math.max(0, asNumber(itemOrigem.difal_rateado) - custosRemovidos.difal_rateado)),
-      frete_rateado: roundMoney(Math.max(0, asNumber(itemOrigem.frete_rateado) - custosRemovidos.frete_rateado)),
-      removido: quantidadeRestante <= 0,
-      quantidade_cancelada: roundPedidoQty(asNumber(itemOrigem.quantidade_cancelada) + quantidadeRemanejada),
-      motivo_cancelamento: String(motivo || '').trim() || itemOrigem.motivo_cancelamento || null
-    },
-    { transaction }
-  );
-
-  await registrarLogPedidoItem({
-    pedidoCompraId: pedidoOrigem.id,
-    pedidoCompraItemId: itemOrigem.id,
-    usuarioId,
-    acao: 'ITEM_REMANEJADO_SAIDA',
-    descricao: `Remanejados ${quantidadeRemanejada} de ${itemOrigem.descricao} para outro fornecedor`,
-    dadosNovos: {
-      quantidade_remanejada: quantidadeRemanejada,
-      resposta_item_destino_id: respostaItemIdDestino,
-      fornecedor_destino_id: fornecedorDestino.fornecedor_compra_id,
-      custos_origem_reduzidos: custosRemovidos,
-      custos_destino_aplicados: {
-        desconto_rateado: alocacaoDestino.desconto_rateado || 0,
-        ipi_rateado: alocacaoDestino.ipi_rateado || 0,
-        icms_rateado: alocacaoDestino.icms_rateado || 0,
-        st_rateado: alocacaoDestino.st_rateado || 0,
-        difal_rateado: alocacaoDestino.difal_rateado || 0
+  if (origemCancelada) {
+    await registrarLogPedidoItem({
+      pedidoCompraId: pedidoOrigem.id,
+      pedidoCompraItemId: itemOrigem.id,
+      usuarioId,
+      acao: 'ITEM_CANCELADO_REMANEJADO',
+      descricao: `Remanejados ${quantidadeRemanejada} de ${itemOrigem.descricao} cancelado para outro fornecedor`,
+      dadosNovos: {
+        quantidade_remanejada: quantidadeRemanejada,
+        resposta_item_destino_id: respostaItemIdDestino,
+        fornecedor_destino_id: fornecedorDestino.fornecedor_compra_id,
+        pedido_destino_id: pedidoDestino.id,
+        motivo: motivo || null
       },
-      motivo: motivo || null
-    },
-    transaction
-  });
+      transaction
+    });
+  } else {
+    const quantidadeRestante = roundPedidoQty(asNumber(itemOrigem.quantidade_pedido) - quantidadeRemanejada);
+    const custosRemovidos = await reduzirAlocacoesAtivasDoItem({
+      pedidoItemId: itemOrigem.id,
+      quantidade: quantidadeRemanejada,
+      usuarioId,
+      motivo: String(motivo || '').trim() || 'Item remanejado para outro fornecedor',
+      transaction
+    });
+    await itemOrigem.update(
+      {
+        quantidade_pedido: quantidadeRestante,
+        valor_total: roundMoney(quantidadeRestante * asNumber(itemOrigem.preco_unitario)),
+        ipi_valor: roundMoney(Math.max(0, asNumber(itemOrigem.ipi_valor) - custosRemovidos.ipi_rateado)),
+        icms_valor: roundMoney(Math.max(0, asNumber(itemOrigem.icms_valor) - custosRemovidos.icms_rateado)),
+        st_valor: roundMoney(Math.max(0, asNumber(itemOrigem.st_valor) - custosRemovidos.st_rateado)),
+        difal_rateado: roundMoney(Math.max(0, asNumber(itemOrigem.difal_rateado) - custosRemovidos.difal_rateado)),
+        frete_rateado: roundMoney(Math.max(0, asNumber(itemOrigem.frete_rateado) - custosRemovidos.frete_rateado)),
+        removido: quantidadeRestante <= 0,
+        quantidade_cancelada: roundPedidoQty(asNumber(itemOrigem.quantidade_cancelada) + quantidadeRemanejada),
+        motivo_cancelamento: String(motivo || '').trim() || itemOrigem.motivo_cancelamento || null
+      },
+      { transaction }
+    );
+
+    await registrarLogPedidoItem({
+      pedidoCompraId: pedidoOrigem.id,
+      pedidoCompraItemId: itemOrigem.id,
+      usuarioId,
+      acao: 'ITEM_REMANEJADO_SAIDA',
+      descricao: `Remanejados ${quantidadeRemanejada} de ${itemOrigem.descricao} para outro fornecedor`,
+      dadosNovos: {
+        quantidade_remanejada: quantidadeRemanejada,
+        resposta_item_destino_id: respostaItemIdDestino,
+        fornecedor_destino_id: fornecedorDestino.fornecedor_compra_id,
+        custos_origem_reduzidos: custosRemovidos,
+        custos_destino_aplicados: {
+          desconto_rateado: alocacaoDestino.desconto_rateado || 0,
+          ipi_rateado: alocacaoDestino.ipi_rateado || 0,
+          icms_rateado: alocacaoDestino.icms_rateado || 0,
+          st_rateado: alocacaoDestino.st_rateado || 0,
+          difal_rateado: alocacaoDestino.difal_rateado || 0
+        },
+        motivo: motivo || null
+      },
+      transaction
+    });
+  }
 
   await sincronizarDescontoPedidoPorAlocacoes(pedidoOrigem.id, transaction);
   await sincronizarDescontoPedidoPorAlocacoes(pedidoDestino.id, transaction);
   await recalcularPedidoPorId(pedidoDestino.id, transaction);
   await recalcularPedidoPorId(pedidoOrigem.id, transaction);
 
-  await sincronizarRateiosFretesPendentesPedido({
-    pedidoId: pedidoOrigem.id,
-    usuarioId,
-    motivo: 'Remanejamento de item para outro fornecedor',
-    transaction
-  });
+  if (!origemCancelada) {
+    await sincronizarRateiosFretesPendentesPedido({
+      pedidoId: pedidoOrigem.id,
+      usuarioId,
+      motivo: 'Remanejamento de item para outro fornecedor',
+      transaction
+    });
+  }
 
   if (
     ['EMBUTIDO', 'TERCEIRO'].includes(normalizeText(fornecedorDestino.frete_tipo))
