@@ -318,7 +318,12 @@ function validateFrontendContracts() {
   assert(monthlyPlanning.includes('editBlockReason(item)'));
   assert(monthlySummary.includes('Custo planejado'));
   assert(monthlySummary.includes('Recebível previsto'));
-  assert(monthlySummary.includes('Desvio de custo'));
+  // Regra de 29/09: o numero principal e o Desvio = recebivel previsto −
+  // custo planejado (ou realizado, quando passa do planejado), pela regra
+  // unica de utils/resultadoMes.js, com a conta usada logo abaixo.
+  assert(monthlySummary.includes('<span>Desvio</span>'));
+  assert(monthlySummary.includes('calcularResultadoMes'));
+  assert(monthlySummary.includes('resultado.formula'));
   assert(monthlySummary.includes('Saldo a receber'));
   assert(monthlySummary.includes('<CrIconAction'));
   assert(monthlySummary.includes('disabled={Boolean(editDisabledReason)}'));

@@ -6,6 +6,7 @@ import {
 } from 'react-icons/hi2';
 import { COMPETENCIA_ESTADO_LABELS } from '../constants/custosRecebiveis';
 import CrIconAction from './CrIconAction';
+import { calcularResultadoMes } from '../utils/resultadoMes';
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -21,10 +22,7 @@ function Metric({ label, value, tone = 'neutral' }) {
   );
 }
 
-const percent = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
-
 export default function CrMonthlySummaryCard({
-  presentation = 'default',
   title,
   eyebrow,
   classification,
@@ -53,10 +51,16 @@ export default function CrMonthlySummaryCard({
   const isPublic = String(classification || '').toUpperCase() === 'PUBLICA';
   const planned = Number(custoPlanejado || 0);
   const realized = Number(custoRealizado || 0);
-  const costDelta = realized - planned;
-  // Sem custo planejado lançado (ou mês não iniciado) não existe desvio: o
-  // realizado inteiro apareceria como estouro. Mostra "Sem planejamento".
-  const hasPlanning = planned > 0 && (status || 'NAO_INICIADA') !== 'NAO_INICIADA';
+  // Numero principal (decisao do proprietario, 29/09): recebivel previsto −
+  // custo planejado; quando o realizado passa do planejado, recebivel previsto
+  // − custo realizado. A conta usada aparece logo abaixo. Mesmo formato para
+  // obra publica (recebivel previsto = medicao prevista) e privada.
+  const resultado = calcularResultadoMes({
+    classificacao: classification,
+    recebivelPrevisto,
+    custoPlanejado: planned,
+    custoRealizado: realized
+  });
   const recognized = Number(recebivelReconhecido || 0);
   const received = Number(receitaRecebida || 0);
   const balance = Math.max(0, recognized - received);
@@ -65,9 +69,9 @@ export default function CrMonthlySummaryCard({
     || (medicaoAprovadaInformada
       ? 'Revisar medição efetivamente paga'
       : 'Registrar medição efetivamente paga');
-  const deltaTone = !hasPlanning || costDelta === 0
+  const deltaTone = resultado.semPlanejamento || resultado.valor === 0
     ? 'neutral'
-    : (costDelta > 0 ? 'negative' : (presentation === 'gestor' ? 'positive' : 'context'));
+    : (resultado.valor > 0 ? 'positive' : 'negative');
   // "Aguardando" (laranja) só quando havia medição prevista e a aprovada
   // ainda não foi registrada. Sem previsão não há o que aguardar: "—" neutro.
   const hasForecast = Number(recebivelPrevisto || 0) > 0;
@@ -83,7 +87,7 @@ export default function CrMonthlySummaryCard({
   return (
     <article
       className="cr-period-card"
-      data-alert={(hasPlanning && costDelta > 0) || Number(glosa) > 0}
+      data-alert={(!resultado.semPlanejamento && resultado.valor < 0) || Number(glosa) > 0}
     >
       <header className="cr-period-card__header">
         <div>
@@ -96,14 +100,14 @@ export default function CrMonthlySummaryCard({
       </header>
 
       <div className="cr-period-card__lead" data-tone={deltaTone}>
-        <span>Desvio de custo</span>
-        {hasPlanning ? (
-          <>
-            <strong>{costDelta > 0 ? '+' : ''}{currency.format(costDelta)}</strong>
-            <small>{percent.format((realized / planned) * 100)}% do planejado</small>
-          </>
-        ) : (
+        <span>Desvio</span>
+        {resultado.semPlanejamento ? (
           <strong data-empty="true">Sem planejamento</strong>
+        ) : (
+          <>
+            <strong>{resultado.valor > 0 ? '+' : ''}{currency.format(resultado.valor)}</strong>
+            <small>{resultado.formula}</small>
+          </>
         )}
       </div>
 
