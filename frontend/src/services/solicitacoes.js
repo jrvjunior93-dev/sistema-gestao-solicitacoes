@@ -113,6 +113,20 @@ export async function getStatusVisiveisSolicitacoes(params = {}) {
   return res.json();
 }
 
+export async function getUsuariosAtivosCadastroObra() {
+  const res = await fetch(`${API_URL}/solicitacoes/cadastro-obra/usuarios-ativos`, {
+    headers: authHeaders()
+  });
+  if (!res.ok) {
+    throw buildResponseError(
+      res.status,
+      'Erro ao listar usuarios ativos para o cadastro da obra',
+      await parseJsonSafe(res)
+    );
+  }
+  return res.json();
+}
+
 export async function obterRelatorioSolicitacoesOperacional(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params || {}).forEach(([key, value]) => {

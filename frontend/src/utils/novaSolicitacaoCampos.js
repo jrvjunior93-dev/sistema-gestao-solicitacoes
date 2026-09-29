@@ -20,6 +20,7 @@ export const CAMPOS_NOVA_SOLICITACAO = [
   { id: 'contrato_responsavel', label: 'Responsável pela contratação', descricao: 'Usuário responsável pelo acompanhamento da contratação.', somenteFluxoContratoNovo: true },
   { id: 'contrato_vigencia_inicio', label: 'Vigência inicial do contrato', descricao: 'Data de início da vigência contratual.', somenteFluxoContratoNovo: true },
   { id: 'contrato_vigencia_fim', label: 'Vigência final do contrato', descricao: 'Data final da vigência contratual.', somenteFluxoContratoNovo: true },
+  { id: 'pessoas_vinculadas', label: 'Pessoas vinculadas', descricao: 'Usuários ativos que deverão ser vinculados à nova obra.', somenteFluxoCadastroObra: true },
   { id: 'descricao', label: 'Título', descricao: 'Título curto usado para identificar a solicitação.' },
   { id: 'justificativa', label: 'Justificativa', descricao: 'Motivo e necessidade da solicitação.', excetoFluxoContratoNovo: true },
   { id: 'anexos', label: 'Anexos', descricao: 'Arquivos anexados na abertura da solicitação.' }
@@ -196,6 +197,11 @@ function padraoCampo(id, behavior = {}, contexto = {}) {
     case 'contrato_vigencia_inicio':
     case 'contrato_vigencia_fim':
       return { visivel: Boolean(behavior.usa_fluxo_contrato_novo), obrigatorio: false };
+    case 'pessoas_vinculadas':
+      return {
+        visivel: Boolean(behavior.usa_fluxo_cadastro_obra),
+        obrigatorio: Boolean(behavior.usa_fluxo_cadastro_obra)
+      };
     case 'descricao':
       return { visivel: behavior.mostrar_descricao !== false, obrigatorio: Boolean(behavior.exige_descricao) };
     case 'justificativa':
@@ -238,6 +244,26 @@ export function resolverCamposNovaSolicitacaoFrontend(behavior, config, tipoId, 
         ...campos[campoId],
         visivel: false,
         obrigatorio: false
+      };
+    });
+  }
+
+  if (behavior?.usa_fluxo_cadastro_obra === true) {
+    const camposObrigatorios = new Set([
+      'obra',
+      'area_responsavel',
+      'descricao',
+      'pessoas_vinculadas',
+      'data_vencimento',
+      'anexos'
+    ]);
+    Object.keys(campos).forEach((campoId) => {
+      campos[campoId] = {
+        ...campos[campoId],
+        visivel: camposObrigatorios.has(campoId),
+        obrigatorio: camposObrigatorios.has(campoId),
+        visivel_padrao: camposObrigatorios.has(campoId),
+        obrigatorio_padrao: camposObrigatorios.has(campoId)
       };
     });
   }

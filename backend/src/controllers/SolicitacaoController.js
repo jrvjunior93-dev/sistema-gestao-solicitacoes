@@ -15,6 +15,7 @@ const {
   ContratoCredor,
   SolicitacaoApropriacao,
   SolicitacaoCentroCustoDistribuicao,
+  SolicitacaoCadastroObraUsuario,
   TipoSubContrato,
   Anexo,
   MensagemSetor,
@@ -3058,6 +3059,20 @@ module.exports = {
     );
   },
 
+  async usuariosAtivosCadastroObra(req, res) {
+    try {
+      const usuarios = await User.findAll({
+        where: { ativo: true },
+        attributes: ['id', 'nome'],
+        order: [['nome', 'ASC'], ['id', 'ASC']]
+      });
+      return res.json(usuarios);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao listar usuarios ativos.' });
+    }
+  },
+
   async saldoDespesaEventual(req, res) {
     try {
       const obraId = Number(req.query?.obra_id);
@@ -3138,6 +3153,7 @@ module.exports = {
         // Dados de pagamento DA MEDICAO (itens 5 e 9, 23/08): favorecido, chave PIX, forma de
         // pagamento, contato e o aceite. Sairam da abertura do contrato e vieram para ca.
         medicao_pagamento: medicaoPagamento,
+        cadastro_obra_usuario_ids: cadastroObraUsuarioIds,
         // O upload continua no endpoint historico logo depois da criacao; estes nomes provam que
         // o formulario tinha ao menos um arquivo selecionado antes de registrar a medicao.
         anexos_pendentes_nomes: anexosPendentesNomes
@@ -3215,6 +3231,7 @@ module.exports = {
       const comportamentoBase = normalizeTipoSolicitacaoBehavior(tipoSelecionado);
       const usaFluxoDespesaEventual = tipoEhDespesaEventual(tipoSelecionado);
       const usaFluxoRecargaCartao = tipoEhRecargaCartao(tipoSelecionado);
+      const usaFluxoCadastroObra = comportamentoBase.usa_fluxo_cadastro_obra === true;
       if (
         (comportamentoBase.somente_gerencia_processos === true || usaFluxoRecargaCartao) &&
         setorDestinoSelecionado.eh_setor_geo !== true &&
@@ -3225,8 +3242,32 @@ module.exports = {
         ].some((token) => isGeoSetorToken(token))
       ) {
         return res.status(400).json({
-          error: `${usaFluxoRecargaCartao ? 'Recarga de Cartao' : 'Despesa Eventual'} deve ser enviada para o setor GERENCIA DE PROCESSOS.`
+          error: `${tipoSelecionado.nome || 'Este tipo de solicitacao'} deve ser enviado para o setor GERENCIA DE PROCESSOS.`
         });
+      }
+      let pessoasCadastroObra = [];
+      if (usaFluxoCadastroObra) {
+        if (!registroSelecionadoEhObra) {
+          return res.status(400).json({
+            error: 'CADASTRO DE OBRA esta disponivel somente para solicitacoes originadas em Obras.'
+          });
+        }
+        const idsPessoas = [...new Set((Array.isArray(cadastroObraUsuarioIds) ? cadastroObraUsuarioIds : [])
+          .map(Number)
+          .filter((id) => Number.isInteger(id) && id > 0))];
+        if (idsPessoas.length === 0) {
+          return res.status(400).json({ error: 'Selecione ao menos uma pessoa vinculada.' });
+        }
+        pessoasCadastroObra = await User.findAll({
+          where: { id: { [Op.in]: idsPessoas }, ativo: true },
+          attributes: ['id', 'nome'],
+          order: [['nome', 'ASC'], ['id', 'ASC']]
+        });
+        if (pessoasCadastroObra.length !== idsPessoas.length) {
+          return res.status(400).json({
+            error: 'Uma ou mais pessoas vinculadas nao existem ou estao inativas.'
+          });
+        }
       }
       const [contratosDisponiveis, apropriacoesDisponiveis] = await Promise.all([
         isModuleEnabled('CONTRATOS'),
@@ -3306,9 +3347,11 @@ module.exports = {
         });
       }
 
-      if (campoObrigatorio('descricao') && !descricao) {
+      if (campoObrigatorio('descricao') && !String(descricao || '').trim()) {
         return res.status(400).json({
-          error: 'Campos obrigatorios nao informados'
+          error: usaFluxoCadastroObra
+            ? 'Informe o nome da obra.'
+            : 'Campos obrigatorios nao informados'
         });
       }
       if (campoObrigatorio('justificativa') && !String(justificativa || '').trim()) {
@@ -3327,7 +3370,9 @@ module.exports = {
         return res.status(400).json({
           error: tipoEhDeMedicao
             ? 'Anexe ao menos um arquivo para enviar a solicitacao de medicao.'
-            : 'Anexe ao menos um comprovante da despesa.'
+            : (usaFluxoCadastroObra
+              ? 'Anexe a planilha orcamentaria da obra.'
+              : 'Anexe ao menos um comprovante da despesa.')
         });
       }
 
@@ -3981,22 +4026,37 @@ module.exports = {
         return { resultado, saldo: null };
       });
 
-      const criacao = usaFluxoRecargaCartao
-        ? await executarCriacaoRecargaComControle({
+      const criarSolicitacaoCadastroObra = async () => sequelize.transaction(async (transaction) => {
+        const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
+        await SolicitacaoCadastroObraUsuario.bulkCreate(
+          pessoasCadastroObra.map((pessoa) => ({
+            solicitacao_id: resultado.id,
+            usuario_id: pessoa.id,
+            criado_por: usuarioId
+          })),
+          { transaction }
+        );
+        return { resultado, saldo: null };
+      });
+
+      const criacao = usaFluxoCadastroObra
+        ? await criarSolicitacaoCadastroObra()
+        : usaFluxoRecargaCartao
+          ? await executarCriacaoRecargaComControle({
             cartaoId: cartao_recarga_id,
             user: req.user,
             dadosSolicitacao
           })
-        : usaFluxoDespesaEventual
-          ? await executarCriacaoDespesaEventualComControle({
-            obraId: obra_id,
-            tipoId: tipo_solicitacao_id,
-            valor: valorPersistido,
-            criar: () => Solicitacao.create(dadosSolicitacao)
-          })
-          : distribuicaoCentroCustoValidada
-            ? await criarSolicitacaoComDistribuicao()
-            : { resultado: await Solicitacao.create(dadosSolicitacao), saldo: null };
+          : usaFluxoDespesaEventual
+            ? await executarCriacaoDespesaEventualComControle({
+              obraId: obra_id,
+              tipoId: tipo_solicitacao_id,
+              valor: valorPersistido,
+              criar: () => Solicitacao.create(dadosSolicitacao)
+            })
+            : distribuicaoCentroCustoValidada
+              ? await criarSolicitacaoComDistribuicao()
+              : { resultado: await Solicitacao.create(dadosSolicitacao), saldo: null };
       const solicitacao = criacao.resultado;
 
       // Fluxos especiais possuem controle transacional proprio. Se algum deles for futuramente
@@ -4060,6 +4120,9 @@ module.exports = {
               percentual: item.percentual,
               valor_distribuido: item.valor_distribuido
             }))
+            : null,
+          cadastro_obra_usuario_ids: usaFluxoCadastroObra
+            ? pessoasCadastroObra.map((pessoa) => Number(pessoa.id))
             : null
         }
       });
@@ -4107,6 +4170,12 @@ module.exports = {
           criterio: item.criterio,
           percentual: item.percentual,
           valor_distribuido: item.valor_distribuido
+        }));
+      }
+      if (usaFluxoCadastroObra) {
+        metadata.cadastro_obra_pessoas = pessoasCadastroObra.map((pessoa) => ({
+          id: Number(pessoa.id),
+          nome: pessoa.nome
         }));
       }
       await Historico.create({
@@ -4314,6 +4383,18 @@ module.exports = {
                 attributes: ['id', 'codigo', 'nome', 'classificacao']
               }
             ]
+          },
+          {
+            model: SolicitacaoCadastroObraUsuario,
+            as: 'pessoasCadastroObra',
+            required: false,
+            attributes: ['id', 'usuario_id'],
+            include: [{
+              model: User,
+              as: 'usuario',
+              required: false,
+              attributes: ['id', 'nome']
+            }]
           },
           {
             model: Parceiro,

@@ -42,6 +42,7 @@
     "test:anexos-acesso": "node scripts/validarAcessoAnexosSolicitacoes.js",
     "test:auditoria-operacional": "node scripts/validarAuditoriaOperacional.js",
     "test:solicitacao-vencimento": "node scripts/validarSolicitacaoDataVencimento.js",
+    "test:cadastro-obra-solicitacao": "node scripts/validarCadastroObraSolicitacao.js",
     "test:cpf-cnpj": "node scripts/validarCpfCnpj.js",
     "test:despesa-eventual": "node scripts/validarDespesaEventual.js",
     "test:recarga-cartao": "node scripts/validarRecargaCartao.js",

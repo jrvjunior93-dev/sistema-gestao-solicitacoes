@@ -23,6 +23,14 @@ import {
 } from '../utils/novaSolicitacaoCampos';
 
 const DESCRICAO = 'Defina, por area e tipo, quais campos aparecem e quais ficam obrigatorios na abertura da solicitacao.';
+const CAMPOS_FIXOS_CADASTRO_OBRA = new Set([
+  'obra',
+  'area_responsavel',
+  'descricao',
+  'pessoas_vinculadas',
+  'data_vencimento',
+  'anexos'
+]);
 
 function filtrarTiposPorArea(listaTipos, regrasTiposPorSetor, area, listaSetores = []) {
   const areaKey = normalizarAreaNovaSolicitacao(area);
@@ -158,14 +166,24 @@ export default function NovaSolicitacaoCamposConfig() {
     ),
     [comportamentoTipo.usa_apropriacao_automatica_obra]
   );
+  const camposControladosPeloCadastroObra = useMemo(
+    () => new Set(
+      comportamentoTipo.usa_fluxo_cadastro_obra
+        ? CAMPOS_NOVA_SOLICITACAO.map((campo) => campo.id)
+        : []
+    ),
+    [comportamentoTipo.usa_fluxo_cadastro_obra]
+  );
   const camposDisponiveis = useMemo(
     () => CAMPOS_NOVA_SOLICITACAO.filter(
       (campo) => (
         (!campo.somenteFluxoContratoNovo || comportamentoTipo.usa_fluxo_contrato_novo) &&
-        (!campo.excetoFluxoContratoNovo || !comportamentoTipo.usa_fluxo_contrato_novo)
+        (!campo.excetoFluxoContratoNovo || !comportamentoTipo.usa_fluxo_contrato_novo) &&
+        (!campo.somenteFluxoCadastroObra || comportamentoTipo.usa_fluxo_cadastro_obra) &&
+        (!comportamentoTipo.usa_fluxo_cadastro_obra || CAMPOS_FIXOS_CADASTRO_OBRA.has(campo.id))
       )
     ),
-    [comportamentoTipo.usa_fluxo_contrato_novo]
+    [comportamentoTipo.usa_fluxo_contrato_novo, comportamentoTipo.usa_fluxo_cadastro_obra]
   );
 
   // Carrega os subtipos do tipo escolhido; trocar de tipo zera a selecao de subtipo.
@@ -218,7 +236,13 @@ export default function NovaSolicitacaoCamposConfig() {
 
   function atualizarCampo(campoId, patch) {
     const definicao = CAMPOS_NOVA_SOLICITACAO.find((campo) => campo.id === campoId);
-    if (definicao?.fixo || camposControladosPelaApropriacaoAutomatica.has(campoId) || !chaveRegraSelecionada || !areaSelecionada) return;
+    if (
+      definicao?.fixo
+      || camposControladosPelaApropriacaoAutomatica.has(campoId)
+      || camposControladosPeloCadastroObra.has(campoId)
+      || !chaveRegraSelecionada
+      || !areaSelecionada
+    ) return;
     const areaKey = normalizarAreaNovaSolicitacao(areaSelecionada);
 
     setRegras((prev) => {
@@ -447,8 +471,9 @@ export default function NovaSolicitacaoCamposConfig() {
                 Ajustes que mudam a validação do fluxo sem alterar a visibilidade dos campos.
               </p>
             </div>
-            <div className="grid gap-3">
-              {OPCOES_NOVA_SOLICITACAO.map((opcao) => (
+            {!comportamentoTipo.usa_fluxo_cadastro_obra && (
+              <div className="grid gap-3">
+                {OPCOES_NOVA_SOLICITACAO.map((opcao) => (
                 <label
                   key={opcao.id}
                   className="flex items-start gap-3 rounded-lg border border-[var(--c-border)] bg-[var(--ui-surface-2)] px-3 py-3"
@@ -465,8 +490,14 @@ export default function NovaSolicitacaoCamposConfig() {
                     <span className="mt-1 block text-xs text-[var(--c-muted)]">{opcao.descricao}</span>
                   </span>
                 </label>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
+            {comportamentoTipo.usa_fluxo_cadastro_obra && (
+              <p className="text-xs text-[var(--c-muted)]">
+                O fluxo CADASTRO DE OBRA possui campos operacionais fixos e destino GEO.
+              </p>
+            )}
           </div>
           <TabelaPadrao
             colunas={[
@@ -477,10 +508,15 @@ export default function NovaSolicitacaoCamposConfig() {
                 tipo: 'identidade',
                 noCard: 'titulo',
                 render: (campo) => {
-                  const controladoAutomaticamente = camposControladosPelaApropriacaoAutomatica.has(campo.id);
-                  const labelCampo = campo.id === 'descricao' && comportamentoTipo.usa_fluxo_contrato_novo
-                    ? 'Titulo do contrato'
-                    : campo.label;
+                  const controladoAutomaticamente = camposControladosPelaApropriacaoAutomatica.has(campo.id)
+                    || camposControladosPeloCadastroObra.has(campo.id);
+                  const labelCampo = campo.id === 'descricao'
+                    ? (comportamentoTipo.usa_fluxo_cadastro_obra
+                      ? 'Nome da Obra'
+                      : (comportamentoTipo.usa_fluxo_contrato_novo ? 'Titulo do contrato' : campo.label))
+                    : (campo.id === 'anexos' && comportamentoTipo.usa_fluxo_cadastro_obra
+                      ? 'Planilha Orçamentária'
+                      : campo.label);
                   return (
                     <div>
                       <div className="font-semibold text-[var(--c-text)]">{labelCampo}</div>
@@ -490,6 +526,11 @@ export default function NovaSolicitacaoCamposConfig() {
                           Campo do novo fluxo de contrato
                         </span>
                       )}
+                      {campo.somenteFluxoCadastroObra && (
+                        <span className="mt-2 inline-flex rounded-full border border-[var(--c-border)] px-2 py-1 text-xs text-[var(--c-muted)]">
+                          Campo do cadastro de obra
+                        </span>
+                      )}
                       {campo.fixo && (
                         <span className="mt-2 inline-flex rounded-full border border-[var(--c-border)] px-2 py-1 text-xs text-[var(--c-muted)]">
                           Campo estrutural
@@ -497,7 +538,9 @@ export default function NovaSolicitacaoCamposConfig() {
                       )}
                       {controladoAutomaticamente && (
                         <span className="mt-2 inline-flex rounded-full border border-[var(--c-border)] px-2 py-1 text-xs text-[var(--c-muted)]">
-                          Controlado pela apropriação automática
+                          {comportamentoTipo.usa_fluxo_cadastro_obra
+                            ? 'Obrigatório neste fluxo'
+                            : 'Controlado pela apropriação automática'}
                         </span>
                       )}
                     </div>
@@ -511,7 +554,8 @@ export default function NovaSolicitacaoCamposConfig() {
                 tipo: 'status',
                 render: (campo) => {
                   const resolvido = camposResolvidos[campo.id] || {};
-                  const controladoAutomaticamente = camposControladosPelaApropriacaoAutomatica.has(campo.id);
+                  const controladoAutomaticamente = camposControladosPelaApropriacaoAutomatica.has(campo.id)
+                    || camposControladosPeloCadastroObra.has(campo.id);
                   return (
                     <input
                       type="checkbox"
@@ -529,7 +573,8 @@ export default function NovaSolicitacaoCamposConfig() {
                 tipo: 'status',
                 render: (campo) => {
                   const resolvido = camposResolvidos[campo.id] || {};
-                  const controladoAutomaticamente = camposControladosPelaApropriacaoAutomatica.has(campo.id);
+                  const controladoAutomaticamente = camposControladosPelaApropriacaoAutomatica.has(campo.id)
+                    || camposControladosPeloCadastroObra.has(campo.id);
                   return (
                     <input
                       type="checkbox"

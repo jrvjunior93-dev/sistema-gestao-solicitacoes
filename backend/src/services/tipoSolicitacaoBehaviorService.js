@@ -66,6 +66,9 @@ function getDefaultTipoSolicitacaoBehavior() {
     // Fluxo simplificado para pequenas despesas. A flag concentra limites, documentos,
     // declaracoes e formas de pagamento sem depender do nome exibido do tipo.
     usa_fluxo_despesa_eventual: false,
+    // Fluxo operacional para a Obra solicitar ao GEO o cadastro de uma nova obra.
+    // Mantem campos e validacoes especificos sem depender do nome exibido do tipo.
+    usa_fluxo_cadastro_obra: false,
     somente_gerencia_processos: false,
     mostrar_anexos: true,
     exige_anexos: false,

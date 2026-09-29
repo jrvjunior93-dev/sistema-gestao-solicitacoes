@@ -24,6 +24,7 @@ import ApropriacaoAutocomplete from '../../components/ui/ApropriacaoAutocomplete
 import TratamentoItemManual from '../../modules/solicitacao-compra/components/TratamentoItemManual';
 import StatusBadge from '../../components/StatusBadge';
 import { formatarDataLocalPtBr } from '../../utils/dateLocal';
+import { getTipoSolicitacaoBehavior } from '../../utils/tipoSolicitacao';
 import OverlayModal from '../../components/ui/OverlayModal';
 import {
   Avisos,
@@ -422,6 +423,7 @@ export default function SolicitacaoDetalhe() {
   const isCompraDiretaSolicitacao = tipoSolicitacaoNormalizado.includes('COMPRA DIRETA');
   const isSolicitacaoCompra = isCompraDiretaSolicitacao || tipoSolicitacaoNormalizado.includes('SOLICITACAO DE COMPRA');
   const isRecargaCartaoSolicitacao = tipoSolicitacaoNormalizado.includes('RECARGA DE CARTAO');
+  const isCadastroObraSolicitacao = getTipoSolicitacaoBehavior(solicitacao?.tipo).usa_fluxo_cadastro_obra === true;
   // Numa solicitacao de Abertura de Contrato o rateio que vale e o do CONTRATO
   // (`contrato_apropriacoes`). O card da solicitacao grava em `solicitacao_apropriacoes`, que ali
   // ninguem consome — deixa-lo aberto convidava a criar uma segunda verdade sobre o mesmo contrato.
@@ -1838,7 +1840,7 @@ export default function SolicitacaoDetalhe() {
         />
         <StatTile label="Setor responsável" valor={solicitacao.area_responsavel || '—'} />
         <StatTile
-          label="Data Resposta/Pagamento"
+          label={isCadastroObraSolicitacao ? 'Data de Resposta' : 'Data Resposta/Pagamento'}
           valor={formatarDataLocalPtBr(solicitacao.data_vencimento) || '—'}
         />
         <StatTile label="Atualizado em" valor={atualizadoEm} />

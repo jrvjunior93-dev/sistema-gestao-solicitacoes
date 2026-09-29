@@ -1721,6 +1721,7 @@ router.get('/solicitacoes/filtros/obras', SolicitacaoController.obrasVisiveis);
 router.get('/solicitacoes/apropriacao-padrao', ObraTipoApropriacaoController.resolverParaSolicitacao);
 router.get('/solicitacoes/despesa-eventual/saldo', SolicitacaoController.saldoDespesaEventual);
 router.get('/solicitacoes/filtros/status', SolicitacaoController.statusVisiveis);
+router.get('/solicitacoes/cadastro-obra/usuarios-ativos', SolicitacaoController.usuariosAtivosCadastroObra);
 router.get('/solicitacoes', SolicitacaoController.index);
 // Contadores das visoes da lista — MESMO escopo da listagem (pacote B3).
 // Registrada antes de /solicitacoes/:id para nao casar como id.

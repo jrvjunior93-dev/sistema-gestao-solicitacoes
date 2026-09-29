@@ -186,6 +186,14 @@ const CAMPOS_NOVA_SOLICITACAO = [
     obrigatorioPadrao: false
   },
   {
+    id: 'pessoas_vinculadas',
+    label: 'Pessoas vinculadas',
+    descricao: 'Usuarios ativos que deverao ser vinculados a nova obra.',
+    somenteFluxoCadastroObra: true,
+    visivelPadrao: (behavior) => Boolean(behavior.usa_fluxo_cadastro_obra),
+    obrigatorioPadrao: (behavior) => Boolean(behavior.usa_fluxo_cadastro_obra)
+  },
+  {
     id: 'descricao',
     label: 'Titulo',
     descricao: 'Titulo curto usado para identificar a solicitacao.',
@@ -445,6 +453,26 @@ function resolverCamposNovaSolicitacao(comportamentoTipo, config, tipoId, contex
     });
   }
 
+  if (behavior.usa_fluxo_cadastro_obra === true) {
+    const camposObrigatorios = new Set([
+      'obra',
+      'area_responsavel',
+      'descricao',
+      'pessoas_vinculadas',
+      'data_vencimento',
+      'anexos'
+    ]);
+    Object.keys(campos).forEach((campoId) => {
+      campos[campoId] = {
+        ...campos[campoId],
+        visivel: camposObrigatorios.has(campoId),
+        obrigatorio: camposObrigatorios.has(campoId),
+        visivel_padrao: camposObrigatorios.has(campoId),
+        obrigatorio_padrao: camposObrigatorios.has(campoId)
+      };
+    });
+  }
+
   return campos;
 }
 
@@ -457,6 +485,7 @@ function montarPayloadConfigCampos(config) {
       fixo: Boolean(campo.fixo),
       permite_obrigatorio: campo.permiteObrigatorio !== false,
       somente_fluxo_contrato_novo: campo.somenteFluxoContratoNovo === true,
+      somente_fluxo_cadastro_obra: campo.somenteFluxoCadastroObra === true,
       exceto_fluxo_contrato_novo: campo.excetoFluxoContratoNovo === true
     })),
     opcoes_disponiveis: OPCOES_NOVA_SOLICITACAO,

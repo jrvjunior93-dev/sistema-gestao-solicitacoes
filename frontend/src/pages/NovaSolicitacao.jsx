@@ -13,7 +13,7 @@ import {
 } from '../components/padrao';
 import { getMinhasObras } from '../services/obras';
 import { getTiposSolicitacaoDisponiveis } from '../services/tiposSolicitacao';
-import { createSolicitacao, getApropriacaoPadraoSolicitacao, getObrasDistribuicaoCentroCusto, getSaldoDespesaEventual, solicitarRetornoSolicitacao } from '../services/solicitacoes';
+import { createSolicitacao, getApropriacaoPadraoSolicitacao, getObrasDistribuicaoCentroCusto, getSaldoDespesaEventual, getUsuariosAtivosCadastroObra, solicitarRetornoSolicitacao } from '../services/solicitacoes';
 import { uploadArquivos } from '../services/uploads';
 import { getTiposSubContrato } from '../services/tiposSubContrato';
 import { getContratos, criarContratoFluxoNovo, getFormasPagamentoFluxos, getLimiteJuridico, uploadContratoAnexos, uploadNegociacaoContrato, uploadDocumentacaoJuridicaContrato } from '../services/contratos';
@@ -239,6 +239,11 @@ export default function NovaSolicitacao() {
   const [categoriasParceiro, setCategoriasParceiro] = useState([]);
   const [novoParceiro, setNovoParceiro] = useState(criarNovoParceiroPadrao);
   const [arquivos, setArquivos] = useState([]);
+  const [usuariosCadastroObra, setUsuariosCadastroObra] = useState([]);
+  const [usuariosCadastroObraStatus, setUsuariosCadastroObraStatus] = useState('idle');
+  const [usuariosCadastroObraErro, setUsuariosCadastroObraErro] = useState('');
+  const [cadastroObraUsuarioIds, setCadastroObraUsuarioIds] = useState([]);
+  const [cadastroObraBuscaPessoa, setCadastroObraBuscaPessoa] = useState('');
   const [boletoArquivos, setBoletoArquivos] = useState([]);
   const [despesaEventualSaldo, setDespesaEventualSaldo] = useState({ status: 'idle', dados: null, erro: '' });
   const [despesaEventualDeclaracoes, setDespesaEventualDeclaracoes] = useState({
@@ -926,12 +931,55 @@ export default function NovaSolicitacao() {
   const usaFluxoContratoNovo = Boolean(comportamentoTipo.usa_fluxo_contrato_novo);
   const usaFluxoDespesaEventual = tipoConfiguradoComoDespesaEventual;
   const usaFluxoRecargaCartao = tipoConfiguradoComoRecargaCartao;
+  const usaFluxoCadastroObra = Boolean(comportamentoTipo.usa_fluxo_cadastro_obra);
   const usaApropriacaoAutomaticaObra = Boolean(comportamentoTipo.usa_apropriacao_automatica_obra);
   const rotuloDataSolicitacao = obterRotuloDataSolicitacao(comportamentoTipo, {
     recargaCartao: usaFluxoRecargaCartao
   });
   const rotuloContratoVinculado = 'Ref. do Contrato';
   const placeholderContratoVinculado = 'Buscar por referência do contrato';
+
+  useEffect(() => {
+    if (!usaFluxoCadastroObra) {
+      setUsuariosCadastroObra([]);
+      setUsuariosCadastroObraStatus('idle');
+      setUsuariosCadastroObraErro('');
+      setCadastroObraUsuarioIds([]);
+      setCadastroObraBuscaPessoa('');
+      return undefined;
+    }
+
+    let cancelado = false;
+    setUsuariosCadastroObraStatus('loading');
+    setUsuariosCadastroObraErro('');
+    getUsuariosAtivosCadastroObra()
+      .then((lista) => {
+        if (cancelado) return;
+        setUsuariosCadastroObra(Array.isArray(lista) ? lista : []);
+        setUsuariosCadastroObraStatus('success');
+      })
+      .catch((error) => {
+        if (cancelado) return;
+        setUsuariosCadastroObra([]);
+        setUsuariosCadastroObraStatus('error');
+        setUsuariosCadastroObraErro(error?.message || 'Erro ao carregar usuarios ativos.');
+      });
+    return () => { cancelado = true; };
+  }, [usaFluxoCadastroObra]);
+
+  const usuariosCadastroObraFiltrados = useMemo(() => {
+    const busca = normalizarBusca(cadastroObraBuscaPessoa);
+    if (!busca) return usuariosCadastroObra;
+    return usuariosCadastroObra.filter((usuario) => normalizarBusca(usuario?.nome).includes(busca));
+  }, [usuariosCadastroObra, cadastroObraBuscaPessoa]);
+
+  function alternarPessoaCadastroObra(usuarioId) {
+    limparErroCampo('pessoas_vinculadas');
+    const id = Number(usuarioId);
+    setCadastroObraUsuarioIds((atual) => (
+      atual.includes(id) ? atual.filter((item) => item !== id) : [...atual, id]
+    ));
+  }
 
   useEffect(() => {
     if (!usaApropriacaoAutomaticaObra || !form.obra_id || !form.tipo_solicitacao_id) {
@@ -1517,6 +1565,21 @@ export default function NovaSolicitacao() {
     }
   }
 
+  function selecionarPlanilhaOrcamentaria(files) {
+    const lista = Array.from(files || []).filter(Boolean);
+    const tiposInvalidos = lista.filter((file) => !arquivoDocumentoPermitido(file));
+    const tiposValidos = lista.filter((file) => arquivoDocumentoPermitido(file));
+    const { arquivos: aceitos, rejeitados } = concatenarAnexosPendentes([], tiposValidos.slice(0, 1), {
+      maxFileSizeMb: UPLOAD_MAX_FILE_SIZE_MB_PADRAO
+    });
+    setArquivos(aceitos);
+    if (lista.length > 1) avisar.alerta('Selecione somente uma planilha orcamentaria.');
+    if (tiposInvalidos.length > 0) avisar.alerta(montarMensagemTiposArquivoNaoPermitidos(tiposInvalidos));
+    if (rejeitados.length > 0) {
+      avisar.alerta(montarMensagemArquivosAcimaDoLimite(rejeitados, UPLOAD_MAX_FILE_SIZE_MB_PADRAO));
+    }
+  }
+
   function selecionarArquivoBoleto(files) {
     const lista = Array.from(files || []).filter(Boolean);
     const { arquivos: aceitos, rejeitados } = concatenarAnexosPendentes([], lista.slice(0, 1), {
@@ -1812,9 +1875,16 @@ export default function NovaSolicitacao() {
       return;
     }
     if (!tipoEhDeMedicao && anexosObrigatorios && arquivos.length === 0) {
-      reprovarCampo('anexos', usaRegraAnexoPorFormaPagamento
-        ? 'Anexe ao menos um comprovante para esta forma de pagamento.'
-        : 'Anexe ao menos um comprovante da despesa.');
+      reprovarCampo('anexos', usaFluxoCadastroObra
+        ? 'Anexe a planilha orçamentária da obra.'
+        : (usaRegraAnexoPorFormaPagamento
+          ? 'Anexe ao menos um comprovante para esta forma de pagamento.'
+          : 'Anexe ao menos um comprovante da despesa.'));
+      return;
+    }
+
+    if (usaFluxoCadastroObra && cadastroObraUsuarioIds.length === 0) {
+      reprovarCampo('pessoas_vinculadas', 'Selecione ao menos uma pessoa vinculada.');
       return;
     }
 
@@ -1840,7 +1910,10 @@ export default function NovaSolicitacao() {
     }
 
     if (descricaoExigida && !form.descricao.trim()) {
-      reprovarCampo('descricao', 'Informe o título da solicitação.');
+      reprovarCampo(
+        'descricao',
+        usaFluxoCadastroObra ? 'Informe o nome da obra.' : 'Informe o título da solicitação.'
+      );
       return;
     }
 
@@ -2153,6 +2226,7 @@ export default function NovaSolicitacao() {
       boleto_anexo_nome: pagamentoViaBoleto ? (boletoArquivos[0]?.nome || null) : null,
       despesa_eventual_declaracoes: usaFluxoDespesaEventual ? despesaEventualDeclaracoes : undefined,
       cartao_recarga_id: usaFluxoRecargaCartao ? Number(cartaoRecargaId) : undefined,
+      cadastro_obra_usuario_ids: usaFluxoCadastroObra ? cadastroObraUsuarioIds : undefined,
       justificativa: exibirJustificativa ? form.justificativa : null,
       apropriacao_id: exibirCampoApropriacao ? (form.apropriacao_id || null) : null,
       contrato_id: exibirCamposContrato ? (form.contrato_id || null) : null,
@@ -3564,8 +3638,10 @@ export default function NovaSolicitacao() {
         {(exibirCampoDescricao || exibirJustificativa || usaFluxoDespesaEventual
           || exibirCampoDataVencimento || exibirDataDemissao) && (
           <BlocoConteudo
-            titulo="Identificação e prazos"
-            descricao="O que a solicitação diz de si e as datas que ela precisa cumprir."
+            titulo={usaFluxoCadastroObra ? 'Dados para cadastro da obra' : 'Identificação e prazos'}
+            descricao={usaFluxoCadastroObra
+              ? 'Informe a nova obra, as pessoas que deverão ser vinculadas e o prazo de resposta do GEO.'
+              : 'O que a solicitação diz de si e as datas que ela precisa cumprir.'}
           >
             <FormSecao colunas={2}>
               {/* Titulo do contrato ABAIXO do Valor (ordem pedida em 19/08), e nao ao lado: ocupa a
@@ -3573,7 +3649,9 @@ export default function NovaSolicitacao() {
                   contrato, longe do valor que ele identifica. */}
               {exibirCampoDescricao && (
                 <CampoForm
-                  label={usaFluxoContratoNovo ? 'Título do contrato' : 'Título da solicitação'}
+                  label={usaFluxoCadastroObra
+                    ? 'Nome da Obra'
+                    : (usaFluxoContratoNovo ? 'Título do contrato' : 'Título da solicitação')}
                   obrigatorio={descricaoExigida}
                   tipo="texto-longo"
                   erro={errosCampo.descricao}
@@ -3592,6 +3670,52 @@ export default function NovaSolicitacao() {
                     required={descricaoExigida}
                     value={form.descricao}
                   />
+                </CampoForm>
+              )}
+
+              {usaFluxoCadastroObra && (
+                <CampoForm
+                  label="Pessoas vinculadas"
+                  obrigatorio
+                  tipo="texto-longo"
+                  erro={errosCampo.pessoas_vinculadas || usuariosCadastroObraErro || undefined}
+                  hint={`${cadastroObraUsuarioIds.length} pessoa(s) selecionada(s). A lista exibe somente usuários ativos.`}
+                >
+                  <div className="grid gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--ui-surface-2)] p-2">
+                    <input
+                      type="search"
+                      className="input input-sm"
+                      value={cadastroObraBuscaPessoa}
+                      onChange={(event) => setCadastroObraBuscaPessoa(event.target.value)}
+                      placeholder="Pesquisar pessoa por nome"
+                      aria-label="Pesquisar pessoa vinculada por nome"
+                    />
+                    <div
+                      className="max-h-52 overflow-y-auto rounded border border-[var(--c-border)] bg-[var(--c-surface)]"
+                      role="group"
+                      aria-label="Usuários ativos"
+                    >
+                      {usuariosCadastroObraStatus === 'loading' && (
+                        <p className="px-3 py-2 text-sm text-[var(--c-muted)]">Carregando usuários ativos...</p>
+                      )}
+                      {usuariosCadastroObraStatus === 'success' && usuariosCadastroObraFiltrados.length === 0 && (
+                        <p className="px-3 py-2 text-sm text-[var(--c-muted)]">Nenhum usuário ativo encontrado.</p>
+                      )}
+                      {usuariosCadastroObraFiltrados.map((usuario) => (
+                        <label
+                          key={usuario.id}
+                          className="flex cursor-pointer items-center gap-2 border-b border-[var(--c-border)] px-3 py-2 text-sm last:border-b-0 hover:bg-[var(--ui-surface-2)]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={cadastroObraUsuarioIds.includes(Number(usuario.id))}
+                            onChange={() => alternarPessoaCadastroObra(usuario.id)}
+                          />
+                          <span className="text-[var(--c-text)]">{usuario.nome}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 </CampoForm>
               )}
 
@@ -3796,31 +3920,34 @@ export default function NovaSolicitacao() {
                 <span className={`form-label${(anexosObrigatorios && !medicaoContratoDados?.pagamento?.via_boleto) ? ' form-label--required' : ''}`}>
                   {tipoEhDeMedicao
                     ? 'Anexo da medição'
-                    : (usaFluxoDespesaEventual
+                    : (usaFluxoCadastroObra
+                      ? 'Planilha Orçamentária'
+                      : (usaFluxoDespesaEventual
                       ? 'Comprovante da despesa'
-                      : (usaRegraAnexoPorFormaPagamento ? 'Anexo/comprovante' : 'Anexos'))}
+                      : (usaRegraAnexoPorFormaPagamento ? 'Anexo/comprovante' : 'Anexos')))}
                 </span>
                 <div className="flex flex-wrap items-center gap-2 nova-solicitacao-inline-actions">
                   <label className="btn btn-outline btn-sm inline-flex cursor-pointer items-center gap-2">
                     <HiPaperClip className="h-4 w-4" />
-                    <span>Anexar arquivos</span>
+                    <span>{usaFluxoCadastroObra ? 'Anexar planilha' : 'Anexar arquivos'}</span>
                     <input
                       type="file"
-                      multiple
+                      multiple={!usaFluxoCadastroObra}
                       accept={UPLOAD_DOCUMENT_ACCEPT}
                       ref={anexosRef}
                       className="hidden"
                       onChange={e => {
                         limparErroCampo('anexos');
-                        adicionarArquivos(e.target.files);
+                        if (usaFluxoCadastroObra) selecionarPlanilhaOrcamentaria(e.target.files);
+                        else adicionarArquivos(e.target.files);
                         e.target.value = '';
                       }}
                     />
                   </label>
                   <span className="text-xs text-[var(--c-muted)]">
                     {arquivos.length > 0
-                      ? `${arquivos.length} arquivo(s) selecionado(s)`
-                      : 'Nenhum arquivo selecionado'}
+                      ? (usaFluxoCadastroObra ? arquivos[0]?.nome : `${arquivos.length} arquivo(s) selecionado(s)`)
+                      : (usaFluxoCadastroObra ? 'Nenhuma planilha selecionada' : 'Nenhum arquivo selecionado')}
                   </span>
                 </div>
                 <PendingAttachmentsList
@@ -3844,6 +3971,7 @@ export default function NovaSolicitacao() {
                   Boolean(obraSelecionada?.bloqueio_solicitacao_nova) ||
                   (tipoEhDeMedicao && contratoSelecionadoMedicaoBloqueada) ||
                   (usaFluxoRecargaCartao && (!cartaoRecargaId || recargaCartaoContexto?.bloqueado)) ||
+                  (usaFluxoCadastroObra && usuariosCadastroObraStatus === 'loading') ||
                   (usaApropriacaoAutomaticaObra && apropriacaoAutomatica.status === 'loading') ||
                   (usaFluxoDespesaEventual && despesaEventualSaldo.status === 'loading')
                 }

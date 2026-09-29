@@ -13,6 +13,7 @@ import { extrairParesDescricao } from '../../utils/formatarTexto';
 import { formatarDataLocalPtBr } from '../../utils/dateLocal';
 import { maskCpfCnpj } from '../../utils/formatters';
 import { formaPagamentoEhPix } from '../../utils/formaPagamento';
+import { getTipoSolicitacaoBehavior } from '../../utils/tipoSolicitacao';
 
 const ESTADO_CIVIL_REPRESENTANTE = {
   SOLTEIRO: 'Solteiro(a)',
@@ -189,6 +190,13 @@ export default function Header({
   }
 
   const subtipoSolicitacao = solicitacao?.tipoSubSolicitacao?.nome || null;
+  const ehCadastroObra = getTipoSolicitacaoBehavior(solicitacao?.tipo).usa_fluxo_cadastro_obra === true;
+  const pessoasCadastroObra = Array.isArray(solicitacao?.pessoasCadastroObra)
+    ? solicitacao.pessoasCadastroObra
+      .map((item) => item?.usuario?.nome)
+      .filter(Boolean)
+      .join(' · ')
+    : '';
   const descricaoCorrigida = limparDescricaoCompra(
     corrigirTextoCorrompido(solicitacao?.descricao || '')
   );
@@ -266,6 +274,8 @@ export default function Header({
       valor: codigoContratoAtual,
       span: 2
     },
+    { label: 'Nome da Obra', contexto: ehCadastroObra, valor: descricaoCorrigida || null, span: 2 },
+    { label: 'Pessoas vinculadas', contexto: ehCadastroObra, valor: pessoasCadastroObra || null, span: 2 },
     { label: 'Objeto', contexto: temContrato, valor: contratoDoFluxo?.objeto || null, span: 4 },
     // No fluxo novo o título faz parte da identidade da faixa. Contratos
     // legados preservam a antiga Ref. do contrato, que não é um título.
@@ -302,7 +312,7 @@ export default function Header({
       span: 4
     },
     { label: 'Responsável', contexto: temContrato, valor: contratoDoFluxo?.responsavel?.nome || null },
-    { label: 'Obra', valor: solicitacao?.obra?.nome || null, span: 2 },
+    { label: ehCadastroObra ? 'Obra solicitante' : 'Obra', valor: solicitacao?.obra?.nome || null, span: 2 },
     { label: 'Criado em', valor: formatarDataHora(solicitacao?.createdAt) },
     { label: 'Data de demissão', valor: formatarData(solicitacao?.data_demissao) },
     { label: 'Início da medição', valor: formatarData(solicitacao?.data_inicio_medicao) },

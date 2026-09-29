@@ -694,3 +694,27 @@ validacao visual, QA reversivel, conferencia da limpeza e health check aprovados
 Ownership da sessao `codex-gestao-contratos-operacional-2026-09-29` liberado apos implementacao,
 teste de dominio, verificacao de sintaxe, `git diff --check`, build do frontend e registro do handoff.
 Migration e validacao integrada com o banco permanecem como passos controlados do deploy em dev.
+
+## Ownership ativo - codex-cadastro-obra-solicitacao-2026-09-29
+- `backend/migrations/202609290003_cadastro_obra_solicitacao.js`
+- `backend/package.json`
+- `backend/scripts/validarCadastroObraSolicitacao.js`
+- `backend/src/controllers/SolicitacaoController.js`
+- `backend/src/models/SolicitacaoCadastroObraUsuario.js`
+- `backend/src/models/index.js`
+- `backend/src/routes.js`
+- `backend/src/services/novaSolicitacaoCamposConfig.js`
+- `backend/src/services/tipoSolicitacaoBehaviorService.js`
+- `backend/src/validators/operationalValidators.js`
+- `frontend/src/pages/NovaSolicitacao.jsx`
+- `frontend/src/pages/NovaSolicitacaoCamposConfig.jsx`
+- `frontend/src/pages/SolicitacaoDetalhe/index.jsx`
+- `frontend/src/services/solicitacoes.js`
+- `frontend/src/utils/novaSolicitacaoCampos.js`
+- `frontend/src/utils/tipoSolicitacao.js`
+- `docs/handoffs/2026-09-29-cadastro-obra-solicitacao.md`
+
+Ownership da sessao `codex-cadastro-obra-solicitacao-2026-09-29` liberado apos implementacao,
+testes de dominio e regressao, verificacao de sintaxe, `git diff --check`, build do frontend e
+registro do handoff. Migration e teste integrado com o banco permanecem como passos controlados
+do deploy em dev.

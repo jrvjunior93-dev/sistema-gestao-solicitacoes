@@ -20,6 +20,7 @@ db.ParceiroCategoriaItem = require('./ParceiroCategoriaItem')(sequelize, Sequeli
 db.Solicitacao = require('./Solicitacao')(sequelize, Sequelize);
 db.SolicitacaoApropriacao = require('./SolicitacaoApropriacao')(sequelize, Sequelize);
 db.SolicitacaoCentroCustoDistribuicao = require('./SolicitacaoCentroCustoDistribuicao')(sequelize, Sequelize);
+db.SolicitacaoCadastroObraUsuario = require('./SolicitacaoCadastroObraUsuario')(sequelize, Sequelize);
 db.SolicitacaoPagamento = require('./SolicitacaoPagamento')(sequelize, Sequelize);
 db.PrioridadeLote = require('./PrioridadeLote')(sequelize, Sequelize);
 db.PrioridadeLoteItem = require('./PrioridadeLoteItem')(sequelize, Sequelize);
@@ -580,6 +581,28 @@ db.SolicitacaoCentroCustoDistribuicao.belongsTo(db.Solicitacao, {
 db.SolicitacaoCentroCustoDistribuicao.belongsTo(db.Obra, {
   foreignKey: 'centro_custo_id',
   as: 'centroCusto'
+});
+
+/* Pessoas indicadas para vinculacao na solicitacao de cadastro de uma nova obra. */
+db.Solicitacao.hasMany(db.SolicitacaoCadastroObraUsuario, {
+  foreignKey: 'solicitacao_id',
+  as: 'pessoasCadastroObra',
+  onDelete: 'CASCADE',
+  onUpdate: 'CASCADE'
+});
+
+db.SolicitacaoCadastroObraUsuario.belongsTo(db.Solicitacao, {
+  foreignKey: 'solicitacao_id',
+  as: 'solicitacao',
+  onDelete: 'CASCADE',
+  onUpdate: 'CASCADE'
+});
+
+db.SolicitacaoCadastroObraUsuario.belongsTo(db.User, {
+  foreignKey: 'usuario_id',
+  as: 'usuario',
+  onDelete: 'RESTRICT',
+  onUpdate: 'CASCADE'
 });
 
 db.SolicitacaoCentroCustoDistribuicao.belongsTo(db.Obra, {

@@ -1782,6 +1782,7 @@ function validateSolicitacaoCreateBody(body = {}) {
       // o aceite. A lista de campos permitidos e uma allowlist — campo novo que nao entra aqui e
       // recusado com "contem campos nao permitidos", sem chegar ao controller.
       'medicao_pagamento',
+      'cadastro_obra_usuario_ids',
       // Nomes dos arquivos selecionados antes da criacao. O upload real continua na rota de
       // anexos; a aprovacao da medicao confere o registro efetivamente gravado.
       'anexos_pendentes_nomes'
@@ -1824,6 +1825,11 @@ function validateSolicitacaoCreateBody(body = {}) {
     data_fim_medicao: parseDateOnly(body.data_fim_medicao, 'Data final da medicao'),
     itens_apropriacao: parseOptionalText(body.itens_apropriacao, 'Itens de apropriacao', 5000),
     ref_contrato_abertura: parseOptionalText(body.ref_contrato_abertura, 'Ref. do contrato', 255),
+    cadastro_obra_usuario_ids: parseIdArray(
+      body.cadastro_obra_usuario_ids,
+      'Pessoas vinculadas',
+      { maxItems: 500 }
+    ),
     apropriacoes_rateio: Array.isArray(body.apropriacoes_rateio) ? body.apropriacoes_rateio : undefined,
     distribuicao_centro_custo: (() => {
       const distribuicao = body.distribuicao_centro_custo;

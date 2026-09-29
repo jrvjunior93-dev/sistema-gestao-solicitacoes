@@ -64,6 +64,9 @@ export function getDefaultTipoSolicitacaoBehavior() {
     // na serializacao do tipo (descoberto por sonda no DOM: endpoint devolvia 17 chaves).
     usa_fluxo_contrato_novo: false,
     usa_fluxo_despesa_eventual: false,
+    // Fluxo operacional para a Obra solicitar ao GEO o cadastro de uma nova obra.
+    // A flag evita regras por nome e mantem frontend e backend sincronizados.
+    usa_fluxo_cadastro_obra: false,
     somente_gerencia_processos: false,
     mostrar_anexos: true,
     exige_anexos: false,
