@@ -462,7 +462,7 @@ export default function PedidoCompraDetalhe() {
       setPedido(data || null);
       setStatusOptions(Array.isArray(dataStatus) ? dataStatus : []);
       if (String(data?.status || '').toUpperCase() === 'CANCELADO') {
-        setFiltrosItens({ situacao: new Set() });
+        setFiltroItens('TODOS');
       }
 
       const proximasEdicoes = {};
