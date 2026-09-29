@@ -588,7 +588,7 @@ Regras fechadas pelo proprietario em 29/09/2026 (detalhe e decisoes em
   antiga ligada a custo so se ja gravada). Aprovado anterior somado pelo codigo
   do item, atravessando versoes da planilha.
 - Dilatacao: `POST /obras/:obraId/competencias/:competencia/dilatacoes`
-  (`medicao.consolidar`; 2 a 5 dias; antes ou depois do vencimento; um pendente
+  (`medicao.consolidar`; 2 a 5 dias; somente depois do vencimento; um pendente
   por mes), `POST /dilatacoes/:id/decidir` (`reabertura.aprovar`),
   `GET /dilatacoes`. Prazo novo = data da aprovacao + dias, ate 23:59 de
   Brasilia (nunca menor que o prazo vigente); enquanto o pedido aguarda, a obra

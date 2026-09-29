@@ -8,7 +8,7 @@ const DIAS = [2, 3, 4, 5];
 /*
   Pedido de dilatação do prazo da medição aprovada (29/09/2026): quando o
   fiscal atrasa, o engenheiro pede de 2 a 5 dias; o administrador decide.
-  Pode pedir antes ou depois do vencimento; um pedido pendente por mês.
+  So com o prazo vencido (obra travada por ele); um pedido pendente por mês.
 */
 export default function CrDilatacaoRequestModal({ target, onClose, onSubmit }) {
   const [dias, setDias] = useState(3);

@@ -262,7 +262,7 @@ export default function CrPlanejamentoMensalView({
                 Registrar medição aprovada
               </button>
             ) : null}
-            {measurementDue && isPublic && permissions.measurement ? (
+            {measurementDue?.situacao === 'VENCIDO' && isPublic && permissions.measurement ? (
               measurementDue.dilatacao_pendente ? (
                 <span className="cr-deadline-strip__status">Dilatação aguardando decisão</span>
               ) : (

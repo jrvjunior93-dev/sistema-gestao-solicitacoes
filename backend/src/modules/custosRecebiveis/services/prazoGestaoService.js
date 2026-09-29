@@ -20,7 +20,7 @@ const { getOrCreateCompetencia, normalizeCompetencia } = require('./planejamento
   Gestao dos prazos do ciclo mensal (reforma de 29/09/2026, Fase 2):
   - prazos por obra (administrador, Configuracoes);
   - dilatacao do prazo da medicao aprovada: o engenheiro pede de 2 a 5 dias
-    quando o fiscal atrasa (antes ou depois do vencimento, sem limite de
+    quando o fiscal atrasa (somente depois do vencimento, sem limite de
     pedidos, um pendente por vez); o administrador aprova ou nega.
     Aprovada, os dias contam a partir da APROVACAO (decisao de 29/09) e vao
     ate o fim do dia (Brasilia); a dilatacao nunca encurta o prazo vigente.
@@ -263,6 +263,11 @@ async function solicitarDilatacao(user, obraIdValue, competenciaValue, payload =
     throw createBusinessError(409, 'CR_DILATACAO_MEDICAO_REGISTRADA', 'A medicao aprovada deste mes ja foi registrada.');
   }
   const prazoVigente = prazoMedicaoEfetivo(competencia, context.config, registro?.dilatacao_prazo);
+  // Decisao de 29/09: so se pede dilatacao com o prazo ja vencido (obra
+  // travada por ele); com prazo correndo nao ha o que dilatar.
+  if (prazoVigente > now) {
+    throw createBusinessError(409, 'CR_DILATACAO_PRAZO_EM_ABERTO', 'A dilatacao so pode ser pedida depois que o prazo da medicao aprovada vencer.');
+  }
 
   return deps.sequelize.transaction(async (transaction) => {
     const competenciaRecord = await getOrCreateCompetencia(obraId, competencia, deps, transaction);

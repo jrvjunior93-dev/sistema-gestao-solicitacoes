@@ -83,7 +83,8 @@ proprietario antes da seguinte.
 ## Respostas de 29/09 sobre a dilatacao
 
 1. Enquanto o pedido aguarda aprovacao, a obra continua travada.
-2. Pode pedir depois do vencimento.
+2. Pode pedir depois do vencimento (revisto em 29/09: SOMENTE depois do
+   vencimento; o botao so aparece com o prazo vencido).
 3. Sem limite de pedidos.
 
 ## Fase 2 - entregue (aguardando aprovacao)

@@ -369,7 +369,12 @@ async function validateDilatacao() {
     () => solicitarDilatacao({ id: 3 }, 7, '2026-11', { dias: 3, motivo: 'Fiscal atrasou a visita' }, deps),
     (e) => e.code === 'CR_DILATACAO_MES_FUTURO'
   );
-  // Depois do vencimento (setembro vence em 11/10) o pedido e aceito.
+  // Com o prazo ainda correndo (setembro vence em 11/10) nao ha pedido.
+  await assert.rejects(
+    () => ask({ dias: 3, motivo: 'Fiscal atrasou a visita' }, { now: () => at('2026-10-11T20:00:00-03:00') }),
+    (e) => e.code === 'CR_DILATACAO_PRAZO_EM_ABERTO'
+  );
+  // Depois do vencimento o pedido e aceito.
   const first = await ask({ dias: 3, motivo: 'Fiscal atrasou a visita' });
   assert.strictEqual(first.idempotente, false);
   assert.strictEqual(new Date(created[0].prazo_anterior).toISOString(), '2026-10-12T02:59:59.999Z');
