@@ -1,16 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   HiOutlineArrowPath,
+  HiOutlineBars3,
   HiOutlineBanknotes,
   HiOutlineBuildingOffice2,
   HiOutlineCheckCircle,
+  HiOutlineChevronDoubleUp,
+  HiOutlineChevronDown,
   HiOutlineChevronRight,
+  HiOutlineChevronUp,
   HiOutlineExclamationTriangle,
   HiOutlineScale,
   HiOutlineWallet
 } from 'react-icons/hi2';
 import { BlocoConteudo } from '../../../components/padrao';
-import { mensagemLegivel, obterCustosRecebiveisDashboard } from '../services/custosRecebiveis';
+import { TIPO_BLOCOS, usePreferenciaDeLista } from '../../../contexts/PreferenciasContext';
+import {
+  listarCustosRecebiveisObras,
+  mensagemLegivel,
+  obterCustosRecebiveisDashboard
+} from '../services/custosRecebiveis';
+import { calcularResultadoDoResumo, calcularResultadoMes } from '../utils/resultadoMes';
 import CrMonthlySummaryCard from './CrMonthlySummaryCard';
 
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -38,9 +48,9 @@ function formatPercent(value) {
     : `${Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
 }
 
-function Metric({ label, value, tone = 'neutral', helper = null }) {
+function Metric({ label, value, tone = 'neutral', helper = null, metric = undefined }) {
   return (
-    <div className="cr-ops-metric" data-tone={tone}>
+    <div className="cr-ops-metric" data-tone={tone} data-metric={metric}>
       <span>{label}</span>
       <strong>{value}</strong>
       {helper ? <small>{helper}</small> : null}
@@ -105,6 +115,149 @@ function TrendPanel({
   );
 }
 
+/* =====================================================================
+   ORDEM DOS CARDS DE "PLANEJAMENTO MENSAL POR OBRA" (29/09/2026)
+   ---------------------------------------------------------------------
+   Pedido do proprietário: o administrador escolhe um CRITÉRIO ou arrasta
+   os cards para uma ordem manual, e a escolha fica salva POR USUÁRIO.
+
+   Persistência: o mesmo armazém de preferências dos BlocosPersonalizaveis
+   (`usePreferenciaDeLista`, tipo `blocos`: leitura síncrona, gravação no
+   banco com 700ms de atraso e espelho no localStorage). Valor guardado:
+   `{ criterio, ordemManual: [obraId, ...] }`. Trocar de critério NÃO apaga
+   a ordem manual — voltar para "Ordem manual" reencontra o arranjo.
+
+   A ordem manual é por OBRA (não por card): com várias competências, os
+   cards da mesma obra andam juntos, do mês mais recente para o mais antigo.
+   Obra que não está na ordem salva vai para o fim (por nome). Obra
+   escondida pelos filtros mantém a posição dela na ordem salva.
+   ===================================================================== */
+const CHAVE_ORDEM_OBRAS = 'custos-recebiveis:dashboard:ordem-obras';
+
+const CRITERIOS_ORDEM = [
+  { id: 'PENDENCIAS', rotulo: 'Pendências primeiro' },
+  { id: 'PIOR_RESULTADO', rotulo: 'Pior resultado primeiro' },
+  { id: 'NOME', rotulo: 'Nome da obra (A–Z)' },
+  { id: 'CODIGO', rotulo: 'Código' },
+  { id: 'MANUAL', rotulo: 'Ordem manual (arrastar)' }
+];
+const CRITERIO_PADRAO = 'PENDENCIAS';
+const CRITERIOS_VALIDOS = new Set(CRITERIOS_ORDEM.map((item) => item.id));
+
+// Mesmo limiar D-3 de `utils/prazos.js` (PRAZO_PROXIMO_DIAS, não exportado).
+const PRAZO_PROXIMO_DIAS = 3;
+const CELULAR_ORDEM = '(max-width: 767px)';
+
+const collator = new Intl.Collator('pt-BR', { sensitivity: 'base', numeric: true });
+
+function nomeObra(item) {
+  return String(item.obra?.nome || '');
+}
+
+function porNome(a, b) {
+  return collator.compare(nomeObra(a), nomeObra(b))
+    || String(b.competencia).localeCompare(String(a.competencia));
+}
+
+/*
+  Pendência de prazo de uma obra, a partir de `obra.prazos` da listagem de
+  obras do módulo (GET /custos-recebiveis/obras — o dashboard não traz
+  prazos). Menor = mais urgente:
+    0 obra travada (`travada`, ou `travaria` no modo observação);
+    1 prazo vencido (planejamento ou medição aprovada);
+    2 prazo aberto que vence em até 3 dias;
+    3 sem pendência de prazo (ou prazos indisponíveis).
+  `peso` desempata dentro da faixa: mais dias de atraso primeiro; no prazo
+  próximo, menos dias restantes primeiro.
+*/
+function pendenciaDeObra(prazos) {
+  if (!prazos) return { faixa: 3, peso: 0 };
+  const itens = [prazos.planejamento, prazos.medicao].filter(Boolean);
+  const vencidos = itens.filter((item) => item.situacao === 'VENCIDO');
+  const atraso = vencidos.reduce((maior, item) => Math.max(maior, Number(item.dias) || 0), 0);
+  if (prazos.travada || prazos.travaria) return { faixa: 0, peso: -atraso };
+  if (vencidos.length) return { faixa: 1, peso: -atraso };
+  const proximos = itens.filter((item) => (
+    item.situacao === 'ABERTO' && (Number(item.dias) || 0) <= PRAZO_PROXIMO_DIAS
+  ));
+  if (proximos.length) {
+    return { faixa: 2, peso: Math.min(...proximos.map((item) => Number(item.dias) || 0)) };
+  }
+  return { faixa: 3, peso: 0 };
+}
+
+function ordenarCards(cards, criterio, { ordemManual, prazosPorObra }) {
+  const lista = cards.slice();
+  if (criterio === 'NOME') return lista.sort(porNome);
+  if (criterio === 'CODIGO') {
+    return lista.sort((a, b) => {
+      const ca = String(a.obra?.codigo || '');
+      const cb = String(b.obra?.codigo || '');
+      if (!ca !== !cb) return ca ? -1 : 1; // sem código vai para o fim
+      return collator.compare(ca, cb) || porNome(a, b);
+    });
+  }
+  if (criterio === 'PIOR_RESULTADO') {
+    const resultado = new Map(lista.map((item) => [item, calcularResultadoDoResumo(item)]));
+    return lista.sort((a, b) => {
+      const ra = resultado.get(a);
+      const rb = resultado.get(b);
+      if (ra.semPlanejamento !== rb.semPlanejamento) return ra.semPlanejamento ? 1 : -1;
+      return (ra.valor - rb.valor) || porNome(a, b);
+    });
+  }
+  if (criterio === 'MANUAL') {
+    const posicao = new Map(ordemManual.map((id, indice) => [Number(id), indice]));
+    const indice = (item) => (posicao.has(Number(item.obra?.id))
+      ? posicao.get(Number(item.obra?.id))
+      : Number.POSITIVE_INFINITY);
+    return lista.sort((a, b) => {
+      const ia = indice(a);
+      const ib = indice(b);
+      if (ia !== ib) return ia < ib ? -1 : 1;
+      // Mesma obra: mês mais recente primeiro. Obras fora da ordem salva:
+      // entre elas, por nome.
+      if (Number(a.obra?.id) === Number(b.obra?.id)) {
+        return String(b.competencia).localeCompare(String(a.competencia));
+      }
+      return porNome(a, b);
+    });
+  }
+  // PENDENCIAS (padrão). Sem prazos disponíveis todas caem na faixa 3 e o
+  // desempate é o de antes desta mudança: mais alertas do dashboard, nome.
+  return lista.sort((a, b) => {
+    const pa = pendenciaDeObra(prazosPorObra?.get(Number(a.obra?.id)));
+    const pb = pendenciaDeObra(prazosPorObra?.get(Number(b.obra?.id)));
+    return (pa.faixa - pb.faixa)
+      || (pa.peso - pb.peso)
+      || (Number(b.alertas || 0) - Number(a.alertas || 0))
+      || porNome(a, b);
+  });
+}
+
+/*
+  Reordena só as obras VISÍVEIS dentro da ordem salva: as posições que elas
+  ocupam na ordem completa são reaproveitadas na nova sequência, e as obras
+  escondidas pelos filtros ficam onde estavam.
+*/
+function mesclarOrdemVisivel(ordemSalva, visiveisNovaOrdem) {
+  const visiveis = new Set(visiveisNovaOrdem);
+  const completa = [
+    ...ordemSalva,
+    ...visiveisNovaOrdem.filter((id) => !ordemSalva.includes(id))
+  ];
+  const fila = visiveisNovaOrdem.slice();
+  return completa.map((id) => (visiveis.has(id) ? fila.shift() : id));
+}
+
+function lerOrdemManual(valor) {
+  if (!Array.isArray(valor)) return [];
+  const vistos = new Set();
+  return valor
+    .map(Number)
+    .filter((id) => Number.isInteger(id) && id > 0 && !vistos.has(id) && vistos.add(id));
+}
+
 export default function CrDashboardView({
   competencia,
   competencias = [],
@@ -113,7 +266,12 @@ export default function CrDashboardView({
   presentation = 'default',
   canOpenPlanning = false,
   onOpenArea,
-  loadDashboard = obterCustosRecebiveisDashboard
+  loadDashboard = obterCustosRecebiveisDashboard,
+  // Opcional: a listagem de obras do módulo (com `prazos`) quando a página
+  // já a tem em mãos. Sem ela, o critério "Pendências primeiro" busca a
+  // listagem uma vez por competência.
+  obras: obrasComPrazos = null,
+  loadObras = listarCustosRecebiveisObras
 }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -165,6 +323,158 @@ export default function CrDashboardView({
         || String(b.competencia).localeCompare(String(a.competencia))
       ));
   }, [classificacaoFilter, competencia, competencias, obraFilterId, workSummaries]);
+  /* ----- ordem dos cards (critério ou manual, por usuário) ----------- */
+  const [preferenciaOrdem, gravarPreferenciaOrdem] = usePreferenciaDeLista(
+    CHAVE_ORDEM_OBRAS,
+    TIPO_BLOCOS
+  );
+  const criterio = CRITERIOS_VALIDOS.has(preferenciaOrdem?.criterio)
+    ? preferenciaOrdem.criterio
+    : CRITERIO_PADRAO;
+  const ordemManual = useMemo(
+    () => lerOrdemManual(preferenciaOrdem?.ordemManual),
+    [preferenciaOrdem]
+  );
+  const [prazosCarregados, setPrazosCarregados] = useState({
+    chave: '',
+    estado: 'ocioso',
+    itens: []
+  });
+  const temObrasDeFora = Array.isArray(obrasComPrazos);
+  const precisaPrazos = criterio === 'PENDENCIAS' && !temObrasDeFora;
+  const chavePrazos = String(competencia || '');
+
+  // Pedido em curso fica num ref (não no estado): com o estado nas
+  // dependências, o próprio "carregando" cancelaria a busca.
+  const pedidoPrazosRef = useRef('');
+  useEffect(() => {
+    if (!precisaPrazos || pedidoPrazosRef.current === chavePrazos) return undefined;
+    pedidoPrazosRef.current = chavePrazos;
+    const controle = new AbortController();
+    let pendente = true;
+    setPrazosCarregados({ chave: chavePrazos, estado: 'carregando', itens: [] });
+    loadObras({ competencia: chavePrazos }, { signal: controle.signal })
+      .then((resposta) => {
+        pendente = false;
+        if (controle.signal.aborted) return;
+        setPrazosCarregados({
+          chave: chavePrazos,
+          estado: 'pronto',
+          itens: Array.isArray(resposta?.items) ? resposta.items : []
+        });
+      })
+      .catch(() => {
+        pendente = false;
+        // Sem permissão de obras, rota fora ou rede: a ordem cai no
+        // desempate por alertas do dashboard e a tela avisa em uma linha.
+        if (controle.signal.aborted) return;
+        setPrazosCarregados({ chave: chavePrazos, estado: 'erro', itens: [] });
+      });
+    return () => {
+      if (!pendente) return;
+      // Desmontou (ou mudou a competência) no meio: libera para buscar de novo.
+      controle.abort();
+      pedidoPrazosRef.current = '';
+    };
+  }, [chavePrazos, loadObras, precisaPrazos]);
+
+  const prazosPorObra = useMemo(() => {
+    const fonte = temObrasDeFora ? obrasComPrazos : prazosCarregados.itens;
+    return new Map(
+      (fonte || [])
+        .filter((obra) => obra && obra.prazos)
+        .map((obra) => [Number(obra.id), obra.prazos])
+    );
+  }, [obrasComPrazos, prazosCarregados.itens, temObrasDeFora]);
+
+  const orderedWorkSummaries = useMemo(
+    () => ordenarCards(visibleWorkSummaries, criterio, { ordemManual, prazosPorObra }),
+    [criterio, ordemManual, prazosPorObra, visibleWorkSummaries]
+  );
+  const obraIdsVisiveis = useMemo(() => {
+    const ids = [];
+    orderedWorkSummaries.forEach((item) => {
+      const id = Number(item.obra?.id);
+      if (id && !ids.includes(id)) ids.push(id);
+    });
+    return ids;
+  }, [orderedWorkSummaries]);
+
+  const modoManual = criterio === 'MANUAL';
+  const [ehCelular, setEhCelular] = useState(() => (
+    typeof window !== 'undefined' && Boolean(window.matchMedia?.(CELULAR_ORDEM).matches)
+  ));
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const media = window.matchMedia(CELULAR_ORDEM);
+    const ouvinte = (evento) => setEhCelular(evento.matches);
+    media.addEventListener('change', ouvinte);
+    return () => media.removeEventListener('change', ouvinte);
+  }, []);
+  // Arrastar é HTML5 nativo, que não responde a toque: no celular ficam os
+  // botões de mover (mesma regra dos BlocosPersonalizaveis).
+  const podeArrastar = modoManual && !ehCelular;
+  const [arrastando, setArrastando] = useState(null);
+  const [alvoArrasto, setAlvoArrasto] = useState(null);
+  const [anuncioOrdem, setAnuncioOrdem] = useState('');
+  const alcasRef = useRef(new Map());
+  const focoPendenteRef = useRef(null);
+
+  const gravarOrdem = useCallback((proximoCriterio, proximaOrdem) => {
+    gravarPreferenciaOrdem(
+      proximoCriterio === CRITERIO_PADRAO && !proximaOrdem.length
+        ? null
+        : { criterio: proximoCriterio, ordemManual: proximaOrdem }
+    );
+  }, [gravarPreferenciaOrdem]);
+
+  const alterarCriterio = (evento) => {
+    const proximo = CRITERIOS_VALIDOS.has(evento.target.value)
+      ? evento.target.value
+      : CRITERIO_PADRAO;
+    gravarOrdem(proximo, ordemManual);
+    setAnuncioOrdem('');
+  };
+
+  const moverObra = (obraId, destino, { focar = false } = {}) => {
+    const ids = obraIdsVisiveis.slice();
+    const origem = ids.indexOf(Number(obraId));
+    if (origem < 0) return;
+    const alvo = Math.max(0, Math.min(ids.length - 1, destino));
+    if (alvo === origem) return;
+    ids.splice(alvo, 0, ids.splice(origem, 1)[0]);
+    gravarOrdem('MANUAL', mesclarOrdemVisivel(ordemManual, ids));
+    const card = orderedWorkSummaries.find((item) => Number(item.obra?.id) === Number(obraId));
+    setAnuncioOrdem(`${card?.obra?.nome || 'Obra'} movida para a posição ${alvo + 1} de ${ids.length}.`);
+    if (focar) focoPendenteRef.current = Number(obraId);
+  };
+
+  useEffect(() => {
+    const id = focoPendenteRef.current;
+    if (!id) return;
+    focoPendenteRef.current = null;
+    alcasRef.current.get(id)?.focus();
+  }, [obraIdsVisiveis]);
+
+  const teclaNaAlca = (evento, obraId, posicao) => {
+    const mapa = {
+      ArrowUp: posicao - 1,
+      ArrowLeft: posicao - 1,
+      ArrowDown: posicao + 1,
+      ArrowRight: posicao + 1,
+      Home: 0,
+      End: obraIdsVisiveis.length - 1
+    };
+    if (!(evento.key in mapa)) return;
+    evento.preventDefault();
+    moverObra(obraId, mapa[evento.key], { focar: true });
+  };
+
+  const encerrarArrasto = () => {
+    setArrastando(null);
+    setAlvoArrasto(null);
+  };
+
   const filteredPortfolio = useMemo(() => {
     const totals = visibleWorkSummaries.reduce((result, item) => ({
       custo_planejado: result.custo_planejado + (Number(item.custo_planejado) || 0),
@@ -209,8 +519,23 @@ export default function CrDashboardView({
       medicoes_pendentes: publicPending
     };
   }, [visibleWorkSummaries]);
-  const costDeviation = Number(filteredPortfolio.desvio_custo) || 0;
   const portfolioClassification = filteredPortfolio.classificacao;
+  /*
+    Resultado da carteira (pedido do proprietário, 29/09): a mesma regra do
+    card de mês, sobre os TOTAIS exibidos acima — Previsto (recebíveis) −
+    Planejado (custos); quando Realizado > Planejado, Previsto − Realizado.
+    Sem classificação: fórmula genérica ("Recebível previsto − …"), porque a
+    carteira mistura obras públicas e privadas.
+  */
+  const portfolioResult = calcularResultadoMes({
+    classificacao: null,
+    recebivelPrevisto: filteredPortfolio.recebivel_previsto,
+    custoPlanejado: filteredPortfolio.custo_planejado,
+    custoRealizado: filteredPortfolio.custo_realizado
+  });
+  let portfolioResultTone = 'neutral';
+  if (!portfolioResult.semPlanejamento && portfolioResult.valor > 0) portfolioResultTone = 'positive';
+  if (!portfolioResult.semPlanejamento && portfolioResult.valor < 0) portfolioResultTone = 'negative';
 
   if (loading && !data) {
     return <section className="cr-section cr-empty-state">Carregando visão geral...</section>;
@@ -278,8 +603,12 @@ export default function CrDashboardView({
               />
               <Metric
                 label="Desvio"
-                value={currency.format(costDeviation)}
-                tone={costDeviation > 0 ? 'negative' : 'positive'}
+                metric="resultado"
+                value={portfolioResult.semPlanejamento
+                  ? 'Sem planejamento'
+                  : currency.format(portfolioResult.valor)}
+                helper={portfolioResult.semPlanejamento ? null : portfolioResult.formula}
+                tone={portfolioResultTone}
               />
               <Metric
                 label="Execução"
@@ -357,39 +686,180 @@ export default function CrDashboardView({
               {' '}· os mesmos filtros também compõem a carteira consolidada acima.
             </p>
           </div>
-          <span className="cr-portfolio-planning__count">
-            <HiOutlineBuildingOffice2 className="h-4 w-4" />
-            {visibleWorkSummaries.length} card(s)
-          </span>
+          <div className="cr-ordem-obras">
+            <label className="cr-ordem-obras__campo">
+              <span>Ordenar por</span>
+              {/* Seletor de CONTEXTO (ordem de exibição), não recorte de lista. */}
+              <select value={criterio} onChange={alterarCriterio}>
+                {CRITERIOS_ORDEM.map((opcao) => (
+                  <option key={opcao.id} value={opcao.id}>{opcao.rotulo}</option>
+                ))}
+              </select>
+            </label>
+            <span className="cr-portfolio-planning__count">
+              <HiOutlineBuildingOffice2 className="h-4 w-4" />
+              {visibleWorkSummaries.length} card(s)
+            </span>
+          </div>
         </div>
 
+        {modoManual && visibleWorkSummaries.length ? (
+          <p className="cr-ordem-obras__dica">
+            {podeArrastar
+              ? 'Arraste os cards ou use os botões de mover. A ordem fica salva para você.'
+              : 'Use os botões de mover. A ordem fica salva para você.'}
+          </p>
+        ) : null}
+        {criterio === 'PENDENCIAS' && !temObrasDeFora && prazosCarregados.estado === 'erro'
+          && visibleWorkSummaries.length ? (
+            <p className="cr-ordem-obras__dica">
+              Prazos das obras indisponíveis: ordem pelos alertas do dashboard.
+            </p>
+          ) : null}
+        <span className="sr-only" aria-live="polite">{anuncioOrdem}</span>
+
         {visibleWorkSummaries.length ? (
-          <div className="cr-portfolio-planning__grid">
-            {visibleWorkSummaries.map((item) => (
-              <CrMonthlySummaryCard
-                key={`${item.obra.id}-${item.competencia}`}
-                presentation={presentation}
-                title={item.obra.nome}
-                eyebrow={`${item.obra.codigo || item.obra.id} · ${formatMonth(item.competencia)}`}
-                classification={item.obra.classificacao}
-                status={item.estado_competencia}
-                custoPlanejado={item.custo_planejado}
-                custoRealizado={item.custo_realizado}
-                recebivelPrevisto={item.recebivel_previsto}
-                recebivelReconhecido={item.recebivel_reconhecido}
-                receitaRecebida={item.receita_recebida}
-                medicaoAprovadaInformada={item.medicao_aprovada != null}
-                glosa={item.glosa}
-                actionLabel="Abrir planejamento"
-                onOpen={canOpenPlanning
-                  ? () => onOpenArea?.({
-                    destino: 'planejamento',
-                    obra_id: item.obra.id,
-                    competencia: item.competencia
-                  })
-                  : null}
-              />
-            ))}
+          <div
+            className="cr-portfolio-planning__grid"
+            data-ordem-manual={modoManual || undefined}
+            onDragLeave={(evento) => {
+              if (!evento.currentTarget.contains(evento.relatedTarget)) setAlvoArrasto(null);
+            }}
+          >
+            {orderedWorkSummaries.map((item, indiceCard) => {
+              const obraId = Number(item.obra.id);
+              const posicao = obraIdsVisiveis.indexOf(obraId);
+              const total = obraIdsVisiveis.length;
+              const primeiroDaObra = orderedWorkSummaries
+                .findIndex((outro) => Number(outro.obra?.id) === obraId) === indiceCard;
+              const card = (
+                <CrMonthlySummaryCard
+                  key={`${item.obra.id}-${item.competencia}`}
+                  presentation={presentation}
+                  title={item.obra.nome}
+                  eyebrow={`${item.obra.codigo || item.obra.id} · ${formatMonth(item.competencia)}`}
+                  classification={item.obra.classificacao}
+                  status={item.estado_competencia}
+                  custoPlanejado={item.custo_planejado}
+                  custoRealizado={item.custo_realizado}
+                  recebivelPrevisto={item.recebivel_previsto}
+                  recebivelReconhecido={item.recebivel_reconhecido}
+                  receitaRecebida={item.receita_recebida}
+                  medicaoAprovadaInformada={item.medicao_aprovada != null}
+                  glosa={item.glosa}
+                  actionLabel="Abrir planejamento"
+                  onOpen={canOpenPlanning
+                    ? () => onOpenArea?.({
+                      destino: 'planejamento',
+                      obra_id: item.obra.id,
+                      competencia: item.competencia
+                    })
+                    : null}
+                />
+              );
+              if (!modoManual) {
+                // Fora do modo manual o card fica direto na grade, como antes.
+                return card;
+              }
+              const nome = item.obra.nome;
+              const lado = alvoArrasto?.id === obraId ? alvoArrasto.lado : undefined;
+              return (
+                <div
+                  key={`${item.obra.id}-${item.competencia}`}
+                  className="cr-ordem-item"
+                  data-manual="true"
+                  data-arrastando={arrastando === obraId || undefined}
+                  data-alvo={lado}
+                  data-obra-id={obraId}
+                  draggable={podeArrastar}
+                  onDragStart={(evento) => {
+                    if (!podeArrastar) return;
+                    evento.dataTransfer.effectAllowed = 'move';
+                    evento.dataTransfer.setData('text/plain', String(obraId));
+                    setArrastando(obraId);
+                  }}
+                  onDragOver={(evento) => {
+                    if (!podeArrastar || arrastando == null) return;
+                    evento.preventDefault();
+                    evento.dataTransfer.dropEffect = 'move';
+                    if (arrastando === obraId) {
+                      if (alvoArrasto) setAlvoArrasto(null);
+                      return;
+                    }
+                    const origem = obraIdsVisiveis.indexOf(arrastando);
+                    const proximoLado = origem < posicao ? 'depois' : 'antes';
+                    if (alvoArrasto?.id !== obraId || alvoArrasto?.lado !== proximoLado) {
+                      setAlvoArrasto({ id: obraId, lado: proximoLado });
+                    }
+                  }}
+                  onDrop={(evento) => {
+                    if (!podeArrastar || arrastando == null) return;
+                    evento.preventDefault();
+                    moverObra(arrastando, posicao);
+                    encerrarArrasto();
+                  }}
+                  onDragEnd={encerrarArrasto}
+                >
+                  <div className="cr-ordem-item__barra">
+                    <button
+                      type="button"
+                      className="cr-ordem-item__alca"
+                      ref={primeiroDaObra
+                        ? (elemento) => {
+                          if (elemento) alcasRef.current.set(obraId, elemento);
+                          else alcasRef.current.delete(obraId);
+                        }
+                        : undefined}
+                      aria-label={`Mover ${nome}: posição ${posicao + 1} de ${total}. `
+                        + 'Setas movem uma posição; Home leva ao início; End, ao fim.'}
+                      onKeyDown={(evento) => teclaNaAlca(evento, obraId, posicao)}
+                    >
+                      <HiOutlineBars3 aria-hidden="true" />
+                      <span>{posicao + 1}º</span>
+                    </button>
+                    <span className="cr-ordem-item__acoes">
+                      <span className="tooltip-wrap">
+                        <button
+                          type="button"
+                          className="cr-ordem-item__botao"
+                          aria-label={`Mover ${nome} para o início`}
+                          disabled={posicao === 0}
+                          onClick={() => moverObra(obraId, 0, { focar: true })}
+                        >
+                          <HiOutlineChevronDoubleUp aria-hidden="true" />
+                        </button>
+                        <span className="tooltip-content" aria-hidden="true">Mover para o início</span>
+                      </span>
+                      <span className="tooltip-wrap">
+                        <button
+                          type="button"
+                          className="cr-ordem-item__botao"
+                          aria-label={`Mover ${nome} uma posição antes`}
+                          disabled={posicao === 0}
+                          onClick={() => moverObra(obraId, posicao - 1, { focar: true })}
+                        >
+                          <HiOutlineChevronUp aria-hidden="true" />
+                        </button>
+                        <span className="tooltip-content" aria-hidden="true">Mover para antes</span>
+                      </span>
+                      <span className="tooltip-wrap">
+                        <button
+                          type="button"
+                          className="cr-ordem-item__botao"
+                          aria-label={`Mover ${nome} uma posição depois`}
+                          disabled={posicao === total - 1}
+                          onClick={() => moverObra(obraId, posicao + 1, { focar: true })}
+                        >
+                          <HiOutlineChevronDown aria-hidden="true" />
+                        </button>
+                        <span className="tooltip-content" aria-hidden="true">Mover para depois</span>
+                      </span>
+                    </span>
+                  </div>
+                  {card}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="cr-empty-state">

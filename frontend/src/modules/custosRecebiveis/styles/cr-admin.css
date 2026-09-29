@@ -117,3 +117,178 @@
       minmax(200px, 1.1fr) minmax(140px, 0.5fr) minmax(200px, 1.1fr) minmax(140px, 0.5fr) auto;
   }
 }
+
+/* Dashboard: ordem dos cards de "Planejamento mensal por obra" (critério ou
+   arrasto manual, salvo por usuário). */
+.cr-page .cr-portfolio-planning > .cr-section-heading {
+  flex-wrap: wrap;
+}
+
+.cr-page .cr-ordem-obras {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cr-page .cr-ordem-obras__campo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cr-page .cr-ordem-obras__campo select {
+  min-width: 0;
+  max-width: 100%;
+  height: 32px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--cr-border-strong);
+  border-radius: 8px;
+  background: var(--cr-surface);
+  color: var(--cr-text);
+  font-size: var(--fonte-detalhe);
+  font-weight: 600;
+}
+
+.cr-page .cr-ordem-obras__campo select:focus-visible {
+  outline: 2px solid var(--cr-primary);
+  outline-offset: 1px;
+}
+
+.cr-page .cr-ordem-obras__dica {
+  margin: 0;
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+}
+
+.cr-page .cr-ordem-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cr-page .cr-ordem-item > .cr-period-card {
+  flex: 1;
+}
+
+.cr-page .cr-ordem-item[draggable="true"] {
+  cursor: grab;
+}
+
+.cr-page .cr-ordem-item[draggable="true"] button,
+.cr-page .cr-ordem-item[draggable="true"] a {
+  cursor: pointer;
+}
+
+.cr-page .cr-ordem-item[data-arrastando="true"] {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.cr-page .cr-ordem-item[data-arrastando="true"] > .cr-period-card {
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--cr-ink) 14%, transparent);
+}
+
+/* Marcador de destino: barra na cor do módulo no lado em que o card cai. */
+.cr-page .cr-ordem-item[data-alvo]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 4px;
+  background: var(--cr-primary);
+  pointer-events: none;
+}
+
+.cr-page .cr-ordem-item[data-alvo="antes"]::after {
+  left: -8px;
+}
+
+.cr-page .cr-ordem-item[data-alvo="depois"]::after {
+  right: -8px;
+}
+
+.cr-page .cr-ordem-item[data-alvo] > .cr-period-card {
+  border-color: color-mix(in srgb, var(--cr-primary) 55%, var(--cr-border));
+}
+
+.cr-page .cr-ordem-item__barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 4px;
+}
+
+.cr-page .cr-ordem-item__alca {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px dashed var(--cr-border-strong);
+  border-radius: 8px;
+  background: var(--cr-surface);
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+  font-weight: 700;
+  cursor: grab;
+}
+
+.cr-page .cr-ordem-item__alca svg,
+.cr-page .cr-ordem-item__botao svg {
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+}
+
+.cr-page .cr-ordem-item__acoes {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.cr-page .cr-ordem-item__botao {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--cr-border);
+  border-radius: 8px;
+  background: var(--cr-surface);
+  color: var(--cr-text);
+}
+
+.cr-page .cr-ordem-item__alca:hover,
+.cr-page .cr-ordem-item__botao:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--cr-primary) 45%, var(--cr-border));
+  color: var(--cr-primary);
+}
+
+.cr-page .cr-ordem-item__alca:focus-visible,
+.cr-page .cr-ordem-item__botao:focus-visible {
+  outline: 2px solid var(--cr-primary);
+  outline-offset: 1px;
+}
+
+.cr-page .cr-ordem-item__botao:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Carteira consolidada: o sinal de menos do Resultado não quebra sozinho
+   numa linha (o valor negativo cabia só sem o "-"). */
+.cr-page .cr-ops-metric[data-metric="resultado"] > strong {
+  white-space: nowrap;
+}
