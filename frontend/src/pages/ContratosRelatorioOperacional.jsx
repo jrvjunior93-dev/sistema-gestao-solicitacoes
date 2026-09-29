@@ -32,14 +32,16 @@ const FILTROS_VAZIOS = {
   obra_id: '',
   ref: '',
   codigo: '',
-  ativo: '',
+  status_operacional: '',
   data_inicio: '',
   data_fim: ''
 };
 
 const STATUS_CONTRATO = [
-  { valor: 'true', rotulo: 'Ativos' },
-  { valor: 'false', rotulo: 'Inativos' }
+  { valor: 'ATIVO', rotulo: 'Ativo · parcialmente medido' },
+  { valor: 'TOTALMENTE_MEDIDO', rotulo: 'Totalmente medido' },
+  { valor: 'CONCLUIDO', rotulo: 'Concluído' },
+  { valor: 'RESCINDIDO', rotulo: 'Rescindido' }
 ];
 
 function money(value) {
@@ -105,9 +107,10 @@ function BlocoGrupo({ titulo, descricao, rows, storageKey, labelHeader = 'Descri
           { id: 'total', titulo: 'Contratos', tipo: 'numero', render: (row) => number(row.total) },
           { id: 'ativos', titulo: 'Ativos', tipo: 'numero', render: (row) => number(row.ativos) },
           { id: 'sem_anexo', titulo: 'Sem anexo', tipo: 'numero', render: (row) => number(row.sem_anexo) },
-          { id: 'valor_total', titulo: 'Valor', tipo: 'valor', render: (row) => money(row.valor_total) },
-          { id: 'total_pago', titulo: 'Pago', tipo: 'valor', render: (row) => money(row.total_pago) },
-          { id: 'total_a_pagar', titulo: 'A pagar', tipo: 'valor', render: (row) => money(row.total_a_pagar) }
+          { id: 'contratado', titulo: 'Contratado', tipo: 'valor', render: (row) => money(row.contratado) },
+          { id: 'medido', titulo: 'Medido', tipo: 'valor', render: (row) => money(row.medido) },
+          { id: 'movimentado', titulo: 'Movimentado', tipo: 'valor', render: (row) => money(row.movimentado) },
+          { id: 'saldo_contratual', titulo: 'Saldo', tipo: 'valor', render: (row) => money(row.saldo_contratual) }
         ]}
         itens={rows}
         getId={(row) => `${row.label}-${rows.indexOf(row)}`}
@@ -136,7 +139,7 @@ const FILTROS_DA_TELA = [
   { id: 'data_inicio', rotulo: 'Data inicial' },
   { id: 'data_fim', rotulo: 'Data final' },
   { id: 'obra_id', rotulo: 'Obra/Centro' },
-  { id: 'ativo', rotulo: 'Status' }
+  { id: 'status_operacional', rotulo: 'Status' }
 ];
 
 export default function ContratosRelatorioOperacional() {
@@ -182,14 +185,14 @@ export default function ContratosRelatorioOperacional() {
   /*
     R12 — os recortes ENUMERÁVEIS viram marcação com etiqueta removível.
     `unico: true` nas duas: o serviço (`getContratosRelatorioOperacional`)
-    manda `obra_id` e `ativo` como UM valor cada; marcar dois com caixa
+    manda `obra_id` e `status_operacional` como UM valor cada; marcar dois com caixa
     quadrada mostraria duas etiquetas e mandaria uma só — capacidade
     aparente sem efeito (a família da R15). Marca redonda, marcar outro
     substitui.
   */
   const ativos = useMemo(() => ({
     obra_id: new Set(filtros.obra_id ? [String(filtros.obra_id)] : []),
-    ativo: new Set(filtros.ativo ? [String(filtros.ativo)] : [])
+    status_operacional: new Set(filtros.status_operacional ? [String(filtros.status_operacional)] : [])
   }), [filtros]);
 
   const dimensoes = useMemo(() => [
@@ -202,7 +205,7 @@ export default function ContratosRelatorioOperacional() {
         rotulo: `${obra.codigo ? `${obra.codigo} - ` : ''}${obra.nome}`
       }))
     },
-    { id: 'ativo', rotulo: 'Status', unico: true, opcoes: STATUS_CONTRATO }
+    { id: 'status_operacional', rotulo: 'Status', unico: true, opcoes: STATUS_CONTRATO }
   ], [obras]);
   /*
     N53 — filtro com VALOR é filtro VISÍVEL. Um recorte pode chegar pela URL
@@ -343,13 +346,14 @@ export default function ContratosRelatorioOperacional() {
           */}
           <StatGrid>
             <StatTile label="Contratos" valor={number(resumo.total_contratos)} sub={`${number(resumo.ativos)} ativo(s)`} />
-            <StatTile label="Valor contratado" valor={money(resumo.valor_total)} sub="Valor cadastrado nos contratos" tom="success" />
-            <StatTile label="A pagar" valor={money(resumo.total_a_pagar)} sub="Solicitado menos pago no módulo" tom={Number(resumo.total_a_pagar || 0) > 0 ? 'warning' : undefined} />
+            <StatTile label="Contratado" valor={money(resumo.contratado)} sub="Valor base + aditivos e ajustes legados" tom="success" />
+            <StatTile label="Saldo" valor={money(resumo.saldo_contratual)} sub="Contratado menos medido" tom={Number(resumo.saldo_contratual || 0) > 0 ? 'warning' : undefined} />
             <StatTile label="Sem anexo" valor={number(resumo.sem_anexo)} sub="Pendência documental explícita" tom={Number(resumo.sem_anexo || 0) > 0 ? 'danger' : 'success'} />
-            <StatTile label="Total solicitado" valor={money(resumo.total_solicitado)} sub="Contrato + ajustes solicitados" />
-            <StatTile label="Total pago" valor={money(resumo.total_pago)} sub="Solicitações pagas + ajustes pagos" tom="success" />
+            <StatTile label="Medido" valor={money(resumo.medido)} sub="Medições válidas dos dois fluxos" />
+            <StatTile label="Movimentado" valor={money(resumo.movimentado)} sub="Baixas e pagamentos com evidência financeira" tom="success" />
+            <StatTile label="Aditivos" valor={money(resumo.aditivos)} sub="Aditivos formais + ajustes legados identificados" />
             <StatTile label="Solicitações vinculadas" valor={number(resumo.solicitacoes_vinculadas)} sub="Vínculos reais com solicitações" />
-            <StatTile label="Inativos" valor={number(resumo.inativos)} sub="Contratos marcados como inativos" />
+            <StatTile label="Fora de execução" valor={number(resumo.inativos)} sub="Totalmente medidos, concluídos ou rescindidos" />
           </StatGrid>
 
           {/*
@@ -469,7 +473,7 @@ export default function ContratosRelatorioOperacional() {
                   { id: 'obra', titulo: 'Obra/Centro', tipo: 'texto', render: (item) => <CelulaDupla principal={item.obra || '-'} /> },
                   { id: 'empresa', titulo: 'Empresa', tipo: 'texto', render: (item) => <CelulaDupla principal={item.empresa || '-'} /> },
                   { id: 'valor', titulo: 'Valor', tipo: 'valor', render: (item) => money(item.valor_total) },
-                  { id: 'saldo', titulo: 'A pagar', tipo: 'valor', render: (item) => money(item.total_a_pagar) },
+                  { id: 'saldo', titulo: 'Saldo', tipo: 'valor', render: (item) => money(item.total_a_pagar) },
                   {
                     id: 'pendencias',
                     titulo: 'Pendências',

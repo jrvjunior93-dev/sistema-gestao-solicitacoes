@@ -22,13 +22,14 @@ import { getMinhasObras, getObras } from '../services/obras';
 import {
   atualizarContrato,
   criarContrato,
-  encerrarContratoFluxoNovo,
   excluirContrato,
   exportarContratosCsv,
   getContratoAnexos,
+  getContratoDetalheOperacional,
   getContratos,
   getContratosResumo,
   importarApropriacoesContratos,
+  rescindirContrato,
   uploadContratoAnexos,
   uploadNegociacaoContrato,
   uploadDocumentacaoJuridicaContrato
@@ -52,6 +53,8 @@ import {
 } from '../components/padrao';
 import OverlayModal from '../components/ui/OverlayModal';
 import ApropriacaoAutocomplete from '../components/ui/ApropriacaoAutocomplete';
+import Badge from '../components/ui/Badge';
+import ContratoDetalheOperacional from '../components/contratos/ContratoDetalheOperacional';
 import { useFecharAoSair } from '../hooks/useFecharAoSair';
 
 const DESCRICAO_GESTAO = 'Cadastro, importacao e acompanhamento dos contratos por obra.';
@@ -155,6 +158,10 @@ export default function GestaoContratos() {
     'representante-legal': null
   });
   const [contratoSelecionadoId, setContratoSelecionadoId] = useState(null);
+  const [detalheOperacional, setDetalheOperacional] = useState(null);
+  const [carregandoDetalhe, setCarregandoDetalhe] = useState(false);
+  const [erroDetalhe, setErroDetalhe] = useState('');
+  const [rescindindoId, setRescindindoId] = useState(null);
   const [formEdicao, setFormEdicao] = useState({
     obra_id: '',
     codigo: '',
@@ -239,6 +246,19 @@ export default function GestaoContratos() {
   const podeEncerrarContratos = hasPermissao(user, 'contratos.geral.encerrar');
   const contratoSelecionado = contratos.find(item => String(item.id) === String(contratoSelecionadoId)) || null;
   const contratoEmEdicao = contratos.find(item => String(item.id) === String(editandoId)) || null;
+  const statusContrato = (contrato) => {
+    const mapa = {
+      ATIVO: { texto: 'Ativo · parcialmente medido', variante: 'info' },
+      TOTALMENTE_MEDIDO: { texto: 'Totalmente medido', variante: 'warning' },
+      CONCLUIDO: { texto: 'Concluído', variante: 'success' },
+      RESCINDIDO: { texto: 'Rescindido', variante: 'danger' }
+    };
+    const item = mapa[contrato?.status_operacional] || {
+      texto: contrato?.status_operacional || 'Sem status',
+      variante: 'muted'
+    };
+    return <Badge variant={item.variante} size="sm">{item.texto}</Badge>;
+  };
   // ORDEM INICIAL da lista: código A→Z. Do primeiro clique num título em
   // diante quem ordena é a TabelaPadrao (asc → desc → volta a esta ordem),
   // com os MESMOS campos de antes: contrato, solicitado, pago, a pagar,
@@ -280,6 +300,29 @@ export default function GestaoContratos() {
     const atraso = setTimeout(() => { carregar(recorte); }, 350);
     return () => clearTimeout(atraso);
   }, [recorte, podeAcessar]);
+
+  useEffect(() => {
+    let ativo = true;
+    if (!contratoSelecionadoId) {
+      setDetalheOperacional(null);
+      setErroDetalhe('');
+      return () => { ativo = false; };
+    }
+
+    setCarregandoDetalhe(true);
+    setErroDetalhe('');
+    getContratoDetalheOperacional(contratoSelecionadoId)
+      .then((data) => { if (ativo) setDetalheOperacional(data); })
+      .catch((error) => {
+        if (ativo) {
+          setDetalheOperacional(null);
+          setErroDetalhe(error?.message || 'Erro ao carregar detalhe operacional.');
+        }
+      })
+      .finally(() => { if (ativo) setCarregandoDetalhe(false); });
+
+    return () => { ativo = false; };
+  }, [contratoSelecionadoId]);
 
   async function carregar(overrideFiltros) {
     try {
@@ -959,9 +1002,9 @@ export default function GestaoContratos() {
     }
   }
 
-  // Quebra de contrato (PI-6): zera o saldo e exclui os titulos em aberto. So aparece para
-  // contrato do fluxo novo ja ativo — nos demais nao ha saldo comprometido para encerrar.
-  async function encerrarContratoItem(contrato) {
+  // A rescisao vale para os dois fluxos. O backend preserva titulos de medicoes ja aprovadas e
+  // cancela somente o saldo ainda nao medido.
+  async function rescindirContratoItem(contrato) {
     /*
       R26 — ALVO FIXADO ANTES DO `await`. O contrato chega por parametro, preso
       no clique da barra de selecao; a const abaixo deixa isso explicito e
@@ -980,11 +1023,11 @@ export default function GestaoContratos() {
       contrato pelo codigo, que e como a pessoa o ve na tabela.
     */
     const { ok, texto } = await confirmar({
-      titulo: 'Encerrar contrato',
-      mensagem: `Encerrar o contrato ${alvo.codigo}? Esta acao nao pode ser desfeita: o saldo restante e zerado e os titulos em aberto do contrato sao excluidos.`,
-      rotuloConfirmar: 'Encerrar contrato',
+      titulo: 'Rescindir contrato',
+      mensagem: `Rescindir o contrato ${alvo.codigo}? O saldo ainda nao medido sera cancelado. Titulos de medicoes ja aprovadas permanecerao devidos ate a baixa.`,
+      rotuloConfirmar: 'Rescindir contrato',
       destrutiva: true,
-      campo: { rotulo: 'Motivo do encerramento', obrigatorio: true, multilinha: true }
+      campo: { rotulo: 'Motivo da rescisão', obrigatorio: true, multilinha: true }
     });
     // R21 — retorno DESESTRUTURADO. `const ok = await confirmar(...)` compila,
     // roda e faz o "Cancelar" SEGUIR COM A ACAO: objeto e sempre truthy.
@@ -992,19 +1035,21 @@ export default function GestaoContratos() {
     const motivo = String(texto || '').trim();
     if (!motivo) return;
     try {
-      const r = await encerrarContratoFluxoNovo(alvo.id, motivo);
-      const ajustados = (r.titulos_ajustados_ao_valor_pago || []).length;
+      setRescindindoId(alvo.id);
+      const r = await rescindirContrato(alvo.id, motivo);
       avisar.sucesso([
-        `Contrato ${alvo.codigo} encerrado.`,
-        `Saldo zerado: ${formatMoeda(r.saldo_zerado || 0)}.`,
-        `Titulos excluidos: ${(r.titulos_excluidos || []).length}.`,
-        ajustados ? `Titulos parcialmente pagos fechados pelo valor pago: ${ajustados}.` : null
+        `Contrato ${alvo.codigo} rescindido.`,
+        `Saldo contratual cancelado: ${formatMoeda(r.saldo_rescindido || 0)}.`,
+        `Previsoes canceladas: ${(r.titulos_excluidos || []).length}.`,
+        `Obrigacoes preservadas: ${(r.titulos_preservados || []).length}.`
       ].filter(Boolean).join(' '));
       setContratoSelecionadoId(null);
       await carregar();
     } catch (error) {
       console.error(error);
-      avisar.erro(error?.message || 'Erro ao encerrar contrato.');
+      avisar.erro(error?.message || 'Erro ao rescindir contrato.');
+    } finally {
+      setRescindindoId(null);
     }
   }
 
@@ -1418,30 +1463,36 @@ export default function GestaoContratos() {
               },
             {
               id: 'total_solicitado',
-              titulo: 'Solicitado',
+              titulo: 'Contratado',
               tipo: 'valor',
-              render: c => Number(c.total_solicitado || 0).toLocaleString('pt-BR', {
+              render: c => Number(c.contratado || 0).toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL'
               })
             },
             {
               id: 'total_pago',
-              titulo: 'Pago',
+              titulo: 'Movimentado',
               tipo: 'valor',
-              render: c => Number(c.total_pago || 0).toLocaleString('pt-BR', {
+              render: c => Number(c.movimentado || 0).toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL'
               })
             },
             {
               id: 'total_a_pagar',
-              titulo: 'A pagar',
+              titulo: 'Saldo',
               tipo: 'valor',
-              render: c => Number(c.total_a_pagar || 0).toLocaleString('pt-BR', {
+              render: c => Number(c.saldo_contratual || 0).toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL'
               })
+            },
+            {
+              id: 'status_operacional',
+              titulo: 'Status',
+              tipo: 'status',
+              render: c => statusContrato(c)
             }
             ]}
             itens={contratos}
@@ -1450,8 +1501,21 @@ export default function GestaoContratos() {
             storageKey="tabela:gestao-contratos:setor-obra"
             rotuloRolagem="Contratos das suas obras"
             vazio="Nenhum contrato encontrado."
+            aoClicarLinha={c => setContratoSelecionadoId(prev => (String(prev) === String(c.id) ? null : c.id))}
+            linhaSelecionada={contrato => String(contrato.id) === String(contratoSelecionadoId)}
           />
         </BlocoConteudo>
+
+        {contratoSelecionadoId && (
+          <BlocoConteudo titulo="Detalhe operacional" variante="secundario">
+            <ContratoDetalheOperacional
+              data={detalheOperacional}
+              loading={carregandoDetalhe}
+              error={erroDetalhe}
+              onClose={() => setContratoSelecionadoId(null)}
+            />
+          </BlocoConteudo>
+        )}
       </Pagina>
     );
   }
@@ -1748,58 +1812,53 @@ export default function GestaoContratos() {
             { id: 'apropriacao', titulo: 'Itens de Apropriação', tipo: 'texto', render: c => <CelulaDupla principal={resumoApropriacoesContrato(c)} /> },
             {
               id: 'solicitado',
-              titulo: 'Solicitado',
+              titulo: 'Contratado',
               tipo: 'valor',
               ordenavel: true,
-              valorOrdenacao: c => Number(c.total_solicitado || 0),
-              render: c => Number(c.total_solicitado || 0).toLocaleString('pt-BR', {
+              valorOrdenacao: c => Number(c.contratado || 0),
+              render: c => Number(c.contratado || 0).toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL'
               })
             },
             {
               id: 'pago',
-              titulo: 'Pago',
+              titulo: 'Movimentado',
               tipo: 'valor',
               ordenavel: true,
-              valorOrdenacao: c => Number(c.total_pago || 0),
-              render: c => Number(c.total_pago || 0).toLocaleString('pt-BR', {
+              valorOrdenacao: c => Number(c.movimentado || 0),
+              render: c => Number(c.movimentado || 0).toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL'
               })
             },
             {
               id: 'a_pagar',
-              titulo: 'A pagar',
+              titulo: 'Saldo',
               tipo: 'valor',
               ordenavel: true,
-              valorOrdenacao: c => Number(c.total_a_pagar || 0),
-              render: c => Number(c.total_a_pagar || 0).toLocaleString('pt-BR', {
+              valorOrdenacao: c => Number(c.saldo_contratual || 0),
+              render: c => Number(c.saldo_contratual || 0).toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL'
               })
             },
             {
               id: 'ajuste_solicitado',
-              titulo: 'Ajuste Solicitado',
+              titulo: 'Aditivos',
               tipo: 'valor',
               ordenavel: true,
-              valorOrdenacao: c => Number(c.ajuste_solicitado || 0),
-              render: c => Number(c.ajuste_solicitado || 0).toLocaleString('pt-BR', {
+              valorOrdenacao: c => Number(c.valor_aditivos || 0) + Number(c.ajustes_legados || 0),
+              render: c => (Number(c.valor_aditivos || 0) + Number(c.ajustes_legados || 0)).toLocaleString('pt-BR', {
                 style: 'currency',
                 currency: 'BRL'
               })
             },
             {
-              id: 'ajuste_pago',
-              titulo: 'Ajuste Pago',
-              tipo: 'valor',
-              ordenavel: true,
-              valorOrdenacao: c => Number(c.ajuste_pago || 0),
-              render: c => Number(c.ajuste_pago || 0).toLocaleString('pt-BR', {
-                style: 'currency',
-                currency: 'BRL'
-              })
+              id: 'status_operacional',
+              titulo: 'Status',
+              tipo: 'status',
+              render: c => statusContrato(c)
             },
             {
               id: 'qtd_solicitacoes',
@@ -1828,6 +1887,17 @@ export default function GestaoContratos() {
         />
       </BlocoConteudo>
 
+      {contratoSelecionadoId && (
+        <BlocoConteudo titulo="Detalhe operacional" variante="secundario">
+          <ContratoDetalheOperacional
+            data={detalheOperacional}
+            loading={carregandoDetalhe}
+            error={erroDetalhe}
+            onClose={() => setContratoSelecionadoId(null)}
+          />
+        </BlocoConteudo>
+      )}
+
       {contratoSelecionado && (
         <div className="contratos-selection-toolbar fixed left-1/2 -translate-x-1/2 bottom-4 z-faixa-presa-acima">
           <span className="contratos-selection-toolbar__title">
@@ -1855,16 +1925,16 @@ export default function GestaoContratos() {
               <span>Editar</span>
             </button>
           )}
-          {podeEncerrarContratos && contratoSelecionado?.fluxo_novo
-            && contratoSelecionado?.status_contrato === 'ATIVO' && (
+          {podeEncerrarContratos && contratoSelecionado?.status_operacional === 'ATIVO' && (
             <button
               type="button"
               className="btn btn-outline px-3 inline-flex items-center gap-2"
-              onClick={() => encerrarContratoItem(contratoSelecionado)}
-              title="Zera o saldo restante e exclui os títulos em aberto"
+              onClick={() => rescindirContratoItem(contratoSelecionado)}
+              disabled={String(rescindindoId) === String(contratoSelecionado.id)}
+              title="Cancela o saldo não medido e preserva obrigações já aprovadas"
             >
               <HiXMark className="w-4 h-4" />
-              <span>Encerrar contrato</span>
+              <span>{String(rescindindoId) === String(contratoSelecionado.id) ? 'Rescindindo...' : 'Rescindir contrato'}</span>
             </button>
           )}
           {podeGerenciarContratos && (
@@ -1976,29 +2046,33 @@ export default function GestaoContratos() {
                   />
                 </label>
 
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Ajuste solicitado</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="ajuste_solicitado"
-                    value={formEdicao.ajuste_solicitado}
-                    onChange={onChangeEdicao}
-                    className="input input-moeda w-full"
-                  />
-                </label>
+                {!contratoEmEdicao?.fluxo_novo && (
+                  <>
+                    <label className="sol-filter-field">
+                      <span className="sol-filter-label">Aditivos (legado)</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="ajuste_solicitado"
+                        value={formEdicao.ajuste_solicitado}
+                        onChange={onChangeEdicao}
+                        className="input input-moeda w-full"
+                      />
+                    </label>
 
-                <label className="sol-filter-field">
-                  <span className="sol-filter-label">Ajuste pago</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="ajuste_pago"
-                    value={formEdicao.ajuste_pago}
-                    onChange={onChangeEdicao}
-                    className="input input-moeda w-full"
-                  />
-                </label>
+                    <label className="sol-filter-field">
+                      <span className="sol-filter-label">Aditivos pagos (legado)</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="ajuste_pago"
+                        value={formEdicao.ajuste_pago}
+                        onChange={onChangeEdicao}
+                        className="input input-moeda w-full"
+                      />
+                    </label>
+                  </>
+                )}
 
                 <label className="sol-filter-field md:col-span-2 xl:col-span-3">
                   <span className="sol-filter-label">Itens de Apropriação</span>

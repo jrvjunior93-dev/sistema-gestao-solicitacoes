@@ -373,6 +373,7 @@ const {
   canViewRhDpDashboard,
   userHasStrictAreaPermission,
   canViewRhDpDocumentos,
+  canViewRhDpEventosRecorrentes,
   canViewRhDpObrigacoes,
   canViewSolicitacoesRelatorioOperacional
 } = require('./services/authorizationService');
@@ -1583,6 +1584,14 @@ const allowRhDpEventosRecorrentesManage = permit({
       : 'Acesso negado: a gestao de eventos recorrentes e exclusiva do Departamento Pessoal'
   )
 });
+const allowRhDpEventosRecorrentesView = permit({
+  resource: 'RH_DP_EVENTOS_RECORRENTES',
+  custom: async (req) => (
+    (await canViewRhDpEventosRecorrentes(req.user))
+      ? true
+      : 'Acesso negado: visualize eventos recorrentes somente com a permissao granular correspondente'
+  )
+});
 
 const allowRhDpDocumentosRead = permit({
   resource: 'RH_DP_DOCUMENTOS',
@@ -2057,13 +2066,13 @@ router.post('/rh/jornada/edicoes/:id/decidir', allowRhDpSolicitacaoDecidir, crit
 router.get('/rh/tickets/status', allowRhDpTicketManage, RhTicketController.status);
 router.get('/rh/tickets/vencimento', allowRhDpTicketManage, RhTicketController.vencimento);
 router.post('/rh/tickets', requireEnabledModule('FINANCEIRO'), allowRhDpTicketManage, uploadRateLimit, criticalRateLimit, uploadComprovantes.single('boleto'), RhTicketController.create);
-router.get('/rh/colaboradores/:id/eventos-recorrentes', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.eventosDoColaborador);
+router.get('/rh/colaboradores/:id/eventos-recorrentes', allowRhDpEventosRecorrentesView, allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.eventosDoColaborador);
 // A Obra acompanha, em modo somente leitura, os eventos dos colaboradores lotados nas obras em
 // que o usuario possui vinculo. O controller injeta esse escopo e o servico aplica o filtro no
 // banco. Edicao e cancelamento continuam protegidos pelo middleware exclusivo do DP abaixo.
-router.get('/rh/eventos-recorrentes', allowRhDpSolicitacaoVer, RhJornadaController.listarEventos);
-router.patch('/rh/eventos-recorrentes/:id', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.atualizarEvento);
-router.post('/rh/eventos-recorrentes/:id/desativar', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.desativarEvento);
+router.get('/rh/eventos-recorrentes', allowRhDpEventosRecorrentesView, allowRhDpSolicitacaoVer, RhJornadaController.listarEventos);
+router.patch('/rh/eventos-recorrentes/:id', allowRhDpEventosRecorrentesView, allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.atualizarEvento);
+router.post('/rh/eventos-recorrentes/:id/desativar', allowRhDpEventosRecorrentesView, allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir, criticalRateLimit, validateRequest({ params: validateNumericIdParam('id', 'Evento recorrente') }), RhJornadaController.desativarEvento);
 router.get('/rh/apuracao-eventos/:id/itens', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Linha da folha') }), RhJornadaController.itensDaFolha);
 router.get('/rh/colaboradores/:id/historico-vinculo', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.historicoDeVinculo);
 router.get('/rh/colaboradores/:id/historico-salario', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Colaborador RH/DP') }), RhJornadaController.historicoDeSalario);
@@ -2656,6 +2665,7 @@ router.get('/contratos', validateRequest({ query: validateContratoQuery }), Cont
 router.get('/contratos/resumo', validateRequest({ query: validateContratoQuery }), ContratoController.resumo);
 router.get('/contratos/relatorios/operacional', validateRequest({ query: validateContratoRelatorioOperacionalQuery }), ContratoController.relatorioOperacional);
 router.get('/contratos/exportar-csv', validateRequest({ query: validateContratoQuery }), ContratoController.exportarCsv);
+router.get('/contratos/:id/detalhe-operacional', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.detalheOperacional);
 router.get('/contratos/:id/solicitacoes', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.solicitacoes);
 router.get('/contratos/:id/anexos', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoController.listarAnexos);
 // Parcelas do contrato (leitura) — usada pela Medicao para decidir a trilha e montar a lista.
@@ -2706,7 +2716,9 @@ router.post('/contratos/fluxo-novo/aditivos/:aditivoId/cancelar', criticalRateLi
 // (`contratos.solicitacao.cancelar`). Rejeitar, que devolve para ajuste, e a rota de rejeicao.
 router.patch('/contratos/:id/apropriacoes', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), criticalRateLimit, requireContratoAccess, ContratoFluxoNovoController.atualizarApropriacoes);
 router.post('/contratos/:id/solicitacao/cancelar', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), criticalRateLimit, requireContratoAccess, ContratoFluxoNovoController.cancelarSolicitacao);
-router.post('/contratos/fluxo-novo/:id/encerrar', criticalRateLimit, ContratoFluxoNovoController.encerrar);
+router.post('/contratos/:id/rescindir', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), criticalRateLimit, requireContratoAccess, ContratoFluxoNovoController.encerrar);
+// Alias mantido para clientes antigos. Agora recebe a mesma protecao de escopo de obra.
+router.post('/contratos/fluxo-novo/:id/encerrar', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), criticalRateLimit, requireContratoAccess, ContratoFluxoNovoController.encerrar);
 router.post('/contratos/importar-massa', permit(['SUPERADMIN']), uploadRateLimit, uploadComprovantes.single('file'), ContratoController.importarMassa);
 router.post('/contratos/importar-apropriacoes', permit(['SUPERADMIN']), uploadRateLimit, uploadComprovantes.single('file'), ContratoController.importarApropriacoes);
 router.post('/contratos/:id/minuta', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, uploadRateLimit, uploadNegociacaoContrato.single('file'), auditSuccess({ eventType: 'CONTRACT_DRAFT_UPLOADED', resourceType: 'CONTRATO', description: 'Minuta do contrato enviada', resourceIdResolver: (req) => req.params.id }), ContratoController.uploadMinuta);

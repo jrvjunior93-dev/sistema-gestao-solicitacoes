@@ -31,18 +31,33 @@ async function executar() {
   const rotas = fs.readFileSync(path.join(__dirname, '../src/routes.js'), 'utf8');
   assert.match(
     rotas,
-    /router\.get\('\/rh\/eventos-recorrentes', allowRhDpSolicitacaoVer, RhJornadaController\.listarEventos\)/,
-    'a consulta consolidada deve ser acessivel a Obra e DP pela permissao de visualizacao'
+    /router\.get\('\/rh\/eventos-recorrentes', allowRhDpEventosRecorrentesView, allowRhDpSolicitacaoVer, RhJornadaController\.listarEventos\)/,
+    'a consulta consolidada deve exigir a permissao granular de eventos recorrentes'
   );
   assert.match(
     rotas,
-    /router\.patch\('\/rh\/eventos-recorrentes\/:id', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir/,
+    /router\.get\('\/rh\/colaboradores\/:id\/eventos-recorrentes', allowRhDpEventosRecorrentesView, allowRhDpSolicitacaoVer/,
+    'a consulta por colaborador tambem deve exigir a permissao granular'
+  );
+  assert.match(
+    rotas,
+    /router\.patch\('\/rh\/eventos-recorrentes\/:id', allowRhDpEventosRecorrentesView, allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir/,
     'a edicao deve permanecer exclusiva do DP'
   );
   assert.match(
     rotas,
-    /router\.post\('\/rh\/eventos-recorrentes\/:id\/desativar', allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir/,
+    /router\.post\('\/rh\/eventos-recorrentes\/:id\/desativar', allowRhDpEventosRecorrentesView, allowRhDpEventosRecorrentesManage, allowRhDpSolicitacaoDecidir/,
     'o cancelamento deve permanecer exclusivo do DP'
+  );
+
+  const permissoes = fs.readFileSync(
+    path.join(__dirname, '../src/constants/moduloPermissoes.js'),
+    'utf8'
+  );
+  assert.match(
+    permissoes,
+    /rh_dp\.eventos_recorrentes\.visualizar/,
+    'a permissao de consulta deve estar disponivel na configuracao granular'
   );
 
   const controllerSolicitacao = fs.readFileSync(

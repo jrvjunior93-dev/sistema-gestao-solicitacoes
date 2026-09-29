@@ -897,6 +897,17 @@ const MODULO_PERMISSION_GROUPS = [
         ]
       },
       {
+        key: 'rh_dp.eventos_recorrentes',
+        label: 'Eventos recorrentes',
+        permissoes: [
+          {
+            key: 'rh_dp.eventos_recorrentes.visualizar',
+            label: 'Visualizar eventos recorrentes',
+            descricao: 'Consultar eventos aprovados. Usuarios de Obra veem somente colaboradores das obras vinculadas.'
+          }
+        ]
+      },
+      {
         key: 'rh_dp.importacoes',
         label: 'Importacoes',
         permissoes: [

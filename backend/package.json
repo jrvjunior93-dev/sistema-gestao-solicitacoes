@@ -47,6 +47,8 @@
     "test:recarga-cartao": "node scripts/validarRecargaCartao.js",
     "test:dev-user-switch": "node scripts/validarDevUserSwitch.js",
     "test:contrato-aditivo-vigencia": "node scripts/validarContratoAditivoVigencia.js",
+    "test:contratos-operacional": "node scripts/validarGestaoContratosOperacional.js",
+    "audit:contratos-operacional": "node scripts/auditarContratosOperacionais.js",
     "test:bloqueio-retorno-obra": "node scripts/validarBloqueioRetornoObra.js",
     "comercial:multiunidade:simular-backfill": "node scripts/backfillContratosComerciaisUnidades.js",
     "comercial:multiunidade:aplicar-backfill": "node scripts/backfillContratosComerciaisUnidades.js --confirm",

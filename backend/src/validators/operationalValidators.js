@@ -240,7 +240,7 @@ function validateContratoQuery(query = {}) {
 function validateContratoRelatorioOperacionalQuery(query = {}) {
   ensureAllowedKeys(
     query,
-    ['obra_id', 'ref', 'codigo', 'ativo', 'data_inicio', 'data_fim'],
+    ['obra_id', 'ref', 'codigo', 'ativo', 'status_operacional', 'data_inicio', 'data_fim'],
     'Relatorio operacional de contratos'
   );
 
@@ -251,11 +251,17 @@ function validateContratoRelatorioOperacionalQuery(query = {}) {
     throw new ValidationError('Data inicial nao pode ser maior que a data final.');
   }
 
+  const statusOperacional = parseOptionalText(query.status_operacional, 'Status operacional', 30);
+  if (statusOperacional && !['ATIVO', 'TOTALMENTE_MEDIDO', 'CONCLUIDO', 'RESCINDIDO'].includes(statusOperacional)) {
+    throw new ValidationError('Status operacional de contrato invalido.');
+  }
+
   return {
     obra_id: parseInteger(query.obra_id, 'Obra'),
     ref: parseOptionalText(query.ref, 'Referencia', 255),
     codigo: parseOptionalText(query.codigo, 'Codigo', 255),
     ativo: parseBoolean(query.ativo, 'Ativo'),
+    status_operacional: statusOperacional,
     data_inicio: dataInicio,
     data_fim: dataFim
   };

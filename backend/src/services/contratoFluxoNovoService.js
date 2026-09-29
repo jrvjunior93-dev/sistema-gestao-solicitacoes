@@ -1,7 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { sequelize, Anexo, CategoriaFinanceira, Contrato, ContratoAnexo, ContratoParcela, ContratoApropriacao, ContratoCredor, Apropriacao, ConfiguracaoSistema, FormaPagamentoFinanceira, Historico, Obra, Parceiro, Setor, TipoSubContrato, TipoSolicitacao, TituloFinanceiro, User, Solicitacao } = require('../models');
+const { sequelize, Anexo, CategoriaFinanceira, Contrato, ContratoAnexo, ContratoParcela, ContratoApropriacao, ContratoCredor, Apropriacao, ConfiguracaoSistema, FormaPagamentoFinanceira, Historico, MedicaoParcela, Obra, Parceiro, Setor, TipoSubContrato, TipoSolicitacao, TituloFinanceiro, User, Solicitacao } = require('../models');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const {
   normalizeTipoSolicitacaoBehavior,
@@ -23,6 +23,10 @@ const { resolverDestinoInicialNovaSolicitacao } = require('./novaSolicitacaoDest
 const { assertTipoDisponivelNoDestino } = require('./tipoSolicitacaoDisponibilidadeService');
 const gerarCodigoSolicitacao = require('./solicitacao/gerarCodigo');
 const { apropriacaoPodeReceberLancamento } = require('./apropriacaoSelecaoService');
+const {
+  calcularResumoOperacional,
+  contratoFoiRescindido
+} = require('./contratoResumoOperacionalService');
 
 /**
  * Status da parcela enquanto o contrato aguarda aprovacao.
@@ -334,8 +338,10 @@ const STATUS_CONTRATO = {
   // PI-18: o contrato volta ao Juridico com o assinado anexado, e e a CONFERENCIA dele que cria
   // os titulos. Sem este estado, quem colhia a assinatura era quem liberava o dinheiro.
   EM_REVISAO_JURIDICA: 'EM_REVISAO_JURIDICA',
-  // Quebra de contrato (PI-6): saldo zerado, nada mais sera pago do que estava previsto.
-  ENCERRADO: 'ENCERRADO'
+  // `ENCERRADO` permanece aceito para os registros anteriores. Novas quebras usam o termo
+  // operacional definido pelo negocio: RESCINDIDO.
+  ENCERRADO: 'ENCERRADO',
+  RESCINDIDO: 'RESCINDIDO'
 };
 
 // Limite historico, mantido como PADRAO. O valor que vale em tempo de execucao vem da
@@ -365,7 +371,8 @@ const STATUS_SOLICITACAO_POR_CONTRATO = {
   [STATUS_CONTRATO.AGUARDANDO_ASSINATURA]: 'NEC. DE ASSINATURA',
   [STATUS_CONTRATO.EM_REVISAO_JURIDICA]: 'PENDENTE',
   [STATUS_CONTRATO.ATIVO]: 'APROVADA',
-  [STATUS_CONTRATO.ENCERRADO]: 'CONCLUIDA'
+  [STATUS_CONTRATO.ENCERRADO]: 'CONCLUIDA',
+  [STATUS_CONTRATO.RESCINDIDO]: 'CONCLUIDA'
 };
 
 /**
@@ -1240,7 +1247,7 @@ async function cancelarSolicitacaoDoContrato(contratoId, { usuario, motivo } = {
         { statusCode: 409 }
       );
     }
-    if (contrato.status_contrato === STATUS_CONTRATO.ENCERRADO) {
+    if ([STATUS_CONTRATO.ENCERRADO, STATUS_CONTRATO.RESCINDIDO].includes(contrato.status_contrato)) {
       throw Object.assign(new Error('Contrato ja esta encerrado.'), { statusCode: 409 });
     }
 
@@ -1334,7 +1341,7 @@ async function atualizarApropriacoesDoContrato(contratoId, { usuario, req, aprop
     // Depois que os titulos nascem, o rateio DELES ja esta gravado em `titulos_financeiros_rateios`.
     // Mudar a origem sem mudar o destino deixaria contrato e titulo discordando em silencio — que e
     // exatamente a trava que a edicao de apropriacoes da solicitacao ja aplica.
-    if ([STATUS_CONTRATO.ATIVO, STATUS_CONTRATO.ENCERRADO].includes(contrato.status_contrato)) {
+    if ([STATUS_CONTRATO.ATIVO, STATUS_CONTRATO.ENCERRADO, STATUS_CONTRATO.RESCINDIDO].includes(contrato.status_contrato)) {
       throw Object.assign(
         new Error('Contrato ja ATIVO ou ENCERRADO: as apropriacoes nao podem mais ser alteradas, os titulos ja foram rateados.'),
         { statusCode: 409 }
@@ -2741,15 +2748,11 @@ async function tramitarNoJuridico(contratoId, {
 }
 
 /**
- * S5 (PI-6): encerra o contrato — quebra de contrato.
+ * Rescinde contrato legado ou novo.
  *
- * Zera o saldo restante e marca os titulos EM ABERTO como EXCLUIDO: nada mais do que estava
- * previsto sera pago. Diferente da exclusao avulsa de titulo (S4), aqui o valor NAO volta para
- * lugar nenhum — o contrato acabou.
- *
- * Titulo PARCIALMENTE PAGO fecha pelo valor ja pago, que passa a ser o valor oficial: excluir
- * apagaria um pagamento que aconteceu, e deixar em aberto contrariaria o encerramento. So um
- * estorno da baixa reabre. Titulo QUITADO nao e tocado.
+ * A rescisao cancela somente o saldo ainda NAO MEDIDO. Obrigacoes de medicoes ja aprovadas
+ * permanecem exigiveis, mesmo abertas ou parcialmente pagas. Esta separacao evita transformar
+ * uma quebra contratual em estorno de servico que ja foi executado e aprovado.
  */
 async function encerrarContrato(contratoId, { usuario, motivo } = {}) {
   const { userHasStrictAreaPermission } = require('./authorizationService');
@@ -2769,108 +2772,156 @@ async function encerrarContrato(contratoId, { usuario, motivo } = {}) {
 
   return sequelize.transaction(async (transaction) => {
     const contrato = await Contrato.findOne({
-      where: { id: contratoId, fluxo_novo: true },
+      where: { id: contratoId },
       lock: transaction.LOCK.UPDATE,
       transaction
     });
     if (!contrato) {
-      throw Object.assign(new Error('Contrato do fluxo novo nao encontrado.'), { statusCode: 404 });
+      throw Object.assign(new Error('Contrato nao encontrado.'), { statusCode: 404 });
     }
-    if (contrato.status_contrato === STATUS_CONTRATO.ENCERRADO) {
-      throw Object.assign(new Error('Contrato ja esta encerrado.'), { statusCode: 409 });
+    if (contratoFoiRescindido(contrato)) {
+      throw Object.assign(new Error('Contrato ja esta rescindido.'), { statusCode: 409 });
     }
 
-    const parcelas = await ContratoParcela.findAll({
-      where: { contrato_id: contrato.id },
-      // `valor_baixado` e obrigatorio aqui: e ele que vira o valor oficial do titulo
-      // parcialmente pago. Sem trazer a coluna, o valor chegava indefinido e zerava o titulo.
-      include: [{ model: TituloFinanceiro, as: 'titulo', attributes: ['id', 'status', 'valor_baixado'], required: false }],
-      order: [['numero', 'ASC']],
-      transaction
-    });
-
+    const resumoAntes = await calcularResumoOperacional(contrato, { transaction });
+    if (resumoAntes.saldo_contratual <= 0.009) {
+      throw Object.assign(
+        new Error('Contrato sem saldo contratual para rescindir; use o status calculado de totalmente medido ou concluido.'),
+        { statusCode: 409 }
+      );
+    }
     const titulosExcluidos = [];
-    const titulosAjustados = [];
-    let saldoZeradoCent = 0;
+    const titulosPreservados = [];
 
-    for (const parcela of parcelas) {
-      const statusTitulo = parcela.titulo?.status || null;
-
-      // Titulo parcialmente pago: o que foi pago passa a ser o valor OFICIAL do titulo
-      // (regra do cliente, 18/08). Nao se exclui — apagaria um pagamento que aconteceu —
-      // e nao se deixa em aberto — o contrato acabou e nada mais sera pago. O titulo fecha
-      // pelo valor pago; so um estorno da baixa reabre a discussao.
-      if (statusTitulo === 'PARCIAL') {
-        const pagoCent = paraCentavos(parcela.titulo.valor_baixado || 0);
-        const previstoCent = paraCentavos(parcela.valor);
-        saldoZeradoCent += Math.max(previstoCent - pagoCent, 0);
-
-        // eslint-disable-next-line no-await-in-loop
-        await TituloFinanceiro.unscoped().update(
+    if (contrato.fluxo_novo) {
+      const parcelas = await ContratoParcela.findAll({
+        where: { contrato_id: contrato.id },
+        include: [
           {
-            valor_original: pagoCent / 100,
-            valor_bruto: pagoCent / 100,
-            valor_liquido: pagoCent / 100,
-            valor_saldo: 0,
-            status: 'QUITADO',
-            atualizado_por: usuario?.id || null
+            model: TituloFinanceiro.unscoped(),
+            as: 'titulo',
+            attributes: ['id', 'status', 'valor_baixado', 'valor_saldo'],
+            required: false
           },
-          { where: { id: parcela.titulo.id }, transaction }
-        );
-        // eslint-disable-next-line no-await-in-loop
-        await parcela.update(
-          { valor: pagoCent / 100, travada: true, atualizado_por: usuario?.id || null },
-          { transaction }
-        );
-        titulosAjustados.push({ titulo_id: parcela.titulo.id, valor_oficial: pagoCent / 100 });
-        continue;
-      }
-
-      if (statusTitulo === 'QUITADO' || statusTitulo === 'EXCLUIDO') continue;
-
-      saldoZeradoCent += paraCentavos(parcela.valor);
-
-      if (parcela.titulo?.id) {
-        // eslint-disable-next-line no-await-in-loop
-        await TituloFinanceiro.unscoped().update(
           {
+            model: MedicaoParcela,
+            as: 'medicoes',
+            attributes: ['id', 'devolvido_em'],
+            required: false
+          }
+        ],
+        order: [['numero', 'ASC']],
+        lock: transaction.LOCK.UPDATE,
+        transaction
+      });
+
+      for (const parcela of parcelas) {
+        const possuiMedicaoAtiva = (parcela.medicoes || []).some(item => !item.devolvido_em);
+        const titulo = parcela.titulo;
+        const decisaoTitulo = decidirTituloNaRescisao({ titulo, possuiMedicaoAtiva });
+
+        if (decisaoTitulo.preservar) {
+          if (titulo?.id) titulosPreservados.push(titulo.id);
+          // Medicao aprovada e qualquer pagamento real sao fatos historicos: a rescisao nao
+          // apaga nem reduz o titulo que os representa.
+          // eslint-disable-next-line no-await-in-loop
+          await parcela.update({ travada: true, atualizado_por: usuario?.id || null }, { transaction });
+          continue;
+        }
+
+        if (titulo?.id && decisaoTitulo.podeExcluir) {
+          // eslint-disable-next-line no-await-in-loop
+          await TituloFinanceiro.unscoped().update({
             status: 'EXCLUIDO',
             deleted_at: new Date(),
             deleted_by: usuario?.id || null,
-            deleted_reason: `Contrato ${contrato.codigo} encerrado: ${motivoLimpo}`.slice(0, 255),
+            deleted_reason: `Contrato ${contrato.codigo} rescindido: ${motivoLimpo}`.slice(0, 255),
             atualizado_por: usuario?.id || null
-          },
-          { where: { id: parcela.titulo.id }, transaction }
-        );
-        titulosExcluidos.push(parcela.titulo.id);
-      }
+          }, { where: { id: titulo.id }, transaction });
+          titulosExcluidos.push(titulo.id);
+        }
 
-      // eslint-disable-next-line no-await-in-loop
-      await parcela.update(
-        { valor: 0, status: STATUS_PARCELA.REJEITADA, travada: true, atualizado_por: usuario?.id || null },
-        { transaction }
-      );
+        // Previsao sem medicao deixa de compor o compromisso futuro.
+        // eslint-disable-next-line no-await-in-loop
+        await parcela.update({
+          valor: 0,
+          status: STATUS_PARCELA.REJEITADA,
+          travada: true,
+          atualizado_por: usuario?.id || null
+        }, { transaction });
+      }
+    } else {
+      // No legado cada medicao e uma solicitacao independente. Nao se altera nenhuma delas nem
+      // seus titulos: o ato de rescisao cancela o saldo contratual ainda nao medido, nao dividas.
+      const solicitacoes = await Solicitacao.findAll({
+        where: { contrato_id: contrato.id },
+        attributes: ['id'],
+        include: [{
+          model: TituloFinanceiro.unscoped(),
+          as: 'titulosFinanceiros',
+          attributes: ['id'],
+          required: false
+        }],
+        transaction
+      });
+      for (const solicitacao of solicitacoes) {
+        for (const titulo of solicitacao.titulosFinanceiros || []) titulosPreservados.push(titulo.id);
+        // Historico sem alterar o estado financeiro/operacional da medicao.
+        // eslint-disable-next-line no-await-in-loop
+        await Historico.create({
+          solicitacao_id: solicitacao.id,
+          usuario_responsavel_id: usuario?.id || null,
+          acao: 'CONTRATO_RESCINDIDO',
+          descricao: `Contrato ${contrato.codigo} rescindido. Obrigacoes ja medidas foram preservadas.`,
+          metadata: JSON.stringify({ contrato_id: contrato.id, motivo: motivoLimpo })
+        }, { transaction });
+      }
     }
 
     await contrato.update(
-      { status_contrato: STATUS_CONTRATO.ENCERRADO, ativo: false },
+      {
+        status_contrato: STATUS_CONTRATO.RESCINDIDO,
+        ativo: false,
+        rescindido_em: new Date(),
+        rescindido_por: usuario?.id || null,
+        motivo_rescisao: motivoLimpo,
+        saldo_rescindido: resumoAntes.saldo_contratual
+      },
       { transaction }
     );
-    await espelharERegistrar(contrato, {
-      acao: 'CONTRATO_ENCERRADO',
-      descricao: `Contrato ${contrato.codigo} encerrado.`,
-      usuario,
-      metadata: { contrato_id: contrato.id }
-    }, transaction);
+    if (contrato.solicitacao_id) {
+      await espelharERegistrar(contrato, {
+        acao: 'CONTRATO_RESCINDIDO',
+        descricao: `Contrato ${contrato.codigo} rescindido. Obrigacoes ja medidas foram preservadas.`,
+        usuario,
+        metadata: {
+          contrato_id: contrato.id,
+          saldo_rescindido: resumoAntes.saldo_contratual,
+          titulos_preservados: titulosPreservados.length
+        }
+      }, transaction);
+    }
 
     return {
-      contrato: { id: contrato.id, codigo: contrato.codigo, status_contrato: STATUS_CONTRATO.ENCERRADO },
-      saldo_zerado: saldoZeradoCent / 100,
+      contrato: { id: contrato.id, codigo: contrato.codigo, status_contrato: STATUS_CONTRATO.RESCINDIDO },
+      saldo_rescindido: resumoAntes.saldo_contratual,
       titulos_excluidos: titulosExcluidos,
-      // Parcialmente pagos fecharam pelo valor pago — quem encerra precisa ver quais e por quanto.
-      titulos_ajustados_ao_valor_pago: titulosAjustados
+      titulos_preservados: titulosPreservados
     };
   });
+}
+
+function decidirTituloNaRescisao({ titulo, possuiMedicaoAtiva = false } = {}) {
+  const statusTitulo = String(titulo?.status || '').toUpperCase();
+  const possuiMovimentoFinanceiro = paraCentavos(titulo?.valor_baixado || 0) > 0
+    || ['QUITADO', 'BAIXADO', 'PAGO', 'PAGA', 'CONCILIADO'].includes(statusTitulo);
+  const preservar = Boolean(possuiMedicaoAtiva || possuiMovimentoFinanceiro);
+
+  return {
+    preservar,
+    possuiMovimentoFinanceiro,
+    podeExcluir: Boolean(titulo?.id) && !preservar && !['QUITADO', 'EXCLUIDO'].includes(statusTitulo)
+  };
 }
 
 module.exports = {
@@ -2893,5 +2944,6 @@ module.exports = {
   listarParcelasDoContrato,
   STATUS_PARCELA,
   STATUS_CONTRATO,
+  decidirTituloNaRescisao,
   LIMITE_APROVACAO
 };

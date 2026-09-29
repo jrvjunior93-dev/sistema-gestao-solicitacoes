@@ -166,7 +166,7 @@ async function calcularSaldoDoContrato(contratoId, transaction) {
   // `valor_total` continua sendo o contratado — entao a tela seguia exibindo "Saldo: R$ 1.000" num
   // contrato que nao vai receber mais nada. Contratado e comprometido continuam reais, para o
   // relatorio; o que zera e o que ainda se pode gastar.
-  const encerrado = contrato.status_contrato === 'ENCERRADO' || contrato.ativo === false;
+  const encerrado = ['ENCERRADO', 'RESCINDIDO'].includes(contrato.status_contrato) || contrato.ativo === false;
   const saldoCent = encerrado ? 0 : totalCent - comprometidoCent;
 
   return {

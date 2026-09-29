@@ -46,6 +46,7 @@ import RhDpFechamentos from './RhDpFechamentos';
 import RhDpEventosRecorrentes from './RhDpEventosRecorrentes';
 import {
   canViewRhDpApuracao,
+  canViewRhDpEventosRecorrentes,
   canViewRhDpObrigacoes,
   hasAnyExplicitPermissao,
   hasEnabledModule,
@@ -395,6 +396,7 @@ export default function RhDpPessoal() {
   */
   const [parametros, setParametros] = useSearchParams();
   const podeVerApuracao = canViewRhDpApuracao(user);
+  const podeVerEventosRecorrentes = canViewRhDpEventosRecorrentes(user);
   const podeVerFechamentos = canViewRhDpObrigacoes(user) && hasEnabledModule(user, 'FINANCEIRO');
   const usuarioDoDp = userBelongsToDpSetor(user);
   /*
@@ -417,7 +419,7 @@ export default function RhDpPessoal() {
       apoio: 'Quem está na obra hoje, com o que cada um tem em curso.'
     },
     { id: 'transferencias', rotulo: 'Transferências entre obras', apoio: 'Consulta global e transferências aprovadas pelos responsáveis das obras, sem passar pelo DP.' },
-    ...(usuarioDoDp || usuarioOperacionalDaObra ? [{
+    ...(podeVerEventosRecorrentes ? [{
       id: 'eventos-recorrentes',
       rotulo: 'Eventos recorrentes',
       apoio: usuarioDoDp
@@ -439,7 +441,7 @@ export default function RhDpPessoal() {
       rotulo: 'Fechamentos',
       apoio: 'Competências encerradas e títulos financeiros gerados a partir das apurações.'
     }] : [])
-  ], [podeVerApuracao, podeVerFechamentos, usuarioDoDp, usuarioOperacionalDaObra]);
+  ], [podeVerApuracao, podeVerEventosRecorrentes, podeVerFechamentos, usuarioDoDp]);
   const abasDisponiveis = useMemo(() => ABAS.map((aba) => aba.id), [ABAS]);
   const abaDaUrl = parametros.get('aba');
   const abaAtiva = abasDisponiveis.includes(abaDaUrl) ? abaDaUrl : 'solicitacoes';
@@ -1357,7 +1359,7 @@ export default function RhDpPessoal() {
       {abaAtiva === 'transferencias' ? <RhDpTransferencias
         onNotificacoesLidas={limparNotificacoesTransferencia}
       /> : null}
-      {abaAtiva === 'eventos-recorrentes' && (usuarioDoDp || usuarioOperacionalDaObra) ? (
+      {abaAtiva === 'eventos-recorrentes' && podeVerEventosRecorrentes ? (
         <RhDpEventosRecorrentes
           podeDecidir={usuarioDoDp && podeDecidir}
           somenteLeitura={!usuarioDoDp}

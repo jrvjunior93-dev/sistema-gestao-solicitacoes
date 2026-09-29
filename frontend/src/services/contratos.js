@@ -31,6 +31,7 @@ export async function getContratosRelatorioOperacional({
   ref,
   codigo,
   ativo,
+  status_operacional,
   data_inicio,
   data_fim
 } = {}) {
@@ -39,6 +40,7 @@ export async function getContratosRelatorioOperacional({
   if (ref) search.set('ref', ref);
   if (codigo) search.set('codigo', codigo);
   if (ativo !== undefined && ativo !== '') search.set('ativo', ativo);
+  if (status_operacional) search.set('status_operacional', status_operacional);
   if (data_inicio) search.set('data_inicio', data_inicio);
   if (data_fim) search.set('data_fim', data_fim);
   const params = search.toString() ? `?${search.toString()}` : '';
@@ -274,6 +276,15 @@ export async function getContratoParcelas(id) {
   return json;
 }
 
+export async function getContratoDetalheOperacional(id) {
+  const res = await fetch(`${API_URL}/contratos/${id}/detalhe-operacional`, {
+    headers: authHeaders()
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error || 'Erro ao buscar o detalhe operacional do contrato');
+  return json;
+}
+
 // Formas curadas pelo superadmin para os fluxos de solicitacao, contrato e medicao. O endpoint
 // conserva o nome legado para manter compatibilidade; o cadastro financeiro continua sendo a fonte.
 export async function getFormasPagamentoFluxos() {
@@ -372,13 +383,17 @@ export async function criarContratoFluxoNovo(data, { idempotencyKey } = {}) {
 }
 
 export async function encerrarContratoFluxoNovo(id, motivo) {
-  const res = await fetch(`${API_URL}/contratos/fluxo-novo/${id}/encerrar`, {
+  return rescindirContrato(id, motivo);
+}
+
+export async function rescindirContrato(id, motivo) {
+  const res = await fetch(`${API_URL}/contratos/${id}/rescindir`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ motivo })
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json?.error || 'Erro ao encerrar contrato');
+  if (!res.ok) throw new Error(json?.error || 'Erro ao rescindir contrato');
   return json;
 }
 

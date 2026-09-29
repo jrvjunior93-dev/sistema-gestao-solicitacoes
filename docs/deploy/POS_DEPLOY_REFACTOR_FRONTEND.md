@@ -9,19 +9,25 @@ Guia operacional para comparar a produção atual (`main`) com a linha de homolo
 
 ## 1. Fotografia usada nesta revisão
 
-Documento atualizado em **14/09/2026** com as referências remotas disponíveis naquele
+Documento atualizado em **28/09/2026** com as referências remotas disponíveis naquele
 momento:
 
 | Referência | Commit |
 |---|---|
 | Base comum entre `main` e `refactor/frontend` | `6e62031018c82bd4f6e539a9829c64d098243dd6` |
-| Alvo revisado de `refactor/frontend` | `0f264e61` — `feat: adicionar abas internas de navegacao` |
-| Intervalo auditado | `6e620310..0f264e61` |
+| `main` observada na revisão | `6346726c` — `feat(main): adicionar consulta de apropriacoes em modal` |
+| Alvo revisado de `refactor/frontend` | `6de5e234` — `Ajusta cadastro rapido de favorecido` |
+| Intervalo auditado | `6e620310..6de5e234` |
 
-No intervalo existem **387 commits** e **950 arquivos alterados**: 520 adicionados,
-383 modificados e 47 removidos, com aproximadamente 216 mil inserções e 59 mil
+No intervalo existem **505 commits** e **1.225 arquivos alterados**: 734 adicionados,
+444 modificados e 47 removidos, com aproximadamente 256 mil inserções e 61 mil
 remoções. Esses números incluem a transformação ampla do frontend, testes e
-documentação; não representam 950 funcionalidades independentes.
+documentação; não representam 1.225 funcionalidades independentes.
+
+As branches estão divergentes: na fotografia acima, `main` possui **47 commits** após a
+base comum e `refactor/frontend` possui **505**. A promoção deve integrar e validar os dois
+lados; não presuma que substituir `main` pelo histórico da refatoração preservará os
+hotfixes já publicados.
 
 Antes do deploy, atualize as referências e confira se a fotografia ainda é válida:
 
@@ -34,7 +40,7 @@ git log --oneline --reverse origin/main..origin/refactor/frontend
 git diff --stat origin/main..origin/refactor/frontend
 ```
 
-Se o commit de destino não for mais `0f264e61`, revise os commits posteriores e registre
+Se o commit de destino não for mais `6de5e234`, revise os commits posteriores e registre
 o novo SHA neste documento antes de promover.
 
 ## 2. Resumo executivo: produção atual versus novo comportamento
@@ -47,7 +53,10 @@ o novo SHA neste documento antes de promover.
 | Contratos e medições | Fluxos parciais/legados | Contrato operacional com parcelas, aditivos, jurídico, medições e auditoria | Configurar tipos, categorias, limites, responsáveis e permissões |
 | Compras | Gestão parcial dos itens e financeiro do pedido | Catalogação, unidade, apropriação, cotação e previsão parcelada integradas | Validar catálogo, permissões de Compras e fluxo GEO → Compras |
 | Financeiro | Criação e baixa pelos fluxos já existentes | Favorecido por título, PIX, fila manual e tratamento de divergências | Separar perfis de preparação, baixa e aprovação de divergência |
-| RH/DP | Cadastros e rotinas anteriores | Solicitações de pessoal, vínculos, documentos, salários, jornada e eventos | Configurar permissões e treinar DP, gestores e Obras |
+| Caixas e Contas | Abertura e fechamento sem a conferência operacional completa | Saldo contado, divergências, movimentos e aprovação segregada | Configurar contas controladas e as sete permissões granulares |
+| RH/DP | Cadastros e rotinas anteriores | Solicitações, jornadas multiobra, apuração, eventos recorrentes e lotes de ticket | Configurar permissões e treinar DP, gestores e Obras |
+| Painel do Gestor | Indicadores distribuídos em relatórios independentes | Resultado de Obras, Custos e Recebíveis e saldos diários no mesmo painel | Liberar abas e escopo por permissão; cadastrar contas manuais |
+| Apropriações | Exibição fixa e importação sem escolha do nível por obra | Nível de etapa, serviço ou subserviço configurável por obra | Revisar nível e etapas macro antes de reimportar planilhas |
 | Comercial | Contrato/venda sem o novo fluxo de importação multiunidade | Importação do legado comercial e contratos multiunidade | Liberar permissão apenas para operadores responsáveis |
 | Preferências | Parte das escolhas ficava no navegador ou não existia | Filtros, colunas, larguras e blocos persistidos por usuário no banco | Explicar personalização e como restaurar a visualização |
 
@@ -215,10 +224,17 @@ de status, não do botão de aprovação.
 
 - CPF/CNPJ de credor e favorecido têm validação e normalização;
 - tipos autorizados podem oferecer cadastro rápido de novo credor;
+- busca e cadastro rápido de credor/favorecido usam ações compactas no próprio campo, sem
+  alterar as permissões ou o modal de cadastro;
 - a chave PIX informada na solicitação é reaproveitada na criação do título;
+- favorecido, chave PIX, boleto e dados livres de pagamento informados na abertura seguem
+  vinculados aos títulos da solicitação e ficam disponíveis na Fila de Pagamentos;
 - tipos configurados com o campo Forma de pagamento aplicam a regra de anexo:
   - `BOLETO`: anexo visível e opcional;
-  - demais formas: anexo obrigatório, com indicação visual e validação no envio;
+  - `PIX`: usa favorecido e chave PIX;
+  - demais formas: habilitam **Dados para pagamento**, conforme a configuração do tipo;
+- a resolução dos campos usa o setor inicial da solicitação e também funciona quando o
+  tipo é definido automaticamente por um Centro de Custo;
 - o rótulo geral passou a ser **Valor**; o texto auxiliar que vinculava visualmente valor e
   apropriação foi removido;
 - data e finalidade são exibidas conforme o comportamento configurado do tipo.
@@ -242,6 +258,11 @@ Para funcionar em produção:
 
 O detalhe passa a mostrar e permitir manutenção das apropriações da Despesa Eventual para
 quem tem autorização.
+
+O fluxo deixou de depender do nome fixo `DESPESA EVENTUAL`: qualquer tipo ativo com
+`usa_fluxo_despesa_eventual` passa a aparecer nas configurações de campos e obedece às
+formas de pagamento configuradas. Antes do deploy, confirme que não restou um tipo legado
+duplicado apenas pelo nome.
 
 ### 4.6 Recarga de Cartão
 
@@ -269,6 +290,28 @@ Configurar em produção:
 - tipo de solicitação e campos necessários;
 - destino/status em Aprovação por Tipo;
 - permissões financeiras e de solicitação dos participantes.
+
+### 4.7 Centros de Custo e destinação gerencial por Obra
+
+Solicitações abertas por Centro de Custo podem classificar gerencialmente o gasto entre
+Obras por percentual ou valor financeiro. Essa classificação alimenta o relatório próprio
+do Centro de Custo e **não lança custo no resultado financeiro das Obras**.
+
+- `TODAS` mantém o valor integral nessa classificação, sem rateio;
+- ao selecionar várias Obras, o sistema sugere divisão igual e permite editar cada linha;
+- Marketing e Comercial listam todas as Obras privadas;
+- os demais Centros de Custo e usuários do setor Obra veem apenas Obras vinculadas ao
+  usuário;
+- Marketing usa `DESPESA DE MARKETING`, Comercial usa `DESPESA COMERCIAL` e
+  Administrativo/Escritório usa `DESPESA ADMINISTRATIVA` como tipos automáticos;
+- o tipo automático fica oculto no formulário e o Subtipo só aparece quando houver opção
+  cadastrada;
+- esses tipos continuam sendo cadastros normais de **Tipos de Solicitação**, permitindo
+  campos, subtipos, aprovação e auditoria.
+
+Após configurar os três tipos, valide uma solicitação em `TODAS`, uma divisão percentual e
+uma divisão financeira. Confirme que o relatório do Centro de Custo recebe a classificação
+e que o custo da Obra não foi alterado.
 
 ## 5. Contratos e medições
 
@@ -380,6 +423,18 @@ porque a manutenção acontece por item no Gerenciar itens.
 Revisar também as permissões existentes `compras.solicitacoes.encaminhar_compras` e
 `compras.solicitacoes.editar_itens`, cujas telas e responsabilidades ficaram mais claras.
 
+### 6.6 Recebimento, entrega, devolução e frete
+
+- itens seguem etapas no detalhe da solicitação e podem ser aprovados em lote;
+- rejeitados podem ser reaproveitados com rastreabilidade;
+- comentários do item permanecem entre as etapas e respeitam a leitura por setor;
+- entregas são acompanhadas por fornecedor, com confirmação e cobrança de reprogramação;
+- compra direta registra forma de pagamento, comprovantes e frete por item;
+- devoluções de solicitações preservam o fluxo operacional e financeiro já criado.
+
+Inclua no smoke um pedido com entrega parcial/reprogramada e uma Compra Direta com frete
+distribuído entre itens.
+
 ## 7. Financeiro
 
 ### 7.1 Criação de títulos
@@ -458,18 +513,81 @@ Foi aplicada uma correção isolada no alerta de estorno bancário:
 
 Essa correção entrou no commit `ae0f32ed` e deve ser incluída no smoke de conciliação.
 
+Transferências OFX retroativas passam a conciliar as duas pontas mesmo quando a data
+operacional não coincide com o dia da importação. Contas a Receber também admite baixa
+multifonte, preservando a composição e a rastreabilidade de cada origem.
+
+### 7.5 Caixas e Contas
+
+O controle diário passa a confrontar abertura, movimentos e fechamento:
+
+1. na abertura, o usuário informa o saldo contado; o sistema compara com o fechamento
+   anterior;
+2. divergência de abertura exige justificativa e segue para auditoria operacional;
+3. entradas e saídas manuais ajustam o saldo; saída exige comprovante;
+4. no fechamento, o campo **Saldo contado** inicia vazio e deve ser preenchido pelo
+   operador;
+5. diferença entre saldo contado e saldo esperado exige justificativa ou o lançamento da
+   entrada/saída correspondente antes do fechamento;
+6. outro usuário, com permissão específica, decide a divergência; o solicitante não aprova
+   a própria ocorrência.
+
+Contas marcadas para controle de abertura/fechamento alimentam automaticamente o saldo do
+Painel do Gestor. As demais contas continuam com saldo diário informado manualmente.
+
+Permissões obrigatoriamente revisadas no frontend e no backend:
+
+- `financeiro.caixas.visualizar`;
+- `financeiro.caixas.confirmar_conciliacao`;
+- `financeiro.caixas.abrir`;
+- `financeiro.caixas.movimentar`;
+- `financeiro.caixas.estornar`;
+- `financeiro.caixas.fechar`;
+- `financeiro.caixas.decidir_divergencia`.
+
+### 7.6 Negociação e status operacional
+
+- títulos podem ser parcelados/renegociados com rastreabilidade e proteção estrutural por
+  triggers;
+- a Fila de Pagamentos integra os dados da solicitação, comprovantes e status internos do
+  Contas a Pagar;
+- compras diretas preservam forma de pagamento, frete por item, favorecido e comprovantes
+  nos títulos gerados;
+- a ação de negociação exige `financeiro.titulos.renegociar`.
+
 ## 8. RH/DP
 
 O conjunto novo inclui:
 
-- vínculo do colaborador com Obra/Centro de Custo e histórico de movimentação;
-- solicitações de admissão, movimentação, demissão e alteração salarial;
-- rascunho, anexos, envio, decisão do DP e histórico;
+- vínculo do colaborador com empresa, Obra/Centro de Custo, cargo, regime de cálculo e
+  histórico de movimentação;
+- mensalistas com salário bruto e regra 40%/60%; diaristas, inclusive CLT marcado por
+  diária, usam o valor diário cadastrado e os dias efetivamente informados;
+- solicitações de admissão, movimentação, demissão, retorno de afastamento e alteração
+  salarial/função;
+- retorno de afastamento exige ciência do DP e altera formalmente o colaborador para
+  `ATIVO`;
+- rascunho, anexos, envio, decisão do DP, leitura e histórico;
 - catálogo de cargos e exigências documentais;
 - validação de anexos/documentos;
 - histórico salarial e aprovação específica;
-- eventos recorrentes e adicionais por período;
-- jornada por obra e período, com controle de edição;
+- eventos recorrentes com competência `MM-AAAA`, parcelas editáveis, cancelamento e aba de
+  gestão visível somente ao DP;
+- pensão alimentícia com dados bancários do beneficiário e desconto no título de 60%;
+- jornada por Obra e período com colaborador, empresa, cargo, dias trabalhados, faltas
+  informativas, acréscimos, descontos, décimo terceiro e observação;
+- mensalista calcula salário do período + acréscimos - descontos; diarista calcula dias ×
+  diária + acréscimos - descontos, sem descontar faltas automaticamente;
+- acréscimo ou desconto de mensalista exige observação;
+- empreitada registra serviço, valor e anexos opcionais;
+- jornadas do mesmo colaborador em mais de uma Obra geram alerta ao DP e podem ser
+  consolidadas em uma apuração e um único título;
+- se as Obras tiverem responsáveis diferentes, toda a jornada depende das aprovações; uma
+  rejeição devolve o conjunto para correção;
+- ticket possui valor no cadastro, controle de pago/não pago e geração de lote por seleção;
+  o lote cria solicitação para o GEO e título financeiro rateado pela lotação;
+- fechamentos, apurações, comprovantes, jornadas enviadas e dossiê do colaborador;
+- importação de jornadas por planilha e massa de dados protegida para testes em dev;
 - limitação do gestor da Obra aos colaboradores vinculados ao seu escopo;
 - pesquisa de obra de destino por autocomplete.
 
@@ -480,10 +598,13 @@ Permissões novas:
 - `rh_dp.solicitacoes.decidir`
 - `rh_dp.solicitacoes.ver_todas`
 - `rh_dp.salario.aprovar`
+- `rh_dp.ticket.gerar`
 
 Antes de liberar, cadastre cargos, exigências documentais e responsáveis. Treine o gestor
 para salvar rascunho e enviar formalmente; treine o DP para conferir anexos, decidir,
-registrar movimentações e manter salário/jornada.
+registrar movimentações, consolidar jornadas, revisar apurações e gerar lotes de ticket.
+O script `dados-dev:rhdp-pessoal:*` é exclusivo de desenvolvimento e exige host/nome do
+banco permitidos; nunca execute a variante de escrita em produção.
 
 ## 9. Comercial, Custos e Recebíveis
 
@@ -500,8 +621,49 @@ registrar movimentações e manter salário/jornada.
 ### Custos e Recebíveis
 
 - custos planejados foram generalizados além do recorte exclusivo de Obras;
+- cards mensais mostram planejamento, realizado, recebíveis e estado da competência;
+- filtros, atalhos e reabertura mensal foram alinhados ao escopo da Obra;
 - telas, tabelas e filtros receberam o mesmo padrão responsivo e de preferências;
 - validar relatórios por Obra, Centro de Custo e período após a promoção.
+
+### Resultado de Obras e cadastro de Obras
+
+- o Resultado de Obras separa orçamento, volume financeiro, executado, recebido, falta
+  receber e lucro/prejuízo, respeitando classificação e período;
+- importações históricas confirmadas passam a compor o resultado;
+- o relatório pode gerar PDF com os filtros aplicados;
+- o cadastro de Obras volta a usar cards e exibe os mesmos indicadores essenciais do
+  relatório;
+- VGV privado usa o valor base das unidades; orçamento considera somente apropriações
+  analíticas;
+- a nomenclatura e os valores consolidados mudam com a classificação pública/privada.
+
+### Painel do Gestor
+
+O Painel do Gestor possui três visões controladas por permissão:
+
+1. **Resultado de Obras**, com Obra pesquisável, período, classificação e limpeza de
+   filtros;
+2. **Custos e Recebíveis**, com planejamento mensal por Obra e o mesmo padrão visual dos
+   cards de resultado;
+3. **Saldos e Contas**, com saldo consolidado do dia, detalhe expansível por conta e tela
+   própria para informar os saldos manuais.
+
+Saldo não informado no dia não é transportado nem entra no consolidado. Contas com
+controle diário usam o fechamento do sistema; as demais dependem do lançamento manual.
+Revisar `painel_gestor.acessar`, as três permissões de visualização, o escopo de todas as
+Obras e as permissões de informar/corrigir saldo.
+
+### Apropriações por Obra
+
+- cada Obra define se os formulários exibem Etapa, Serviço ou Subserviço;
+- a importação informa o nível atual, permite alterá-lo e mostra uma prévia do resultado;
+- etapas macro podem vir pré-marcadas para confirmação do usuário;
+- a consulta por lupa lista as apropriações da Obra com rolagem vertical e horizontal;
+- código e nome aparecem juntos para diferenciar descrições repetidas;
+- Custos e Recebíveis mantém sua tabela e regra próprias; a configuração afeta os demais
+  formulários;
+- as Obras 109 e 110 exigiram ajuste específico das etapas macro antes da reimportação.
 
 ### Demais módulos alcançados pela reforma visual
 
@@ -541,16 +703,33 @@ contratos.geral.encerrar
 contratos.juridico.tramitar
 contratos.medicao.editar_valor
 contratos.solicitacao.cancelar
+financeiro.caixas.abrir
+financeiro.caixas.confirmar_conciliacao
+financeiro.caixas.decidir_divergencia
+financeiro.caixas.estornar
+financeiro.caixas.fechar
+financeiro.caixas.movimentar
+financeiro.caixas.visualizar
 financeiro.fila_pagamentos.baixar
+financeiro.fila_pagamentos.importar_comprovantes
 financeiro.fila_pagamentos.preparar
 financeiro.fila_pagamentos.reportar
 financeiro.fila_pagamentos.resolver
 financeiro.fila_pagamentos.visualizar
+financeiro.titulos.renegociar
+painel_gestor.acessar
+painel_gestor.custos_recebiveis.visualizar
+painel_gestor.escopo.todas_obras
+painel_gestor.resultado_obras.visualizar
+painel_gestor.saldos.corrigir
+painel_gestor.saldos.informar
+painel_gestor.saldos.visualizar
 rh_dp.salario.aprovar
 rh_dp.solicitacoes.abrir
 rh_dp.solicitacoes.anexar
 rh_dp.solicitacoes.decidir
 rh_dp.solicitacoes.ver_todas
+rh_dp.ticket.gerar
 solicitacoes.retorno.decidir
 solicitacoes.retorno.solicitar
 ```
@@ -563,7 +742,7 @@ sessão que ainda carrega a fotografia anterior.
 
 ## 11. Migrations estruturais pendentes no delta
 
-Há **53 migrations JavaScript** adicionadas entre a base comum e o alvo revisado:
+Há **79 migrations JavaScript** adicionadas entre a base comum e o alvo revisado:
 
 ```text
 202608160050_obra_tipo_apropriacao_padrao.js
@@ -619,7 +798,38 @@ Há **53 migrations JavaScript** adicionadas entre a base comum e o alvo revisad
 202609100050_titulo_favorecido_pagamento.js
 202609100051_fila_pagamentos_manuais.js
 202609140001_cartao_recarga_classificacao_financeira.js
+202609140002_fila_pagamentos_comprovantes_pdf.js
+202609150001_comercial_unidade_exclusao_logica.js
+202609150002_cheques_ciclo_compensacao.js
+202609170001_solicitacao_atencao_usuario.js
+202609170002_compra_decisao_recebimento_itens.js
+202609180001_pedidos_acompanhamento_entrega.js
+202609180002_titulos_renegociacao.js
+202609180003_rh_solicitacoes_leituras.js
+202609180004_titulo_status_interno_pagar.js
+202609180005_compra_direta_frete_pagamento.js
+202609180006_fila_pagamentos_multiplos_comprovantes.js
+202609180007_titulos_favorecido_compra_direta.js
+202609190001_solicitacao_compra_comentario_leituras.js
+202609200001_controle_diario_contas_divergencias.js
+202609220001_compra_direta_frete_por_item.js
+202609230001_apropriacoes_macros_formularios.js
+202609230002_obras_nivel_apropriacao_formulario.js
+202609240001_corrigir_obras_nivel_apropriacao_formulario.js
+202609240001_painel_gestor_saldos_diarios.js
+202609240002_rh_dp_regras_pagamento_pessoal.js
+202609240003_rh_eventos_parcelas_editaveis.js
+202609240004_subtipos_multiplos_tipos_solicitacao.js
+202609240005_solicitacao_dados_pagamento.js
+202609240006_movimentos_caixa_comprovante.js
+202609250001_rh_ticket_beneficio_e_lotes.js
+202609250002_solicitacao_centro_custo_distribuicoes.js
 ```
+
+Existem dois arquivos com o prefixo `202609240001`; o runner controla o nome completo do
+arquivo. Não renomeie, não marque manualmente como executado e não aplique apenas parte da
+lista. As correções posteriores das migrations de nível de apropriação, regras de pagamento
+e ticket adaptam o código ao executor protegido, mas não substituem o preflight.
 
 Depois da migration, complete **Empresa responsável** e **Categoria financeira** em todos
 os cartões existentes antes de liberar novas recargas. Ciclos antigos continuam
@@ -853,6 +1063,8 @@ de desenvolvimento para produção.
 
 - [ ] congelar alterações na branch de destino;
 - [ ] registrar SHA atual de `main` e SHA exato que será promovido;
+- [ ] reconciliar os commits exclusivos de `main` com a branch de release e resolver
+  conflitos antes da janela;
 - [ ] revisar `git log` e `git diff` do intervalo final;
 - [ ] gerar backup verificável do MySQL;
 - [ ] confirmar espaço, saúde do PM2, Nginx, S3 e Vercel;
@@ -883,6 +1095,14 @@ npm run test:compra-unidade-item
 npm run test:despesa-eventual
 npm run test:recarga-cartao
 npm run test:pedido-financeiro-geo
+npm run test:caixa-fisico
+npm run test:painel-gestor
+npm run test:importacao-apropriacoes
+npm run test:obra-apropriacoes-padrao
+npm run test:obra-gestao-apropriacoes
+npm run test:rhdp-regras-pagamento
+npm run test:rhdp-eventos-recorrentes
+npm run test:rhdp-jornada-periodos
 pm2 restart backend-solicitacoes --update-env
 pm2 status
 pm2 logs backend-solicitacoes --lines 100
@@ -918,7 +1138,7 @@ ação:
 1. **Setores e Status por Setor** — confirme códigos, capacidades e status ativos.
 2. **Permissões de Áreas por Usuário** — atribua apenas as novas ações necessárias.
 3. **Tipos e Subtipos** — revise comportamentos de Contrato, Medição, Despesa Eventual,
-   Recarga e Solicitação de Compra.
+   Recarga, Solicitação de Compra e os tipos automáticos dos Centros de Custo.
 4. **Tipos por Obra/Centro de Custo** — defina o catálogo de abertura.
 5. **Campos da Nova Solicitação** — visibilidade e obrigatoriedade por tipo.
 6. **Formas da Nova Solicitação** — opções de pagamento oferecidas.
@@ -928,9 +1148,13 @@ ação:
 9. **Ação Principal, Atalhos e Layout por Setor** — organize o detalhe operacional.
 10. **Contratos** — categorias, alertas/limites, responsáveis e documentação.
 11. **Cartões de Recarga** — cartões e usuários autorizados.
-12. **RH/DP** — cargos, documentos exigidos e responsáveis.
-13. **Compras** — catálogo/unidades e permissões financeiras do pedido.
-14. **Fila de Pagamentos** — separar quem prepara, quem baixa e quem resolve divergência.
+12. **Obras e Apropriações** — nível exibido, etapas macro e conferência das importações.
+13. **Painel do Gestor** — acessos, abas, escopo e contas de saldo manual.
+14. **Caixas e Contas** — contas controladas, conciliação e segregação para divergências.
+15. **RH/DP** — cargos, documentos, empresas, regimes de cálculo, ticket e responsáveis.
+16. **Compras** — catálogo/unidades e permissões financeiras do pedido.
+17. **Fila de Pagamentos** — separar quem prepara, quem baixa, importa comprovante e resolve
+    divergência.
 
 Não configure usuários para teste rápido em produção e não habilite as variáveis exclusivas
 de desenvolvimento no processo `backend-solicitacoes`.
@@ -945,17 +1169,21 @@ Registre em evidência a configuração final de cada item e o responsável pela
 | Navegação | Abrir, alternar e fechar aba interna | Limite/rolagem com várias abas |
 | Modal | Abrir modal com autocomplete | Zoom 150% sem corte de conteúdo/ação |
 | Solicitação | Criar tipo configurado e chegar ao GEO | Anexo obrigatório fora de Boleto |
+| Centro de Custo | Classificar gasto por Obra sem alterar custo da Obra | `TODAS` permanece sem rateio |
 | Aprovação por Tipo | Aprovar e chegar ao setor/status configurados | Regra incompleta não pode ser salva/usada |
+| Apropriações | Importar e consultar no nível configurado da Obra | Trocar nível na prévia sem corromper hierarquia |
 | Compra | Item oficial + item manual + unidade + apropriação | Registro legado mostra tratamento claro |
 | Cotação | Total por quantidade solicitada | Quantidade disponível diferente não altera total |
 | Pedido | Gerar parcelas, confirmar fornecedor e liberar | Solicitar/revisar reabertura |
 | Criar Título | Um título e múltiplos títulos com favorecido/PIX | PIX editado e soma das formas inválida |
 | Fila | Enviar, preencher e baixar individual/em massa | Parcial/maior exige justificativa e autorização |
 | Conciliação | Conciliar lançamento comum | Estorno com match mantém atalhos; taxa é lançável |
+| Caixas e Contas | Abrir, movimentar e fechar com saldo contado | Divergência exige justificativa e outro aprovador |
+| Painel do Gestor | Validar as três abas e os filtros | Conta sem saldo no dia não entra no consolidado |
 | Contrato | Criar contrato e parcelas | Tramitação jurídica/aditivo/rejeição |
 | Medição | Selecionar contrato e parcela | Parcela comprometida respeita bloqueio |
 | Recarga | Aprovar, abrir título, baixar e prestar contas | Baixa parcial/divergente e retorno ao setor |
-| RH/DP | Abrir, anexar, enviar e decidir solicitação | Gestor de Obra não acessa colaborador fora do vínculo |
+| RH/DP | Jornada mensalista, diarista, multiobra e lote de ticket | Rejeição de uma Obra devolve toda a jornada |
 | Comercial | Consultar contrato multiunidade | Importação inválida não grava parcialmente |
 
 Além do caminho feliz, confira auditoria, histórico, notificação e proteção contra duplo
@@ -1010,6 +1238,13 @@ clique nas ações que criam ou movimentam registros.
 - reabrir sem apagar a justificativa original;
 - acompanhar reflexo em Contas a Pagar.
 
+### Financeiro — Caixas e Contas
+
+- informar saldo contado na abertura e no fechamento;
+- registrar entrada/saída e anexar comprovante obrigatório da saída;
+- tratar divergência sem permitir autoaprovação;
+- distinguir saldo automático de conta controlada e saldo manual do Painel do Gestor.
+
 ### Contratos/Jurídico
 
 - novo contrato, parcelas e documentação;
@@ -1022,7 +1257,9 @@ clique nas ações que criam ou movimentam registros.
 - vínculo do colaborador;
 - rascunho versus envio formal;
 - anexos e exigências documentais;
-- decisão, salário, jornada e eventos;
+- decisão, salário, jornada multiobra, empreitada e eventos recorrentes;
+- diferença entre cálculo mensal 40%/60% e cálculo por diária;
+- consolidação de jornadas e geração de ticket;
 - limites de acesso por Obra.
 
 ### Administradores
@@ -1031,6 +1268,9 @@ clique nas ações que criam ou movimentam registros.
 - configuração de status válidos por setor;
 - permissões granulares e necessidade de novo login;
 - ações principais, atalhos e layout;
+- Painel do Gestor, escopo de Obras e saldos diários;
+- nível de apropriação e etapas macro por Obra;
+- tipos automáticos e relatório de destinação dos Centros de Custo;
 - evidências de configuração e auditoria.
 
 ## 17. Rollback

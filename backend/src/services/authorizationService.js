@@ -610,6 +610,7 @@ const RH_DP_AREA_PERMISSION_KEYS = [
   'rh_dp.colaboradores.editar',
   'rh_dp.documentos.visualizar',
   'rh_dp.documentos.gerenciar',
+  'rh_dp.eventos_recorrentes.visualizar',
   'rh_dp.importacoes.executar',
   'rh_dp.apuracao.visualizar',
   'rh_dp.apuracao.editar',
@@ -2396,6 +2397,11 @@ async function canAccessRhDp(user) {
   ]);
 }
 
+async function canViewRhDpEventosRecorrentes(user) {
+  if (!(await canAccessRhDp(user))) return false;
+  return userHasAreaPermissionWhenConfigured(user, ['rh_dp.eventos_recorrentes.visualizar']);
+}
+
 async function isRhDpUsuarioObra(user) {
   if (isBusinessAdmin(user)) return false;
   return userHasSetorCapability(user, 'eh_setor_obra');
@@ -3440,6 +3446,7 @@ module.exports = {
   canViewRhDpColaboradores,
   canViewRhDpDashboard,
   canViewRhDpDocumentos,
+  canViewRhDpEventosRecorrentes,
   canViewRhDpObrigacoes,
   canViewSystemAudit,
   canViewOperationalAudit,

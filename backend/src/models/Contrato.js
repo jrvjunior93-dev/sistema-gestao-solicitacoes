@@ -159,6 +159,24 @@ module.exports = (sequelize, DataTypes) => {
       motivo_rejeicao: {
         type: DataTypes.TEXT,
         allowNull: true
+      },
+      // A classificacao operacional continua calculada em tempo real. Estes campos registram
+      // somente o ato explicito de rescisao e o saldo cancelado naquele instante.
+      rescindido_em: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      rescindido_por: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+      },
+      motivo_rescisao: {
+        type: DataTypes.TEXT,
+        allowNull: true
+      },
+      saldo_rescindido: {
+        type: DataTypes.DECIMAL(14, 2),
+        allowNull: true
       }
     },
     {

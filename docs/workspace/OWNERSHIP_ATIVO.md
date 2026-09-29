@@ -450,6 +450,7 @@ Arquivos reservados:
 - `backend/src/models/PagamentoManualFilaItem.js`
 - `backend/src/models/index.js`
 - `backend/src/routes.js`
+- `backend/src/validators/operationalValidators.js`
 - `backend/src/services/authorizationService.js`
 - `backend/src/services/pagamentoComprovantePdfService.js`
 - `backend/src/services/pagamentoManualFilaService.js`
@@ -659,3 +660,23 @@ migration, build, validacao visual, QA reversivel, conferencia da limpeza e heal
 
 Ownership da sessao `codex-qualificacao-conjuge-contrato-2026-08-27` liberado apos build,
 validacao visual, QA reversivel, conferencia da limpeza e health check aprovados.
+
+## Ownership ativo - codex-gestao-contratos-operacional-2026-09-29
+- `backend/migrations/202609290002_contrato_rescisao_rastreabilidade.js`
+- `backend/package.json`
+- `backend/scripts/validarGestaoContratosOperacional.js`
+- `backend/scripts/auditarContratosOperacionais.js`
+- `backend/src/controllers/ContratoController.js`
+- `backend/src/models/Contrato.js`
+- `backend/src/routes.js`
+- `backend/src/services/contratoFluxoNovoService.js`
+- `backend/src/services/contratoResumoOperacionalService.js`
+- `frontend/src/components/contratos/ContratoDetalheOperacional.jsx`
+- `frontend/src/pages/GestaoContratos.jsx`
+- `frontend/src/pages/ContratosRelatorioOperacional.jsx`
+- `frontend/src/services/contratos.js`
+- `docs/handoffs/2026-09-29-gestao-contratos-operacional.md`
+
+Ownership da sessao `codex-gestao-contratos-operacional-2026-09-29` liberado apos implementacao,
+teste de dominio, verificacao de sintaxe, `git diff --check`, build do frontend e registro do handoff.
+Migration e validacao integrada com o banco permanecem como passos controlados do deploy em dev.

@@ -20,7 +20,6 @@ const {
   TipoSolicitacao,
   TipoSubContrato,
   Solicitacao,
-  Comprovante,
   Setor,
   ConfiguracaoSistema,
   sequelize
@@ -46,6 +45,10 @@ const { normalizeOriginalName } = require('../utils/fileName');
 const {
   montarContextoInteracao
 } = require('../services/solicitacaoRetornoService');
+const {
+  calcularResumoOperacional,
+  calcularResumosOperacionais
+} = require('../services/contratoResumoOperacionalService');
 
 const DOCUMENTACAO_JURIDICA_POR_SLUG = Object.freeze({
   'cartao-cnpj': {
@@ -630,40 +633,6 @@ function toNumber(value) {
   return Number.isFinite(numero) ? numero : 0;
 }
 
-function getContratoMetrics(contrato) {
-  const solicitacoes = contrato.solicitacoes || [];
-  const totalPagoStatus = solicitacoes.reduce((acc, solicitacao) => {
-    if (String(solicitacao.status_global || '').toUpperCase() !== 'PAGA') {
-      return acc;
-    }
-    return acc + toNumber(solicitacao.valor);
-  }, 0);
-
-  const valorContrato = toNumber(contrato.valor_total);
-  const ajusteSolicitado = toNumber(contrato.ajuste_solicitado);
-  const ajustePago = toNumber(contrato.ajuste_pago);
-  // PI-15: o termo aditivo passou a valer tambem para o contrato do fluxo ANTIGO, e o aprovado
-  // vai para `valor_aditivos`. Sem soma-lo aqui o aditivo seria um numero que nenhuma consulta
-  // do legado le. Cada mecanismo no seu campo: `ajuste_solicitado` continua sendo o ajuste
-  // manual, e a aprovacao do aditivo nunca escreve nele — assim nao ha duplo computo.
-  // Neutro hoje: os 335 contratos legados tem `valor_aditivos = 0`.
-  const valorAditivos = toNumber(contrato.valor_aditivos);
-  const totalSolicitado = valorContrato + ajusteSolicitado + valorAditivos;
-  const totalPago = totalPagoStatus + ajustePago;
-
-  return {
-    valor_contrato: valorContrato,
-    ajuste_solicitado: ajusteSolicitado,
-    ajuste_pago: ajustePago,
-    valor_aditivos: valorAditivos,
-    total_solicitado: totalSolicitado,
-    total_pago: totalPago,
-    total_a_pagar: Math.max(totalSolicitado - totalPago, 0),
-    total_solicitacoes: solicitacoes.length,
-    total_anexos: (contrato.anexos || []).length
-  };
-}
-
 function createContratoAccumulator(label, extras = {}) {
   return {
     label,
@@ -672,6 +641,11 @@ function createContratoAccumulator(label, extras = {}) {
     inativos: 0,
     sem_anexo: 0,
     valor_total: 0,
+    contratado: 0,
+    medido: 0,
+    movimentado: 0,
+    saldo_contratual: 0,
+    aditivos: 0,
     total_solicitado: 0,
     total_pago: 0,
     total_a_pagar: 0,
@@ -688,10 +662,16 @@ function addContratoToGroup(map, key, label, contrato, metrics, extras = {}) {
 
   const item = map.get(groupKey);
   item.total += 1;
-  item.ativos += contrato.ativo ? 1 : 0;
-  item.inativos += contrato.ativo ? 0 : 1;
+  const operacionalAtivo = metrics.status_operacional === 'ATIVO';
+  item.ativos += operacionalAtivo ? 1 : 0;
+  item.inativos += operacionalAtivo ? 0 : 1;
   item.sem_anexo += metrics.total_anexos > 0 ? 0 : 1;
   item.valor_total += metrics.valor_contrato;
+  item.contratado += metrics.contratado;
+  item.medido += metrics.medido;
+  item.movimentado += metrics.movimentado;
+  item.saldo_contratual += metrics.saldo_contratual;
+  item.aditivos += metrics.valor_aditivos + metrics.ajustes_legados;
   item.total_solicitado += metrics.total_solicitado;
   item.total_pago += metrics.total_pago;
   item.total_a_pagar += metrics.total_a_pagar;
@@ -717,6 +697,11 @@ function emptyContratoOperationalReport() {
       sem_anexo: 0,
       com_anexo: 0,
       valor_total: 0,
+      contratado: 0,
+      medido: 0,
+      movimentado: 0,
+      saldo_contratual: 0,
+      aditivos: 0,
       ajuste_solicitado: 0,
       ajuste_pago: 0,
       total_solicitado: 0,
@@ -1605,7 +1590,15 @@ module.exports = {
         });
       }
 
-      const where = { ativo: true };
+      // Gestao tambem exibe contratos concluidos e rescindidos. Estados de aprovacao do fluxo
+      // novo ainda nao sao contratos operacionais; contratos legados continuam classificados.
+      const where = {
+        [Op.or]: [
+          { fluxo_novo: { [Op.not]: true } },
+          { ativo: true },
+          { status_contrato: { [Op.in]: ['ENCERRADO', 'RESCINDIDO'] } }
+        ]
+      };
 
       const { obra_id, ref, codigo } = req.query;
 
@@ -1644,48 +1637,21 @@ module.exports = {
           contratoCredoresInclude(),
           {
             model: Solicitacao,
-            as: 'solicitacoes',
-            attributes: ['id', 'valor', 'status_global'],
-            include: [
-              {
-                model: Comprovante,
-                as: 'comprovantes',
-                attributes: ['id', 'valor']
-              }
-            ]
+            as: 'solicitacaoContrato',
+            attributes: ['id', 'codigo', 'descricao', 'status_global'],
+            required: false
           }
         ],
         order: [['createdAt', 'DESC']]
       });
 
+      // Classificacao sob demanda: nenhuma migration grava status nos contratos existentes.
+      // Assim, o intervalo entre dev e producao nao cria uma fotografia desatualizada.
+      const resumos = await calcularResumosOperacionais(contratos);
       const resultado = contratos.map(c => {
-        const solicitacoes = c.solicitacoes || [];
-        const totalPagoStatus = solicitacoes.reduce((acc, s) => {
-          if (String(s.status_global || '').toUpperCase() !== 'PAGA') {
-            return acc;
-          }
-          return acc + Number(s.valor || 0);
-        }, 0);
-
-        const ajusteSolicitado = Number(c.ajuste_solicitado || 0);
-        const ajustePago = Number(c.ajuste_pago || 0);
-        const valorContrato = Number(c.valor_total || 0);
-        // PI-15: aditivo APROVADO tambem entra, no legado como no fluxo novo. Mesma conta de
-        // `getContratoMetrics` — as duas precisam bater, senao a listagem e o relatorio mostram
-        // saldos diferentes para o mesmo contrato. Neutro hoje: os 335 legados tem 0 aqui.
-        const valorAditivos = Number(c.valor_aditivos || 0);
-        // "Solicitado" do contrato deve refletir apenas o valor do contrato e ajustes manuais,
-        // sem somar automaticamente os valores das solicitacoes vinculadas.
-        const totalSolicitadoFinal = valorContrato + ajusteSolicitado + valorAditivos;
-        const totalPagoFinal = totalPagoStatus + ajustePago;
-
-        return {
-          ...c.toJSON(),
-          total_solicitado: totalSolicitadoFinal,
-          total_pago: totalPagoFinal,
-          total_a_pagar: Math.max(totalSolicitadoFinal - totalPagoFinal, 0),
-          total_solicitacoes: solicitacoes.length
-        };
+        const resumoOperacional = resumos.get(Number(c.id));
+        const { solicitacoes, medicoes, titulos, ...totais } = resumoOperacional;
+        return { ...c.toJSON(), ...totais };
       });
 
       return res.json(resultado);
@@ -1709,8 +1675,16 @@ module.exports = {
         });
       }
 
-      const { obra_id, ref, codigo, ativo, data_inicio, data_fim } = req.query;
-      const where = {};
+      const { obra_id, ref, codigo, ativo, status_operacional, data_inicio, data_fim } = req.query;
+      // Estados de aprovacao do fluxo novo ainda nao sao contratos operacionais e nao cabem nos
+      // quatro status desta visao. Legados continuam incluidos para classificacao dinamica.
+      const where = {
+        [Op.or]: [
+          { fluxo_novo: { [Op.not]: true } },
+          { ativo: true },
+          { status_contrato: { [Op.in]: ['ENCERRADO', 'RESCINDIDO'] } }
+        ]
+      };
 
       if (!acessoGlobalContratos && obrasPermitidas && obrasPermitidas.length > 0) {
         if (obra_id && !obrasPermitidas.includes(Number(obra_id))) {
@@ -1767,8 +1741,9 @@ module.exports = {
           { model: TipoSubContrato, as: 'tipoSub', attributes: ['id', 'nome'] },
           {
             model: Solicitacao,
-            as: 'solicitacoes',
-            attributes: ['id', 'valor', 'status_global']
+            as: 'solicitacaoContrato',
+            attributes: ['id', 'codigo', 'descricao', 'status_global'],
+            required: false
           },
           {
             model: ContratoAnexo,
@@ -1788,10 +1763,21 @@ module.exports = {
       const porTipoSub = new Map();
       const porMesCadastro = new Map();
       const pendenciasCadastrais = [];
+      const resumosOperacionais = await calcularResumosOperacionais(contratos);
+      const contratosDoRecorte = status_operacional
+        ? contratos.filter(contrato => (
+          resumosOperacionais.get(Number(contrato.id))?.status_operacional === status_operacional
+        ))
+        : contratos;
 
-      for (const contrato of contratos) {
-        const metrics = getContratoMetrics(contrato);
-        const statusKey = contrato.ativo ? 'ATIVO' : 'INATIVO';
+      for (const contrato of contratosDoRecorte) {
+        const resumoOperacional = resumosOperacionais.get(Number(contrato.id));
+        const metrics = {
+          ...resumoOperacional,
+          valor_contrato: resumoOperacional.valor_base,
+          total_anexos: (contrato.anexos || []).length
+        };
+        const statusKey = resumoOperacional.status_operacional;
         const obra = contrato.obra;
         const empresa = obra?.empresaGrupo;
         const empresaLabel = empresa?.nome || empresa?.razao_social || 'Sem empresa vinculada';
@@ -1806,11 +1792,16 @@ module.exports = {
           : 'Sem data';
 
         resumo.total_contratos += 1;
-        resumo.ativos += contrato.ativo ? 1 : 0;
-        resumo.inativos += contrato.ativo ? 0 : 1;
+        resumo.ativos += statusKey === 'ATIVO' ? 1 : 0;
+        resumo.inativos += statusKey === 'ATIVO' ? 0 : 1;
         resumo.sem_anexo += metrics.total_anexos > 0 ? 0 : 1;
         resumo.com_anexo += metrics.total_anexos > 0 ? 1 : 0;
         resumo.valor_total += metrics.valor_contrato;
+        resumo.contratado += metrics.contratado;
+        resumo.medido += metrics.medido;
+        resumo.movimentado += metrics.movimentado;
+        resumo.saldo_contratual += metrics.saldo_contratual;
+        resumo.aditivos += metrics.valor_aditivos + metrics.ajustes_legados;
         resumo.ajuste_solicitado += metrics.ajuste_solicitado;
         resumo.ajuste_pago += metrics.ajuste_pago;
         resumo.total_solicitado += metrics.total_solicitado;
@@ -1818,7 +1809,13 @@ module.exports = {
         resumo.total_a_pagar += metrics.total_a_pagar;
         resumo.solicitacoes_vinculadas += metrics.total_solicitacoes;
 
-        addContratoToGroup(porStatus, statusKey, contrato.ativo ? 'Ativos' : 'Inativos', contrato, metrics);
+        const statusLabels = {
+          ATIVO: 'Ativos (parcialmente medidos)',
+          TOTALMENTE_MEDIDO: 'Totalmente medidos',
+          CONCLUIDO: 'Concluidos',
+          RESCINDIDO: 'Rescindidos'
+        };
+        addContratoToGroup(porStatus, statusKey, statusLabels[statusKey] || statusKey, contrato, metrics);
         addContratoToGroup(porObra, obra?.id, obraLabel, contrato, metrics, {
           obra_id: obra?.id || null,
           codigo: obra?.codigo || null,
@@ -1855,7 +1852,7 @@ module.exports = {
       }
 
       return res.json({
-        filtros: { obra_id, ref, codigo, ativo, data_inicio, data_fim },
+        filtros: { obra_id, ref, codigo, ativo, status_operacional, data_inicio, data_fim },
         resumo,
         por_status: sortContratoGroups(porStatus, 'total'),
         por_obra: sortContratoGroups(porObra, 'valor_total'),
@@ -1873,6 +1870,57 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: 'Erro ao gerar relatorio operacional de contratos' });
+    }
+  },
+
+  async detalheOperacional(req, res) {
+    try {
+      if (!(await canAccessContratos(req.user))) {
+        return res.status(403).json({ error: 'Acesso negado' });
+      }
+
+      const contrato = await Contrato.findByPk(req.params.id, {
+        include: [
+          { model: Obra, as: 'obra', attributes: ['id', 'nome', 'codigo'] },
+          { model: TipoSolicitacao, as: 'tipoMacro', attributes: ['id', 'nome'] },
+          { model: TipoSubContrato, as: 'tipoSub', attributes: ['id', 'nome'] },
+          {
+            model: Solicitacao,
+            as: 'solicitacaoContrato',
+            attributes: ['id', 'codigo', 'descricao', 'status_global'],
+            required: false
+          }
+        ]
+      });
+      if (!contrato) return res.status(404).json({ error: 'Contrato nao encontrado' });
+
+      if (!(await usuarioPodeAcessarObraContrato(req, contrato.obra_id))) {
+        await registrarNegacaoContrato(
+          req,
+          contrato.id,
+          contrato.obra_id,
+          'Usuario tentou consultar detalhe operacional de contrato fora do seu escopo'
+        );
+        return res.status(403).json({ error: 'Acesso negado para esta obra' });
+      }
+
+      const resumoOperacional = await calcularResumoOperacional(contrato);
+      return res.json({
+        contrato: {
+          id: contrato.id,
+          codigo: contrato.codigo,
+          referencia: contrato.ref_contrato,
+          descricao: contrato.descricao,
+          fluxo_novo: contrato.fluxo_novo,
+          obra: contrato.obra,
+          tipo_macro: contrato.tipoMacro,
+          tipo_sub: contrato.tipoSub
+        },
+        ...resumoOperacional
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Erro ao consultar detalhe operacional do contrato' });
     }
   },
 

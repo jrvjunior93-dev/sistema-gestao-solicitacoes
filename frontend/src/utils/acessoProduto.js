@@ -1135,6 +1135,7 @@ const RH_DP_AREA_PERMISSION_KEYS = [
   'rh_dp.colaboradores.editar',
   'rh_dp.documentos.visualizar',
   'rh_dp.documentos.gerenciar',
+  'rh_dp.eventos_recorrentes.visualizar',
   'rh_dp.importacoes.executar',
   'rh_dp.apuracao.visualizar',
   'rh_dp.apuracao.editar',
@@ -1242,6 +1243,11 @@ export function canViewRhDpDocumentos(user) {
     hasRhDpCapability(user, 'rh_dp_documentos_view') ||
     hasRhDpCapability(user, 'rh_dp_documentos_manage')
   );
+}
+
+export function canViewRhDpEventosRecorrentes(user) {
+  if (!canAccessRhDp(user)) return false;
+  return hasAnyExplicitPermissao(user, ['rh_dp.eventos_recorrentes.visualizar']);
 }
 
 export function canManageRhDpDocumentos(user) {
