@@ -73,7 +73,9 @@ export default function CrMonthlySummaryCard({
   let approvedValue = currency.format(isPublic ? recognized : received);
   if (isPublic && semMedicao) approvedValue = 'Sem medição';
   else if (awaitingApproval) approvedValue = hasForecast ? 'Aguardando' : '—';
-  const approvedTone = awaitingApproval && hasForecast ? 'warning' : 'neutral';
+  const approvedTone = awaitingApproval && hasForecast
+    ? 'warning'
+    : (isPublic && semMedicao ? 'neutral' : (isPublic ? 'context' : 'positive'));
   const showBalance = !isPublic || medicaoAprovadaInformada;
 
   return (
@@ -104,11 +106,12 @@ export default function CrMonthlySummaryCard({
       </div>
 
       <dl className="cr-period-card__metrics">
-        <Metric label="Custo planejado" value={currency.format(planned)} />
-        <Metric label="Custo realizado" value={currency.format(realized)} />
+        <Metric label="Custo planejado" value={currency.format(planned)} tone="context" />
+        <Metric label="Custo realizado" value={currency.format(realized)} tone="negative" />
         <Metric
           label={isPublic ? 'Medição prevista' : 'Recebível previsto'}
           value={currency.format(recebivelPrevisto || 0)}
+          tone="context"
         />
         <Metric
           label={isPublic ? 'Medição aprovada' : 'Receita recebida'}
@@ -116,7 +119,7 @@ export default function CrMonthlySummaryCard({
           tone={approvedTone}
         />
         {isPublic ? (
-          <Metric label="Receita recebida" value={currency.format(received)} />
+          <Metric label="Receita recebida" value={currency.format(received)} tone="positive" />
         ) : null}
         {showBalance ? (
           <Metric

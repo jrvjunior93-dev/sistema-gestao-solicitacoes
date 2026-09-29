@@ -86,9 +86,12 @@
   overflow-wrap: break-word;
 }
 
-.resultado-obra-metrica--vendido .resultado-obra-metrica-valor,
-.resultado-obra-metrica--executado .resultado-obra-metrica-valor {
+.resultado-obra-metrica--vendido .resultado-obra-metrica-valor {
   color: var(--c-primary);
+}
+
+.resultado-obra-metrica--executado .resultado-obra-metrica-valor {
+  color: var(--c-danger);
 }
 
 .resultado-obra-metrica--recebido .resultado-obra-metrica-valor,
@@ -137,7 +140,7 @@
 }
 
 .resultado-obra-progresso-barra--executado {
-  background: var(--c-primary);
+  background: var(--c-danger);
 }
 
 .resultado-obra-progresso-barra--recebido {

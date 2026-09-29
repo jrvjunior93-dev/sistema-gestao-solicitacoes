@@ -269,11 +269,12 @@ export default function CrDashboardView({
               <Metric
                 label="Planejado"
                 value={currency.format(filteredPortfolio.custo_planejado || 0)}
+                tone="context"
               />
               <Metric
                 label="Realizado"
                 value={currency.format(filteredPortfolio.custo_realizado || 0)}
-                tone="actual"
+                tone="negative"
               />
               <Metric
                 label="Desvio"
@@ -297,6 +298,7 @@ export default function CrDashboardView({
               <Metric
                 label={portfolioClassification === 'PUBLICA' ? 'Medição prevista' : 'Previsto'}
                 value={currency.format(filteredPortfolio.recebivel_previsto || 0)}
+                tone="context"
               />
               {portfolioClassification === 'PUBLICA' ? (
                 <Metric
@@ -307,6 +309,9 @@ export default function CrDashboardView({
                   helper={filteredPortfolio.medicoes_pendentes > 0
                     ? `${filteredPortfolio.medicoes_pendentes} competência(s) aguardando`
                     : null}
+                  tone={filteredPortfolio.medicoes_pendentes === visibleWorkSummaries.length
+                    ? 'warning'
+                    : 'context'}
                 />
               ) : null}
               {portfolioClassification !== 'PRIVADA' ? (

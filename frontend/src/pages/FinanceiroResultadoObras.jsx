@@ -60,8 +60,8 @@ export function contextoValorTotalObras(obras = []) {
 }
 
 /* O consolidado preserva a comparação prevista x realizada do sistema. Os cartões detalhados
-   seguem a leitura operacional solicitada: execução em azul, recebimento em verde, pendências em
-   âmbar e prejuízo em vermelho, sempre usando os tokens do tema. */
+   seguem a psicologia das cores financeira: débito/gasto em vermelho, crédito/recebido em verde,
+   pendências em âmbar e valores neutros (vendido) em azul, sempre usando os tokens do tema. */
 function Previsto({ children }) {
   return <span className="texto-previsto">{children}</span>;
 }

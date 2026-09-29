@@ -1195,6 +1195,10 @@
   color: var(--cr-warning);
 }
 
+.cr-ops-metric[data-tone="context"] > strong {
+  color: var(--cr-accent);
+}
+
 .cr-dashboard-trends {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2714,7 +2718,7 @@
   display: grid;
   min-width: 0;
   overflow: clip;
-  border: 1px solid var(--cr-border);
+  border: 1px solid var(--cr-border-strong);
   border-radius: 11px;
   background: var(--cr-surface);
   box-shadow: 0 1px 2px color-mix(in srgb, var(--cr-ink) 7%, transparent);
