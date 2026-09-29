@@ -24,7 +24,27 @@
  *     mostra "Sem planejamento" neutro (valor 0, lógica PLANEJADO).
  *   - Números nulos/undefined/strings são convertidos (0 quando inválidos) e o
  *     valor é arredondado a centavos.
+ *   - oculto = false (sempre, fora do modo abaixo).
+ *
+ * VALORES OCULTOS (Painel do Gestor com o "olho" fechado, 29/09/2026):
+ *   com `valoresOcultos: true` o servidor manda os valores como null e a
+ *   conta NÃO é feita. Saída: { valor: null, logica: null, formula: null,
+ *   semPlanejamento: false, oculto: true } — o card mostra VALOR_OCULTO,
+ *   nunca "Sem planejamento" nem R$ 0,00. Sem a opção, null continua valendo
+ *   0 (contrato anterior intacto): "ausente por ocultação" só existe quando
+ *   quem chama declara que os valores estão ocultos.
  */
+
+// Marcador exibido no lugar de qualquer valor financeiro oculto (sem número).
+export const VALOR_OCULTO = '••••••';
+
+const RESULTADO_OCULTO = Object.freeze({
+  valor: null,
+  logica: null,
+  formula: null,
+  semPlanejamento: false,
+  oculto: true
+});
 
 function toNumber(value) {
   if (value == null || value === '') return 0;
@@ -53,8 +73,10 @@ export function calcularResultadoMes({
   classificacao,
   recebivelPrevisto,
   custoPlanejado,
-  custoRealizado
+  custoRealizado,
+  valoresOcultos = false
 } = {}) {
+  if (valoresOcultos) return { ...RESULTADO_OCULTO };
   const tipo = String(classificacao || '').toUpperCase() === 'PUBLICA' ? 'PUBLICA' : 'PRIVADA';
   const previsto = toCents(toNumber(recebivelPrevisto));
   const planejado = toCents(toNumber(custoPlanejado));
@@ -67,7 +89,8 @@ export function calcularResultadoMes({
     valor: Object.is(valor, -0) ? 0 : valor,
     logica,
     formula: FORMULAS[tipo][logica],
-    semPlanejamento
+    semPlanejamento,
+    oculto: false
   };
 }
 
@@ -75,8 +98,9 @@ export function calcularResultadoMes({
  * Mesmo cálculo a partir do objeto resumo do mês. Aceita o item de
  * `obras_resumo` da API (snake_case) ou as props do card (camelCase).
  * `classificacao` explícita tem prioridade sobre `resumo.obra.classificacao`.
+ * `opcoes.valoresOcultos` repassa o modo de valores ocultos (ver acima).
  */
-export function calcularResultadoDoResumo(resumo, classificacao) {
+export function calcularResultadoDoResumo(resumo, classificacao, opcoes = {}) {
   const item = resumo || {};
   return calcularResultadoMes({
     classificacao: classificacao
@@ -85,7 +109,8 @@ export function calcularResultadoDoResumo(resumo, classificacao) {
       ?? item.obra?.classificacao,
     recebivelPrevisto: item.recebivel_previsto ?? item.recebivelPrevisto,
     custoPlanejado: item.custo_planejado ?? item.custoPlanejado,
-    custoRealizado: item.custo_realizado ?? item.custoRealizado
+    custoRealizado: item.custo_realizado ?? item.custoRealizado,
+    valoresOcultos: Boolean(opcoes?.valoresOcultos)
   });
 }
 

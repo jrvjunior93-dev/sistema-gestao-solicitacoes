@@ -20,7 +20,11 @@ import {
   mensagemLegivel,
   obterCustosRecebiveisDashboard
 } from '../services/custosRecebiveis';
-import { calcularResultadoDoResumo, calcularResultadoMes } from '../utils/resultadoMes';
+import {
+  VALOR_OCULTO,
+  calcularResultadoDoResumo,
+  calcularResultadoMes
+} from '../utils/resultadoMes';
 import CrMonthlySummaryCard from './CrMonthlySummaryCard';
 
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -48,12 +52,40 @@ function formatPercent(value) {
     : `${Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
 }
 
-function Metric({ label, value, tone = 'neutral', helper = null, metric = undefined }) {
+/*
+  VALORES OCULTOS (Painel do Gestor com o "olho" fechado, 29/09/2026).
+  Com a prop `valoresOcultos`, TODO valor financeiro desta visão sai como
+  VALOR_OCULTO — mesmo que algum número chegue da API por engano: nada é
+  formatado, nem em title, aria-label, atributos data ou largura de barra. Rótulos, nomes
+  de obra, situação e mês continuam. Tons que dependem do valor (positivo,
+  negativo, alerta) ficam neutros, para a cor não entregar o sinal.
+  Nos textos dos pontos de atenção (montados no servidor), qualquer quantia
+  em reais é trocada pelo marcador como segunda barreira.
+*/
+const QUANTIA_EM_REAIS = /-?R\$\s?-?\d(?:[\d.]*\d)?(?:,\d+)?/g;
+
+function textoSemQuantias(texto, valoresOcultos) {
+  if (!valoresOcultos || !texto) return texto;
+  return String(texto).replace(QUANTIA_EM_REAIS, VALOR_OCULTO);
+}
+
+// Classes estáveis para o Modo TV do Painel do Gestor: `cr-valor` em todo
+// número da carteira; `cr-valor--principal` nos números de destaque.
+function Metric({
+  label,
+  value,
+  tone = 'neutral',
+  helper = null,
+  metric = undefined,
+  oculto = false
+}) {
   return (
-    <div className="cr-ops-metric" data-tone={tone} data-metric={metric}>
+    <div className="cr-ops-metric" data-tone={oculto ? 'neutral' : tone} data-metric={metric}>
       <span>{label}</span>
-      <strong>{value}</strong>
-      {helper ? <small>{helper}</small> : null}
+      <strong className="cr-valor cr-valor--principal" data-oculto={oculto || undefined}>
+        {oculto ? VALOR_OCULTO : value}
+      </strong>
+      {helper && !oculto ? <small>{helper}</small> : null}
     </div>
   );
 }
@@ -65,7 +97,8 @@ function TrendPanel({
   primaryKey,
   primaryLabel,
   secondaryKey,
-  secondaryLabel
+  secondaryLabel,
+  valoresOcultos = false
 }) {
   const maxValue = useMemo(() => Math.max(
     1,
@@ -88,7 +121,14 @@ function TrendPanel({
         </div>
       </div>
       <div className="cr-trend-list">
-        {rows.map((row) => {
+        {valoresOcultos ? rows.map((row) => (
+          // Sem barras: a largura delas entregaria a proporção dos valores.
+          <div className="cr-trend-row" key={`${title}-${row.competencia}`} data-oculto="true">
+            <span>{formatMonth(row.competencia)}</span>
+            <div className="cr-trend-bars" aria-hidden="true" />
+            <strong className="cr-valor" data-oculto="true">{VALOR_OCULTO}</strong>
+          </div>
+        )) : rows.map((row) => {
           const primary = Number(row[primaryKey]) || 0;
           const secondary = Number(row[secondaryKey]) || 0;
           return (
@@ -106,7 +146,7 @@ function TrendPanel({
                   title={`${secondaryLabel}: ${currency.format(secondary)}`}
                 />
               </div>
-              <strong>{currency.format(secondary)}</strong>
+              <strong className="cr-valor">{currency.format(secondary)}</strong>
             </div>
           );
         })}
@@ -186,8 +226,14 @@ function pendenciaDeObra(prazos) {
   return { faixa: 3, peso: 0 };
 }
 
-function ordenarCards(cards, criterio, { ordemManual, prazosPorObra }) {
+function ordenarCards(cards, criterio, { ordemManual, prazosPorObra, valoresOcultos = false }) {
   const lista = cards.slice();
+  // Valores ocultos: não há resultado para comparar — "Pior resultado"
+  // cai para a ordem manual salva e, fora dela, o nome da obra (a escolha
+  // do usuário não é regravada; ao abrir o olho o critério volta a valer).
+  if (criterio === 'PIOR_RESULTADO' && valoresOcultos) {
+    return ordenarCards(cards, 'MANUAL', { ordemManual, prazosPorObra });
+  }
   if (criterio === 'NOME') return lista.sort(porNome);
   if (criterio === 'CODIGO') {
     return lista.sort((a, b) => {
@@ -271,8 +317,21 @@ export default function CrDashboardView({
   // já a tem em mãos. Sem ela, o critério "Pendências primeiro" busca a
   // listagem uma vez por competência.
   obras: obrasComPrazos = null,
-  loadObras = listarCustosRecebiveisObras
+  loadObras = listarCustosRecebiveisObras,
+  // Painel do Gestor (29/09/2026). Ausentes = comportamento do módulo.
+  //  - valoresOcultos: "olho" fechado; nenhum valor financeiro no DOM.
+  //  - ordemStorageKey: chave da preferência de ordem dos cards (o painel
+  //    guarda a sua separada da do módulo).
+  //  - buscarPrazos: false impede a busca de GET /custos-recebiveis/obras
+  //    (a resposta traz planilha_geral, contratos com valor_total etc.).
+  //    Com valores ocultos a busca também não acontece. Sem prazos,
+  //    "Pendências primeiro" ordena pelos alertas do dashboard e o nome.
+  valoresOcultos = false,
+  ordemStorageKey = CHAVE_ORDEM_OBRAS,
+  buscarPrazos = true
 }) {
+  const oculto = Boolean(valoresOcultos);
+  const money = (value) => (oculto ? VALOR_OCULTO : currency.format(value || 0));
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -324,8 +383,9 @@ export default function CrDashboardView({
       ));
   }, [classificacaoFilter, competencia, competencias, obraFilterId, workSummaries]);
   /* ----- ordem dos cards (critério ou manual, por usuário) ----------- */
+  // Só a ordem (critério + ids de obra) é gravada; nenhum valor.
   const [preferenciaOrdem, gravarPreferenciaOrdem] = usePreferenciaDeLista(
-    CHAVE_ORDEM_OBRAS,
+    ordemStorageKey || CHAVE_ORDEM_OBRAS,
     TIPO_BLOCOS
   );
   const criterio = CRITERIOS_VALIDOS.has(preferenciaOrdem?.criterio)
@@ -341,7 +401,8 @@ export default function CrDashboardView({
     itens: []
   });
   const temObrasDeFora = Array.isArray(obrasComPrazos);
-  const precisaPrazos = criterio === 'PENDENCIAS' && !temObrasDeFora;
+  const podeBuscarPrazos = buscarPrazos !== false && !oculto;
+  const precisaPrazos = criterio === 'PENDENCIAS' && !temObrasDeFora && podeBuscarPrazos;
   const chavePrazos = String(competencia || '');
 
   // Pedido em curso fica num ref (não no estado): com o estado nas
@@ -388,8 +449,12 @@ export default function CrDashboardView({
   }, [obrasComPrazos, prazosCarregados.itens, temObrasDeFora]);
 
   const orderedWorkSummaries = useMemo(
-    () => ordenarCards(visibleWorkSummaries, criterio, { ordemManual, prazosPorObra }),
-    [criterio, ordemManual, prazosPorObra, visibleWorkSummaries]
+    () => ordenarCards(visibleWorkSummaries, criterio, {
+      ordemManual,
+      prazosPorObra,
+      valoresOcultos: oculto
+    }),
+    [criterio, ordemManual, oculto, prazosPorObra, visibleWorkSummaries]
   );
   const obraIdsVisiveis = useMemo(() => {
     const ids = [];
@@ -520,6 +585,10 @@ export default function CrDashboardView({
     };
   }, [visibleWorkSummaries]);
   const portfolioClassification = filteredPortfolio.classificacao;
+  // "Títulos vencidos" é quantidade, não quantia: com valores ocultos só
+  // vira marcador se o servidor também a ocultar (null).
+  const vencidosOcultos = oculto
+    && visibleWorkSummaries.some((item) => item.recebiveis_vencidos == null);
   /*
     Resultado da carteira (pedido do proprietário, 29/09): a mesma regra do
     card de mês, sobre os TOTAIS exibidos acima — Previsto (recebíveis) −
@@ -531,11 +600,13 @@ export default function CrDashboardView({
     classificacao: null,
     recebivelPrevisto: filteredPortfolio.recebivel_previsto,
     custoPlanejado: filteredPortfolio.custo_planejado,
-    custoRealizado: filteredPortfolio.custo_realizado
+    custoRealizado: filteredPortfolio.custo_realizado,
+    valoresOcultos: oculto
   });
   let portfolioResultTone = 'neutral';
-  if (!portfolioResult.semPlanejamento && portfolioResult.valor > 0) portfolioResultTone = 'positive';
-  if (!portfolioResult.semPlanejamento && portfolioResult.valor < 0) portfolioResultTone = 'negative';
+  const portfolioResultComValor = !portfolioResult.oculto && !portfolioResult.semPlanejamento;
+  if (portfolioResultComValor && portfolioResult.valor > 0) portfolioResultTone = 'positive';
+  if (portfolioResultComValor && portfolioResult.valor < 0) portfolioResultTone = 'negative';
 
   if (loading && !data) {
     return <section className="cr-section cr-empty-state">Carregando visão geral...</section>;
@@ -593,27 +664,31 @@ export default function CrDashboardView({
             <div className="cr-ops-metrics">
               <Metric
                 label="Planejado"
-                value={currency.format(filteredPortfolio.custo_planejado || 0)}
+                value={money(filteredPortfolio.custo_planejado)}
                 tone="context"
+                oculto={oculto}
               />
               <Metric
                 label="Realizado"
-                value={currency.format(filteredPortfolio.custo_realizado || 0)}
+                value={money(filteredPortfolio.custo_realizado)}
                 tone="negative"
+                oculto={oculto}
               />
               <Metric
                 label="Desvio"
                 metric="resultado"
-                value={portfolioResult.semPlanejamento
-                  ? 'Sem planejamento'
-                  : currency.format(portfolioResult.valor)}
-                helper={portfolioResult.semPlanejamento ? null : portfolioResult.formula}
+                value={portfolioResultComValor
+                  ? currency.format(portfolioResult.valor)
+                  : 'Sem planejamento'}
+                helper={portfolioResultComValor ? portfolioResult.formula : null}
                 tone={portfolioResultTone}
+                oculto={portfolioResult.oculto}
               />
               <Metric
                 label="Execução"
-                value={formatPercent(filteredPortfolio.percentual_custo)}
+                value={oculto ? null : formatPercent(filteredPortfolio.percentual_custo)}
                 tone={Number(filteredPortfolio.percentual_custo) > 100 ? 'negative' : 'neutral'}
+                oculto={oculto}
               />
             </div>
           </div>
@@ -626,15 +701,17 @@ export default function CrDashboardView({
             <div className="cr-ops-metrics">
               <Metric
                 label={portfolioClassification === 'PUBLICA' ? 'Medição prevista' : 'Previsto'}
-                value={currency.format(filteredPortfolio.recebivel_previsto || 0)}
+                value={money(filteredPortfolio.recebivel_previsto)}
                 tone="context"
+                oculto={oculto}
               />
               {portfolioClassification === 'PUBLICA' ? (
                 <Metric
                   label="Medição aprovada"
+                  oculto={oculto}
                   value={filteredPortfolio.medicoes_pendentes === visibleWorkSummaries.length
                     ? 'Aguardando'
-                    : currency.format(filteredPortfolio.medicao_aprovada || 0)}
+                    : money(filteredPortfolio.medicao_aprovada)}
                   helper={filteredPortfolio.medicoes_pendentes > 0
                     ? `${filteredPortfolio.medicoes_pendentes} competência(s) aguardando`
                     : null}
@@ -646,23 +723,27 @@ export default function CrDashboardView({
               {portfolioClassification !== 'PRIVADA' ? (
                 <Metric
                   label="Glosa"
-                  value={currency.format(filteredPortfolio.glosa || 0)}
+                  oculto={oculto}
+                  value={money(filteredPortfolio.glosa)}
                   tone={Number(filteredPortfolio.glosa) > 0 ? 'negative' : 'neutral'}
                 />
               ) : null}
               <Metric
                 label="Recebido"
-                value={currency.format(filteredPortfolio.receita_recebida || 0)}
+                oculto={oculto}
+                value={money(filteredPortfolio.receita_recebida)}
                 tone="actual"
               />
               <Metric
                 label="Saldo a receber"
-                value={currency.format(filteredPortfolio.saldo_receber || 0)}
+                oculto={oculto}
+                value={money(filteredPortfolio.saldo_receber)}
                 tone={Number(filteredPortfolio.saldo_receber) > 0 ? 'warning' : 'positive'}
               />
               {portfolioClassification === 'PRIVADA' ? (
                 <Metric
                   label="Títulos vencidos"
+                  oculto={vencidosOcultos}
                   value={String(filteredPortfolio.recebiveis_vencidos || 0)}
                   tone={Number(filteredPortfolio.recebiveis_vencidos) > 0
                     ? 'negative'
@@ -710,7 +791,12 @@ export default function CrDashboardView({
               : 'Use os botões de mover. A ordem fica salva para você.'}
           </p>
         ) : null}
-        {criterio === 'PENDENCIAS' && !temObrasDeFora && prazosCarregados.estado === 'erro'
+        {criterio === 'PIOR_RESULTADO' && oculto && visibleWorkSummaries.length ? (
+          <p className="cr-ordem-obras__dica">
+            Valores ocultos: ordem manual e, depois, por nome.
+          </p>
+        ) : null}
+        {criterio === 'PENDENCIAS' && precisaPrazos && prazosCarregados.estado === 'erro'
           && visibleWorkSummaries.length ? (
             <p className="cr-ordem-obras__dica">
               Prazos das obras indisponíveis: ordem pelos alertas do dashboard.
@@ -747,6 +833,7 @@ export default function CrDashboardView({
                   receitaRecebida={item.receita_recebida}
                   medicaoAprovadaInformada={item.medicao_aprovada != null}
                   glosa={item.glosa}
+                  valoresOcultos={oculto}
                   actionLabel="Abrir planejamento"
                   onOpen={canOpenPlanning
                     ? () => onOpenArea?.({
@@ -877,6 +964,7 @@ export default function CrDashboardView({
           primaryLabel="Planejado"
           secondaryKey="custo_realizado"
           secondaryLabel="Realizado"
+          valoresOcultos={oculto}
         />
         <TrendPanel
           title="Evolução de recebíveis"
@@ -890,6 +978,7 @@ export default function CrDashboardView({
             : (portfolioClassification === 'PRIVADA' ? 'Previsto' : 'Reconhecido')}
           secondaryKey="receita_recebida"
           secondaryLabel="Recebido"
+          valoresOcultos={oculto}
         />
       </div>
 
@@ -916,7 +1005,7 @@ export default function CrDashboardView({
                 <span className="cr-attention-row__marker" aria-hidden="true" />
                 <div>
                   <strong>{item.titulo}</strong>
-                  <span>{item.descricao}</span>
+                  <span>{textoSemQuantias(item.descricao, oculto)}</span>
                 </div>
                 <small>{formatMonth(item.competencia)}</small>
                 <HiOutlineChevronRight className="h-4 w-4" />
@@ -943,7 +1032,7 @@ export default function CrDashboardView({
           {macros.length ? (
             <div className="cr-macro-ops-list">
               {macros.map((item) => {
-                const progress = item.previsto > 0
+                const progress = oculto ? 0 : item.previsto > 0
                   ? Math.min(100, (item.realizado / item.previsto) * 100)
                   : (item.realizado > 0 ? 100 : 0);
                 return (
@@ -953,18 +1042,24 @@ export default function CrDashboardView({
                       <span>{item.codigo} · {item.itens} item(ns) com movimento</span>
                     </div>
                     <div className="cr-macro-ops-row__numbers">
-                      <span>Planejado <strong>{currency.format(item.previsto || 0)}</strong></span>
-                      <span>Realizado <strong>{currency.format(item.realizado || 0)}</strong></span>
+                      <span>Planejado <strong className="cr-valor">{money(item.previsto)}</strong></span>
+                      <span>Realizado <strong className="cr-valor">{money(item.realizado)}</strong></span>
                       <span>
                         Desvio
-                        <strong data-negative={item.delta > 0}>{currency.format(item.delta || 0)}</strong>
+                        <strong className="cr-valor" data-negative={!oculto && item.delta > 0}>
+                          {money(item.delta)}
+                        </strong>
                       </span>
                     </div>
                     <div className="cr-macro-ops-row__progress">
                       <div className="cr-progress-track">
-                        <span data-state={item.estado} style={{ width: `${progress}%` }} />
+                        {oculto ? null : (
+                          <span data-state={item.estado} style={{ width: `${progress}%` }} />
+                        )}
                       </div>
-                      <b>{formatPercent(item.percentual_execucao)}</b>
+                      <b className="cr-valor">
+                        {oculto ? VALOR_OCULTO : formatPercent(item.percentual_execucao)}
+                      </b>
                     </div>
                   </div>
                 );

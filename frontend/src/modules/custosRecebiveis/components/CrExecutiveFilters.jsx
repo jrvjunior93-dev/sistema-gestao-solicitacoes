@@ -59,7 +59,12 @@ export default function CrExecutiveFilters({
   onCompetenciasChange,
   operational = false,
   onPeriodChange,
-  onClear
+  onClear,
+  // Painel do Gestor (29/09): false = pesquisa so na lista `obras` recebida
+  // (de /painel-gestor/obras, sem valores). A busca remota de
+  // /custos-recebiveis/obras traz valores financeiros (planilha, margem) e
+  // nao pode sair com o olho do painel fechado.
+  buscarObrasRemotas = true
 }) {
   /*
     "COMPETÊNCIAS DOS CARDS" NÃO FECHAVA CLICANDO FORA (05/09) — o defeito
@@ -95,6 +100,14 @@ export default function CrExecutiveFilters({
   }, [obras]);
 
   useEffect(() => {
+    if (!buscarObrasRemotas) {
+      const termo = obraSearch.trim().toLocaleLowerCase('pt-BR');
+      setObraOptions(termo
+        ? (obras || []).filter((obra) => `${obra.codigo || ''} ${obra.nome || ''}`.toLocaleLowerCase('pt-BR').includes(termo))
+        : obras);
+      setObraSearchLoading(false);
+      return undefined;
+    }
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
@@ -115,7 +128,8 @@ export default function CrExecutiveFilters({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [obraSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obraSearch, buscarObrasRemotas, obras]);
 
   const selectedMonths = [...new Set(competencias.filter(normalizeMonth))].sort().reverse();
   const monthOptions = availableMonths(competenciaReferencia, selectedMonths);

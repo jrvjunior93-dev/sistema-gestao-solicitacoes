@@ -6,18 +6,25 @@ import {
 } from 'react-icons/hi2';
 import { COMPETENCIA_ESTADO_LABELS } from '../constants/custosRecebiveis';
 import CrIconAction from './CrIconAction';
-import { calcularResultadoMes } from '../utils/resultadoMes';
+import { VALOR_OCULTO, calcularResultadoMes } from '../utils/resultadoMes';
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL'
 });
 
-function Metric({ label, value, tone = 'neutral' }) {
+/*
+  Classes estáveis para o Modo TV do Painel do Gestor (o painel escala o
+  texto por CSS): `cr-valor` em todo número do card e `cr-valor--principal`
+  no Desvio. Com `oculto`, o <dd> recebe `data-oculto` e só o marcador.
+*/
+function Metric({ label, value, tone = 'neutral', oculto = false }) {
   return (
-    <div className="cr-period-card__metric" data-tone={tone}>
+    <div className="cr-period-card__metric" data-tone={oculto ? 'neutral' : tone}>
       <dt>{label}</dt>
-      <dd>{value}</dd>
+      <dd className="cr-valor" data-oculto={oculto || undefined}>
+        {oculto ? VALOR_OCULTO : value}
+      </dd>
     </div>
   );
 }
@@ -46,8 +53,12 @@ export default function CrMonthlySummaryCard({
   reopeningStatus = null,
   approvedActionLabel,
   actionLabel = 'Ver detalhes',
-  openDisabledReason = ''
+  openDisabledReason = '',
+  // Painel do Gestor com o "olho" fechado: nenhum valor financeiro vai para
+  // o DOM (o servidor manda null). Ausente/false = comportamento de sempre.
+  valoresOcultos = false
 }) {
+  const oculto = Boolean(valoresOcultos);
   const isPublic = String(classification || '').toUpperCase() === 'PUBLICA';
   const planned = Number(custoPlanejado || 0);
   const realized = Number(custoRealizado || 0);
@@ -59,7 +70,8 @@ export default function CrMonthlySummaryCard({
     classificacao: classification,
     recebivelPrevisto,
     custoPlanejado: planned,
-    custoRealizado: realized
+    custoRealizado: realized,
+    valoresOcultos: oculto
   });
   const recognized = Number(recebivelReconhecido || 0);
   const received = Number(receitaRecebida || 0);
@@ -69,7 +81,7 @@ export default function CrMonthlySummaryCard({
     || (medicaoAprovadaInformada
       ? 'Revisar medição efetivamente paga'
       : 'Registrar medição efetivamente paga');
-  const deltaTone = resultado.semPlanejamento || resultado.valor === 0
+  const deltaTone = resultado.oculto || resultado.semPlanejamento || resultado.valor === 0
     ? 'neutral'
     : (resultado.valor > 0 ? 'positive' : 'negative');
   // "Aguardando" (laranja) só quando havia medição prevista e a aprovada
@@ -82,12 +94,15 @@ export default function CrMonthlySummaryCard({
   const approvedTone = awaitingApproval && hasForecast
     ? 'warning'
     : (isPublic && semMedicao ? 'neutral' : (isPublic ? 'context' : 'positive'));
-  const showBalance = !isPublic || medicaoAprovadaInformada;
+  // Oculto: `medicao_aprovada` chega null (não dá para saber se foi
+  // informada), então o saldo aparece sempre, com o marcador.
+  const showBalance = oculto || !isPublic || medicaoAprovadaInformada;
 
   return (
     <article
       className="cr-period-card"
-      data-alert={(!resultado.semPlanejamento && resultado.valor < 0) || Number(glosa) > 0}
+      data-alert={!oculto && ((!resultado.semPlanejamento && resultado.valor < 0) || Number(glosa) > 0)}
+      data-valores-ocultos={oculto || undefined}
     >
       <header className="cr-period-card__header">
         <div>
@@ -101,37 +116,46 @@ export default function CrMonthlySummaryCard({
 
       <div className="cr-period-card__lead" data-tone={deltaTone}>
         <span>Desvio</span>
-        {resultado.semPlanejamento ? (
+        {resultado.oculto ? (
+          <strong className="cr-valor cr-valor--principal" data-oculto="true">{VALOR_OCULTO}</strong>
+        ) : null}
+        {!resultado.oculto && resultado.semPlanejamento ? (
           <strong data-empty="true">Sem planejamento</strong>
-        ) : (
+        ) : null}
+        {!resultado.oculto && !resultado.semPlanejamento ? (
           <>
-            <strong>{resultado.valor > 0 ? '+' : ''}{currency.format(resultado.valor)}</strong>
+            <strong className="cr-valor cr-valor--principal">
+              {resultado.valor > 0 ? '+' : ''}{currency.format(resultado.valor)}
+            </strong>
             <small>{resultado.formula}</small>
           </>
-        )}
+        ) : null}
       </div>
 
       <dl className="cr-period-card__metrics">
-        <Metric label="Custo planejado" value={currency.format(planned)} tone="context" />
-        <Metric label="Custo realizado" value={currency.format(realized)} tone="negative" />
+        <Metric label="Custo planejado" value={oculto ? null : currency.format(planned)} tone="context" oculto={oculto} />
+        <Metric label="Custo realizado" value={oculto ? null : currency.format(realized)} tone="negative" oculto={oculto} />
         <Metric
           label={isPublic ? 'Medição prevista' : 'Recebível previsto'}
-          value={currency.format(recebivelPrevisto || 0)}
+          value={oculto ? null : currency.format(recebivelPrevisto || 0)}
           tone="context"
+          oculto={oculto}
         />
         <Metric
           label={isPublic ? 'Medição aprovada' : 'Receita recebida'}
-          value={approvedValue}
+          value={oculto ? null : approvedValue}
           tone={approvedTone}
+          oculto={oculto}
         />
         {isPublic ? (
-          <Metric label="Receita recebida" value={currency.format(received)} tone="positive" />
+          <Metric label="Receita recebida" value={oculto ? null : currency.format(received)} tone="positive" oculto={oculto} />
         ) : null}
         {showBalance ? (
           <Metric
             label="Saldo a receber"
-            value={currency.format(balance)}
+            value={oculto ? null : currency.format(balance)}
             tone={balance > 0 ? 'warning' : 'neutral'}
+            oculto={oculto}
           />
         ) : null}
       </dl>
@@ -144,7 +168,7 @@ export default function CrMonthlySummaryCard({
           {reopeningStatus === 'APROVADA' ? (
             <span data-tone="positive">Reabertura ativa</span>
           ) : null}
-          {isPublic && Number(glosa) > 0 ? (
+          {!oculto && isPublic && Number(glosa) > 0 ? (
             <span data-tone="negative">Glosa {currency.format(glosa)}</span>
           ) : null}
           {eyebrow ? <span>{isPublic ? 'Obra pública' : 'Obra privada'}</span> : null}

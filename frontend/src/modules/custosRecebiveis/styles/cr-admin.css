@@ -292,3 +292,14 @@
 .cr-page .cr-ops-metric[data-metric="resultado"] > strong {
   white-space: nowrap;
 }
+
+/* Painel do Gestor (29/09/2026): classes estaveis dos numeros do Dashboard
+   para o Modo TV (`.pg-modo-tv .cr-valor`, `.pg-modo-tv .cr-valor--principal`,
+   escritas em styles/painel-gestor.css). Aqui so o marcador de valor oculto
+   ("olho" fechado): sem numero, o marcador nao pode quebrar no meio. No
+   modulo (sem `valoresOcultos`) nada muda. */
+.cr-valor[data-oculto="true"],
+.cr-valor--principal[data-oculto="true"] {
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
