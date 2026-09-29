@@ -6,7 +6,7 @@ import {
   TabelaPadrao,
   useConfirmacao
 } from '../../../components/padrao';
-import { decidirDilatacao, listarDilatacoes } from '../services/custosRecebiveis';
+import { decidirDilatacao, listarDilatacoes, mensagemLegivel } from '../services/custosRecebiveis';
 import { monthLabel } from '../utils/prazos';
 
 const dateTime = new Intl.DateTimeFormat('pt-BR', {
@@ -27,7 +27,7 @@ const SITUACAO = { SOLICITADA: 'Aguardando', APROVADA: 'Aprovada', NEGADA: 'Nega
   ordem de chegada; cada um mostra o histórico da obra (por mês e no período
   todo) antes da decisão. A fila entra no topo do administrador na Fase 4.
 */
-export default function CrDilatacoesView({ canDecide = false }) {
+export default function CrDilatacoesView({ canDecide = false, onDecided, versao = 0 }) {
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -42,13 +42,13 @@ export default function CrDilatacoesView({ canDecide = false }) {
       const response = await listarDilatacoes({ situacao: 'SOLICITADA' });
       setItems(Array.isArray(response?.items) ? response.items : []);
     } catch (error) {
-      setAviso({ id: 'dilatacoes', tipo: 'error', mensagem: error.message || 'Erro ao carregar dilatações.' });
+      setAviso({ id: 'dilatacoes', tipo: 'error', mensagem: mensagemLegivel(error, 'Erro ao carregar dilatações.') });
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); }, [load, versao]);
 
   async function openHistory(obraRef) {
     setHistoryObra(obraRef);
@@ -57,7 +57,7 @@ export default function CrDilatacoesView({ canDecide = false }) {
       const response = await listarDilatacoes({ obra_id: obraRef.id });
       setHistoryItems(Array.isArray(response?.items) ? response.items : []);
     } catch (error) {
-      setAviso({ id: 'dilatacoes', tipo: 'error', mensagem: error.message || 'Erro ao carregar o histórico.' });
+      setAviso({ id: 'dilatacoes', tipo: 'error', mensagem: mensagemLegivel(error, 'Erro ao carregar o histórico.') });
     }
   }
 
@@ -100,9 +100,10 @@ export default function CrDilatacoesView({ canDecide = false }) {
         mensagem: decisao === 'APROVADA' ? 'Dilatação aprovada.' : 'Dilatação negada.'
       });
       await load();
+      onDecided?.();
       if (historyObra?.id === alvo.obra_id) await openHistory(historyObra);
     } catch (error) {
-      setAviso({ id: 'dilatacoes', tipo: 'error', mensagem: error.message || 'Erro ao decidir dilatação.' });
+      setAviso({ id: 'dilatacoes', tipo: 'error', mensagem: mensagemLegivel(error, 'Erro ao decidir dilatação.') });
     } finally {
       setDeciding(null);
     }

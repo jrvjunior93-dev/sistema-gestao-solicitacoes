@@ -5,16 +5,10 @@ import {
   HiOutlineCheckCircle,
   HiOutlineClock,
   HiOutlineExclamationTriangle,
-  HiOutlineLockOpen,
-  HiOutlineShieldCheck,
-  HiOutlineXMark
+  HiOutlineLockOpen
 } from 'react-icons/hi2';
-import {
-  concederBypassCustosRecebiveis,
-  listarBypassesCustosRecebiveis,
-  listarMinhasObrigacoesCustosRecebiveis,
-  revogarBypassCustosRecebiveis
-} from '../services/custosRecebiveis';
+import { listarMinhasObrigacoesCustosRecebiveis } from '../services/custosRecebiveis';
+import CrLiberacoesTemporarias from './CrLiberacoesTemporarias';
 
 const TYPE_LABELS = {
   CUSTO_PREVISTO: 'Custos planejados',
@@ -37,20 +31,6 @@ function formatDateTime(value) {
     dateStyle: 'short',
     timeStyle: 'short'
   }).format(date);
-}
-
-function toLocalDateTimeInput(date) {
-  const offset = date.getTimezoneOffset();
-  return new Date(date.getTime() - (offset * 60000)).toISOString().slice(0, 16);
-}
-
-function maxBypassDate() {
-  // Liberação temporária: no máximo 48 horas (29/09/2026).
-  return toLocalDateTimeInput(new Date(Date.now() + (48 * 3600000)));
-}
-
-function minBypassDate() {
-  return toLocalDateTimeInput(new Date(Date.now() + 60 * 60 * 1000));
 }
 
 function CrObligationCard({ item, onOpenPlanning }) {
@@ -104,35 +84,21 @@ function CrObligationCard({ item, onOpenPlanning }) {
 
 export default function CrObrigacoesView({ canGrantBypass, onOpenPlanning }) {
   const [data, setData] = useState(null);
-  const [bypassData, setBypassData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
-  const [showBypassForm, setShowBypassForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState(null);
-  const [form, setForm] = useState({
-    eligible_key: '',
-    motivo: '',
-    expira_em: ''
-  });
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
-      const [obligations, bypasses] = await Promise.all([
-        listarMinhasObrigacoesCustosRecebiveis(),
-        canGrantBypass ? listarBypassesCustosRecebiveis() : Promise.resolve(null)
-      ]);
-      setData(obligations);
-      setBypassData(bypasses);
+      setData(await listarMinhasObrigacoesCustosRecebiveis());
     } catch (requestError) {
       setError(requestError.message || 'Erro ao carregar obrigações.');
     } finally {
       setLoading(false);
     }
-  }, [canGrantBypass]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -142,56 +108,6 @@ export default function CrObrigacoesView({ canGrantBypass, onOpenPlanning }) {
     const items = Array.isArray(data?.items) ? data.items : [];
     return showCompleted ? items : items.filter((item) => item.situacao !== 'CUMPRIDA');
   }, [data, showCompleted]);
-
-  const activeBypasses = useMemo(
-    () => (bypassData?.items || []).filter((item) => item.ativo),
-    [bypassData]
-  );
-
-  async function handleGrant(event) {
-    event.preventDefault();
-    const [userId, obraId] = form.eligible_key.split(':').map(Number);
-    if (!userId || !obraId) {
-      setFeedback({ tone: 'error', message: 'Selecione o usuário e a obra.' });
-      return;
-    }
-    try {
-      setSaving(true);
-      setFeedback(null);
-      await concederBypassCustosRecebiveis({
-        user_id: userId,
-        obra_id: obraId,
-        motivo: form.motivo,
-        expira_em: new Date(form.expira_em).toISOString()
-      });
-      setFeedback({
-        tone: 'success',
-        message: 'Bypass concedido. A pendência continua visível e não foi marcada como cumprida.'
-      });
-      setForm({ eligible_key: '', motivo: '', expira_em: '' });
-      setShowBypassForm(false);
-      await load();
-    } catch (requestError) {
-      setFeedback({ tone: 'error', message: requestError.message || 'Erro ao conceder bypass.' });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleRevoke(item) {
-    if (!window.confirm(`Revogar o bypass de ${item.usuario?.nome || 'usuário'}?`)) return;
-    try {
-      setSaving(true);
-      setFeedback(null);
-      await revogarBypassCustosRecebiveis(item.id);
-      setFeedback({ tone: 'success', message: 'Bypass revogado e registrado na auditoria.' });
-      await load();
-    } catch (requestError) {
-      setFeedback({ tone: 'error', message: requestError.message || 'Erro ao revogar bypass.' });
-    } finally {
-      setSaving(false);
-    }
-  }
 
   if (loading) {
     return <section className="cr-section cr-empty-state">Carregando obrigações...</section>;
@@ -292,109 +208,10 @@ export default function CrObrigacoesView({ canGrantBypass, onOpenPlanning }) {
             <div className="cr-section-heading">
               <div>
                 <h2>Liberações temporárias</h2>
-                <p>Libera a obra travada por até 48 horas: ela volta a receber solicitações novas, de qualquer usuário. Com prazo e auditoria.</p>
+                <p>Libera a obra travada por até 48 horas, com prazo e auditoria.</p>
               </div>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                onClick={() => setShowBypassForm((current) => !current)}
-              >
-                {showBypassForm ? <HiOutlineXMark /> : <HiOutlineShieldCheck />}
-                {showBypassForm ? 'Fechar' : 'Conceder'}
-              </button>
             </div>
-
-            {feedback ? (
-              <div className="cr-feedback" data-tone={feedback.tone}>{feedback.message}</div>
-            ) : null}
-
-            {showBypassForm ? (
-              <form className="cr-bypass-form" onSubmit={handleGrant}>
-                <label className="cr-field">
-                  <span>Usuário e obra</span>
-                  <select
-                    required
-                    value={form.eligible_key}
-                    onChange={(event) => setForm((current) => ({
-                      ...current,
-                      eligible_key: event.target.value
-                    }))}
-                  >
-                    <option value="">Selecione</option>
-                    {(bypassData?.usuarios_elegiveis || []).map((item) => (
-                      <option
-                        key={`${item.user_id}:${item.obra_id}`}
-                        value={`${item.user_id}:${item.obra_id}`}
-                      >
-                        {item.usuario.nome} · {item.obra.codigo || item.obra_id} — {item.obra.nome}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="cr-field">
-                  <span>Expira em</span>
-                  <input
-                    type="datetime-local"
-                    required
-                    min={minBypassDate()}
-                    max={maxBypassDate()}
-                    value={form.expira_em}
-                    onChange={(event) => setForm((current) => ({
-                      ...current,
-                      expira_em: event.target.value
-                    }))}
-                  />
-                  <small>Obrigatório e limitado a 48 horas.</small>
-                </label>
-                <label className="cr-field">
-                  <span>Justificativa</span>
-                  <textarea
-                    required
-                    minLength={10}
-                    value={form.motivo}
-                    onChange={(event) => setForm((current) => ({
-                      ...current,
-                      motivo: event.target.value
-                    }))}
-                    placeholder="Explique por que o bloqueio não deve impedir este usuário de trabalhar."
-                  />
-                </label>
-                <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
-                  {saving ? 'Salvando...' : 'Conceder bypass'}
-                </button>
-              </form>
-            ) : null}
-
-            <div className="cr-bypass-list">
-              {activeBypasses.length ? activeBypasses.map((item) => (
-                <article key={item.id} className="cr-bypass-record">
-                  <div>
-                    <strong>{item.usuario?.nome || `Usuário ${item.user_id}`}</strong>
-                    <span>{item.obra ? `${item.obra.codigo || item.obra.id} · ${item.obra.nome}` : 'Todas as obras'}</span>
-                    <small>{item.motivo}</small>
-                    <small>
-                      Concedido por {item.concedido_por_usuario?.nome || item.concedido_por}
-                      {' · '}expira {formatDateTime(item.expira_em)}
-                    </small>
-                    {item.recorrente ? (
-                      <small className="cr-warning-text">
-                        Atenção: usuário com bypasses em meses consecutivos.
-                      </small>
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    disabled={saving}
-                    onClick={() => handleRevoke(item)}
-                  >
-                    Revogar
-                  </button>
-                </article>
-              )) : (
-                <div className="cr-empty-state">Nenhum bypass ativo no seu escopo.</div>
-              )}
-            </div>
+            <CrLiberacoesTemporarias />
           </section>
         ) : null}
       </aside>

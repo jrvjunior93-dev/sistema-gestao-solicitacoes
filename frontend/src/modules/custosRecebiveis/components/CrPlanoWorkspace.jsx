@@ -62,7 +62,8 @@ export default function CrPlanoWorkspace({
   onSelectPlan,
   onOpenImport,
   onDownloadModel,
-  onPublish
+  onPublish,
+  onClose = null
 }) {
   const [justification, setJustification] = useState('');
   const plan = data?.plano_atual || null;
@@ -98,12 +99,8 @@ export default function CrPlanoWorkspace({
     <section className="cr-workspace">
       <div className="cr-workspace-heading">
         <div>
-          <span>Workspace da obra</span>
+          <span>Planilha da obra</span>
           <h2>{obra.codigo || `OBRA ${obra.id}`} · {obra.nome}</h2>
-          <p>
-            O orçamento macro abaixo é somente leitura. As versões micro são independentes e
-            gravadas exclusivamente nas tabelas do módulo.
-          </p>
         </div>
         <div className="cr-workspace-actions">
           {canImport ? (
@@ -118,20 +115,18 @@ export default function CrPlanoWorkspace({
               </button>
             </>
           ) : null}
+          {onClose ? (
+            <button type="button" className="btn btn-outline" onClick={onClose}>
+              Fechar
+            </button>
+          ) : null}
         </div>
-      </div>
-
-      <div className="cr-subtabs" role="tablist" aria-label="Workspace da obra">
-        <button type="button" className="is-active" role="tab" aria-selected="true">
-          Estrutura micro
-        </button>
       </div>
 
       {!plan ? (
         <div className="cr-empty-state cr-empty-state--large">
           <HiOutlineDocumentArrowUp className="h-7 w-7" />
           <strong>Esta obra ainda não possui estrutura micro</strong>
-          <span>Baixe o modelo, preencha a planilha e valide o arquivo antes da primeira importação.</span>
           {canImport ? (
             <button type="button" className="btn btn-primary" onClick={onOpenImport}>
               Iniciar importação
@@ -237,7 +232,6 @@ export default function CrPlanoWorkspace({
               <div className="cr-block-heading">
                 <div>
                   <h3>Estrutura micro da versão v{plan.versao}</h3>
-                  <p>Quantidade, custo unitário e vínculo macro recalculados pelo backend.</p>
                 </div>
               </div>
               <TabelaPadrao
@@ -308,7 +302,6 @@ export default function CrPlanoWorkspace({
               <div className="cr-block-heading">
                 <div>
                   <h3>Referência macro</h3>
-                  <p>Leitura direta de Obras. Nenhuma edição é feita aqui.</p>
                 </div>
               </div>
               <div className="cr-macro-list">

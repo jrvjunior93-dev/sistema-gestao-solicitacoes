@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   HiOutlineCheckCircle,
   HiOutlineExclamationTriangle,
@@ -9,8 +9,16 @@ import {
 } from 'react-icons/hi2';
 import { TabelaPadrao } from '../../../components/padrao';
 import { revalidarItensPlanilhaPlanejamento } from '../services/custosRecebiveis';
+import { mensagemErroPlanilha, normalizarTextoPlanilha } from '../services/custosRecebiveisPrevisao';
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+
+// O que a importação confirmada grava (Fase 6: importar já salva).
+const SAVE_EFFECT = {
+  custos: 'os custos planejados são salvos',
+  'medicao-prevista': 'a medição prevista é salva',
+  'medicao-aprovada': 'a medição aprovada é registrada (com diferença ainda sem justificativa, fica só na tela)'
+};
 
 const TITLES = {
   custos: 'Custos planejados',
@@ -41,6 +49,9 @@ export default function CrPlanningImportModal({
   const [validating, setValidating] = useState(false);
   const [requestError, setRequestError] = useState('');
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     setRows(preview?.itens || []);
@@ -48,9 +59,11 @@ export default function CrPlanningImportModal({
     setDirty(false);
     setRequestError('');
     setCatalogSearch('');
+    setConfirming(false);
   }, [preview]);
 
   const isCosts = tipo === 'custos';
+  const isForecast = tipo === 'medicao-prevista';
   const catalog = preview?.catalogo || [];
   const selectedIds = useMemo(
     () => new Set(rows.map((row) => Number(row.plano_item_id)).filter(Boolean)),
@@ -69,6 +82,7 @@ export default function CrPlanningImportModal({
   function markDirty(nextRows) {
     setRows(nextRows);
     setDirty(true);
+    setConfirming(false);
     setRequestError('');
   }
 
@@ -132,13 +146,34 @@ export default function CrPlanningImportModal({
       setResult(response);
       setDirty(false);
     } catch (error) {
-      setRequestError(error.message || 'Não foi possível revalidar a prévia.');
+      setRequestError(mensagemErroPlanilha(error, 'Não foi possível revalidar a prévia.'));
     } finally {
       setValidating(false);
     }
   }
 
   const valid = Boolean(result?.resumo?.valido) && !dirty && rows.length > 0;
+
+  async function confirmImport() {
+    if (submittingRef.current || !valid) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    try {
+      await onConfirm(tipo, result.itens);
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  // Previsão acima do saldo provável: só aviso (o teto é o saldo disponível).
+  function aboveProbable(row) {
+    if (!isForecast || row.saldo_provavel == null) return false;
+    const quantity = asNumber(row.quantidade);
+    return Number(row.quantidade_prevista_pendente || 0) > 0
+      && quantity > asNumber(row.saldo_provavel) + 0.0001
+      && quantity <= asNumber(row.saldo_disponivel) + 0.0001;
+  }
 
   // A edição inline grava por ÍNDICE (updateRow/removeRow): a tabela recebe
   // a linha já emparelhada com o seu índice na prévia.
@@ -215,7 +250,17 @@ export default function CrPlanningImportModal({
               <HiOutlineExclamationTriangle className="h-4 w-4" />
               {result.erros.length} inconsistência(s) para revisar
             </summary>
-            <div>{result.erros.map((error) => <span key={error}>{error}</span>)}</div>
+            <div>{result.erros.map((error) => <span key={error}>{normalizarTextoPlanilha(error)}</span>)}</div>
+          </details>
+        ) : null}
+
+        {Array.isArray(result?.avisos) && result.avisos.length ? (
+          <details className="cr-import-modal__errors" data-tone="warning" open>
+            <summary>
+              <HiOutlineExclamationTriangle className="h-4 w-4" />
+              {result.avisos.length} aviso(s) — não impedem a importação
+            </summary>
+            <div>{result.avisos.map((aviso) => <span key={aviso}>{normalizarTextoPlanilha(aviso)}</span>)}</div>
           </details>
         ) : null}
 
@@ -278,7 +323,13 @@ export default function CrPlanningImportModal({
               ] : [
                 { id: 'unidade', titulo: 'Unid.', tipo: 'texto', render: ({ row }) => row.unidade || 'un' },
                 { id: 'quantidade_orcada', titulo: 'Orçado', tipo: 'numero', render: ({ row }) => row.quantidade_orcada },
-                { id: 'saldo_disponivel', titulo: 'Saldo', tipo: 'numero', render: ({ row }) => row.saldo_disponivel }
+                { id: 'saldo_disponivel', titulo: 'Saldo', tipo: 'numero', render: ({ row }) => row.saldo_disponivel },
+                ...(isForecast ? [{
+                  id: 'saldo_provavel',
+                  titulo: 'Saldo provável',
+                  tipo: 'numero',
+                  render: ({ row }) => (row.saldo_provavel == null ? '—' : row.saldo_provavel)
+                }] : [])
               ]),
               {
                 id: 'quantidade',
@@ -294,7 +345,9 @@ export default function CrPlanningImportModal({
                       value={row.quantidade}
                       onChange={(event) => updateRow(index, 'quantidade', event.target.value)}
                     />
-                    {row.erros?.length ? <small>{row.erros.join(' ')}</small> : null}
+                    {row.erros?.length
+                      ? <small>{row.erros.map(normalizarTextoPlanilha).join(' ')}</small>
+                      : (aboveProbable(row) ? <small data-tone="warning">Acima do saldo provável</small> : null)}
                   </>
                 )
               },
@@ -307,7 +360,7 @@ export default function CrPlanningImportModal({
             ]}
             itens={linhas}
             getId={(linha) => linha.id}
-            urgencia={(linha) => (linha.row.erros?.length ? 'danger' : null)}
+            urgencia={(linha) => (linha.row.erros?.length ? 'danger' : (aboveProbable(linha.row) ? 'warning' : null))}
             storageKey={`tabela:custos-recebiveis-previa-importacao:${isCosts ? 'custos' : 'medicao'}`}
             rotuloRolagem="Prévia da importação"
             vazio="Nenhuma linha com quantidade maior que zero."
@@ -325,26 +378,53 @@ export default function CrPlanningImportModal({
           />
         </div>
 
-        <footer className="cr-import-modal__footer">
-          <div data-state={valid ? 'valid' : 'pending'}>
-            {valid ? <HiOutlineCheckCircle className="h-5 w-5" /> : <HiOutlineExclamationTriangle className="h-5 w-5" />}
-            <span>{valid ? 'Todos os itens passaram na validação.' : 'Valide novamente após qualquer alteração.'}</span>
+        {confirming && valid ? (
+          <div className="cr-import-modal__confirm" role="alert">
+            <span>
+              {rows.length} item(ns) entram na tela e {SAVE_EFFECT[tipo] || 'a seção é salva'} agora.
+              Itens já lançados com o mesmo serviço são substituídos.
+            </span>
+            <div>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={submitting}
+                onClick={() => setConfirming(false)}
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={submitting}
+                onClick={confirmImport}
+              >
+                {submitting ? 'Salvando...' : 'Confirmar importação'}
+              </button>
+            </div>
           </div>
-          <div>
-            <button type="button" className="btn btn-outline" onClick={onClose}>Cancelar</button>
-            <button type="button" className="btn btn-outline" disabled={validating} onClick={revalidate}>
-              {validating ? 'Validando...' : 'Validar novamente'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={!valid || validating}
-              onClick={() => onConfirm(tipo, result.itens)}
-            >
-              Confirmar importação
-            </button>
-          </div>
-        </footer>
+        ) : (
+          <footer className="cr-import-modal__footer">
+            <div data-state={valid ? 'valid' : 'pending'}>
+              {valid ? <HiOutlineCheckCircle className="h-5 w-5" /> : <HiOutlineExclamationTriangle className="h-5 w-5" />}
+              <span>{valid ? 'Todos os itens passaram na validação.' : 'Valide novamente após qualquer alteração.'}</span>
+            </div>
+            <div>
+              <button type="button" className="btn btn-outline" onClick={onClose}>Cancelar</button>
+              <button type="button" className="btn btn-outline" disabled={validating} onClick={revalidate}>
+                {validating ? 'Validando...' : 'Validar novamente'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!valid || validating}
+                onClick={() => setConfirming(true)}
+              >
+                {tipo === 'medicao-aprovada' ? 'Importar e registrar' : 'Importar e salvar'}
+              </button>
+            </div>
+          </footer>
+        )}
       </section>
     </div>
   );

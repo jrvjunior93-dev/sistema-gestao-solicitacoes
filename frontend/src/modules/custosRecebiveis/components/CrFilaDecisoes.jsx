@@ -1,0 +1,201 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  Avisos,
+  BlocoConteudo,
+  CelulaDupla,
+  TabelaPadrao,
+  useConfirmacao
+} from '../../../components/padrao';
+import {
+  consultaIndisponivel,
+  decidirDilatacao,
+  decidirReabertura,
+  listarDecisoesPendentes,
+  mensagemLegivel
+} from '../services/custosRecebiveis';
+import { monthLabel } from '../utils/prazos';
+import { formatarDataHora, rotuloObra } from './CrFormatos';
+
+const TIPO_LABEL = {
+  REABERTURA: 'Reabertura de competência',
+  DILATACAO: 'Dilatação de prazo'
+};
+
+function ordemDeChegada(left, right) {
+  const a = left.solicitado_em ? new Date(left.solicitado_em).getTime() : 0;
+  const b = right.solicitado_em ? new Date(right.solicitado_em).getTime() : 0;
+  return a - b;
+}
+
+/*
+  Fila de decisões do administrador (Fase 4). Reaberturas e dilatações
+  pendentes juntas, mais antiga primeiro, no topo da tela — é para cá que vai
+  o pedido do engenheiro. Some quando não há pedido; decide-se aqui mesmo.
+*/
+export default function CrFilaDecisoes({ versao = 0, onOpenMonth, onDecided }) {
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
+  const [items, setItems] = useState([]);
+  const [estado, setEstado] = useState('carregando');
+  const [aviso, setAviso] = useState(null);
+  const [decidindo, setDecidindo] = useState(null);
+  const decidindoRef = useRef(false);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await listarDecisoesPendentes();
+      const lista = Array.isArray(response?.items) ? [...response.items] : [];
+      setItems(lista.sort(ordemDeChegada));
+      setEstado('pronto');
+    } catch (error) {
+      setItems([]);
+      setEstado(consultaIndisponivel(error) ? 'indisponivel' : 'erro');
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => void load(), 60000);
+    return () => window.clearInterval(timer);
+  }, [load, versao]);
+
+  async function decidir(item, decisao) {
+    if (decidindoRef.current) return;
+    const alvo = item;
+    const aprovar = decisao === 'APROVADA';
+    const tipo = alvo.tipo;
+    const detalhe = tipo === 'DILATACAO' && alvo.dias ? ` · ${alvo.dias} dia(s)` : '';
+    const { ok, texto } = await confirmar({
+      titulo: `${aprovar ? 'Aprovar' : 'Negar'} ${tipo === 'DILATACAO' ? 'dilatação' : 'reabertura'}`,
+      mensagem: `${rotuloObra(alvo.obra)} · ${monthLabel(alvo.competencia)}${detalhe}. Motivo: ${alvo.motivo || '—'}`,
+      rotuloConfirmar: aprovar ? 'Aprovar' : 'Negar',
+      destrutiva: !aprovar,
+      // O servidor não exige justificativa para aprovar nem para negar;
+      // quando informada, fica na auditoria da decisão.
+      campo: { rotulo: 'Justificativa (opcional)', multilinha: true }
+    });
+    if (!ok) return;
+    decidindoRef.current = true;
+    setDecidindo(`${tipo}-${alvo.id}`);
+    try {
+      if (tipo === 'DILATACAO') {
+        await decidirDilatacao(alvo.id, decisao, texto);
+      } else {
+        await decidirReabertura(alvo.id, decisao, texto);
+      }
+      setAviso({
+        id: 'fila',
+        tipo: 'success',
+        mensagem: `${TIPO_LABEL[tipo]} ${aprovar ? 'aprovada' : 'negada'}: ${rotuloObra(alvo.obra)}, ${monthLabel(alvo.competencia)}.`
+      });
+      await load();
+      onDecided?.();
+    } catch (error) {
+      setAviso({ id: 'fila', tipo: 'error', mensagem: mensagemLegivel(error, 'Não foi possível registrar a decisão.') });
+    } finally {
+      decidindoRef.current = false;
+      setDecidindo(null);
+    }
+  }
+
+  if (estado === 'carregando' || (estado === 'pronto' && items.length === 0 && !aviso)) {
+    return elementoConfirmacao;
+  }
+
+  if (estado !== 'pronto') {
+    return (
+      <p className="cr-fila-indisponivel" role="status">
+        {estado === 'indisponivel'
+          ? 'Fila de decisões indisponível no servidor no momento.'
+          : 'Não foi possível consultar a fila de decisões.'}
+        <button type="button" className="btn btn-outline btn-sm" onClick={() => void load()}>
+          Tentar novamente
+        </button>
+      </p>
+    );
+  }
+
+  return (
+    <BlocoConteudo
+      className="cr-fila-decisoes"
+      titulo="Decisões pendentes"
+      contagem={`${items.length} aguardando`}
+      variante="primario"
+      cor="var(--sem-warning)"
+    >
+      <Avisos avisos={aviso ? [aviso] : []} aoFechar={() => setAviso(null)} />
+      {items.length ? (
+        <TabelaPadrao
+          colunas={[
+            {
+              id: 'pedido',
+              titulo: 'Pedido',
+              tipo: 'identidade',
+              noCard: 'titulo',
+              render: (item) => (
+                <CelulaDupla
+                  principal={rotuloObra(item.obra)}
+                  sub={`${TIPO_LABEL[item.tipo] || item.tipo} · ${monthLabel(item.competencia)}`}
+                />
+              )
+            },
+            {
+              id: 'detalhe',
+              titulo: 'Prazo',
+              tipo: 'texto',
+              render: (item) => (item.tipo === 'DILATACAO'
+                ? `+${item.dias || 0} dia(s)${item.prazo_vigente ? ` · vence ${formatarDataHora(item.prazo_vigente)}` : ''}`
+                : 'Reabre por 24 horas')
+            },
+            { id: 'motivo', titulo: 'Motivo', tipo: 'texto', render: (item) => item.motivo || '—' },
+            {
+              id: 'solicitado',
+              titulo: 'Solicitado',
+              tipo: 'texto',
+              render: (item) => (
+                <CelulaDupla
+                  principal={item.solicitado_por?.nome || '—'}
+                  sub={formatarDataHora(item.solicitado_em)}
+                />
+              )
+            }
+          ]}
+          itens={items}
+          getId={(item) => `${item.tipo}-${item.id}`}
+          storageKey="tabela:custos-recebiveis-fila-decisoes"
+          rotuloRolagem="Decisões pendentes"
+          vazio="Nenhuma decisão pendente."
+          acoesLinha={(item) => {
+            const chave = `${item.tipo}-${item.id}`;
+            return (
+              <>
+                <button type="button" className="btn btn-outline" onClick={() => onOpenMonth?.(item)}>
+                  Abrir mês
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  disabled={Boolean(decidindo)}
+                  onClick={() => decidir(item, 'NEGADA')}
+                >
+                  Negar
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={Boolean(decidindo)}
+                  onClick={() => decidir(item, 'APROVADA')}
+                >
+                  {decidindo === chave ? 'Enviando...' : 'Aprovar'}
+                </button>
+              </>
+            );
+          }}
+          larguraAcoes={300}
+        />
+      ) : (
+        <p className="cr-fila-vazia">Nenhuma decisão pendente.</p>
+      )}
+      {elementoConfirmacao}
+    </BlocoConteudo>
+  );
+}

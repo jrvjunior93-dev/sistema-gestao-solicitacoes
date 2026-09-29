@@ -9,9 +9,6 @@
     "src/components/NotificacoesBell.jsx": 1,
     "src/contexts/AuthContext.jsx": 2,
     "src/navigation/AtalhosTopbar.jsx": 1,
-    "src/pages/AprovacaoDiretoria.jsx": 3,
-    "src/modules/custosRecebiveis/components/CrConfiguracoesView.jsx": 1,
-    "src/modules/custosRecebiveis/components/CrObrigacoesView.jsx": 1,
-    "src/modules/custosRecebiveis/components/CrPlanejamentoView.jsx": 4
+    "src/pages/AprovacaoDiretoria.jsx": 3
   }
 }

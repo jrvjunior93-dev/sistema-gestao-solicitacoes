@@ -53,7 +53,10 @@ function validateRouteAndPermissionContracts() {
   assert(exportService.includes('createWorkbookBuffer'));
   assert(exportService.includes('resolveWorks'));
   assert(constants.includes("id: 'realizado'"));
-  assert(constants.includes("id: 'exportacoes'"));
+  // Fase 4 (29/09): Importacoes e Exportacoes viraram a aba 'arquivos'; o id
+  // antigo segue como apelido para nao quebrar links.
+  assert(constants.includes("id: 'arquivos'"));
+  assert(constants.includes("exportacoes: 'arquivos'"));
   assert(page.includes('<CrRealizadoView'));
   assert(page.includes('<CrExportacoesView'));
   assert(realizedView.includes('Fonte exclusiva: títulos financeiros a pagar'));

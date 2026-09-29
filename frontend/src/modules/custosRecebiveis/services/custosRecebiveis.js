@@ -564,3 +564,82 @@ export async function registrarSemMedicaoCompetencia(obraId, competencia, justif
   );
   return parseResponse(response, 'Erro ao registrar mês sem medição aprovada');
 }
+
+/* ---- Reforma 29/09/2026, Fase 4: consultas gerais da tela do administrador ---- */
+
+function buildQuery(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== null && value !== undefined && String(value).trim() !== '') query.set(key, value);
+  });
+  const suffix = query.toString();
+  return suffix ? `?${suffix}` : '';
+}
+
+/*
+  Rota que o servidor ainda não oferece (backend ainda não publicado): o
+  Express responde 404 sem `code`. O 404 de negócio (registro não achado)
+  sempre traz `code`, e esse continua sendo erro de verdade.
+*/
+export function consultaIndisponivel(error) {
+  return Number(error?.status) === 404 && !error?.code;
+}
+
+// Mensagem que pode ir para a tela: nunca HTML nem texto técnico cru.
+export function mensagemLegivel(error, fallback) {
+  if (consultaIndisponivel(error)) return 'Consulta indisponível no servidor no momento.';
+  const message = String(error?.message || '').trim();
+  if (!message || message.startsWith('<') || message.length > 300) return fallback;
+  return message;
+}
+
+export async function listarDecisoesPendentes() {
+  const response = await fetch(`${API_URL}/custos-recebiveis/decisoes/pendentes`, { headers: authHeaders() });
+  return parseResponse(response, 'Erro ao consultar decisões pendentes');
+}
+
+export async function listarReaberturas(params = {}) {
+  const response = await fetch(`${API_URL}/custos-recebiveis/reaberturas${buildQuery(params)}`, {
+    headers: authHeaders()
+  });
+  return parseResponse(response, 'Erro ao consultar reaberturas');
+}
+
+/*
+  Decidir reabertura (aprovar ou negar): a rota `/aprovar` aceita as duas
+  decisões. Idempotente no servidor — pedido já decidido volta com
+  `idempotente: true`.
+*/
+export async function decidirReabertura(reaberturaId, decisao, justificativa = '') {
+  const texto = String(justificativa || '').trim();
+  const response = await fetch(`${API_URL}/custos-recebiveis/reaberturas/${reaberturaId}/aprovar`, {
+    method: 'POST',
+    headers: jsonHeaders({ 'Idempotency-Key': newIdempotencyKey('cr-reabertura-decisao') }),
+    body: JSON.stringify(texto ? { decisao, justificativa: texto } : { decisao })
+  });
+  return parseResponse(response, 'Erro ao decidir reabertura');
+}
+
+export async function listarAuditoriaGeral(params = {}) {
+  const response = await fetch(`${API_URL}/custos-recebiveis/auditoria${buildQuery(params)}`, {
+    headers: authHeaders()
+  });
+  return parseResponse(response, 'Erro ao consultar auditoria');
+}
+
+export async function listarPlanosResumo() {
+  const response = await fetch(`${API_URL}/custos-recebiveis/planos`, { headers: authHeaders() });
+  return parseResponse(response, 'Erro ao consultar planilhas das obras');
+}
+
+export async function listarResponsaveisGeral() {
+  const response = await fetch(`${API_URL}/custos-recebiveis/responsaveis`, { headers: authHeaders() });
+  return parseResponse(response, 'Erro ao consultar responsáveis das obras');
+}
+
+export async function listarObrigacoes(params = {}) {
+  const response = await fetch(`${API_URL}/custos-recebiveis/obrigacoes${buildQuery(params)}`, {
+    headers: authHeaders()
+  });
+  return parseResponse(response, 'Erro ao consultar obrigações');
+}

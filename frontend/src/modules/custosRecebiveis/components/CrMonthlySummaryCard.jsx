@@ -21,6 +21,8 @@ function Metric({ label, value, tone = 'neutral' }) {
   );
 }
 
+const percent = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
+
 export default function CrMonthlySummaryCard({
   presentation = 'default',
   title,
@@ -49,16 +51,34 @@ export default function CrMonthlySummaryCard({
   openDisabledReason = ''
 }) {
   const isPublic = String(classification || '').toUpperCase() === 'PUBLICA';
-  const costDelta = Number(custoRealizado || 0) - Number(custoPlanejado || 0);
+  const planned = Number(custoPlanejado || 0);
+  const realized = Number(custoRealizado || 0);
+  const costDelta = realized - planned;
+  // Sem custo planejado lançado (ou mês não iniciado) não existe desvio: o
+  // realizado inteiro apareceria como estouro. Mostra "Sem planejamento".
+  const hasPlanning = planned > 0 && (status || 'NAO_INICIADA') !== 'NAO_INICIADA';
   const recognized = Number(recebivelReconhecido || 0);
   const received = Number(receitaRecebida || 0);
   const balance = Math.max(0, recognized - received);
   const statusLabel = COMPETENCIA_ESTADO_LABELS[status] || status || 'Não iniciada';
   const approvedLabel = approvedActionLabel
     || (medicaoAprovadaInformada ? 'Revisar aprovação' : 'Registrar aprovação');
+  const deltaTone = !hasPlanning || costDelta === 0
+    ? 'neutral'
+    : (costDelta > 0 ? 'negative' : (presentation === 'gestor' ? 'positive' : 'context'));
+  const approvedValue = isPublic && semMedicao
+    ? 'Sem medição'
+    : (isPublic && !medicaoAprovadaInformada
+      ? 'Aguardando'
+      : currency.format(isPublic ? recognized : received));
+  const approvedTone = isPublic && !semMedicao && !medicaoAprovadaInformada ? 'warning' : 'neutral';
+  const showBalance = !isPublic || medicaoAprovadaInformada;
 
   return (
-    <article className="cr-period-card" data-alert={costDelta > 0 || Number(glosa) > 0}>
+    <article
+      className="cr-period-card"
+      data-alert={(hasPlanning && costDelta > 0) || Number(glosa) > 0}
+    >
       <header className="cr-period-card__header">
         <div>
           {eyebrow ? <span>{eyebrow}</span> : null}
@@ -69,52 +89,40 @@ export default function CrMonthlySummaryCard({
         </span>
       </header>
 
+      <div className="cr-period-card__lead" data-tone={deltaTone}>
+        <span>Desvio de custo</span>
+        {hasPlanning ? (
+          <>
+            <strong>{costDelta > 0 ? '+' : ''}{currency.format(costDelta)}</strong>
+            <small>{percent.format((realized / planned) * 100)}% do planejado</small>
+          </>
+        ) : (
+          <strong data-empty="true">Sem planejamento</strong>
+        )}
+      </div>
+
       <dl className="cr-period-card__metrics">
-        <Metric label="Custo planejado" value={currency.format(custoPlanejado || 0)} />
+        <Metric label="Custo planejado" value={currency.format(planned)} />
+        <Metric label="Custo realizado" value={currency.format(realized)} />
         <Metric
           label={isPublic ? 'Medição prevista' : 'Recebível previsto'}
           value={currency.format(recebivelPrevisto || 0)}
         />
         <Metric
-          label="Custo realizado"
-          value={currency.format(custoRealizado || 0)}
-          tone={presentation === 'gestor' ? 'context' : 'positive'}
-        />
-        <Metric
           label={isPublic ? 'Medição aprovada' : 'Receita recebida'}
-          value={
-            isPublic && semMedicao
-              ? 'Sem medição'
-              : (isPublic && !medicaoAprovadaInformada
-                ? 'Aguardando'
-                : currency.format(isPublic ? recognized : received))
-          }
-          tone={isPublic && semMedicao
-            ? 'neutral'
-            : (isPublic && !medicaoAprovadaInformada
-              ? 'warning'
-              : (isPublic ? 'context' : 'positive'))}
-        />
-        <Metric
-          label="Desvio de custo"
-          value={currency.format(costDelta)}
-          tone={costDelta > 0
-            ? 'negative'
-            : (costDelta < 0 ? (presentation === 'gestor' ? 'positive' : 'context') : 'neutral')}
+          value={approvedValue}
+          tone={approvedTone}
         />
         {isPublic ? (
-          <Metric
-            label="Receita recebida"
-            value={currency.format(received)}
-            tone="positive"
-          />
-        ) : (
+          <Metric label="Receita recebida" value={currency.format(received)} />
+        ) : null}
+        {showBalance ? (
           <Metric
             label="Saldo a receber"
             value={currency.format(balance)}
             tone={balance > 0 ? 'warning' : 'neutral'}
           />
-        )}
+        ) : null}
       </dl>
 
       <footer className="cr-period-card__footer">
@@ -128,12 +136,7 @@ export default function CrMonthlySummaryCard({
           {isPublic && Number(glosa) > 0 ? (
             <span data-tone="negative">Glosa {currency.format(glosa)}</span>
           ) : null}
-          {isPublic && medicaoAprovadaInformada ? (
-            <span data-tone={balance > 0 ? 'warning' : 'neutral'}>
-              Saldo a receber {currency.format(balance)}
-            </span>
-          ) : null}
-          <span>{isPublic ? 'Obra pública' : 'Obra privada'}</span>
+          {eyebrow ? <span>{isPublic ? 'Obra pública' : 'Obra privada'}</span> : null}
         </div>
         <div className="cr-period-card__actions">
           {/* Ordem fixa: editar, aprovação, reabertura, detalhes. Com motivo

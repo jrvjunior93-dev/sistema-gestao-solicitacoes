@@ -22,6 +22,16 @@ export function monthLabel(value) {
   }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
+// "set/2026": competência em coluna estreita de tabela.
+export function monthShort(value) {
+  if (!/^\d{4}-\d{2}$/.test(String(value || ''))) return value || '—';
+  const [year, month] = String(value).split('-').map(Number);
+  const name = new Intl.DateTimeFormat('pt-BR', { month: 'short', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(year, month - 1, 1)))
+    .replace('.', '');
+  return `${name}/${year}`;
+}
+
 function shortDate(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : dayMonth.format(date);

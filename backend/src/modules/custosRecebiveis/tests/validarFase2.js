@@ -284,12 +284,17 @@ function validateFrontendContracts() {
   assert(!planning.includes('checked={Boolean(item.confirmado)}'));
   assert(planning.includes('Custos planejados no mês'));
   assert(planning.includes('Adicionar linha'));
-  assert(planning.includes('Não é necessário escolher item ou etapa macro'));
+  // Fase 6 (29/09): o paragrafo que explicava o obvio saiu da tela.
+  assert(!planning.includes('Não é necessário escolher item ou etapa macro'));
   assert(planning.includes('previsao_custo_id'));
   assert(planning.includes('Qtd. orçada'));
   assert(planning.includes('Math.min('));
   assert(planning.includes('item.item?.quantidade_aprovada_anterior'));
-  assert(planning.includes('Qtd. medida'));
+  // Fase 5 (29/09): a coluna da medicao prevista chama-se "Qtd. prevista" e a
+  // grade mostra o saldo provavel.
+  assert(planning.includes('Qtd. prevista'));
+  assert(planning.includes('saldo_provavel'));
+  assert(planning.includes('Salvar e continuar'));
   assert(planning.includes('Pesquisar subitem desta etapa'));
   assert(planning.includes('usePlanItemSearch'));
   assert(planning.includes('etapaMacroCodigo: macroCode'));
@@ -346,9 +351,9 @@ function validateFrontendContracts() {
   assert(executiveFilters.includes('value="PRIVADA"'));
   assert(executiveFilters.includes('cr-operational-period'));
   assert(executiveFilters.includes('Pesquisar nas minhas obras'));
-  assert(worksView.includes('obra.contrato'));
-  assert(worksView.includes('obra.valor_orcado'));
-  assert(worksView.includes('obra.responsavel'));
+  // Fase 4 (29/09): a tabela de obras da tela orfa (?aba=obras) foi removida
+  // por decisao do proprietario; CrObrasView ficou so com os cards.
+  assert(!worksView.includes('obra.valor_orcado'));
   // O card de obra nao mostra numeros de competencia (decisao de 29/09).
   assert(!worksView.includes('resumo_competencia'));
   assert(!worksView.includes('Custo planejado'));
@@ -367,6 +372,7 @@ function validateFrontendContracts() {
   assert(planning.includes("renderPlanningSheetActions('medicao-prevista'"));
   assert(planning.includes("renderPlanningSheetActions('medicao-aprovada'"));
   assert(planningImport.includes('Confirmar importação'));
+  assert(planningImport.includes('Importar e salvar'));
   assert(planningImport.includes('onConfirm(tipo, result.itens)'));
   assert(monthlyPlanning.includes("openDetail(selectedCompetencia, 'approved')"));
   assert(!monthlyPlanning.includes('<CrRealizadoView'));

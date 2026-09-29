@@ -9,7 +9,7 @@ import {
   FormSecao,
   TabelaPadrao
 } from '../../../components/padrao';
-import { listarPrazosObras, salvarPrazosObra } from '../services/custosRecebiveis';
+import { listarPrazosObras, mensagemLegivel, salvarPrazosObra } from '../services/custosRecebiveis';
 
 /*
   Prazos por obra (reforma de 29/09/2026, Fase 2). Padrão: planejamento do
@@ -36,7 +36,7 @@ export default function CrPrazosObrasView() {
       setLoading(true);
       setData(await listarPrazosObras());
     } catch (error) {
-      setAviso({ id: 'prazos', tipo: 'error', mensagem: error.message || 'Erro ao carregar prazos.' });
+      setAviso({ id: 'prazos', tipo: 'error', mensagem: mensagemLegivel(error, 'Erro ao carregar prazos.') });
     } finally {
       setLoading(false);
     }
@@ -80,7 +80,7 @@ export default function CrPrazosObrasView() {
       setEditing(null);
       await load();
     } catch (error) {
-      setAviso({ id: 'prazos', tipo: 'error', mensagem: error.message || 'Erro ao salvar prazos.' });
+      setAviso({ id: 'prazos', tipo: 'error', mensagem: mensagemLegivel(error, 'Erro ao salvar prazos.') });
     } finally {
       setSaving(false);
     }

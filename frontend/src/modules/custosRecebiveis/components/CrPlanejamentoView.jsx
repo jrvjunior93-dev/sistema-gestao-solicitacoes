@@ -4,7 +4,6 @@ import {
   HiOutlineCheckCircle,
   HiOutlineChevronLeft,
   HiOutlineChevronRight,
-  HiOutlineClipboardDocumentCheck,
   HiOutlineArrowDownTray,
   HiOutlineArrowUpTray,
   HiOutlineExclamationTriangle,
@@ -38,6 +37,12 @@ import {
   removePlanningDraft,
   writePlanningDraft
 } from '../utils/planningDraftStorage';
+import { monthLabel, monthShort } from '../utils/prazos';
+import {
+  ajustarPrevisaoAoSaldo,
+  mensagemErroPlanilha,
+  novaChaveIdempotencia
+} from '../services/custosRecebiveisPrevisao';
 
 const currency = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -58,6 +63,69 @@ const PRIVATE_STEPS = [
 function asNumber(value) {
   const parsed = Number(String(value ?? '').replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+const quantityFormat = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 4 });
+
+function formatQuantity(value, unit = '') {
+  const text = quantityFormat.format(asNumber(value));
+  return unit ? `${text} ${unit}` : text;
+}
+
+function pickBalanceField(row, key) {
+  if (row?.[key] !== undefined && row?.[key] !== null) return row[key];
+  const nested = row?.item?.[key];
+  return nested === undefined ? null : nested;
+}
+
+/*
+  Saldo da medição prevista (Fase 5, regra "A + B" de 29/09). O servidor manda
+  por item: saldo disponível (teto que bloqueia), previsto aguardando aprovação
+  (meses anteriores ainda sem medição aprovada) e saldo provável (disponível -
+  pendente, só aviso). Servidor sem esses campos: cai no cálculo anterior
+  (orçado - já aprovado) e nada de aviso.
+*/
+function forecastBalance(row) {
+  const approvedBefore = asNumber(pickBalanceField(row, 'quantidade_aprovada_anterior'));
+  const rawAvailable = pickBalanceField(row, 'saldo_disponivel');
+  const budget = row?.quantidade_base ?? row?.item?.quantidade_orcada;
+  const available = rawAvailable != null
+    ? asNumber(rawAvailable)
+    : Math.max(0, asNumber(budget) - approvedBefore);
+  const pending = asNumber(pickBalanceField(row, 'quantidade_prevista_pendente'));
+  const months = pickBalanceField(row, 'competencias_pendentes');
+  const pendingMonths = Array.isArray(months) ? months.filter(Boolean) : [];
+  const rawProbable = pickBalanceField(row, 'saldo_provavel');
+  const hasProbable = rawProbable != null;
+  const probable = hasProbable ? asNumber(rawProbable) : Math.max(0, available - pending);
+  const quantity = asNumber(row?.quantidade_prevista);
+  const aboveProbable = hasProbable
+    && pending > 0
+    && quantity > probable + 0.0001
+    && quantity <= available + 0.0001;
+  return { approvedBefore, available, pending, pendingMonths, probable, hasProbable, quantity, aboveProbable };
+}
+
+function pendingMonthsText(balance) {
+  const labels = balance.pendingMonths.map(monthLabel);
+  if (!labels.length) return 'o mês anterior';
+  if (labels.length === 1) return labels[0];
+  return `${labels.slice(0, -1).join(', ')} e ${labels[labels.length - 1]}`;
+}
+
+function aboveProbableText(balance, unit) {
+  const plural = balance.pendingMonths.length > 1;
+  return `${pendingMonthsText(balance)} ainda não ${plural ? 'foram aprovados' : 'foi aprovado'}; `
+    + `você previu ${formatQuantity(balance.pending, unit)} lá. `
+    + `Saldo provável: ${formatQuantity(balance.probable, unit)}.`;
+}
+
+function sumSaved(list, field) {
+  return (Array.isArray(list) ? list : []).reduce((sum, item) => {
+    const value = item?.[field];
+    if (value !== undefined && value !== null && value !== '') return sum + asNumber(value);
+    return sum + (asNumber(item?.quantidade) * asNumber(item?.custo_unitario));
+  }, 0);
 }
 
 function newLocalKey(prefix = 'cr-subitem') {
@@ -130,6 +198,110 @@ function privateReceiptStatusLabel(status) {
   return labels[normalized] || normalized.replaceAll('_', ' ') || 'Não informado';
 }
 
+/*
+  Faixa "a previsão do mês seguinte passou do saldo" (Fase 5, parte B).
+  Aparece logo depois de registrar a medição aprovada do mês M (resposta traz
+  `ajuste_previsao`) e no mês M+1 enquanto houver excesso
+  (`ajuste_previsao_pendente`). O ajuste só REDUZ a quantidade prevista ao
+  saldo disponível. Quem não pode ajustar vê a faixa sem o botão.
+  Exportada para o detalhe do mês reutilizar a mesma faixa.
+*/
+export function CrAjustePrevisaoFaixa({ obraId, ajuste, canAdjust = false, onAdjusted }) {
+  const { confirmar, elementoConfirmacao } = useConfirmacao();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const busyRef = useRef(false);
+  const itens = Array.isArray(ajuste?.itens) ? ajuste.itens : [];
+  if (!ajuste?.competencia || !itens.length) return null;
+  const mes = monthLabel(ajuste.competencia);
+
+  async function ajustar() {
+    if (busyRef.current) return;
+    const obraAlvo = obraId;
+    const competenciaAlvo = ajuste.competencia;
+    const ids = itens.map((item) => Number(item.plano_item_id)).filter(Boolean);
+    const mesAlvo = mes;
+    const { ok } = await confirmar({
+      titulo: `Ajustar previsão de ${mesAlvo} ao saldo`,
+      mensagem: `A quantidade prevista de ${ids.length} item(ns) de ${mesAlvo} será reduzida ao saldo disponível. As demais linhas não mudam.`,
+      rotuloConfirmar: 'Ajustar ao saldo'
+    });
+    if (!ok || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setError('');
+    // Uma chave por tentativa: o servidor devolve o mesmo resultado se o
+    // mesmo pedido chegar duas vezes.
+    const idempotencyKey = novaChaveIdempotencia();
+    try {
+      const result = await ajustarPrevisaoAoSaldo(obraAlvo, competenciaAlvo, ids, idempotencyKey);
+      await onAdjusted?.(result, competenciaAlvo, ids.length);
+    } catch (requestError) {
+      setError(requestError.message || 'Não foi possível ajustar a previsão ao saldo.');
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="cr-ajuste-previsao" aria-label={`Previsão de ${mes} acima do saldo`}>
+      <header className="cr-ajuste-previsao__header">
+        <HiOutlineExclamationTriangle className="h-5 w-5" aria-hidden="true" />
+        <strong>A previsão de {mes} passou do saldo em {itens.length} item(ns)</strong>
+        {canAdjust ? (
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={ajustar}
+          >
+            {busy ? 'Ajustando...' : `Ajustar previsão de ${mes} ao saldo`}
+          </button>
+        ) : null}
+      </header>
+      {error ? <div className="cr-feedback" data-tone="error">{error}</div> : null}
+      <TabelaPadrao
+        colunasConfiguraveis={false}
+        colunas={[
+          {
+            id: 'item',
+            titulo: 'Item',
+            tipo: 'identidade',
+            noCard: 'titulo',
+            render: (item) => <CelulaDupla principal={item.descricao || item.codigo} sub={item.codigo} />
+          },
+          { id: 'unidade', titulo: 'Unid.', tipo: 'codigo', render: (item) => item.unidade || 'un' },
+          {
+            id: 'quantidade_prevista',
+            titulo: 'Previsto',
+            tipo: 'numero',
+            render: (item) => formatQuantity(item.quantidade_prevista)
+          },
+          {
+            id: 'saldo_disponivel',
+            titulo: 'Saldo disponível',
+            tipo: 'numero',
+            render: (item) => formatQuantity(item.saldo_disponivel)
+          },
+          {
+            id: 'quantidade_sugerida',
+            titulo: 'Após ajuste',
+            tipo: 'numero',
+            render: (item) => <strong>{formatQuantity(item.quantidade_sugerida ?? item.saldo_disponivel)}</strong>
+          }
+        ]}
+        itens={itens}
+        getId={(item) => String(item.plano_item_id)}
+        storageKey="tabela:cr-planejamento:ajuste-previsao"
+        rotuloRolagem={`Itens da previsão de ${mes} acima do saldo`}
+        vazio="Nenhum item acima do saldo."
+      />
+      {elementoConfirmacao}
+    </section>
+  );
+}
+
 export default function CrPlanejamentoView({
   obra,
   userId,
@@ -172,6 +344,9 @@ export default function CrPlanejamentoView({
   const [sheetPreview, setSheetPreview] = useState(null);
   const [sheetLoading, setSheetLoading] = useState('');
   const [costErrors, setCostErrors] = useState([]);
+  const [forecastNotices, setForecastNotices] = useState([]);
+  const [adjustmentAfterRegister, setAdjustmentAfterRegister] = useState(null);
+  const [savedTotals, setSavedTotals] = useState(null);
   const sheetFileRef = useRef(null);
   const sheetTypeRef = useRef('');
   const draftReadyRef = useRef(false);
@@ -220,6 +395,10 @@ export default function CrPlanejamentoView({
         })
       };
       setData(response);
+      setSavedTotals({
+        costs: sumSaved(serverCosts, 'valor_previsto'),
+        receipts: sumSaved(serverReceipts, 'valor_previsto')
+      });
       setCosts(Array.isArray(costsDraft?.items) ? costsDraft.items : serverCosts);
       setReceipts(Array.isArray(receiptsDraft?.items) ? receiptsDraft.items : serverReceipts);
       if (response.obra?.classificacao === 'PUBLICA') {
@@ -262,6 +441,8 @@ export default function CrPlanejamentoView({
     setDraftNotice('');
     setHasLocalDraft(false);
     setCostErrors([]);
+    setForecastNotices([]);
+    setAdjustmentAfterRegister(null);
     load();
   }, [load, viewMode]);
 
@@ -308,6 +489,29 @@ export default function CrPlanejamentoView({
     () => Math.max(0, totalReceipts - totalApproved),
     [totalApproved, totalReceipts]
   );
+  const costsDirty = draftSignature(costs) !== serverBaselineRef.current.costs;
+  const receiptsDirty = isPublic && draftSignature(receipts) !== serverBaselineRef.current.receipts;
+  const reviewStep = !approvedOnly && ((isPublic && step === 3) || (!isPublic && step === 2));
+
+  // Revisão e envio mostra o que está GRAVADO: ao entrar na etapa relê os
+  // totais do servidor (sem mexer no que está em edição na tela).
+  useEffect(() => {
+    if (!reviewStep || !obra?.id || !competencia) return undefined;
+    let active = true;
+    obterPlanejamentoCompetencia(obra.id, competencia)
+      .then((response) => {
+        if (!active) return;
+        setSavedTotals({
+          costs: sumSaved(response.custos, 'valor_previsto'),
+          receipts: sumSaved(response.recebiveis, 'valor_previsto')
+        });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [competencia, obra?.id, reviewStep]);
+
   const refreshDraftPresence = useCallback(() => {
     setHasLocalDraft(hasPlanningDraft(allDraftKeys));
   }, [allDraftKeys]);
@@ -460,7 +664,13 @@ export default function CrPlanejamentoView({
     // porque "descartar" sozinho deixa a pessoa supor que dá para recuperar.
     // Aqui são as três seções — custos, medição prevista e medição aprovada —
     // desta obra e competência, e nenhuma outra.
-    if (!window.confirm('Descartar as alterações não salvas de custos, medição prevista e medição aprovada desta obra e competência? Esta ação não pode ser desfeita.')) return;
+    const { ok } = await confirmar({
+      titulo: 'Descartar rascunho',
+      mensagem: 'Descartar as alterações não salvas de custos, medição prevista e medição aprovada desta obra e competência? Esta ação não pode ser desfeita.',
+      rotuloConfirmar: 'Descartar',
+      destrutiva: true
+    });
+    if (!ok) return;
     draftReadyRef.current = false;
     allDraftKeys.forEach(removePlanningDraft);
     setHasLocalDraft(false);
@@ -483,11 +693,8 @@ export default function CrPlanejamentoView({
       if (itemIndex !== index) return item;
       const next = { ...item, [field]: value };
       if (isPublic && field === 'quantidade_prevista') {
-        const previousQuantity = asNumber(item.item?.quantidade_aprovada_anterior);
-        const availableQuantity = Math.max(
-          0,
-          asNumber(item.quantidade_base) - previousQuantity
-        );
+        // Teto duro = saldo disponível; o saldo provável só avisa.
+        const availableQuantity = forecastBalance(item).available;
         next.quantidade_prevista = Math.min(
           availableQuantity,
           Math.max(0, asNumber(value))
@@ -632,7 +839,7 @@ export default function CrPlanejamentoView({
       setSheetType(importType);
       setSheetPreview(response);
     } catch (requestError) {
-      setError(requestError.message || 'Não foi possível validar a planilha.');
+      setError(mensagemErroPlanilha(requestError));
       setSheetPreview(null);
     } finally {
       setSheetLoading('');
@@ -652,100 +859,135 @@ export default function CrPlanejamentoView({
       [previousField]: Math.max(
         0,
         asNumber(row.quantidade_orcada) - asNumber(row.saldo_disponivel)
-      )
+      ),
+      ...(row.saldo_disponivel != null ? { saldo_disponivel: asNumber(row.saldo_disponivel) } : {}),
+      ...(row.saldo_provavel != null ? {
+        saldo_provavel: asNumber(row.saldo_provavel),
+        quantidade_prevista_pendente: asNumber(row.quantidade_prevista_pendente),
+        competencias_pendentes: Array.isArray(row.competencias_pendentes) ? row.competencias_pendentes : []
+      } : {})
     };
   }
 
-  function applyPlanningImport(type, items) {
+  function mergeImportedCosts(current, importRows) {
+    const next = [...current];
+    importRows.forEach((row) => {
+      const identity = `${String(row.descricao || '').trim().toLocaleLowerCase('pt-BR')}|${String(row.unidade || '').trim().toLocaleLowerCase('pt-BR')}`;
+      const index = next.findIndex((item) => (
+        `${String(item.descricao || '').trim().toLocaleLowerCase('pt-BR')}|${String(item.unidade || '').trim().toLocaleLowerCase('pt-BR')}` === identity
+      ));
+      const imported = {
+        ...(index >= 0 ? next[index] : {}),
+        id: index >= 0 ? next[index].id : null,
+        chave_local: index >= 0 ? next[index].chave_local : newLocalKey('cr-import-cost'),
+        plano_item_id: null,
+        etapa_macro_codigo: null,
+        descricao: row.descricao,
+        unidade: row.unidade,
+        ordem: index >= 0
+          ? next[index].ordem
+          : next.length + 1,
+        item: null,
+        quantidade: asNumber(row.quantidade),
+        custo_unitario: asNumber(row.valor_unitario),
+        valor_previsto: asNumber(row.valor_total),
+        parceiro_id: null
+      };
+      if (index >= 0) next[index] = imported;
+      else next.push(imported);
+    });
+    return next;
+  }
+
+  function mergeImportedForecast(current, importRows) {
+    const next = [...current];
+    importRows.forEach((row) => {
+      const item = budgetItemFromImported(row, 'quantidade_aprovada_anterior');
+      const imported = {
+        previsao_custo_id: null,
+        plano_item_id: item.id,
+        etapa_macro_codigo: item.etapa_macro_codigo,
+        descricao: item.descricao,
+        unidade: item.unidade,
+        quantidade_base: item.quantidade_orcada,
+        custo_unitario: item.custo_unitario_orcado,
+        valor_base: item.valor_orcado,
+        item,
+        quantidade_prevista: asNumber(row.quantidade),
+        valor_previsto: asNumber(row.valor_total),
+        data_prevista: ''
+      };
+      const index = next.findIndex((value) => Number(value.plano_item_id) === item.id);
+      if (index >= 0) next[index] = { ...next[index], ...imported };
+      else next.push(imported);
+    });
+    return next;
+  }
+
+  function mergeImportedApproved(current, importRows) {
+    const next = [...current];
+    importRows.forEach((row) => {
+      const item = budgetItemFromImported(row, 'quantidade_aprovada_anterior');
+      const imported = {
+        previsao_custo_id: null,
+        plano_item_id: item.id,
+        etapa_macro_codigo: item.etapa_macro_codigo,
+        descricao: item.descricao,
+        unidade: item.unidade,
+        quantidade_base: item.quantidade_orcada,
+        custo_unitario: item.custo_unitario_orcado,
+        valor_base: item.valor_orcado,
+        item,
+        quantidade_medida: asNumber(row.quantidade),
+        valor_medido: asNumber(row.valor_total),
+        valor_glosa: 0,
+        justificativa_glosa: '',
+        data_medicao: '',
+        numero_medicao: ''
+      };
+      const index = next.findIndex((value) => Number(value.plano_item_id) === item.id);
+      if (index >= 0) next[index] = { ...next[index], ...imported };
+      else next.push(imported);
+    });
+    return next;
+  }
+
+  /*
+    Importação confirmada = aplica E grava num passo só (Fase 6). A
+    confirmação de que vai gravar acontece no próprio modal. Se a gravação
+    falhar, os itens ficam aplicados na tela (rascunho) com o erro visível.
+    Medição aprovada com diferença sem justificativa não registra sozinha:
+    aplica e pede a justificativa.
+  */
+  async function importAndSave(type, items) {
+    if (saving) return;
     const importRows = Array.isArray(items) ? items : [];
-    if (type === 'custos') {
-      setCosts((current) => {
-        const next = [...current];
-        importRows.forEach((row) => {
-          const identity = `${String(row.descricao || '').trim().toLocaleLowerCase('pt-BR')}|${String(row.unidade || '').trim().toLocaleLowerCase('pt-BR')}`;
-          const index = next.findIndex((item) => (
-            `${String(item.descricao || '').trim().toLocaleLowerCase('pt-BR')}|${String(item.unidade || '').trim().toLocaleLowerCase('pt-BR')}` === identity
-          ));
-          const imported = {
-            ...(index >= 0 ? next[index] : {}),
-            id: index >= 0 ? next[index].id : null,
-            chave_local: index >= 0 ? next[index].chave_local : newLocalKey('cr-import-cost'),
-            plano_item_id: null,
-            etapa_macro_codigo: null,
-            descricao: row.descricao,
-            unidade: row.unidade,
-            ordem: index >= 0
-              ? next[index].ordem
-              : next.length + 1,
-            item: null,
-            quantidade: asNumber(row.quantidade),
-            custo_unitario: asNumber(row.valor_unitario),
-            valor_previsto: asNumber(row.valor_total),
-            parceiro_id: null
-          };
-          if (index >= 0) next[index] = imported;
-          else next.push(imported);
-        });
-        return next;
-      });
-      setStep(1);
-    } else if (type === 'medicao-prevista') {
-      setReceipts((current) => {
-        const next = [...current];
-        importRows.forEach((row) => {
-          const item = budgetItemFromImported(row, 'quantidade_aprovada_anterior');
-          const imported = {
-            previsao_custo_id: null,
-            plano_item_id: item.id,
-            etapa_macro_codigo: item.etapa_macro_codigo,
-            descricao: item.descricao,
-            unidade: item.unidade,
-            quantidade_base: item.quantidade_orcada,
-            custo_unitario: item.custo_unitario_orcado,
-            valor_base: item.valor_orcado,
-            item,
-            quantidade_prevista: asNumber(row.quantidade),
-            valor_previsto: asNumber(row.valor_total),
-            data_prevista: ''
-          };
-          const index = next.findIndex((value) => Number(value.plano_item_id) === item.id);
-          if (index >= 0) next[index] = { ...next[index], ...imported };
-          else next.push(imported);
-        });
-        return next;
-      });
-      setStep(2);
-    } else if (type === 'medicao-aprovada') {
-      setMeasurements((current) => {
-        const next = [...current];
-        importRows.forEach((row) => {
-          const item = budgetItemFromImported(row, 'quantidade_aprovada_anterior');
-          const imported = {
-            previsao_custo_id: null,
-            plano_item_id: item.id,
-            etapa_macro_codigo: item.etapa_macro_codigo,
-            descricao: item.descricao,
-            unidade: item.unidade,
-            quantidade_base: item.quantidade_orcada,
-            custo_unitario: item.custo_unitario_orcado,
-            valor_base: item.valor_orcado,
-            item,
-            quantidade_medida: asNumber(row.quantidade),
-            valor_medido: asNumber(row.valor_total),
-            valor_glosa: 0,
-            justificativa_glosa: '',
-            data_medicao: '',
-            numero_medicao: ''
-          };
-          const index = next.findIndex((value) => Number(value.plano_item_id) === item.id);
-          if (index >= 0) next[index] = { ...next[index], ...imported };
-          else next.push(imported);
-        });
-        return next;
-      });
-    }
+    const count = importRows.length;
     setSheetPreview(null);
-    setFeedback(`${importRows.length} item(ns) aplicados ao rascunho. Revise e salve para gravar.`);
+    if (type === 'custos') {
+      const next = mergeImportedCosts(costs, importRows);
+      setCosts(next);
+      setStep(1);
+      await saveCosts({ rows: next, successMessage: `${count} item(ns) importados e custos salvos.` });
+    } else if (type === 'medicao-prevista') {
+      const next = mergeImportedForecast(receipts, importRows);
+      setReceipts(next);
+      setStep(2);
+      await saveReceipts({ rows: next, successMessage: `${count} item(ns) importados e medição prevista salva.` });
+    } else if (type === 'medicao-aprovada') {
+      const next = mergeImportedApproved(measurements, importRows);
+      setMeasurements(next);
+      const approvedTotal = next.reduce((sum, item) => sum + asNumber(item.valor_medido), 0);
+      const needsJustification = approvedTotal < totalReceipts
+        && measurementJustification.trim().length < 5;
+      if (needsJustification || data?.medicao_aprovada_estado?.editavel === false) {
+        setFeedback(needsJustification
+          ? `${count} item(ns) aplicados. Informe a justificativa da diferença e registre a medição aprovada.`
+          : `${count} item(ns) aplicados.`);
+        return;
+      }
+      await saveMeasurement({ rows: next, successMessage: `${count} item(ns) importados e medição aprovada registrada.` });
+    }
   }
 
   function renderPlanningSheetActions(type, allowed = true, extraAction = null) {
@@ -825,9 +1067,7 @@ export default function CrPlanejamentoView({
             <b>{indice + 1}</b>
             <div>
               <strong>{macro.codigo} · {macro.descricao}</strong>
-              <span>
-                {rows.length} subitem(ns) na medição prevista · Total previsto da etapa: {currency.format(total)}
-              </span>
+              <span>{rows.length} subitem(ns) · {currency.format(total)}</span>
             </div>
           </div>
           {!readonly && permissions.receipts ? (
@@ -847,7 +1087,6 @@ export default function CrPlanejamentoView({
         </div>
         {pickerOpen ? (
           <div className="cr-macro-subitem-picker">
-            <strong>Selecione um subitem da planilha nesta etapa</strong>
             <label className="cr-macro-picker-search">
               <HiOutlineMagnifyingGlass className="h-4 w-4" />
               <input
@@ -909,9 +1148,7 @@ export default function CrPlanejamentoView({
             <b>{indice + 1}</b>
             <div>
               <strong>{macro.codigo} · {macro.descricao}</strong>
-              <span>
-                {rows.length} subitem(ns) na medição aprovada · Total aprovado da etapa: {currency.format(total)}
-              </span>
+              <span>{rows.length} subitem(ns) · {currency.format(total)}</span>
             </div>
           </div>
           {permissions.measurement ? (
@@ -931,7 +1168,6 @@ export default function CrPlanejamentoView({
         </div>
         {pickerOpen ? (
           <div className="cr-macro-subitem-picker">
-            <strong>Selecione um subitem aprovado nesta etapa</strong>
             <label className="cr-macro-picker-search">
               <HiOutlineMagnifyingGlass className="h-4 w-4" />
               <input
@@ -993,7 +1229,7 @@ export default function CrPlanejamentoView({
       setFeedback(successMessage);
       await load();
       onChanged?.();
-      return result;
+      return { result };
     } catch (requestError) {
       setError(requestError.message || 'Não foi possível concluir a operação.');
       return null;
@@ -1002,30 +1238,58 @@ export default function CrPlanejamentoView({
     }
   }
 
-  async function saveReceipts() {
-    if (!isPublic) return;
-    const rows = receipts.map((item) => ({
+  async function saveReceipts({ rows: sourceRows = receipts, successMessage = 'Medição prevista salva.' } = {}) {
+    if (!isPublic || saving) return false;
+    const payload = sourceRows.map((item) => ({
       previsao_custo_id: item.previsao_custo_id || null,
       plano_item_id: item.plano_item_id,
       quantidade_prevista: asNumber(item.quantidade_prevista),
       data_prevista: item.data_prevista || null
     }));
-    await runMutation(
+    const obraAlvo = obra;
+    const competenciaAlvo = competencia;
+    // Acima do saldo provável (mas dentro do disponível) não bloqueia: pede
+    // confirmação listando os itens.
+    const warned = sourceRows
+      .map((item) => ({ item, balance: forecastBalance(item) }))
+      .filter(({ balance }) => balance.aboveProbable);
+    if (warned.length) {
+      const { ok } = await confirmar({
+        titulo: 'Previsão acima do saldo provável',
+        mensagem: (
+          <>
+            {warned.length} item(ns) passam do saldo provável:
+            {warned.map(({ item, balance }) => (
+              <span key={planningRowKey(item)} className="cr-confirm-line">
+                {item.item?.codigo ? `${item.item.codigo} · ` : ''}{item.descricao}: {formatQuantity(balance.quantity, item.unidade || 'un')} previsto, saldo provável {formatQuantity(balance.probable, item.unidade || 'un')} ({pendingMonthsText(balance)} aguardando aprovação)
+              </span>
+            ))}
+          </>
+        ),
+        rotuloConfirmar: 'Salvar mesmo assim'
+      });
+      if (!ok) return false;
+    }
+    const outcome = await runMutation(
       'receipts',
-      () => salvarRecebiveisCompetencia(obra.id, competencia, rows),
-      'Medição prevista salva.',
+      () => salvarRecebiveisCompetencia(obraAlvo.id, competenciaAlvo, payload),
+      successMessage,
       'receipts'
     );
+    if (!outcome) return false;
+    setForecastNotices(Array.isArray(outcome.result?.avisos) ? outcome.result.avisos : []);
+    return true;
   }
 
-  async function saveCosts() {
+  async function saveCosts({ rows: sourceRows = costs, successMessage = 'Custos planejados salvos.' } = {}) {
+    if (saving) return false;
     const isEmpty = (item) => (
       !String(item.descricao || '').trim()
       && !String(item.unidade || '').trim()
       && String(item.quantidade ?? '').trim() === ''
       && String(item.custo_unitario ?? '').trim() === ''
     );
-    const rows = costs.filter((item) => !isEmpty(item));
+    const rows = sourceRows.filter((item) => !isEmpty(item));
     const validationErrors = rows.flatMap((item, index) => {
       const messages = [];
       if (String(item.descricao || '').trim().length < 2) messages.push('informe a descrição');
@@ -1034,15 +1298,15 @@ export default function CrPlanejamentoView({
       if (String(item.custo_unitario ?? '').trim() === '' || asNumber(item.custo_unitario) < 0) {
         messages.push('informe um valor unitário válido');
       }
-      return messages.length ? [{ index: costs.indexOf(item), label: index + 1, messages }] : [];
+      return messages.length ? [{ index: sourceRows.indexOf(item), label: index + 1, messages }] : [];
     });
     setCostErrors(validationErrors);
     if (validationErrors.length) {
       setError(`Revise ${validationErrors.length} subitem(ns) destacado(s) antes de salvar.`);
-      return;
+      return false;
     }
-    if (rows.length !== costs.length) setCosts(rows);
-    await runMutation(
+    if (rows.length !== sourceRows.length) setCosts(rows);
+    const outcome = await runMutation(
       'costs',
       () => salvarCustosCompetencia(
         obra.id,
@@ -1060,18 +1324,19 @@ export default function CrPlanejamentoView({
           parceiro_id: item.parceiro_id || null
         }))
       ),
-      'Custos planejados salvos.',
+      successMessage,
       'costs'
     );
+    return Boolean(outcome);
   }
 
-  async function saveMeasurement() {
-    await runMutation(
+  async function saveMeasurement({ rows: sourceRows = measurements, successMessage = 'Medição aprovada registrada.' } = {}) {
+    const outcome = await runMutation(
       'measurement',
       () => consolidarMedicaoCompetencia(
         obra.id,
         competencia,
-        measurements.map((item) => ({
+        sourceRows.map((item) => ({
           previsao_custo_id: item.previsao_custo_id || null,
           plano_item_id: item.plano_item_id,
           quantidade_medida: asNumber(item.quantidade_medida),
@@ -1082,9 +1347,14 @@ export default function CrPlanejamentoView({
         })),
         measurementJustification
       ),
-      'Medição aprovada registrada.',
+      successMessage,
       'measurement'
     );
+    if (!outcome) return false;
+    // Parte B (29/09): a previsão do mês seguinte pode ter passado do saldo
+    // depois desta aprovação; a faixa de ajuste aparece aqui mesmo.
+    setAdjustmentAfterRegister(outcome.result?.ajuste_previsao || null);
+    return true;
   }
 
   // Mês em que o fiscal não mediu nada (29/09): registra com justificativa e
@@ -1113,25 +1383,69 @@ export default function CrPlanejamentoView({
   }
 
   async function finish() {
-    if (!window.confirm(
-      'Finalizar congela os valores da competência. Depois disso, qualquer ajuste exigirá reabertura aprovada. Continuar?'
-    )) return;
+    if (saving) return;
+    // Finalizar vale para o que está gravado; alteração só na tela não entra.
+    const savedCosts = savedTotals ? savedTotals.costs : totalCosts;
+    const savedReceipts = savedTotals ? savedTotals.receipts : totalReceipts;
+    const unsaved = costsDirty || receiptsDirty;
+    const { ok } = await confirmar({
+      titulo: 'Finalizar competência',
+      mensagem: 'Finalizar congela os valores gravados da competência. Depois disso, qualquer ajuste exigirá reabertura aprovada.'
+        + (unsaved ? ' Há alterações não salvas nesta tela: elas não entram na finalização.' : ''),
+      rotuloConfirmar: 'Finalizar'
+    });
+    if (!ok) return;
     const justifications = {};
-    if (totalCosts === 0) {
-      const value = window.prompt('Justifique a finalização sem custos planejados:');
-      if (!value) return;
-      justifications.justificativa_sem_custos = value;
+    if (savedCosts === 0) {
+      const { ok: confirmed, texto } = await confirmar({
+        titulo: 'Finalizar sem custos planejados',
+        rotuloConfirmar: 'Continuar',
+        campo: { rotulo: 'Justificativa da finalização sem custos planejados', obrigatorio: true, multilinha: true }
+      });
+      if (!confirmed || !String(texto || '').trim()) return;
+      justifications.justificativa_sem_custos = String(texto).trim();
     }
-    if (totalReceipts === 0) {
-      const value = window.prompt('Justifique a finalização sem recebíveis previstos:');
-      if (!value) return;
-      justifications.justificativa_sem_receitas = value;
+    if (savedReceipts === 0) {
+      const { ok: confirmed, texto } = await confirmar({
+        titulo: 'Finalizar sem recebíveis previstos',
+        rotuloConfirmar: 'Continuar',
+        campo: { rotulo: 'Justificativa da finalização sem recebíveis previstos', obrigatorio: true, multilinha: true }
+      });
+      if (!confirmed || !String(texto || '').trim()) return;
+      justifications.justificativa_sem_receitas = String(texto).trim();
     }
     await runMutation(
       'finish',
       () => finalizarPlanejamentoCompetencia(obra.id, competencia, justifications),
       'Competência finalizada e protegida contra alterações.'
     );
+  }
+
+  // "Salvar e continuar" (Fase 6): um clique grava a etapa e, se deu certo,
+  // avança. Sem alteração pendente só avança.
+  const canSaveStep = !approvedOnly && !readonly && (
+    (step === 1 && permissions.costs)
+    || (step === 2 && isPublic && permissions.receipts)
+  );
+
+  async function saveAndContinue() {
+    if (saving) return;
+    const target = Math.min(steps.length, step + 1);
+    let ok = true;
+    if (step === 1 && costsDirty) ok = await saveCosts();
+    else if (step === 2 && receiptsDirty) ok = await saveReceipts();
+    if (ok) setStep(target);
+  }
+
+  async function handleAdjusted(result, competenciaAjustada, requested) {
+    const count = Array.isArray(result?.ajustados) ? result.ajustados.length : requested;
+    const ignored = Array.isArray(result?.ignorados) ? result.ignorados.length : 0;
+    setAdjustmentAfterRegister(null);
+    setError('');
+    if (competenciaAjustada === competencia) await load();
+    setFeedback(`Previsão de ${monthLabel(competenciaAjustada)} ajustada ao saldo em ${count} item(ns).`
+      + (ignored ? ` ${ignored} item(ns) já estavam dentro do saldo.` : ''));
+    onChanged?.();
   }
 
   async function requestReopening() {
@@ -1158,6 +1472,34 @@ export default function CrPlanejamentoView({
     );
   }
 
+  // Totais GRAVADOS (relidos ao entrar na etapa). Alteração só na tela
+  // aparece como aviso, porque não entra na finalização.
+  function renderSavedSummary(receiptsLabel) {
+    const savedCosts = savedTotals ? savedTotals.costs : 0;
+    const savedReceipts = savedTotals ? savedTotals.receipts : 0;
+    const pending = [
+      costsDirty ? 'Custos planejados' : null,
+      receiptsDirty ? 'Medição prevista' : null
+    ].filter(Boolean);
+    return (
+      <>
+        {pending.length ? (
+          <div className="cr-feedback" data-tone="warning" role="status">
+            Alterações não salvas em {pending.join(' e ')}. Os totais abaixo são os gravados.
+          </div>
+        ) : null}
+        <div className="cr-review-summary">
+          <div><span>Custos planejados</span><strong>{currency.format(savedCosts)}</strong></div>
+          <div><span>{receiptsLabel}</span><strong>{currency.format(savedReceipts)}</strong></div>
+          <div data-tone={savedReceipts - savedCosts >= 0 ? 'positive' : 'negative'}>
+            <span>Margem prevista</span>
+            <strong>{currency.format(savedReceipts - savedCosts)}</strong>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   function renderClosureControls() {
     return (
       <>
@@ -1165,8 +1507,8 @@ export default function CrPlanejamentoView({
           <div className="cr-panel-actions cr-closure-actions">
             <span>
               {isPublic
-                ? 'Finalize depois de salvar custos e medição prevista. A aprovação pode ser registrada quando o órgão responder.'
-                : 'Ao finalizar, os recebíveis exibidos são sincronizados automaticamente com as fontes oficiais.'}
+                ? 'Ao finalizar, os valores gravados ficam protegidos; alterações exigem reabertura aprovada. A medição aprovada continua disponível para registro.'
+                : 'Ao finalizar, os recebíveis são sincronizados com as fontes oficiais e os valores ficam protegidos.'}
             </span>
             <button
               type="button"
@@ -1206,7 +1548,6 @@ export default function CrPlanejamentoView({
             <div className="cr-block-heading">
               <div>
                 <h3>Histórico de reaberturas</h3>
-                <p>Decisão e prazo ficam vinculados à competência, com auditoria.</p>
               </div>
             </div>
             {permissions.reopenApprove
@@ -1252,7 +1593,6 @@ export default function CrPlanejamentoView({
     return (
       <section className="cr-section cr-empty-state cr-empty-state--large">
         <strong>Selecione uma obra</strong>
-        <span>Escolha a obra no contexto para abrir o planejamento mensal.</span>
       </section>
     );
   }
@@ -1281,11 +1621,8 @@ export default function CrPlanejamentoView({
       />
       <header className="cr-workspace-heading">
         <div>
-          <span>Competência {competencia}</span>
+          <span>{monthLabel(competencia)} · planilha v{data?.plano?.versao}</span>
           <h2>{approvedOnly ? 'Medição aprovada' : 'Planejamento'} · {obra.codigo || obra.id} · {obra.nome}</h2>
-          <p>
-            Plano micro v{data?.plano?.versao} · {isPublic ? 'Obra pública com medição' : 'Obra privada com recebíveis contratuais'}
-          </p>
         </div>
         <div className="cr-planning-status-stack">
           <span className="cr-status-pill" data-status={data?.competencia?.estado}>
@@ -1321,6 +1658,13 @@ export default function CrPlanejamentoView({
       {error ? <div className="cr-feedback" data-tone="error">{error}</div> : null}
       {feedback ? <div className="cr-feedback" data-tone="success">{feedback}</div> : null}
 
+      <CrAjustePrevisaoFaixa
+        obraId={obra.id}
+        ajuste={adjustmentAfterRegister || data?.ajuste_previsao_pendente || null}
+        canAdjust={Boolean(permissions.measurement || permissions.receipts)}
+        onAdjusted={handleAdjusted}
+      />
+
       {!approvedOnly ? <nav className="cr-stepper" aria-label="Etapas do planejamento">
         {steps.map((item) => (
           <button
@@ -1340,12 +1684,19 @@ export default function CrPlanejamentoView({
           <div className="cr-block-heading">
             <div>
               <h3>Medição prevista no período</h3>
-              <p>
-                Pesquise os subitens da planilha dentro de cada etapa macro. As informações orçamentárias são carregadas automaticamente; informe somente a quantidade prevista para medição.
-              </p>
             </div>
             {renderPlanningSheetActions('medicao-prevista', permissions.receipts)}
           </div>
+          {receipts.some((item) => forecastBalance(item).aboveProbable) ? (
+            <div className="cr-feedback cr-forecast-notices" data-tone="warning" role="status">
+              <strong>Acima do saldo provável (não bloqueia)</strong>
+              {receipts.filter((item) => forecastBalance(item).aboveProbable).map((item) => (
+                <span key={planningRowKey(item)}>
+                  {item.item?.codigo ? `${item.item.codigo} · ` : ''}{item.descricao}: {aboveProbableText(forecastBalance(item), item.unidade || 'un')}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <TabelaPadrao
             colunas={[
               {
@@ -1355,7 +1706,7 @@ export default function CrPlanejamentoView({
                 tipo: 'identidade',
                 noCard: 'titulo',
                 render: (item) => (item.__vazio
-                  ? 'Adicione os subitens que terão medição prevista.'
+                  ? 'Nenhum subitem nesta etapa.'
                   : <strong>{item.descricao}</strong>)
               },
               {
@@ -1365,51 +1716,74 @@ export default function CrPlanejamentoView({
                 render: (item) => (item.__vazio ? null : (item.unidade || 'un'))
               },
               {
-                id: 'quantidade_base',
-                titulo: 'Qtd. orçada',
+                id: 'saldo_disponivel',
+                titulo: 'Saldo disponível',
                 tipo: 'numero',
-                render: (item) => (item.__vazio ? null : item.quantidade_base)
+                render: (item) => (item.__vazio ? null : formatQuantity(forecastBalance(item).available))
               },
               {
-                id: 'custo_unitario',
-                titulo: 'Valor unitário',
-                tipo: 'valor',
-                render: (item) => (item.__vazio ? null : currency.format(item.custo_unitario || 0))
+                id: 'previsto_pendente',
+                titulo: 'Previsto aguardando aprovação',
+                tipo: 'texto',
+                render: (item) => {
+                  if (item.__vazio) return null;
+                  const balance = forecastBalance(item);
+                  if (!balance.pending) return '—';
+                  return (
+                    <CelulaDupla
+                      principal={formatQuantity(balance.pending, item.unidade || 'un')}
+                      sub={balance.pendingMonths.map(monthShort).join(', ')}
+                    />
+                  );
+                }
               },
               {
-                id: 'valor_base',
-                titulo: 'Total planejado',
-                tipo: 'valor',
-                render: (item) => (item.__vazio ? null : currency.format(item.valor_base || 0))
-              },
-              {
-                id: 'quantidade_anterior',
-                titulo: 'Qtd. já medida',
+                id: 'saldo_provavel',
+                titulo: 'Saldo provável',
                 tipo: 'numero',
-                render: (item) => (item.__vazio ? null : asNumber(item.item?.quantidade_aprovada_anterior))
+                render: (item) => {
+                  if (item.__vazio) return null;
+                  const balance = forecastBalance(item);
+                  return balance.hasProbable || balance.pending ? formatQuantity(balance.probable) : '—';
+                }
               },
               {
                 id: 'quantidade_prevista',
                 sempreVisivel: true,
-                titulo: 'Qtd. medida',
+                titulo: 'Qtd. prevista',
                 tipo: 'numero',
-                // Edição inline: o controle mora no render da coluna.
-                render: (item) => (item.__vazio ? null : (
-                  <input
-                    type="number"
-                    min="0"
-                    max={Math.max(0, asNumber(item.quantidade_base) - asNumber(item.item?.quantidade_aprovada_anterior))}
-                    step="0.0001"
-                    aria-label={`Quantidade medida de ${item.descricao || 'subitem'}`}
-                    value={item.quantidade_prevista}
-                    disabled={readonly || !permissions.receipts}
-                    onChange={(event) => updateReceipt(
-                      receipts.findIndex((row) => planningRowKey(row) === planningRowKey(item)),
-                      'quantidade_prevista',
-                      event.target.value
-                    )}
-                  />
-                ))
+                // Edição inline: o controle mora no render da coluna. Acima do
+                // saldo provável (dentro do disponível) a célula fica em aviso.
+                render: (item) => {
+                  if (item.__vazio) return null;
+                  const balance = forecastBalance(item);
+                  const unit = item.unidade || 'un';
+                  const input = (
+                    <input
+                      type="number"
+                      min="0"
+                      max={balance.available}
+                      step="0.0001"
+                      aria-label={`Quantidade prevista de ${item.descricao || 'subitem'}`}
+                      aria-invalid={balance.aboveProbable || undefined}
+                      value={item.quantidade_prevista}
+                      disabled={readonly || !permissions.receipts}
+                      onChange={(event) => updateReceipt(
+                        receipts.findIndex((row) => planningRowKey(row) === planningRowKey(item)),
+                        'quantidade_prevista',
+                        event.target.value
+                      )}
+                    />
+                  );
+                  if (!balance.aboveProbable) return input;
+                  return (
+                    <span className="tooltip-wrap cr-forecast-qty" data-tone="warning">
+                      {input}
+                      <HiOutlineExclamationTriangle className="h-4 w-4" aria-hidden="true" />
+                      <span className="tooltip-content" role="tooltip">{aboveProbableText(balance, unit)}</span>
+                    </span>
+                  );
+                }
               },
               {
                 id: 'valor_previsto',
@@ -1423,20 +1797,40 @@ export default function CrPlanejamentoView({
                 tipo: 'numero',
                 render: (item) => {
                   if (item.__vazio) return null;
-                  const saldo = Math.max(
-                    0,
-                    asNumber(item.quantidade_base)
-                      - asNumber(item.item?.quantidade_aprovada_anterior)
-                      - asNumber(item.quantidade_prevista)
-                  );
-                  return `${saldo} ${item.unidade || 'un'}`;
+                  const balance = forecastBalance(item);
+                  return formatQuantity(Math.max(0, balance.available - balance.quantity), item.unidade || 'un');
                 }
+              },
+              {
+                id: 'quantidade_base',
+                titulo: 'Qtd. orçada',
+                tipo: 'numero',
+                render: (item) => (item.__vazio ? null : item.quantidade_base)
+              },
+              {
+                id: 'quantidade_anterior',
+                titulo: 'Qtd. já aprovada',
+                tipo: 'numero',
+                render: (item) => (item.__vazio ? null : formatQuantity(forecastBalance(item).approvedBefore))
+              },
+              {
+                id: 'custo_unitario',
+                titulo: 'Valor unitário',
+                tipo: 'valor',
+                render: (item) => (item.__vazio ? null : currency.format(item.custo_unitario || 0))
+              },
+              {
+                id: 'valor_base',
+                titulo: 'Total planejado',
+                tipo: 'valor',
+                render: (item) => (item.__vazio ? null : currency.format(item.valor_base || 0))
               }
             ]}
             itens={linhasPorMacro(receiptsForMacro)}
             getId={idDaLinha}
             agruparPor={{ chave: chaveDoMacro, titulo: renderForecastMacroHeading }}
             storageKey="tabela:cr-planejamento:medicao-prevista"
+            urgencia={(item) => (!item.__vazio && forecastBalance(item).aboveProbable ? 'warning' : null)}
             rotuloRolagem="Medição prevista por etapa macro"
             vazio="Nenhuma etapa macro disponível no plano publicado."
             acoesLinha={(item) => (
@@ -1453,16 +1847,31 @@ export default function CrPlanejamentoView({
             )}
             larguraAcoes={120}
           />
+          {forecastNotices.length ? (
+            <div className="cr-feedback cr-forecast-notices" data-tone="warning" role="status">
+              <strong>Salvo acima do saldo provável em {forecastNotices.length} item(ns)</strong>
+              {forecastNotices.map((aviso) => (
+                <span key={`${aviso.plano_item_id}-${aviso.codigo}`}>
+                  {aviso.saldo_provavel != null
+                    ? `${aviso.codigo}: ${formatQuantity(aviso.quantidade)} previsto, saldo provável ${formatQuantity(aviso.saldo_provavel)}`
+                      + (Array.isArray(aviso.competencias_pendentes) && aviso.competencias_pendentes.length
+                        ? ` (${aviso.competencias_pendentes.map(monthShort).join(', ')} aguardando medição aprovada)`
+                        : '')
+                    : aviso.mensagem}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <div className="cr-panel-actions">
             <strong>Total da medição prevista: {currency.format(totalReceipts)}</strong>
             {permissions.receipts ? (
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-outline"
                 disabled={readonly || Boolean(saving)}
-                onClick={saveReceipts}
+                onClick={() => saveReceipts()}
               >
-                {saving === 'receipts' ? 'Salvando...' : 'Salvar medição prevista'}
+                {saving === 'receipts' ? 'Salvando...' : 'Salvar'}
               </button>
             ) : null}
           </div>
@@ -1474,11 +1883,6 @@ export default function CrPlanejamentoView({
           <div className="cr-block-heading">
             <div>
               <h3>{isPublic ? 'Medição prevista no período' : 'Recebíveis cadastrados para o período'}</h3>
-              <p>
-                {isPublic
-                  ? 'A quantidade prevista usa o custo unitário congelado no plano publicado.'
-                  : 'Consulta automática de parcelas e títulos a receber. O acompanhamento de vencimento e cobrança permanece no Financeiro.'}
-              </p>
             </div>
           </div>
           <TabelaPadrao
@@ -1609,7 +2013,7 @@ export default function CrPlanejamentoView({
                 type="button"
                 className="btn btn-primary"
                 disabled={readonly || Boolean(saving)}
-                onClick={saveReceipts}
+                onClick={() => saveReceipts()}
               >
                 {saving === 'receipts' ? 'Salvando...' : 'Salvar medição prevista'}
               </button>
@@ -1623,14 +2027,7 @@ export default function CrPlanejamentoView({
           </div>
           {!isPublic ? (
             <div className="cr-private-closeout">
-              <div className="cr-review-summary">
-                <div><span>Custos planejados</span><strong>{currency.format(totalCosts)}</strong></div>
-                <div><span>Recebíveis do período</span><strong>{currency.format(totalReceipts)}</strong></div>
-                <div data-tone={totalReceipts - totalCosts >= 0 ? 'positive' : 'negative'}>
-                  <span>Margem prevista</span>
-                  <strong>{currency.format(totalReceipts - totalCosts)}</strong>
-                </div>
-              </div>
+              {renderSavedSummary('Recebíveis do período')}
               {renderClosureControls()}
             </div>
           ) : null}
@@ -1642,10 +2039,7 @@ export default function CrPlanejamentoView({
           <div className="cr-block-heading">
             <div>
               <h3>Medição aprovada pelo órgão</h3>
-              <p>
-                Pesquise na planilha os itens efetivamente aprovados. Eles podem ser diferentes
-                da previsão; a diferença total será tratada como glosa e exigirá justificativa.
-              </p>
+              <p>A diferença para a medição prevista é glosa e exige justificativa.</p>
             </div>
             {renderPlanningSheetActions('medicao-aprovada', permissions.measurement)}
           </div>
@@ -1660,7 +2054,7 @@ export default function CrPlanejamentoView({
                     tipo: 'identidade',
                     noCard: 'titulo',
                     render: (item) => (item.__vazio
-                      ? 'Adicione os subitens efetivamente aprovados pelo órgão.'
+                      ? 'Nenhum subitem nesta etapa.'
                       : <strong>{item.item?.codigo} · {item.descricao || item.item?.descricao}</strong>)
                   },
                   {
@@ -1816,14 +2210,13 @@ export default function CrPlanejamentoView({
                         || data?.medicao_aprovada_estado?.editavel === false
                         || (totalApproved < totalReceipts && measurementJustification.trim().length < 5)
                       }
-                      onClick={saveMeasurement}
+                      onClick={() => saveMeasurement()}
                     >
                       {saving === 'measurement' ? 'Registrando...' : 'Registrar medição aprovada'}
                     </button>
                   </>
                 ) : null}
               </div>
-              {elementoConfirmacao}
             </>
           ) : (
             <div className="cr-empty-state">
@@ -1838,9 +2231,6 @@ export default function CrPlanejamentoView({
           <div className="cr-block-heading">
             <div>
               <h3>Custos planejados no mês</h3>
-              <p>
-                Adicione linhas livres para descrever os custos gerais previstos. Não é necessário escolher item ou etapa macro.
-              </p>
             </div>
             {renderPlanningSheetActions(
               'custos',
@@ -1852,11 +2242,6 @@ export default function CrPlanejamentoView({
                 </button>
               ) : null,
             )}
-          </div>
-          <div className="cr-planning-total-banner">
-            <span>Custo planejado no mês</span>
-            <strong>{currency.format(totalCosts)}</strong>
-            <small>Quantidade × valor unitário compõe o total operacional.</small>
           </div>
           <TabelaPadrao
             colunas={[
@@ -1979,11 +2364,11 @@ export default function CrPlanejamentoView({
             {permissions.costs ? (
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-outline"
                 disabled={readonly || Boolean(saving)}
-                onClick={saveCosts}
+                onClick={() => saveCosts()}
               >
-                {saving === 'costs' ? 'Salvando...' : 'Salvar custos planejados'}
+                {saving === 'costs' ? 'Salvando...' : 'Salvar'}
               </button>
             ) : null}
           </div>
@@ -1992,23 +2377,7 @@ export default function CrPlanejamentoView({
 
       {!approvedOnly && step === 3 && isPublic ? (
         <div className="cr-review-layout">
-          <div className="cr-review-summary">
-            <div><span>Custos planejados</span><strong>{currency.format(totalCosts)}</strong></div>
-            <div><span>Medição prevista</span><strong>{currency.format(totalReceipts)}</strong></div>
-            <div data-tone={totalReceipts - totalCosts >= 0 ? 'positive' : 'negative'}>
-              <span>Margem prevista</span>
-              <strong>{currency.format(totalReceipts - totalCosts)}</strong>
-            </div>
-          </div>
-          <div className="cr-review-checklist">
-            <HiOutlineClipboardDocumentCheck className="h-6 w-6" />
-            <div>
-              <strong>Revisão operacional</strong>
-              <span>
-                Ao finalizar, os valores do mês ficam protegidos. Alterações posteriores exigem reabertura aprovada.
-              </span>
-            </div>
-          </div>
+          {renderSavedSummary('Medição prevista')}
           {renderClosureControls()}
         </div>
       ) : null}
@@ -2024,15 +2393,28 @@ export default function CrPlanejamentoView({
           Anterior
         </button>
         <span>Etapa {step} de {steps.length}</span>
-        <button
-          type="button"
-          className="btn btn-outline"
-          disabled={step === steps.length}
-          onClick={() => setStep((current) => Math.min(steps.length, current + 1))}
-        >
-          Próxima
-          <HiOutlineChevronRight className="h-4 w-4" />
-        </button>
+        {step < steps.length ? (
+          canSaveStep ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={Boolean(saving)}
+              onClick={saveAndContinue}
+            >
+              {saving === 'costs' || saving === 'receipts' ? 'Salvando...' : 'Salvar e continuar'}
+              <HiOutlineChevronRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setStep((current) => Math.min(steps.length, current + 1))}
+            >
+              Próxima
+              <HiOutlineChevronRight className="h-4 w-4" />
+            </button>
+          )
+        ) : <span aria-hidden="true" />}
       </footer> : null}
       {sheetPreview ? (
         <CrPlanningImportModal
@@ -2041,9 +2423,10 @@ export default function CrPlanejamentoView({
           tipo={sheetType}
           preview={sheetPreview}
           onClose={() => setSheetPreview(null)}
-          onConfirm={applyPlanningImport}
+          onConfirm={importAndSave}
         />
       ) : null}
+      {elementoConfirmacao}
     </section>
   );
 }

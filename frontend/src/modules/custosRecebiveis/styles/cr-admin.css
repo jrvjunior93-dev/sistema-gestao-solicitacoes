@@ -1,1 +1,94 @@
 /* Custos e Recebiveis (reforma 29/09/2026): estilos de cr-admin. Tokens --cr-* so dentro de .cr-page. */
+
+/* Fila de decisoes no topo da tela do administrador (Fase 4). */
+.cr-page .cr-fila-decisoes {
+  min-width: 0;
+}
+
+.cr-page .cr-fila-indisponivel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--cr-border);
+  border-radius: 8px;
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+}
+
+.cr-page .cr-fila-vazia,
+.cr-page .cr-faixa-aviso,
+.cr-page .cr-export-descricao {
+  margin: 0;
+  color: var(--cr-muted);
+  font-size: var(--fonte-detalhe);
+}
+
+.cr-page .cr-faixa-aviso {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cr-warning) 8%, transparent);
+  color: var(--cr-text);
+}
+
+.cr-page .cr-faixa-mais {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+}
+
+/* Caminho de volta ao Dashboard nas visoes de uma obra aberta por ele. */
+.cr-page .cr-admin-voltar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cr-page .cr-admin-voltar > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--cr-muted);
+  font-size: var(--fonte-corpo);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Liberacoes temporarias (faixa de Obrigacoes e prazos). */
+.cr-page .cr-liberacoes {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.cr-page .cr-liberacoes__barra {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Importacoes e exportacoes: planilha da obra aberta abaixo da lista. */
+.cr-page .cr-arquivos-obra {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  scroll-margin-top: 96px;
+}
+
+.cr-page #cr-importar-arquivo {
+  scroll-margin-top: 96px;
+}
+
+.cr-page .cr-export-descricao {
+  padding-top: 8px;
+}
+
+@media (min-width: 1101px) {
+  .cr-page .cr-export-toolbar--admin {
+    grid-template-columns:
+      minmax(200px, 1.1fr) minmax(140px, 0.5fr) minmax(200px, 1.1fr) minmax(140px, 0.5fr) auto;
+  }
+}

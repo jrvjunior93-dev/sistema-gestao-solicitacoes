@@ -10,7 +10,7 @@ import {
   HiOutlineWallet
 } from 'react-icons/hi2';
 import { BlocoConteudo } from '../../../components/padrao';
-import { obterCustosRecebiveisDashboard } from '../services/custosRecebiveis';
+import { mensagemLegivel, obterCustosRecebiveisDashboard } from '../services/custosRecebiveis';
 import CrMonthlySummaryCard from './CrMonthlySummaryCard';
 
 const currency = new Intl.NumberFormat('pt-BR', {
@@ -132,7 +132,7 @@ export default function CrDashboardView({
       ));
     } catch (requestError) {
       setData(null);
-      setError(requestError.message || 'Erro ao carregar visão geral.');
+      setError(mensagemLegivel(requestError, 'Erro ao carregar visão geral.'));
     } finally {
       setLoading(false);
     }

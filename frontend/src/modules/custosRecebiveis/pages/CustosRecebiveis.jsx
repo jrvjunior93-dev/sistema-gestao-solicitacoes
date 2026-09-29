@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  HiOutlineArrowLeft,
   HiOutlineArrowPath,
   HiOutlineBuildingOffice2,
   HiOutlineChartBarSquare,
@@ -27,17 +28,19 @@ import CrConfiguracoesView from '../components/CrConfiguracoesView';
 import CrDashboardView from '../components/CrDashboardView';
 import CrExportacoesView from '../components/CrExportacoesView';
 import CrExecutiveFilters from '../components/CrExecutiveFilters';
+import CrFilaDecisoes from '../components/CrFilaDecisoes';
 import CrImportacoesView from '../components/CrImportacoesView';
 import CrObrasView from '../components/CrObrasView';
+import CrObrigacoesPainel from '../components/CrObrigacoesPainel';
 import CrObrigacoesView from '../components/CrObrigacoesView';
 import CrPlanejamentoMensalView from '../components/CrPlanejamentoMensalView';
-import CrPlanoWorkspace from '../components/CrPlanoWorkspace';
 import CrRealizadoView from '../components/CrRealizadoView';
 import CrAuditoriaView from '../components/CrAuditoriaView';
 import CrDilatacoesView from '../components/CrDilatacoesView';
 import CrPrazosObrasView from '../components/CrPrazosObrasView';
 import {
   CUSTOS_RECEBIVEIS_PERMISSIONS,
+  CUSTOS_RECEBIVEIS_TAB_ALIASES,
   CUSTOS_RECEBIVEIS_TABS
 } from '../constants/custosRecebiveis';
 import {
@@ -47,6 +50,7 @@ import {
   obterPlanoMicroObra,
   publicarPlanoMicro,
   listarMinhasObrigacoesCustosRecebiveis,
+  mensagemLegivel,
   solicitarReaberturaObraCompetencia,
   validarPlanoMicro
 } from '../services/custosRecebiveis';
@@ -58,6 +62,18 @@ import '../styles/cr-admin.css';
 import '../styles/cr-detalhe.css';
 import '../styles/cr-previsao.css';
 
+// Abas que ainda dependem de obra e competência em contexto (abertas a
+// partir do mês ou de um ponto de atenção do Dashboard).
+const CONTEXT_TABS = ['comparativo', 'realizado'];
+// Visões de uma obra aberta pelo Dashboard: têm caminho de volta a ele.
+const ADMIN_OBRA_TABS = ['planejamento', 'comparativo', 'realizado'];
+
+function hasTabPermission(user, tab) {
+  return Array.isArray(tab.anyOf)
+    ? tab.anyOf.some((permission) => hasExplicitCustosRecebiveisPermission(user, permission))
+    : hasExplicitCustosRecebiveisPermission(user, tab.permission);
+}
+
 const TAB_ICONS = {
   'visao-geral': HiOutlineChartBarSquare,
   obras: HiOutlineBuildingOffice2,
@@ -65,7 +81,7 @@ const TAB_ICONS = {
   comparativo: HiOutlineScale,
   realizado: HiOutlineBanknotes,
   obrigacoes: HiOutlineClock,
-  importacoes: HiOutlineCircleStack,
+  arquivos: HiOutlineCircleStack,
   exportacoes: HiOutlineArrowDownTray,
   auditoria: HiOutlineShieldCheck,
   configuracoes: HiOutlineCog6Tooth
@@ -92,6 +108,7 @@ export default function CustosRecebiveis() {
   const [feedback, setFeedback] = useState(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [obligationSummary, setObligationSummary] = useState(null);
+  const [decisoesVersao, setDecisoesVersao] = useState(0);
 
   const hasAdministrativeCapability = [
     CUSTOS_RECEBIVEIS_PERMISSIONS.ESTRUTURA_IMPORT,
@@ -109,9 +126,7 @@ export default function CustosRecebiveis() {
   const obraExperience = isObraUser || operationalExperience;
 
   const availableTabs = useMemo(
-    () => CUSTOS_RECEBIVEIS_TABS.filter((tab) => (
-      hasExplicitCustosRecebiveisPermission(user, tab.permission)
-    )),
+    () => CUSTOS_RECEBIVEIS_TABS.filter((tab) => hasTabPermission(user, tab)),
     [user]
   );
   const visibleTabs = useMemo(() => {
@@ -136,11 +151,20 @@ export default function CustosRecebiveis() {
   const defaultTab = obraExperience && availableTabs.some((tab) => tab.id === 'obras')
     ? 'obras'
     : visibleTabs[0]?.id || availableTabs[0]?.id || 'obras';
-  const requestedTab = searchParams.get('aba') || defaultTab;
+  const selectedObraId = Number(searchParams.get('obra'));
+  const hasObraParam = Number.isInteger(selectedObraId) && selectedObraId > 0;
+  const rawTab = searchParams.get('aba') || defaultTab;
+  // Endereços antigos (?aba=importacoes / ?aba=exportacoes) abrem a aba única.
+  const aliasedTab = CUSTOS_RECEBIVEIS_TAB_ALIASES[rawTab] || rawTab;
+  // Administrador: a tabela de obras deixou de existir e os meses só abrem
+  // com uma obra escolhida no Dashboard — sem ela, volta ao Dashboard.
+  const adminHomeTab = availableTabs.some((tab) => tab.id === 'visao-geral') ? 'visao-geral' : defaultTab;
+  const requestedTab = !obraExperience && (
+    aliasedTab === 'obras' || (aliasedTab === 'planejamento' && !hasObraParam)
+  ) ? adminHomeTab : aliasedTab;
   const activeTab = availableTabs.some((tab) => tab.id === requestedTab)
     ? requestedTab
     : defaultTab || null;
-  const selectedObraId = Number(searchParams.get('obra'));
   const selectedPlanId = Number(searchParams.get('plano'));
   const competencia = searchParams.get('competencia') || currentMonth();
   const obrasCompetencia = currentMonth();
@@ -229,6 +253,10 @@ export default function CustosRecebiveis() {
       CUSTOS_RECEBIVEIS_PERMISSIONS.REALIZADOS_RECONCILE
     )
   }), [user]);
+  const canExport = hasExplicitCustosRecebiveisPermission(
+    user,
+    CUSTOS_RECEBIVEIS_PERMISSIONS.REPORT_EXPORT
+  );
   const canGrantBypass = hasExplicitCustosRecebiveisPermission(
     user,
     CUSTOS_RECEBIVEIS_PERMISSIONS.OBLIGATION_BYPASS
@@ -278,7 +306,7 @@ export default function CustosRecebiveis() {
       const response = await listarCustosRecebiveisObras({ competencia: obrasCompetencia });
       setObras(Array.isArray(response?.items) ? response.items : []);
     } catch (error) {
-      setObrasError(error.message || 'Erro ao carregar obras.');
+      setObrasError(mensagemLegivel(error, 'Não foi possível carregar as obras.'));
     } finally {
       setObrasLoading(false);
     }
@@ -306,7 +334,7 @@ export default function CustosRecebiveis() {
       return response;
     } catch (error) {
       setPlanData(null);
-      setPlanError(error.message || 'Erro ao carregar o plano micro.');
+      setPlanError(mensagemLegivel(error, 'Não foi possível carregar a planilha da obra.'));
       return null;
     } finally {
       setPlanLoading(false);
@@ -327,10 +355,10 @@ export default function CustosRecebiveis() {
   }, [canViewObligations]);
 
   useEffect(() => {
-    if (activeTab && requestedTab !== activeTab) {
+    if (activeTab && searchParams.get('aba') && searchParams.get('aba') !== activeTab) {
       updateQuery({ aba: activeTab }, { replace: true });
     }
-  }, [activeTab, requestedTab, updateQuery]);
+  }, [activeTab, searchParams, updateQuery]);
 
   useEffect(() => {
     loadObras();
@@ -383,16 +411,38 @@ export default function CustosRecebiveis() {
     updateQuery({ plano: planId || null });
   }
 
-  function handleOpenImport() {
-    updateQuery({ aba: 'importacoes' });
+  // Importações: abre (ou fecha) a planilha de uma obra abaixo da lista.
+  function handleSelectArquivosObra(obraId) {
+    updateQuery({ obra: obraId || null, plano: null });
   }
 
-  function handleOpenPlan(planId) {
+  function handleBackToDashboard() {
     updateQuery({
-      aba: 'obras',
-      sub: 'estrutura',
-      plano: planId
+      aba: adminHomeTab,
+      obra: null,
+      detalhe: null,
+      painel: null,
+      bloqueio: null,
+      plano: null
     });
+  }
+
+  // Fila de decisões / histórico de reaberturas: abre o mês do pedido.
+  function handleOpenDecisionMonth(item) {
+    updateQuery({
+      aba: 'planejamento',
+      obra: item?.obra?.id || item?.obra_id || null,
+      competencia: item?.competencia || competencia,
+      detalhe: '1',
+      painel: 'details',
+      plano: null,
+      bloqueio: null
+    });
+  }
+
+  async function handleDecided() {
+    setDecisoesVersao((current) => current + 1);
+    await Promise.all([loadObras(), loadObligationSummary()]);
   }
 
   async function handleDownloadModel() {
@@ -633,7 +683,9 @@ export default function CustosRecebiveis() {
       <PageHeader
         titulo="Custos e Recebíveis"
         contagem={`${obras.length} obra(s)`}
-        descricao={`${abaAtual?.label ? `${abaAtual.label} · ` : ''}Planeje o mes, acompanhe medicoes e compare com os lancamentos financeiros.`}
+        descricao={obraExperience
+          ? `${abaAtual?.label ? `${abaAtual.label} · ` : ''}Planeje o mes, acompanhe medicoes e compare com os lancamentos financeiros.`
+          : (abaAtual?.label || '')}
         secundarias={[{
           rotulo: 'Atualizar',
           icone: <HiOutlineArrowPath className="h-4 w-4" />,
@@ -670,7 +722,7 @@ export default function CustosRecebiveis() {
         fechável. A condição de tela permanece: na aba de importações quem
         mostra o retorno é a própria visão, senão apareceria duas vezes.
       */}
-      {activeTab !== 'importacoes' ? (
+      {activeTab !== 'arquivos' ? (
         <Avisos
           avisos={feedback ? [{
             id: 'cr-feedback',
@@ -686,6 +738,19 @@ export default function CustosRecebiveis() {
         aberta (é o seletor de contexto da tela, refletido na URL `?aba=`),
         não recorte de lista.
       */}
+      {/*
+        Fase 4: a fila de decisões (reaberturas e dilatações pendentes, mais
+        antiga primeiro) fica no topo da tela do administrador — é para cá
+        que vai o pedido do engenheiro. Some quando não há pedido.
+      */}
+      {!obraExperience && planningPermissions.reopenApprove ? (
+        <CrFilaDecisoes
+          versao={decisoesVersao + refreshToken}
+          onOpenMonth={handleOpenDecisionMonth}
+          onDecided={handleDecided}
+        />
+      ) : null}
+
       <nav className="cr-tabs" aria-label="Áreas de Custos e Recebíveis">
         {visibleTabs.map((tab) => {
           const Icon = TAB_ICONS[tab.id] || HiOutlineChartBarSquare;
@@ -696,6 +761,7 @@ export default function CustosRecebiveis() {
               className={(
                 activeTab === tab.id
                 || (engineerMonths && tab.id === 'obras')
+                || (!obraExperience && tab.id === adminHomeTab && ADMIN_OBRA_TABS.includes(activeTab))
               ) ? 'is-active' : ''}
               // Engenheiro: "Minhas obras" volta à lista, sem obra aberta.
               onClick={() => updateQuery(obraExperience && tab.id === 'obras'
@@ -739,7 +805,8 @@ export default function CustosRecebiveis() {
             periodo_fim: end
           })}
         />
-      ) : activeTab !== 'obras' && !engineerWorksHome && !engineerMonths ? (
+      ) : activeTab !== 'obras' && !engineerWorksHome && !engineerMonths
+        && CONTEXT_TABS.includes(activeTab) ? (
       /*
         R12: estes DOIS selects continuam legítimos — não são filtro de
         lista, são o SELETOR DE CONTEXTO (qual obra e qual competência as
@@ -748,10 +815,7 @@ export default function CustosRecebiveis() {
         superfície: em vez de uma faixa solta sobre o canvas, um bloco com
         título dizendo o que ele governa.
       */
-      <BlocoConteudo
-        titulo="Contexto do módulo"
-        descricao="Obra e competência valem para as áreas abaixo."
-      >
+      <BlocoConteudo titulo="Obra e competência">
       <section className="cr-context-bar" aria-label="Contexto do módulo">
         <label className="cr-field">
           <span>Obra em contexto</span>
@@ -778,46 +842,31 @@ export default function CustosRecebiveis() {
             <small>Altere o mês e o ano para recalcular o período financeiro.</small>
           ) : null}
         </label>
-        <div className="cr-context-summary">
-          <span>Escopo atual</span>
-          <strong>{selectedObra ? selectedObra.nome : `${obras.length} obra(s) disponível(is)`}</strong>
-          <small>
-            {selectedObra?.empresa?.nome || 'A competência será usada nas próximas fases do módulo.'}
-          </small>
-        </div>
       </section>
       </BlocoConteudo>
       ) : null}
 
-      {activeTab === 'obras' || engineerWorksHome ? (
-        <>
-          <CrObrasView
-            obras={obras}
-            loading={obrasLoading}
-            error={obrasError}
-            onReload={loadObras}
-            onOpen={handleOpenObra}
-            cardMode={obraExperience}
-            showAdministrationLink={!obraExperience && canViewStructure}
-          />
-          {!obraExperience && Number.isInteger(selectedObraId) && selectedObraId > 0 ? (
-            <div id="cr-workspace-anchor">
-              <CrPlanoWorkspace
-                data={planData}
-                loading={planLoading}
-                error={planError}
-                canImport={canImport}
-                canPublish={canPublish}
-                publishing={publishing}
-                onReload={() => loadPlan()}
-                onSelectPlan={handleSelectPlan}
-                onOpenImport={handleOpenImport}
-                onDownloadModel={handleDownloadModel}
-                onPublish={handlePublish}
-              />
-            </div>
+      {!obraExperience && ADMIN_OBRA_TABS.includes(activeTab) ? (
+        <div className="cr-admin-voltar">
+          <button type="button" className="btn btn-outline btn-sm" onClick={handleBackToDashboard}>
+            <HiOutlineArrowLeft className="h-4 w-4" />
+            Dashboard
+          </button>
+          {selectedObra ? (
+            <span>{selectedObra.codigo || selectedObra.id} · {selectedObra.nome}</span>
           ) : null}
-        </>
+        </div>
+      ) : null}
+
+      {activeTab === 'obras' || engineerWorksHome ? (
+        <CrObrasView
+          obras={obras}
+          loading={obrasLoading}
+          error={obrasError}
+          onReload={loadObras}
+          onOpen={handleOpenObra}
+          cardMode={obraExperience}
+        />
       ) : null}
 
       {activeTab === 'visao-geral' ? (
@@ -834,7 +883,15 @@ export default function CustosRecebiveis() {
         />
       ) : null}
 
-      {activeTab === 'planejamento' && !engineerWorksHome ? (
+      {activeTab === 'planejamento' && !engineerWorksHome && !obraExperience && !selectedObra ? (
+        <BlocoConteudo titulo="Meses da obra">
+          <p className="cr-faixa-aviso" role="status">
+            {obrasLoading || planLoading ? 'Carregando obra...' : 'Obra não encontrada no seu escopo.'}
+          </p>
+        </BlocoConteudo>
+      ) : null}
+
+      {activeTab === 'planejamento' && !engineerWorksHome && (obraExperience || selectedObra) ? (
         <CrPlanejamentoMensalView
           key={`${selectedObraId}-${competencia}-${refreshToken}`}
           obra={selectedObra}
@@ -880,7 +937,22 @@ export default function CustosRecebiveis() {
         />
       ) : null}
 
-      {activeTab === 'obrigacoes' ? (
+      {activeTab === 'obrigacoes' && !obraExperience ? (
+        <CrObrigacoesPainel
+          obras={obras}
+          obrasLoading={obrasLoading}
+          obrasError={obrasError}
+          versao={decisoesVersao + refreshToken}
+          canDecide={planningPermissions.reopenApprove}
+          canGrantBypass={canGrantBypass}
+          onOpenObra={handleOpenObra}
+          onOpenPlanning={handleOpenObligationPlanning}
+          onOpenMonth={handleOpenDecisionMonth}
+          onDecided={handleDecided}
+        />
+      ) : null}
+
+      {activeTab === 'obrigacoes' && obraExperience ? (
         <>
           <CrObrigacoesView
             key={refreshToken}
@@ -896,45 +968,51 @@ export default function CustosRecebiveis() {
         </>
       ) : null}
 
-      {activeTab === 'importacoes' ? (
-        <CrImportacoesView
-          key={selectedObraId || 'none'}
-          obra={selectedObra}
-          data={planData}
-          canImport={canImport}
-          validating={validating}
-          importing={importing}
-          feedback={feedback}
-          onDownloadModel={handleDownloadModel}
-          onValidate={handleValidate}
-          onImport={handleImport}
-          onOpenPlan={handleOpenPlan}
-        />
-      ) : null}
-
-      {activeTab === 'exportacoes' ? (
-        <CrExportacoesView
-          key={`${selectedObraId}-${competencia}`}
-          obra={selectedObra}
-          competencia={competencia}
-        />
+      {activeTab === 'arquivos' ? (
+        <>
+          {canImport || canPublish ? (
+            <CrImportacoesView
+              obras={obras}
+              obra={hasSelectedObra ? selectedObra : null}
+              versao={refreshToken}
+              data={planData}
+              planLoading={planLoading}
+              planError={planError}
+              canImport={canImport}
+              canPublish={canPublish}
+              validating={validating}
+              importing={importing}
+              publishing={publishing}
+              feedback={feedback}
+              onSelectObra={handleSelectArquivosObra}
+              onSelectPlan={handleSelectPlan}
+              onReloadPlan={() => loadPlan()}
+              onDownloadModel={handleDownloadModel}
+              onValidate={handleValidate}
+              onImport={handleImport}
+              onPublish={handlePublish}
+            />
+          ) : null}
+          {canExport ? (
+            <BlocoConteudo titulo="Exportações">
+              <CrExportacoesView obras={obras} competenciaInicial={competencia} />
+            </BlocoConteudo>
+          ) : null}
+        </>
       ) : null}
 
       {activeTab === 'auditoria' ? (
-        <CrAuditoriaView
-          key={`${selectedObraId}-${refreshToken}`}
-          obra={selectedObra}
-        />
+        <CrAuditoriaView key={`auditoria-${refreshToken}`} obras={obras} />
       ) : null}
 
       {activeTab === 'configuracoes' ? (
         <>
-        <CrPrazosObrasView key={`prazos-${refreshToken}`} />
-        <CrConfiguracoesView
-          key={`${selectedObraId}-${refreshToken}`}
-          obra={selectedObra}
-          onChanged={handleRefresh}
-        />
+          <CrPrazosObrasView key={`prazos-${refreshToken}`} />
+          <CrConfiguracoesView
+            key={`responsaveis-${refreshToken}`}
+            obras={obras}
+            onChanged={loadObras}
+          />
         </>
       ) : null}
 
