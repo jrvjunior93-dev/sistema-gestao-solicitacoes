@@ -466,7 +466,7 @@ export default function CrImportacoesView({
           storageKey="tabela:custos-recebiveis-importacoes:obras"
           rotuloRolagem="Planilhas das obras"
           carregando={carregando}
-          vazio="Nenhuma obra encontrada."
+          vazio={erro ? 'Não foi possível carregar a lista.' : 'Nenhuma obra encontrada.'}
           acoesLinha={(item) => (Number(item.obra?.id) === Number(obra?.id) ? (
             <button type="button" className="btn btn-outline" onClick={() => onSelectObra(null)}>
               Fechar

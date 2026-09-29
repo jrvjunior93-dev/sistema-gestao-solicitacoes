@@ -17,8 +17,38 @@ import { formatarDataHora, normalizarBusca, rotuloObra } from './CrFormatos';
 
 const PAGINA = 100;
 
+// Eventos gravados pelo módulo (backend/src/modules/custosRecebiveis/services).
+const EVENTO_LABELS = {
+  PLANO_MICRO_IMPORTADO: 'Planilha da obra importada',
+  PLANO_MICRO_PUBLICADO: 'Versão da planilha publicada',
+  RESPONSABILIDADE_OBRA_CADASTRADA: 'Responsável cadastrado',
+  RESPONSABILIDADE_OBRA_ENCERRADA: 'Responsabilidade encerrada',
+  CR_COMPETENCIA_CRIADA: 'Mês criado',
+  CR_COMPETENCIA_FINALIZADA: 'Planejamento do mês finalizado',
+  CR_PLANEJAMENTO_CUSTOS_SALVO: 'Custos planejados salvos',
+  CR_PLANEJAMENTO_RECEBIVEIS_SALVO: 'Medição prevista salva',
+  CR_MEDICAO_CONSOLIDADA: 'Medição aprovada registrada',
+  CR_PREVISAO_AJUSTADA_SALDO: 'Previsão ajustada ao saldo',
+  CR_REABERTURA_SOLICITADA: 'Reabertura solicitada',
+  CR_REABERTURA_APROVADA: 'Reabertura aprovada',
+  CR_REABERTURA_NEGADA: 'Reabertura negada',
+  CR_REABERTURA_ENCERRADA: 'Reabertura encerrada',
+  CR_REABERTURA_EXPIRADA: 'Reabertura expirada',
+  CR_DILATACAO_SOLICITADA: 'Dilatação de prazo solicitada',
+  CR_DILATACAO_APROVADA: 'Dilatação de prazo aprovada',
+  CR_DILATACAO_NEGADA: 'Dilatação de prazo negada',
+  CR_PRAZOS_OBRA_ALTERADOS: 'Prazos da obra alterados',
+  CR_GUARD_BYPASS_CONCEDIDO: 'Liberação temporária concedida',
+  CR_GUARD_BYPASS_REVOGADO: 'Liberação temporária revogada',
+  CR_REALIZADO_RECONCILIADO: 'Custo realizado conciliado',
+  CR_REALIZADOS_REPROCESSADOS: 'Custos realizados reprocessados'
+};
+
+// Evento sem rótulo conhecido: código humanizado ("CR_ALGO_NOVO" → "Algo novo").
 function formatEvent(value) {
-  return String(value || '')
+  const codigo = String(value || '').trim();
+  if (EVENTO_LABELS[codigo]) return EVENTO_LABELS[codigo];
+  return codigo
     .replace(/^CR_/, '')
     .toLowerCase()
     .replaceAll('_', ' ')
@@ -126,7 +156,7 @@ export default function CrAuditoriaView({ obras = [] }) {
   const temMais = !modoPorObra && items.length < total;
 
   return (
-    <BlocoConteudo titulo="Auditoria" contagem={`${total} registro(s)`}>
+    <BlocoConteudo titulo="Auditoria" contagem={erro && !items.length ? undefined : `${total} registro(s)`}>
       <BarraFiltros
         busca={{ valor: busca, aoMudar: setBusca, placeholder: 'Descrição, usuário ou obra' }}
         campos={[
@@ -149,6 +179,7 @@ export default function CrAuditoriaView({ obras = [] }) {
         })}
       />
       {erro ? <p className="cr-faixa-aviso" role="status">{erro}</p> : null}
+      {erro && !items.length ? null : (
       <TabelaPadrao
         colunas={[
           {
@@ -186,6 +217,7 @@ export default function CrAuditoriaView({ obras = [] }) {
         carregando={loading && !items.length}
         vazio="Nenhum registro encontrado."
       />
+      )}
       {temMais ? (
         <div className="cr-faixa-mais">
           <button

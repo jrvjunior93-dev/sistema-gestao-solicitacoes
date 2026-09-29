@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BarraFiltros,
   BlocoConteudo,
@@ -29,30 +29,128 @@ function contem(texto, busca) {
   return !busca || normalizarBusca(texto).includes(busca);
 }
 
-// Estado de consulta legível: carregando, indisponível (rota ainda não
-// publicada) ou erro — nunca a resposta crua do servidor.
-function useConsulta(carregar, deps) {
-  const [state, setState] = useState({ items: [], carregando: true, erro: '' });
-  const load = useCallback(async () => {
-    setState((current) => ({ ...current, carregando: true, erro: '' }));
-    try {
-      setState({ items: await carregar(), carregando: false, erro: '' });
-    } catch (error) {
-      setState({
-        items: [],
-        carregando: false,
-        erro: consultaIndisponivel(error)
-          ? 'Consulta indisponível no servidor no momento.'
-          : mensagemLegivel(error, 'Não foi possível carregar.')
-      });
-    }
-  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { void load(); }, [load]);
-  return state;
+function mensagemConsulta(error) {
+  return consultaIndisponivel(error)
+    ? 'Consulta indisponível no servidor no momento.'
+    : mensagemLegivel(error, 'Não foi possível carregar.');
 }
 
-function Aviso({ texto }) {
-  return texto ? <p className="cr-faixa-aviso" role="status">{texto}</p> : null;
+function pagina(response) {
+  const items = Array.isArray(response?.items) ? response.items : [];
+  const total = Number(response?.total);
+  return { items, total: Number.isFinite(total) && total >= items.length ? total : items.length };
+}
+
+/*
+  Consulta paginada legível: carregando, indisponível (rota ainda não
+  publicada) ou erro — nunca a resposta crua do servidor. `fontes` são as
+  consultas (uma por situação); cada uma traz `total` e anda por `offset`,
+  então a lista nunca é cortada em silêncio: "Carregar mais" busca o resto.
+*/
+function useConsultaPaginada(fontes, deps) {
+  const [state, setState] = useState({
+    paginas: [],
+    carregando: true,
+    carregandoMais: false,
+    erro: '',
+    erroMais: ''
+  });
+  const fontesRef = useRef(fontes);
+  fontesRef.current = fontes;
+  const paginasRef = useRef([]);
+  const pedidoRef = useRef(0);
+
+  const load = useCallback(async () => {
+    const pedido = pedidoRef.current + 1;
+    pedidoRef.current = pedido;
+    setState((current) => ({ ...current, carregando: true, erro: '', erroMais: '' }));
+    try {
+      const respostas = await Promise.all(fontesRef.current.map((fonte) => fonte(0)));
+      if (pedidoRef.current !== pedido) return;
+      paginasRef.current = respostas.map(pagina);
+      setState({ paginas: paginasRef.current, carregando: false, carregandoMais: false, erro: '', erroMais: '' });
+    } catch (error) {
+      if (pedidoRef.current !== pedido) return;
+      paginasRef.current = [];
+      setState({ paginas: [], carregando: false, carregandoMais: false, erro: mensagemConsulta(error), erroMais: '' });
+    }
+  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { void load(); }, [load]);
+
+  const carregarMais = useCallback(async () => {
+    const pedido = pedidoRef.current;
+    const atuais = paginasRef.current;
+    setState((current) => ({ ...current, carregandoMais: true, erroMais: '' }));
+    try {
+      const proximas = await Promise.all(atuais.map((atual, index) => (
+        atual.items.length < atual.total
+          ? fontesRef.current[index](atual.items.length).then((response) => {
+            const nova = pagina(response);
+            return { items: [...atual.items, ...nova.items], total: Math.max(nova.total, atual.items.length) };
+          })
+          : atual
+      )));
+      if (pedidoRef.current !== pedido) return;
+      paginasRef.current = proximas;
+      setState((current) => ({ ...current, paginas: proximas, carregandoMais: false }));
+    } catch (error) {
+      if (pedidoRef.current !== pedido) return;
+      setState((current) => ({ ...current, carregandoMais: false, erroMais: mensagemConsulta(error) }));
+    }
+  }, []);
+
+  const items = useMemo(() => state.paginas.flatMap((item) => item.items), [state.paginas]);
+  const total = state.paginas.reduce((soma, item) => soma + item.total, 0);
+  return { ...state, items, total, recarregar: load, carregarMais };
+}
+
+function Aviso({ texto, aoTentarDeNovo }) {
+  if (!texto) return null;
+  return (
+    <p className="cr-faixa-aviso" role="status">
+      {texto}
+      {aoTentarDeNovo ? (
+        <>
+          {' '}
+          <button type="button" className="btn btn-outline btn-sm" onClick={aoTentarDeNovo}>
+            Tentar novamente
+          </button>
+        </>
+      ) : null}
+    </p>
+  );
+}
+
+// Contagem pelo total do servidor; avisa quando só parte já veio.
+function contagemLista(consulta, rotulo) {
+  if (consulta.erro || consulta.carregando) return undefined;
+  return consulta.items.length < consulta.total
+    ? `${consulta.total} ${rotulo} · mostrando ${consulta.items.length}`
+    : `${consulta.total} ${rotulo}`;
+}
+
+function CarregarMais({ consulta }) {
+  if (consulta.erro || consulta.items.length >= consulta.total) {
+    return consulta.erroMais ? <Aviso texto={consulta.erroMais} /> : null;
+  }
+  return (
+    <>
+      <Aviso texto={consulta.erroMais} />
+      <div className="cr-faixa-mais">
+        <button
+          type="button"
+          className="btn btn-outline btn-sm"
+          disabled={consulta.carregandoMais}
+          onClick={() => void consulta.carregarMais()}
+        >
+          {consulta.carregandoMais
+            ? 'Carregando...'
+            : `Carregar mais (${consulta.items.length} de ${consulta.total})`}
+        </button>
+      </div>
+    </>
+  );
 }
 
 function situacaoPill(status, label) {
@@ -97,6 +195,7 @@ function PrazosPorObra({ obras, carregando, erro, onOpenObra }) {
         aoLimpar={() => { setBusca(''); setAtivos({}); }}
       />
       <Aviso texto={erro} />
+      {erro ? null : (
       <TabelaPadrao
         colunas={[
           {
@@ -150,24 +249,24 @@ function PrazosPorObra({ obras, carregando, erro, onOpenObra }) {
         )}
         larguraAcoes={130}
       />
+      )}
     </>
   );
 }
 
 /* ------------------------------------------------------ obrigações */
 
-function ListaObrigacoes({ situacoes, versao, cumpridas = false, onOpenPlanning }) {
+function ListaObrigacoes({ titulo, situacoes, versao, cumpridas = false, onOpenPlanning }) {
   const [busca, setBusca] = useState('');
   const chave = situacoes.join(',');
-  const { items, carregando, erro } = useConsulta(async () => {
-    const respostas = await Promise.all(
-      situacoes.map((situacao) => listarObrigacoes({ situacao, limit: LIMITE }))
-    );
-    const todas = respostas.flatMap((response) => (Array.isArray(response?.items) ? response.items : []));
-    return todas.sort((left, right) => (cumpridas
-      ? new Date(right.cumprida_em || 0) - new Date(left.cumprida_em || 0)
-      : new Date(left.prazo_em || 0) - new Date(right.prazo_em || 0)));
-  }, [chave, versao, cumpridas]);
+  const consulta = useConsultaPaginada(
+    situacoes.map((situacao) => (offset) => listarObrigacoes({ situacao, limit: LIMITE, offset })),
+    [chave, versao]
+  );
+  const { carregando, erro } = consulta;
+  const items = useMemo(() => [...consulta.items].sort((left, right) => (cumpridas
+    ? new Date(right.cumprida_em || 0) - new Date(left.cumprida_em || 0)
+    : new Date(left.prazo_em || 0) - new Date(right.prazo_em || 0))), [consulta.items, cumpridas]);
 
   const termo = normalizarBusca(busca);
   const linhas = items.filter((item) => contem(
@@ -210,12 +309,13 @@ function ListaObrigacoes({ situacoes, versao, cumpridas = false, onOpenPlanning 
   }
 
   return (
-    <>
+    <BlocoConteudo titulo={titulo} contagem={contagemLista(consulta, 'obrigação(ões)')}>
       <BarraFiltros busca={{ valor: busca, aoMudar: setBusca, placeholder: 'Obra, responsável ou mês (AAAA-MM)' }} />
-      <Aviso texto={erro} />
+      <Aviso texto={erro} aoTentarDeNovo={() => void consulta.recarregar()} />
+      {erro ? null : (
       <TabelaPadrao
         colunas={colunas}
-        itens={erro ? [] : linhas}
+        itens={linhas}
         getId={(item) => item.id}
         storageKey={cumpridas
           ? 'tabela:custos-recebiveis-obrigacoes-cumpridas'
@@ -234,7 +334,9 @@ function ListaObrigacoes({ situacoes, versao, cumpridas = false, onOpenPlanning 
         )}
         larguraAcoes={cumpridas ? undefined : 120}
       />
-    </>
+      )}
+      <CarregarMais consulta={consulta} />
+    </BlocoConteudo>
   );
 }
 
@@ -248,10 +350,11 @@ const SITUACOES_REABERTURA = ['SOLICITADA', 'APROVADA', 'NEGADA'].map((valor) =>
 function HistoricoReaberturas({ versao, onOpenMonth }) {
   const [busca, setBusca] = useState('');
   const [ativos, setAtivos] = useState({});
-  const { items, carregando, erro } = useConsulta(async () => {
-    const response = await listarReaberturas({ limit: LIMITE });
-    return Array.isArray(response?.items) ? response.items : [];
-  }, [versao]);
+  const consulta = useConsultaPaginada(
+    [(offset) => listarReaberturas({ limit: LIMITE, offset })],
+    [versao]
+  );
+  const { items, carregando, erro } = consulta;
 
   const termo = normalizarBusca(busca);
   const situacoes = ativos.situacao || new Set();
@@ -261,7 +364,7 @@ function HistoricoReaberturas({ versao, onOpenMonth }) {
   ));
 
   return (
-    <>
+    <BlocoConteudo titulo="Reaberturas de competência" contagem={contagemLista(consulta, 'pedido(s)')}>
       <BarraFiltros
         busca={{ valor: busca, aoMudar: setBusca, placeholder: 'Obra, solicitante ou motivo' }}
         filtros={[{ id: 'situacao', rotulo: 'Situação', opcoes: SITUACOES_REABERTURA }]}
@@ -271,7 +374,8 @@ function HistoricoReaberturas({ versao, onOpenMonth }) {
         )}
         aoLimpar={() => { setBusca(''); setAtivos({}); }}
       />
-      <Aviso texto={erro} />
+      <Aviso texto={erro} aoTentarDeNovo={() => void consulta.recarregar()} />
+      {erro ? null : (
       <TabelaPadrao
         colunas={[
           {
@@ -313,7 +417,7 @@ function HistoricoReaberturas({ versao, onOpenMonth }) {
             ) : '—')
           }
         ]}
-        itens={erro ? [] : linhas}
+        itens={linhas}
         getId={(item) => item.id}
         storageKey="tabela:custos-recebiveis-reaberturas"
         rotuloRolagem="Reaberturas de competência"
@@ -326,7 +430,9 @@ function HistoricoReaberturas({ versao, onOpenMonth }) {
         )}
         larguraAcoes={120}
       />
-    </>
+      )}
+      <CarregarMais consulta={consulta} />
+    </BlocoConteudo>
   );
 }
 
@@ -341,6 +447,7 @@ export default function CrObrigacoesPainel({
   versao = 0,
   canDecide = false,
   canGrantBypass = false,
+  canViewDilatacoes = false,
   onOpenObra,
   onOpenPlanning,
   onOpenMonth,
@@ -351,7 +458,7 @@ export default function CrObrigacoesPainel({
       id: 'prazos-por-obra',
       rotulo: 'Prazos por obra',
       conteudo: (
-        <BlocoConteudo titulo="Prazos por obra" contagem={`${(obras || []).length} obra(s)`}>
+        <BlocoConteudo titulo="Prazos por obra" contagem={obrasError ? undefined : `${(obras || []).length} obra(s)`}>
           <PrazosPorObra
             obras={obras}
             carregando={obrasLoading}
@@ -365,34 +472,37 @@ export default function CrObrigacoesPainel({
       id: 'pendentes-e-vencidas',
       rotulo: 'Pendentes e vencidas',
       conteudo: (
-        <BlocoConteudo titulo="Pendentes e vencidas">
-          <ListaObrigacoes situacoes={['VENCIDA', 'PENDENTE']} versao={versao} onOpenPlanning={onOpenPlanning} />
-        </BlocoConteudo>
+        <ListaObrigacoes
+          titulo="Pendentes e vencidas"
+          situacoes={['VENCIDA', 'PENDENTE']}
+          versao={versao}
+          onOpenPlanning={onOpenPlanning}
+        />
       )
     },
     {
       id: 'prazos-cumpridos',
       rotulo: 'Prazos cumpridos',
       conteudo: (
-        <BlocoConteudo titulo="Prazos cumpridos">
-          <ListaObrigacoes situacoes={['CUMPRIDA', 'CUMPRIDA_COM_ATRASO']} versao={versao} cumpridas />
-        </BlocoConteudo>
+        <ListaObrigacoes
+          titulo="Prazos cumpridos"
+          situacoes={['CUMPRIDA', 'CUMPRIDA_COM_ATRASO']}
+          versao={versao}
+          cumpridas
+        />
       )
     },
     {
       id: 'reaberturas',
       rotulo: 'Reaberturas de competência',
-      conteudo: (
-        <BlocoConteudo titulo="Reaberturas de competência">
-          <HistoricoReaberturas versao={versao} onOpenMonth={onOpenMonth} />
-        </BlocoConteudo>
-      )
+      conteudo: <HistoricoReaberturas versao={versao} onOpenMonth={onOpenMonth} />
     },
-    {
+    // Mesmo filtro da tela do engenheiro: só quem decide ou planeja.
+    canViewDilatacoes ? {
       id: 'dilatacoes',
       rotulo: 'Dilatações',
       conteudo: <CrDilatacoesView versao={versao} canDecide={canDecide} onDecided={onDecided} />
-    },
+    } : null,
     canGrantBypass ? {
       id: 'liberacoes',
       rotulo: 'Liberações temporárias',

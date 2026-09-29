@@ -371,7 +371,7 @@ export default function CrRealizadoView({
           colunas={[
             {
               id: 'emissao',
-              largura: 200, flex: 0,
+              largura: 240, flex: 0,
               titulo: 'Emissão / vencimento',
               // Célula COMPOSTA (emissão + vencimento + marca de
               // competência), não uma data solta: a medida é de texto.
@@ -399,7 +399,7 @@ export default function CrRealizadoView({
             },
             {
               id: 'credor',
-              largura: 120,
+              largura: 180,
               titulo: 'Credor',
               tipo: 'texto',
               render: (item) => (
@@ -411,7 +411,7 @@ export default function CrRealizadoView({
             },
             {
               id: 'classificacao',
-              largura: 120,
+              largura: 180,
               titulo: 'Categoria / apropriação',
               tipo: 'texto',
               render: (item) => (

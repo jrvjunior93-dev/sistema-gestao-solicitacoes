@@ -70,9 +70,18 @@
 .cr-page .cr-month-detail-surface .app-tabela td.celula-data {
   font-variant-numeric: tabular-nums;
 }
-/* Cabecalho de coluna numerica alinhado com o valor. */
-.cr-page .cr-month-detail-surface .app-tabela th { white-space: nowrap; }
+/* Titulo de coluna em ate duas linhas (revisao F-FIX): "Medicao prevista",
+   "Categoria / apropriacao" nao cortam com reticencias em 1440. */
+.cr-page .cr-month-detail-surface .app-tabela th { white-space: normal; }
+.cr-page .cr-month-detail-surface .app-tabela th .app-th-botao {
+  white-space: normal;
+  line-height: 1.25;
+  padding-block: 4px;
+}
 .cr-page .cr-month-detail-surface .app-tabela .cr-status-pill { max-width: none; overflow: visible; }
+/* Razao de custos: "Vence em ... · emitido na competencia" e CNPJ quebram na
+   linha de baixo em vez de reticencias. */
+.cr-page .cr-month-detail-surface .cr-cost-ledger td .app-celula-dupla-sub { white-space: normal; }
 
 /* Blocos com moldura propria (comparativo e realizado) viram area plana:
    a moldura do detalhe ja delimita, e o titulo fica alinhado a gutter de 16. */

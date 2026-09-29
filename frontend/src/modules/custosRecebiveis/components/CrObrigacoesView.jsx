@@ -7,7 +7,7 @@ import {
   HiOutlineExclamationTriangle,
   HiOutlineLockOpen
 } from 'react-icons/hi2';
-import { listarMinhasObrigacoesCustosRecebiveis } from '../services/custosRecebiveis';
+import { listarMinhasObrigacoesCustosRecebiveis, mensagemLegivel } from '../services/custosRecebiveis';
 import CrLiberacoesTemporarias from './CrLiberacoesTemporarias';
 
 const TYPE_LABELS = {
@@ -94,7 +94,7 @@ export default function CrObrigacoesView({ canGrantBypass, onOpenPlanning }) {
       setError('');
       setData(await listarMinhasObrigacoesCustosRecebiveis());
     } catch (requestError) {
-      setError(requestError.message || 'Erro ao carregar obrigações.');
+      setError(mensagemLegivel(requestError, 'Não foi possível carregar as obrigações.'));
     } finally {
       setLoading(false);
     }

@@ -16,6 +16,29 @@ import {
 import { monthLabel } from '../utils/prazos';
 import { formatarDataHora, rotuloObra } from './CrFormatos';
 
+// Página da fila: o servidor devolve 50 por padrão e aceita até 200.
+const PAGINA = 200;
+const CONSULTA_ESTREITA = '(max-width: 640px)';
+
+function telaEstreita() {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia(CONSULTA_ESTREITA).matches;
+}
+
+// Celular: a fila nasce recolhida para as abas não descerem a tela inteira.
+function useTelaEstreita() {
+  const [estreita, setEstreita] = useState(telaEstreita);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const media = window.matchMedia(CONSULTA_ESTREITA);
+    const aoMudar = () => setEstreita(media.matches);
+    aoMudar();
+    media.addEventListener?.('change', aoMudar);
+    return () => media.removeEventListener?.('change', aoMudar);
+  }, []);
+  return estreita;
+}
+
 const TIPO_LABEL = {
   REABERTURA: 'Reabertura de competência',
   DILATACAO: 'Dilatação de prazo'
@@ -35,22 +58,61 @@ function ordemDeChegada(left, right) {
 export default function CrFilaDecisoes({ versao = 0, onOpenMonth, onDecided }) {
   const { confirmar, elementoConfirmacao } = useConfirmacao();
   const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [carregandoMais, setCarregandoMais] = useState(false);
+  const [expandida, setExpandida] = useState(false);
+  const estreita = useTelaEstreita();
+  const carregadosRef = useRef(0);
   const [estado, setEstado] = useState('carregando');
   const [aviso, setAviso] = useState(null);
   const [decidindo, setDecidindo] = useState(null);
   const decidindoRef = useRef(false);
 
+  // Recarrega tantas páginas quantas já estavam na tela (a atualização de
+  // minuto em minuto não desfaz o "Carregar mais"). Conta pelo `total`.
   const load = useCallback(async () => {
     try {
-      const response = await listarDecisoesPendentes();
-      const lista = Array.isArray(response?.items) ? [...response.items] : [];
+      const alvo = Math.max(carregadosRef.current, 1);
+      let lista = [];
+      let totalServidor = 0;
+      do {
+        // eslint-disable-next-line no-await-in-loop
+        const response = await listarDecisoesPendentes({ limit: PAGINA, offset: lista.length });
+        const novos = Array.isArray(response?.items) ? response.items : [];
+        lista = [...lista, ...novos];
+        const informado = Number(response?.total);
+        totalServidor = Number.isFinite(informado) && informado >= lista.length ? informado : lista.length;
+        if (!novos.length) break;
+      } while (lista.length < alvo && lista.length < totalServidor);
+      carregadosRef.current = lista.length;
       setItems(lista.sort(ordemDeChegada));
+      setTotal(totalServidor);
       setEstado('pronto');
     } catch (error) {
+      carregadosRef.current = 0;
       setItems([]);
+      setTotal(0);
       setEstado(consultaIndisponivel(error) ? 'indisponivel' : 'erro');
     }
   }, []);
+
+  async function carregarMais() {
+    if (carregandoMais) return;
+    setCarregandoMais(true);
+    try {
+      const response = await listarDecisoesPendentes({ limit: PAGINA, offset: items.length });
+      const novos = Array.isArray(response?.items) ? response.items : [];
+      const lista = [...items, ...novos].sort(ordemDeChegada);
+      const informado = Number(response?.total);
+      carregadosRef.current = lista.length;
+      setItems(lista);
+      setTotal(Number.isFinite(informado) && informado >= lista.length ? informado : lista.length);
+    } catch (error) {
+      setAviso({ id: 'fila', tipo: 'error', mensagem: mensagemLegivel(error, 'Não foi possível carregar mais pedidos.') });
+    } finally {
+      setCarregandoMais(false);
+    }
+  }
 
   useEffect(() => {
     void load();
@@ -97,7 +159,7 @@ export default function CrFilaDecisoes({ versao = 0, onOpenMonth, onDecided }) {
     }
   }
 
-  if (estado === 'carregando' || (estado === 'pronto' && items.length === 0 && !aviso)) {
+  if (estado === 'carregando' || (estado === 'pronto' && total === 0 && items.length === 0 && !aviso)) {
     return elementoConfirmacao;
   }
 
@@ -115,12 +177,18 @@ export default function CrFilaDecisoes({ versao = 0, onOpenMonth, onDecided }) {
   }
 
   return (
+    <>
     <BlocoConteudo
       className="cr-fila-decisoes"
       titulo="Decisões pendentes"
-      contagem={`${items.length} aguardando`}
+      contagem={items.length < total
+        ? `${total} pedido(s) aguardando decisão · mostrando ${items.length}`
+        : `${total} pedido(s) aguardando decisão`}
       variante="primario"
       cor="var(--sem-warning)"
+      recolhivel={estreita}
+      recolhido={estreita && !expandida}
+      aoAlternarRecolhido={(proximo) => setExpandida(!proximo)}
     >
       <Avisos avisos={aviso ? [aviso] : []} aoFechar={() => setAviso(null)} />
       {items.length ? (
@@ -195,7 +263,20 @@ export default function CrFilaDecisoes({ versao = 0, onOpenMonth, onDecided }) {
       ) : (
         <p className="cr-fila-vazia">Nenhuma decisão pendente.</p>
       )}
-      {elementoConfirmacao}
+      {items.length < total ? (
+        <div className="cr-faixa-mais">
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            disabled={carregandoMais}
+            onClick={() => void carregarMais()}
+          >
+            {carregandoMais ? 'Carregando...' : `Carregar mais (${items.length} de ${total})`}
+          </button>
+        </div>
+      ) : null}
     </BlocoConteudo>
+    {elementoConfirmacao}
+    </>
   );
 }

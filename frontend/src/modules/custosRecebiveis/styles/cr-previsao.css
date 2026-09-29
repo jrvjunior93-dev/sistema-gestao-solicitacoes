@@ -129,3 +129,18 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Grade da medicao prevista (revisao F-FIX): titulo de coluna em ate duas
+   linhas e valor unitario/total planejado quebrando dentro da celula da
+   quantidade orcada, para caber em 1440 px sem cortar titulo. */
+.cr-page .cr-forecast-grid {
+  min-width: 0;
+}
+.cr-page .cr-forecast-grid .app-tabela th .app-th-botao {
+  white-space: normal;
+  line-height: 1.25;
+  padding-block: 4px;
+}
+.cr-page .cr-forecast-grid .app-tabela td .app-celula-dupla-sub {
+  white-space: normal;
+}

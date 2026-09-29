@@ -78,7 +78,8 @@
   scroll-margin-top: 96px;
 }
 
-.cr-page #cr-importar-arquivo {
+.cr-page #cr-importar-arquivo,
+.cr-page #cr-vinculos-obra {
   scroll-margin-top: 96px;
 }
 

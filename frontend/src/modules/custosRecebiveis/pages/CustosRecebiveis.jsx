@@ -129,6 +129,10 @@ export default function CustosRecebiveis() {
     () => CUSTOS_RECEBIVEIS_TABS.filter((tab) => hasTabPermission(user, tab)),
     [user]
   );
+  // Administrador SEM Dashboard não tem card de obra para chegar aos meses:
+  // para ele a aba "Planejamento mensal" (com a escolha da obra) continua.
+  const hasDashboardTab = availableTabs.some((tab) => tab.id === 'visao-geral');
+  const adminPlanningTab = !obraExperience && !hasDashboardTab;
   const visibleTabs = useMemo(() => {
     // Engenheiro: entra pelos cards de "Minhas obras" e chega aos meses
     // clicando na obra — a aba "Planejamento mensal" (que pedia escolher a
@@ -136,7 +140,7 @@ export default function CustosRecebiveis() {
     const tabs = availableTabs.filter((tab) => (
       obraExperience
         ? (!tab.hidden || tab.id === 'obras') && tab.id !== 'planejamento'
-        : !tab.hidden
+        : !tab.hidden || (adminPlanningTab && tab.id === 'planejamento')
     ));
     if (!obraExperience) return tabs;
     const operationalOrder = new Map([
@@ -147,7 +151,7 @@ export default function CustosRecebiveis() {
     return [...tabs].sort((left, right) => (
       (operationalOrder.get(left.id) ?? 99) - (operationalOrder.get(right.id) ?? 99)
     ));
-  }, [availableTabs, obraExperience]);
+  }, [availableTabs, obraExperience, adminPlanningTab]);
   const defaultTab = obraExperience && availableTabs.some((tab) => tab.id === 'obras')
     ? 'obras'
     : visibleTabs[0]?.id || availableTabs[0]?.id || 'obras';
@@ -158,9 +162,9 @@ export default function CustosRecebiveis() {
   const aliasedTab = CUSTOS_RECEBIVEIS_TAB_ALIASES[rawTab] || rawTab;
   // Administrador: a tabela de obras deixou de existir e os meses só abrem
   // com uma obra escolhida no Dashboard — sem ela, volta ao Dashboard.
-  const adminHomeTab = availableTabs.some((tab) => tab.id === 'visao-geral') ? 'visao-geral' : defaultTab;
+  const adminHomeTab = hasDashboardTab ? 'visao-geral' : defaultTab;
   const requestedTab = !obraExperience && (
-    aliasedTab === 'obras' || (aliasedTab === 'planejamento' && !hasObraParam)
+    aliasedTab === 'obras' || (aliasedTab === 'planejamento' && !hasObraParam && hasDashboardTab)
   ) ? adminHomeTab : aliasedTab;
   const activeTab = availableTabs.some((tab) => tab.id === requestedTab)
     ? requestedTab
@@ -514,8 +518,8 @@ export default function CustosRecebiveis() {
     )?.versao;
     const { ok } = await confirmar({
       titulo: 'Publicar versão do plano micro',
-      mensagem: `Publicar ${versaoAlvo ? `a versao v${versaoAlvo}` : 'esta versao'} da obra ${obraAlvo?.nome || obraAlvo?.codigo || 'selecionada'}? Ela substitui a versao vigente para todos que consultam custos, recebiveis e medicoes desta obra. A medicao ja aprovada nos meses anteriores continua valendo pelo CODIGO do item: item com codigo novo recomeca do zero.`,
-      rotuloConfirmar: 'Publicar versao'
+      mensagem: `Publicar ${versaoAlvo ? `a versão v${versaoAlvo}` : 'esta versão'} da obra ${obraAlvo?.nome || obraAlvo?.codigo || 'selecionada'}? Ela substitui a versão vigente para todos que consultam custos, recebíveis e medições desta obra. A medição já aprovada nos meses anteriores continua valendo pelo código do item: item com código novo recomeça do zero.`,
+      rotuloConfirmar: 'Publicar versão'
     });
     if (!ok) return;
     try {
@@ -684,7 +688,7 @@ export default function CustosRecebiveis() {
         titulo="Custos e Recebíveis"
         contagem={`${obras.length} obra(s)`}
         descricao={obraExperience
-          ? `${abaAtual?.label ? `${abaAtual.label} · ` : ''}Planeje o mes, acompanhe medicoes e compare com os lancamentos financeiros.`
+          ? `${abaAtual?.label ? `${abaAtual.label} · ` : ''}Planejamento do mês, medições e financeiro.`
           : (abaAtual?.label || '')}
         secundarias={[{
           rotulo: 'Atualizar',
@@ -761,12 +765,16 @@ export default function CustosRecebiveis() {
               className={(
                 activeTab === tab.id
                 || (engineerMonths && tab.id === 'obras')
-                || (!obraExperience && tab.id === adminHomeTab && ADMIN_OBRA_TABS.includes(activeTab))
+                || (hasDashboardTab && !obraExperience && tab.id === adminHomeTab
+                  && ADMIN_OBRA_TABS.includes(activeTab))
               ) ? 'is-active' : ''}
               // Engenheiro: "Minhas obras" volta à lista, sem obra aberta.
-              onClick={() => updateQuery(obraExperience && tab.id === 'obras'
-                ? { aba: 'obras', obra: null, competencia: null, detalhe: null, painel: null, bloqueio: null }
-                : { aba: tab.id })}
+              // Administrador: cada aba abre sem a obra/mês da anterior.
+              onClick={() => updateQuery(obraExperience
+                ? (tab.id === 'obras'
+                  ? { aba: 'obras', obra: null, competencia: null, detalhe: null, painel: null, bloqueio: null }
+                  : { aba: tab.id })
+                : { aba: tab.id, obra: null, plano: null, sub: null, detalhe: null, painel: null, bloqueio: null })}
             >
               <Icon className="h-4 w-4" />
               {tab.label}
@@ -806,7 +814,7 @@ export default function CustosRecebiveis() {
           })}
         />
       ) : activeTab !== 'obras' && !engineerWorksHome && !engineerMonths
-        && CONTEXT_TABS.includes(activeTab) ? (
+        && (CONTEXT_TABS.includes(activeTab) || (adminPlanningTab && activeTab === 'planejamento')) ? (
       /*
         R12: estes DOIS selects continuam legítimos — não são filtro de
         lista, são o SELETOR DE CONTEXTO (qual obra e qual competência as
@@ -846,7 +854,7 @@ export default function CustosRecebiveis() {
       </BlocoConteudo>
       ) : null}
 
-      {!obraExperience && ADMIN_OBRA_TABS.includes(activeTab) ? (
+      {hasDashboardTab && !obraExperience && ADMIN_OBRA_TABS.includes(activeTab) ? (
         <div className="cr-admin-voltar">
           <button type="button" className="btn btn-outline btn-sm" onClick={handleBackToDashboard}>
             <HiOutlineArrowLeft className="h-4 w-4" />
@@ -883,7 +891,8 @@ export default function CustosRecebiveis() {
         />
       ) : null}
 
-      {activeTab === 'planejamento' && !engineerWorksHome && !obraExperience && !selectedObra ? (
+      {activeTab === 'planejamento' && !engineerWorksHome && !obraExperience && !adminPlanningTab
+        && !selectedObra ? (
         <BlocoConteudo titulo="Meses da obra">
           <p className="cr-faixa-aviso" role="status">
             {obrasLoading || planLoading ? 'Carregando obra...' : 'Obra não encontrada no seu escopo.'}
@@ -891,7 +900,8 @@ export default function CustosRecebiveis() {
         </BlocoConteudo>
       ) : null}
 
-      {activeTab === 'planejamento' && !engineerWorksHome && (obraExperience || selectedObra) ? (
+      {activeTab === 'planejamento' && !engineerWorksHome
+        && (obraExperience || adminPlanningTab || selectedObra) ? (
         <CrPlanejamentoMensalView
           key={`${selectedObraId}-${competencia}-${refreshToken}`}
           obra={selectedObra}
@@ -945,6 +955,7 @@ export default function CustosRecebiveis() {
           versao={decisoesVersao + refreshToken}
           canDecide={planningPermissions.reopenApprove}
           canGrantBypass={canGrantBypass}
+          canViewDilatacoes={planningPermissions.reopenApprove || canOpenPlanning}
           onOpenObra={handleOpenObra}
           onOpenPlanning={handleOpenObligationPlanning}
           onOpenMonth={handleOpenDecisionMonth}

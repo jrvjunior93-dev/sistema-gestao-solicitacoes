@@ -461,7 +461,7 @@ async function validateAudit() {
   assert.deepStrictEqual(captured.where[Op.or], [{ obra_id: null }, { obra_id: { [Op.notIn]: [2] } }]);
   await auditTrava(async () => ({ todas: false, obraIds: [1, 2] }));
   assert.deepStrictEqual(captured.where.obra_id[Op.in], [1]);
-  await rejects(auditTrava(escopoTodas, { obra_id: 2 }), 403, /OB-2 - Obra 2 esta travada/);
+  await rejects(auditTrava(escopoTodas, { obra_id: 2 }), 403, /OB-2 - Obra 2 está travada/);
 }
 
 /* --------------------------------------------- planos e responsaveis */

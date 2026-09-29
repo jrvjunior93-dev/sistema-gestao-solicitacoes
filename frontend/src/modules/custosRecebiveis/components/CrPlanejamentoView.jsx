@@ -85,6 +85,13 @@ function pickBalanceField(row, key) {
   pendente, só aviso). Servidor sem esses campos: cai no cálculo anterior
   (orçado - já aprovado) e nada de aviso.
 */
+// Linha de apoio da quantidade orçada na medição prevista: valor unitário e
+// total planejado (antes eram duas colunas próprias).
+function budgetDetail(row) {
+  const unit = row.unidade || 'un';
+  return `${currency.format(row.custo_unitario || 0)}/${unit} · ${currency.format(row.valor_base || 0)}`;
+}
+
 function forecastBalance(row) {
   const approvedBefore = asNumber(pickBalanceField(row, 'quantidade_aprovada_anterior'));
   const rawAvailable = pickBalanceField(row, 'saldo_disponivel');
@@ -1697,6 +1704,11 @@ export default function CrPlanejamentoView({
               ))}
             </div>
           ) : null}
+          {/* Fase 5 (revisão): larguras enxutas e título em até duas linhas
+              (.cr-forecast-grid) para a grade caber em 1440 px sem cortar
+              título; valor unitário e total planejado seguem na célula da
+              quantidade orçada. */}
+          <div className="cr-forecast-grid">
           <TabelaPadrao
             colunas={[
               {
@@ -1711,19 +1723,23 @@ export default function CrPlanejamentoView({
               },
               {
                 id: 'unidade',
+                largura: 70, minWidth: 70,
                 titulo: 'Unid.',
                 tipo: 'codigo',
                 render: (item) => (item.__vazio ? null : (item.unidade || 'un'))
               },
               {
                 id: 'saldo_disponivel',
+                largura: 110, minWidth: 110,
                 titulo: 'Saldo disponível',
                 tipo: 'numero',
                 render: (item) => (item.__vazio ? null : formatQuantity(forecastBalance(item).available))
               },
               {
                 id: 'previsto_pendente',
-                titulo: 'Previsto aguardando aprovação',
+                largura: 120, minWidth: 120,
+                // O mês aguardando aprovação vai na linha de baixo da célula.
+                titulo: 'Aguardando aprovação',
                 tipo: 'texto',
                 render: (item) => {
                   if (item.__vazio) return null;
@@ -1739,6 +1755,7 @@ export default function CrPlanejamentoView({
               },
               {
                 id: 'saldo_provavel',
+                largura: 110, minWidth: 110,
                 titulo: 'Saldo provável',
                 tipo: 'numero',
                 render: (item) => {
@@ -1749,6 +1766,7 @@ export default function CrPlanejamentoView({
               },
               {
                 id: 'quantidade_prevista',
+                largura: 130, minWidth: 130,
                 sempreVisivel: true,
                 titulo: 'Qtd. prevista',
                 tipo: 'numero',
@@ -1787,12 +1805,14 @@ export default function CrPlanejamentoView({
               },
               {
                 id: 'valor_previsto',
+                largura: 130, minWidth: 130,
                 titulo: 'Nesta medição',
                 tipo: 'valor',
                 render: (item) => (item.__vazio ? null : <strong>{currency.format(item.valor_previsto || 0)}</strong>)
               },
               {
                 id: 'saldo',
+                largura: 110, minWidth: 110,
                 titulo: 'Saldo a medir',
                 tipo: 'numero',
                 render: (item) => {
@@ -1803,27 +1823,24 @@ export default function CrPlanejamentoView({
               },
               {
                 id: 'quantidade_base',
+                largura: 130, minWidth: 130,
                 titulo: 'Qtd. orçada',
                 tipo: 'numero',
-                render: (item) => (item.__vazio ? null : item.quantidade_base)
+                // Valor unitário e total planejado na linha de baixo (antes
+                // eram duas colunas que empurravam a grade para fora de 1440).
+                render: (item) => (item.__vazio ? null : (
+                  <CelulaDupla
+                    principal={item.quantidade_base}
+                    sub={budgetDetail(item)}
+                  />
+                ))
               },
               {
                 id: 'quantidade_anterior',
+                largura: 110, minWidth: 110,
                 titulo: 'Qtd. já aprovada',
                 tipo: 'numero',
                 render: (item) => (item.__vazio ? null : formatQuantity(forecastBalance(item).approvedBefore))
-              },
-              {
-                id: 'custo_unitario',
-                titulo: 'Valor unitário',
-                tipo: 'valor',
-                render: (item) => (item.__vazio ? null : currency.format(item.custo_unitario || 0))
-              },
-              {
-                id: 'valor_base',
-                titulo: 'Total planejado',
-                tipo: 'valor',
-                render: (item) => (item.__vazio ? null : currency.format(item.valor_base || 0))
               }
             ]}
             itens={linhasPorMacro(receiptsForMacro)}
@@ -1847,6 +1864,7 @@ export default function CrPlanejamentoView({
             )}
             larguraAcoes={120}
           />
+          </div>
           {forecastNotices.length ? (
             <div className="cr-feedback cr-forecast-notices" data-tone="warning" role="status">
               <strong>Salvo acima do saldo provável em {forecastNotices.length} item(ns)</strong>

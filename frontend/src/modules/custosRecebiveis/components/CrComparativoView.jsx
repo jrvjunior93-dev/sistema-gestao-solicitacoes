@@ -118,14 +118,14 @@ export default function CrComparativoView({ obra, competencia }) {
           },
           {
             id: 'previsto',
-            largura: 140, minWidth: 140,
+            largura: 170, minWidth: 170,
             titulo: 'Medição prevista',
             tipo: 'valor',
             render: (item) => currency.format(item.previsto)
           },
           {
             id: 'aprovado',
-            largura: 140, minWidth: 140,
+            largura: 170, minWidth: 170,
             titulo: 'Medição aprovada',
             tipo: 'valor',
             render: (item) => (item.tem_aprovacao ? currency.format(item.aprovado) : 'Aguardando')

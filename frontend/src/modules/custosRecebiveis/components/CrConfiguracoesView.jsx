@@ -68,6 +68,23 @@ function ResponsaveisDaObra({ obra, onChanged, onClose }) {
     load();
   }, [obra?.id]);
 
+  // "Gerenciar": o painel abre abaixo da lista — rola até ele e foca o título.
+  useEffect(() => {
+    if (!obra?.id) return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const painel = document.getElementById('cr-vinculos-obra');
+      if (!painel) return;
+      painel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const titulo = painel.querySelector('.app-bloco-titulo');
+      if (titulo) {
+        titulo.setAttribute('tabindex', '-1');
+        titulo.focus({ preventScroll: true });
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+    // `obra` (e não só o id): um novo "Gerenciar" na mesma obra rola de novo.
+  }, [obra]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const active = useMemo(
     () => (data.items || []).filter((item) => item.ativo),
     [data.items]
@@ -136,6 +153,7 @@ function ResponsaveisDaObra({ obra, onChanged, onClose }) {
 
   return (
     <BlocoConteudo
+      id="cr-vinculos-obra"
       className="cr-governance"
       titulo={`Vínculos · ${rotuloObra(obra)}`}
       acoes={(
@@ -431,12 +449,12 @@ export default function CrConfiguracoesView({ obras = [], onChanged }) {
           storageKey="tabela:custos-recebiveis-responsaveis"
           rotuloRolagem="Responsáveis e substitutos"
           carregando={loading}
-          vazio="Nenhuma obra encontrada."
+          vazio={erro && !(obras || []).length ? 'Não foi possível carregar a lista.' : 'Nenhuma obra encontrada.'}
           acoesLinha={(item) => (
             <button
               type="button"
               className="btn btn-outline"
-              onClick={() => setAberta(item.obra)}
+              onClick={() => setAberta({ ...item.obra })}
             >
               Gerenciar
             </button>

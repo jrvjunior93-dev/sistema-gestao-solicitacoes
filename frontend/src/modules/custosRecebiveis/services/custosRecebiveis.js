@@ -1,21 +1,40 @@
 import { API_URL, authHeaders } from '../../../services/api';
 
+/*
+  Corpo que não é JSON (página HTML de 502/404 do proxy ou do servidor) nunca
+  vira mensagem de erro: vale um texto legível pelo status. Quando o corpo é
+  JSON, `error`, `code` e `details` seguem como o servidor mandou.
+*/
+export function mensagemPadraoStatus(status, fallbackMessage) {
+  if (Number(status) === 404) return 'Consulta indisponível no servidor no momento.';
+  if (Number(status) >= 500) return 'O servidor não respondeu. Tente de novo em instantes.';
+  return fallbackMessage;
+}
+
 async function parseResponse(response, fallbackMessage) {
   const text = await response.text();
   let payload = null;
+  let bodyIsJson = false;
   if (text) {
     try {
       payload = JSON.parse(text);
+      bodyIsJson = true;
     } catch {
-      payload = { error: text };
+      payload = response.ok ? { error: text } : null;
     }
   }
 
   if (!response.ok) {
-    const error = new Error(payload?.error || fallbackMessage);
+    const serverMessage = bodyIsJson && typeof payload?.error === 'string'
+      && payload.error.trim() && !payload.error.trim().startsWith('<')
+      ? payload.error
+      : '';
+    const error = new Error(
+      serverMessage || (bodyIsJson ? fallbackMessage : mensagemPadraoStatus(response.status, fallbackMessage))
+    );
     error.status = response.status;
-    error.code = payload?.code || null;
-    error.details = payload?.details || null;
+    error.code = (bodyIsJson && payload?.code) || null;
+    error.details = (bodyIsJson && payload?.details) || null;
     throw error;
   }
   return payload;
@@ -593,8 +612,10 @@ export function mensagemLegivel(error, fallback) {
   return message;
 }
 
-export async function listarDecisoesPendentes() {
-  const response = await fetch(`${API_URL}/custos-recebiveis/decisoes/pendentes`, { headers: authHeaders() });
+export async function listarDecisoesPendentes(params = {}) {
+  const response = await fetch(`${API_URL}/custos-recebiveis/decisoes/pendentes${buildQuery(params)}`, {
+    headers: authHeaders()
+  });
   return parseResponse(response, 'Erro ao consultar decisões pendentes');
 }
 

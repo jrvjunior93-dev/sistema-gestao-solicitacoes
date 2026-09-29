@@ -9,22 +9,28 @@ import { API_URL, authHeaders } from '../../../services/api';
 async function parseResponse(response, fallbackMessage) {
   const text = await response.text();
   let payload = null;
+  let bodyIsJson = false;
   if (text) {
     try {
       payload = JSON.parse(text);
+      bodyIsJson = true;
     } catch {
-      payload = { error: text };
+      // Página HTML (502/404 do proxy): nunca vira mensagem na tela.
+      payload = response.ok ? { error: text } : null;
     }
   }
 
   if (!response.ok) {
     // 404 aqui = servidor ainda sem o endpoint (preview antes do deploy).
     const unavailable = response.status === 404 && !payload?.code;
-    const error = new Error(
-      unavailable
-        ? 'Ajuste da previsão indisponível no servidor no momento.'
-        : (payload?.error || fallbackMessage)
-    );
+    const serverMessage = bodyIsJson && typeof payload?.error === 'string'
+      && payload.error.trim() && !payload.error.trim().startsWith('<')
+      ? payload.error
+      : '';
+    let message = serverMessage || fallbackMessage;
+    if (unavailable) message = 'Ajuste da previsão indisponível no servidor no momento.';
+    else if (!bodyIsJson && response.status >= 500) message = 'O servidor não respondeu. Tente de novo em instantes.';
+    const error = new Error(message);
     error.status = response.status;
     error.code = payload?.code || null;
     error.details = payload?.details || null;
