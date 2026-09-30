@@ -821,3 +821,17 @@ Ownership da sessao `codex-cadastro-obra-fluxo-independente-2026-09-30` liberado
 apos validacao de sintaxe, teste de dominio, build do frontend, `git diff --check`
 e registro do handoff. A migration e a homologacao integrada permanecem como
 passos controlados do deploy em desenvolvimento.
+
+## Ownership ativo - codex-hotfix-cadastro-obra-case-fk-2026-09-30
+- `backend/migrations/202609300002_cadastro_obra_fluxo_independente.js`
+- `backend/scripts/validarCadastroObraSolicitacao.js`
+- `docs/handoffs/2026-09-30-cadastro-obra-fluxo-independente.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Ownership temporario da sessao `/root` iniciado em 2026-09-30 para corrigir a
+resolucao case-sensitive da tabela `Obras` e tornar segura a retomada da migration
+que falhou ao recriar a chave estrangeira de `solicitacoes.obra_id` em dev.
+
+Ownership da sessao `codex-hotfix-cadastro-obra-case-fk-2026-09-30` liberado apos
+validacao estrutural da migration, teste de dominio e `git diff --check`. A retomada
+em dev deve repetir a mesma migration; ela detecta e restaura a FK se necessario.

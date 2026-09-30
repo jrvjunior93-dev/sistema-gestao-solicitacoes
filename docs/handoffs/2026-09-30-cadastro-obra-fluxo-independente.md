@@ -46,5 +46,8 @@ A migration é exclusivamente estrutural. Não classifica nem altera solicitaç�
 ## Riscos e observações
 
 - A migration ainda não foi aplicada por esta sessão e nenhum banco externo foi acessado.
+- Hotfix após a primeira execução em dev: a tabela física de obras é resolvida entre `Obras` e
+  `obras`; a alteração de nulabilidade não recria a FK sem necessidade e restaura a restrição
+  por nome quando uma tentativa anterior tiver parado após removê-la.
 - Solicitações antigas de `CADASTRO DE OBRA` continuam preservadas; o novo registro detalhado vale para solicitações criadas após a migration.
 - `outputs/` já existia sem rastreamento e foi preservado sem alterações intencionais.

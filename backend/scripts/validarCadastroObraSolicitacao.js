@@ -87,6 +87,9 @@ function run() {
   assert(!/\bUPDATE\s+[^\r\n]+\s+SET\b/i.test(migrationSource), 'A migration nao pode atualizar cadastros.');
   assert(migrationSource.includes("changeColumn('solicitacoes', 'obra_id'"));
   assert(migrationSource.includes('solicitacao_cadastro_obra_dados'));
+  assert(migrationSource.includes("resolveTableName(sequelize, ['Obras', 'obras'], 'Obras')"));
+  assert(!migrationSource.includes("references: { model: 'obras'"));
+  assert(migrationSource.includes("name: 'fk_solicitacoes_obra_id_obras'"));
 
   const solicitacaoControllerSource = fs.readFileSync(
     path.resolve(__dirname, '../src/controllers/SolicitacaoController.js'),
