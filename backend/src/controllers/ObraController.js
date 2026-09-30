@@ -3,7 +3,17 @@ const {
   mensagemSolicitacaoNova,
   travaDasObras
 } = require('../modules/custosRecebiveis/services/bloqueioObraService');
-const { Obra, UsuarioObra, Setor, ConfiguracaoSistema, EmpresaGrupo, sequelize } = require('../models');
+const {
+  Obra,
+  UsuarioObra,
+  Setor,
+  ConfiguracaoSistema,
+  EmpresaGrupo,
+  SolicitacaoCadastroObraDados,
+  Anexo,
+  User,
+  sequelize
+} = require('../models');
 const { Op } = require('sequelize');
 const {
   listarObrasGestao,
@@ -280,6 +290,10 @@ module.exports = {
       codigo,
       cidade,
       classificacao,
+      fase_obra,
+      valor_obra,
+      responsavel_tecnico_id,
+      solicitacao_cadastro_origem_id,
       vgv,
       planilha_geral,
       margem_custo_esperada,
@@ -300,8 +314,23 @@ module.exports = {
     }
 
     const classificacaoNorm = classificacao ? String(classificacao).trim().toUpperCase() : null;
-    if (classificacaoNorm && !['PRIVADA', 'PUBLICA'].includes(classificacaoNorm)) {
-      return res.status(400).json({ error: 'Classificação inválida. Use PRIVADA ou PUBLICA' });
+    if (classificacaoNorm && !['PRIVADA', 'PUBLICA', 'PROPRIA'].includes(classificacaoNorm)) {
+      return res.status(400).json({ error: 'Classificação inválida. Use PRIVADA, PUBLICA ou PROPRIA' });
+    }
+    const faseObraNorm = fase_obra ? String(fase_obra).trim().toUpperCase() : null;
+    if (faseObraNorm && !['PRE_OBRA', 'OBRA_INICIADA'].includes(faseObraNorm)) {
+      return res.status(400).json({ error: 'Fase da obra invalida.' });
+    }
+    const valorObraNumero = valor_obra !== undefined && valor_obra !== null && valor_obra !== ''
+      ? Number(valor_obra)
+      : null;
+    if (valorObraNumero !== null && (!Number.isFinite(valorObraNumero) || valorObraNumero <= 0)) {
+      return res.status(400).json({ error: 'Valor da obra invalido.' });
+    }
+    const responsavelTecnicoId = responsavel_tecnico_id ? Number(responsavel_tecnico_id) : null;
+    if (responsavelTecnicoId) {
+      const responsavel = await User.findOne({ where: { id: responsavelTecnicoId, ativo: true }, attributes: ['id'] });
+      if (!responsavel) return res.status(400).json({ error: 'Responsavel tecnico nao encontrado ou inativo.' });
     }
     const tipoCentroCustoNorm = normalizeTipoCentroCusto(tipo_centro_custo);
     if (tipo_centro_custo && !TIPOS_CENTRO_CUSTO.includes(String(tipo_centro_custo).trim().toUpperCase())) {
@@ -332,6 +361,38 @@ module.exports = {
 
     try {
       const obra = await sequelize.transaction(async (transaction) => {
+        let dadosOrigem = null;
+        if (solicitacao_cadastro_origem_id) {
+          dadosOrigem = await SolicitacaoCadastroObraDados.findOne({
+            where: { solicitacao_id: Number(solicitacao_cadastro_origem_id) },
+            transaction,
+            lock: transaction.LOCK.UPDATE
+          });
+          if (!dadosOrigem) {
+            throw Object.assign(new Error('Solicitacao de cadastro de obra nao encontrada.'), { status: 404 });
+          }
+          if (dadosOrigem.obra_cadastrada_id) {
+            throw Object.assign(new Error('Esta solicitacao ja gerou uma obra.'), { status: 409 });
+          }
+          const faseEfetiva = faseObraNorm || dadosOrigem.fase_obra;
+          if (faseEfetiva === 'OBRA_INICIADA') {
+            const temPlanilha = await Anexo.count({
+              where: {
+                solicitacao_id: Number(solicitacao_cadastro_origem_id),
+                tipo: 'PLANILHA_ORCAMENTARIA',
+                deleted_at: null
+              },
+              transaction
+            });
+            if (!temPlanilha) {
+              throw Object.assign(new Error('Anexe a planilha orcamentaria antes de cadastrar uma obra iniciada.'), { status: 400 });
+            }
+          }
+        }
+        const faseEfetiva = faseObraNorm || dadosOrigem?.fase_obra || null;
+        const classificacaoEfetiva = classificacaoNorm || dadosOrigem?.tipo_obra || null;
+        const valorEfetivo = valorObraNumero ?? (dadosOrigem ? Number(dadosOrigem.valor_obra) : null);
+        const responsavelEfetivo = responsavelTecnicoId || dadosOrigem?.responsavel_tecnico_id || null;
         const criada = await Obra.create({
           codigo: String(codigo).toUpperCase(),
           cidade: cidade || null,
@@ -346,7 +407,14 @@ module.exports = {
           empresa_grupo_id: empresa_grupo_id ? Number(empresa_grupo_id) : null,
           ativo: true,
           tipo_centro_custo: tipoCentroCustoNorm,
-          classificacao: classificacaoNorm,
+          classificacao: classificacaoEfetiva,
+          fase_obra: faseEfetiva,
+          valor_obra: valorEfetivo,
+          responsavel_tecnico_id: responsavelEfetivo,
+          documentacao_pendente: faseEfetiva === 'PRE_OBRA',
+          solicitacao_cadastro_origem_id: solicitacao_cadastro_origem_id
+            ? Number(solicitacao_cadastro_origem_id)
+            : null,
           vgv: vgv != null ? Number(vgv) : null,
           planilha_geral: planilha_geral != null ? Number(planilha_geral) : null,
           margem_custo_esperada: margem_custo_esperada != null ? Number(margem_custo_esperada) : null,
@@ -365,6 +433,15 @@ module.exports = {
             nivel: nivelApropriacao,
             transaction
           });
+        }
+
+        if (dadosOrigem) {
+          await dadosOrigem.update({
+            obra_cadastrada_id: criada.id,
+            obra_cadastrada_por: req.user?.id || null,
+            obra_cadastrada_em: new Date(),
+            documentacao_pendente: faseEfetiva === 'PRE_OBRA'
+          }, { transaction });
         }
 
         return criada;
@@ -386,6 +463,9 @@ module.exports = {
       codigo,
       cidade,
       classificacao,
+      fase_obra,
+      valor_obra,
+      responsavel_tecnico_id,
       vgv,
       planilha_geral,
       margem_custo_esperada,
@@ -419,8 +499,8 @@ module.exports = {
     }
     if (classificacao !== undefined) {
       const classificacaoNorm = classificacao ? String(classificacao).trim().toUpperCase() : null;
-      if (classificacaoNorm && !['PRIVADA', 'PUBLICA'].includes(classificacaoNorm)) {
-        return res.status(400).json({ error: 'Classificacao invalida. Use PRIVADA ou PUBLICA' });
+      if (classificacaoNorm && !['PRIVADA', 'PUBLICA', 'PROPRIA'].includes(classificacaoNorm)) {
+        return res.status(400).json({ error: 'Classificacao invalida. Use PRIVADA, PUBLICA ou PROPRIA' });
       }
       dados.classificacao = classificacaoNorm;
     }
@@ -432,6 +512,16 @@ module.exports = {
       dados.tipo_centro_custo = tipoCentroCustoNorm;
     }
     if (vgv !== undefined) dados.vgv = vgv != null ? Number(vgv) : null;
+    if (fase_obra !== undefined) {
+      const fase = String(fase_obra || '').trim().toUpperCase();
+      if (fase && !['PRE_OBRA', 'OBRA_INICIADA'].includes(fase)) {
+        return res.status(400).json({ error: 'Fase da obra invalida.' });
+      }
+      dados.fase_obra = fase || null;
+      dados.documentacao_pendente = fase === 'PRE_OBRA';
+    }
+    if (valor_obra !== undefined) dados.valor_obra = valor_obra !== '' && valor_obra !== null ? Number(valor_obra) : null;
+    if (responsavel_tecnico_id !== undefined) dados.responsavel_tecnico_id = responsavel_tecnico_id ? Number(responsavel_tecnico_id) : null;
     if (planilha_geral !== undefined) dados.planilha_geral = planilha_geral != null ? Number(planilha_geral) : null;
     if (margem_custo_esperada !== undefined) dados.margem_custo_esperada = margem_custo_esperada != null ? Number(margem_custo_esperada) : null;
     if (nivel_apropriacao_formulario !== undefined) {
@@ -471,6 +561,31 @@ module.exports = {
     if (!obraAtual) {
       return res.status(404).json({ error: 'Obra nao encontrada' });
     }
+    if (dados.responsavel_tecnico_id) {
+      const responsavel = await User.findOne({
+        where: { id: dados.responsavel_tecnico_id, ativo: true },
+        attributes: ['id']
+      });
+      if (!responsavel) return res.status(400).json({ error: 'Responsavel tecnico nao encontrado ou inativo.' });
+    }
+    if (dados.valor_obra !== undefined && dados.valor_obra !== null
+      && (!Number.isFinite(dados.valor_obra) || dados.valor_obra <= 0)) {
+      return res.status(400).json({ error: 'Valor da obra invalido.' });
+    }
+    if (dados.fase_obra === 'OBRA_INICIADA' && obraAtual.solicitacao_cadastro_origem_id) {
+      const temPlanilha = await Anexo.count({
+        where: {
+          solicitacao_id: obraAtual.solicitacao_cadastro_origem_id,
+          tipo: 'PLANILHA_ORCAMENTARIA',
+          deleted_at: null
+        }
+      });
+      if (!temPlanilha) {
+        return res.status(400).json({
+          error: 'Anexe a planilha orcamentaria na solicitacao de origem antes de alterar a fase para Obra iniciada.'
+        });
+      }
+    }
     const nivelMudou = dados.nivel_apropriacao_formulario
       && dados.nivel_apropriacao_formulario !== obraAtual.nivel_apropriacao_formulario;
     if (nivelMudou && dados.nivel_apropriacao_formulario === 'PERSONALIZADO') {
@@ -481,6 +596,15 @@ module.exports = {
 
     await sequelize.transaction(async (transaction) => {
       await obraAtual.update(dados, { transaction });
+      if (obraAtual.solicitacao_cadastro_origem_id && dados.fase_obra) {
+        await SolicitacaoCadastroObraDados.update({
+          fase_obra: dados.fase_obra,
+          documentacao_pendente: dados.fase_obra === 'PRE_OBRA'
+        }, {
+          where: { solicitacao_id: obraAtual.solicitacao_cadastro_origem_id },
+          transaction
+        });
+      }
       if (nivelMudou) {
         await sincronizarNivelApropriacaoFormulario({
           obraId: obraAtual.id,

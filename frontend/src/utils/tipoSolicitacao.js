@@ -223,7 +223,7 @@ export function getTipoSolicitacaoBehavior(tipo) {
       exige_itens_apropriacao: false,
       exige_apropriacoes_contrato: false,
       mostrar_anexos: true,
-      exige_anexos: true
+      exige_anexos: false
     });
   }
 

@@ -16,6 +16,7 @@ const {
   SolicitacaoApropriacao,
   SolicitacaoCentroCustoDistribuicao,
   SolicitacaoCadastroObraUsuario,
+  SolicitacaoCadastroObraDados,
   TipoSubContrato,
   Anexo,
   MensagemSetor,
@@ -1408,7 +1409,9 @@ async function validarAcessoObra(req, solicitacao) {
   }
 
   if (!solicitacao.obra_id) {
-    return false;
+    // CADASTRO DE OBRA nasce deliberadamente sem obra vinculada. O solicitante continua
+    // podendo acompanhar o proprio pedido; GEO e perfis administrativos ja passam acima.
+    return Number(solicitacao.criado_por) === Number(req.user?.id);
   }
 
   const { UsuarioObra } = require('../models');
@@ -3154,15 +3157,27 @@ module.exports = {
         // pagamento, contato e o aceite. Sairam da abertura do contrato e vieram para ca.
         medicao_pagamento: medicaoPagamento,
         cadastro_obra_usuario_ids: cadastroObraUsuarioIds,
+        cadastro_obra_dados: cadastroObraDados,
+        cadastro_obra_documentos_nomes: cadastroObraDocumentosNomes,
         // O upload continua no endpoint historico logo depois da criacao; estes nomes provam que
         // o formulario tinha ao menos um arquivo selecionado antes de registrar a medicao.
         anexos_pendentes_nomes: anexosPendentesNomes
       } = req.body;
 
-      if (!obra_id || !tipo_solicitacao_id) {
+      if (!tipo_solicitacao_id) {
         return res.status(400).json({
           error: 'Campos obrigatorios nao informados'
         });
+      }
+
+      const tipoSelecionado = await TipoSolicitacao.findByPk(tipo_solicitacao_id);
+      if (!tipoSelecionado) {
+        return res.status(400).json({ error: 'Tipo de solicitacao nao encontrado.' });
+      }
+      const comportamentoBase = normalizeTipoSolicitacaoBehavior(tipoSelecionado);
+      const usaFluxoCadastroObra = comportamentoBase.usa_fluxo_cadastro_obra === true;
+      if (!usaFluxoCadastroObra && !obra_id) {
+        return res.status(400).json({ error: 'Selecione a Obra ou Centro de Custo da solicitacao.' });
       }
 
       // O destino inicial nao e uma escolha do navegador. Centralizar a resolucao no backend
@@ -3173,15 +3188,15 @@ module.exports = {
       const areaResponsavelPersistida = destinoInicial.areaResponsavel;
       const area_responsavel = areaResponsavelPersistida;
 
-      const obraSelecionada = await Obra.findByPk(obra_id, {
+      const obraSelecionada = usaFluxoCadastroObra ? null : await Obra.findByPk(obra_id, {
         attributes: ['id', 'codigo', 'nome', 'ativo', 'classificacao', 'tipo_centro_custo']
       });
-      if (!obraSelecionada) {
+      if (!usaFluxoCadastroObra && !obraSelecionada) {
         return res.status(400).json({ error: 'Obra/Centro de custo informado nao foi encontrado.' });
       }
-      const registroSelecionadoEhObra = isObraCentroCusto(obraSelecionada.tipo_centro_custo);
+      const registroSelecionadoEhObra = Boolean(obraSelecionada && isObraCentroCusto(obraSelecionada.tipo_centro_custo));
       const areasConfiguracaoCampos = [
-        ...obterAreasConfiguracaoCamposDestino(obraSelecionada),
+        ...(obraSelecionada ? obterAreasConfiguracaoCamposDestino(obraSelecionada) : []),
         ...obterAreasConfiguracaoCamposDestinoInicial(destinoInicial)
       ];
 
@@ -3193,7 +3208,7 @@ module.exports = {
         setoresCriacaoTodasObras.includes(String(token || '').trim().toUpperCase())
       );
 
-      if (perfilUsuario !== 'SUPERADMIN' && !podeCriarEmTodasObras) {
+      if (!usaFluxoCadastroObra && perfilUsuario !== 'SUPERADMIN' && !podeCriarEmTodasObras) {
         const { UsuarioObra } = require('../models');
         const vinculo = await UsuarioObra.findOne({
           where: {
@@ -3209,12 +3224,6 @@ module.exports = {
         }
       }
 
-      const tipoSelecionado = await TipoSolicitacao.findByPk(tipo_solicitacao_id);
-      if (!tipoSelecionado) {
-        return res.status(400).json({
-          error: 'Tipo de solicitacao nao encontrado.'
-        });
-      }
       // PI-16: tipo de USO DO SISTEMA nao pode ser aberto pela Nova Solicitacao — nem pela tela,
       // nem por chamada direta a esta rota. Esconder so na tela seria um cadeado na porta da
       // frente com a janela aberta; a solicitacao desse tipo nasce pelo servico que a cria
@@ -3224,14 +3233,12 @@ module.exports = {
           error: 'Este tipo de solicitacao e de uso do sistema e nao pode ser aberto manualmente.'
         });
       }
-      await assertTipoDisponivelNoDestino(obraSelecionada, tipoSelecionado);
+      if (!usaFluxoCadastroObra) await assertTipoDisponivelNoDestino(obraSelecionada, tipoSelecionado);
       if ([tipoSelecionado.nome, tipoSelecionado.codigo_interno].some((nome) => ['COMPRA_DIRETA', 'SOLICITACAO_DE_COMPRA', 'SOLICITACAO_COMPRA'].includes(normalizarTokenComparacao(nome)))) {
         await require('../services/pedidoEntregaService').assertObraPodeCriarCompra(obra_id);
       }
-      const comportamentoBase = normalizeTipoSolicitacaoBehavior(tipoSelecionado);
       const usaFluxoDespesaEventual = tipoEhDespesaEventual(tipoSelecionado);
       const usaFluxoRecargaCartao = tipoEhRecargaCartao(tipoSelecionado);
-      const usaFluxoCadastroObra = comportamentoBase.usa_fluxo_cadastro_obra === true;
       if (
         (comportamentoBase.somente_gerencia_processos === true || usaFluxoRecargaCartao) &&
         setorDestinoSelecionado.eh_setor_geo !== true &&
@@ -3246,28 +3253,46 @@ module.exports = {
         });
       }
       let pessoasCadastroObra = [];
+      let dadosCadastroObraValidados = null;
       if (usaFluxoCadastroObra) {
-        if (!registroSelecionadoEhObra) {
-          return res.status(400).json({
-            error: 'CADASTRO DE OBRA esta disponivel somente para solicitacoes originadas em Obras.'
-          });
+        const tipoObra = String(cadastroObraDados?.tipo_obra || '').trim().toUpperCase();
+        const faseObra = String(cadastroObraDados?.fase_obra || '').trim().toUpperCase();
+        const valorObra = Number(cadastroObraDados?.valor_obra);
+        const responsavelTecnicoId = Number(cadastroObraDados?.responsavel_tecnico_id);
+        const endereco = String(cadastroObraDados?.endereco || '').trim();
+        if (!['PUBLICA', 'PRIVADA', 'PROPRIA'].includes(tipoObra)) {
+          return res.status(400).json({ error: 'Selecione o tipo da obra: Publica, Privada ou Propria.' });
         }
-        const idsPessoas = [...new Set((Array.isArray(cadastroObraUsuarioIds) ? cadastroObraUsuarioIds : [])
-          .map(Number)
-          .filter((id) => Number.isInteger(id) && id > 0))];
-        if (idsPessoas.length === 0) {
-          return res.status(400).json({ error: 'Selecione ao menos uma pessoa vinculada.' });
+        if (!['PRE_OBRA', 'OBRA_INICIADA'].includes(faseObra)) {
+          return res.status(400).json({ error: 'Selecione a fase da obra.' });
         }
-        pessoasCadastroObra = await User.findAll({
-          where: { id: { [Op.in]: idsPessoas }, ativo: true },
-          attributes: ['id', 'nome'],
-          order: [['nome', 'ASC'], ['id', 'ASC']]
+        if (!Number.isFinite(valorObra) || valorObra <= 0) {
+          return res.status(400).json({ error: 'Informe um valor valido para a obra.' });
+        }
+        if (!Number.isInteger(responsavelTecnicoId) || responsavelTecnicoId <= 0 || !endereco) {
+          return res.status(400).json({ error: 'Informe o responsavel tecnico e o endereco da obra.' });
+        }
+        const responsavel = await User.findOne({
+          where: { id: responsavelTecnicoId, ativo: true },
+          attributes: ['id', 'nome']
         });
-        if (pessoasCadastroObra.length !== idsPessoas.length) {
-          return res.status(400).json({
-            error: 'Uma ou mais pessoas vinculadas nao existem ou estao inativas.'
-          });
+        if (!responsavel) {
+          return res.status(400).json({ error: 'O responsavel tecnico informado nao existe ou esta inativo.' });
         }
+        const temPlanilha = (Array.isArray(anexosPendentesNomes) ? anexosPendentesNomes : [])
+          .some((nome) => String(nome || '').trim());
+        if (faseObra === 'OBRA_INICIADA' && !temPlanilha) {
+          return res.status(400).json({ error: 'Anexe a planilha orcamentaria para uma obra iniciada.' });
+        }
+        pessoasCadastroObra = [responsavel];
+        dadosCadastroObraValidados = {
+          tipo_obra: tipoObra,
+          fase_obra: faseObra,
+          valor_obra: valorObra,
+          responsavel_tecnico_id: responsavelTecnicoId,
+          endereco,
+          documentacao_pendente: faseObra === 'PRE_OBRA'
+        };
       }
       const [contratosDisponiveis, apropriacoesDisponiveis] = await Promise.all([
         isModuleEnabled('CONTRATOS'),
@@ -3364,7 +3389,7 @@ module.exports = {
       // validada depois que ela for carregada. Antecipar a exigencia aqui faria o boleto pedir
       // dois arquivos: o proprio boleto e um anexo generico redundante.
       if (
-        (tipoEhDeMedicao || (!exibeFormaPagamentoNaNovaSolicitacao && campoObrigatorio('anexos')))
+        (tipoEhDeMedicao || (!usaFluxoCadastroObra && !exibeFormaPagamentoNaNovaSolicitacao && campoObrigatorio('anexos')))
         && nomesAnexosPendentes.length === 0
       ) {
         return res.status(400).json({
@@ -3914,7 +3939,7 @@ module.exports = {
         : (valor === '' || valor === undefined ? null : valor);
 
       let distribuicaoCentroCustoValidada = null;
-      if (!registroSelecionadoEhObra) {
+      if (!usaFluxoCadastroObra && !registroSelecionadoEhObra) {
         distribuicaoCentroCustoValidada = await validarDistribuicaoCentroCusto({
           centroCustoId: obra_id,
           usuario: req.user,
@@ -3978,7 +4003,7 @@ module.exports = {
         : null;
       const dadosSolicitacao = {
         codigo,
-        obra_id,
+        obra_id: usaFluxoCadastroObra ? null : obra_id,
         parceiro_id: parceiro?.id || null,
         apropriacao_id: apropriacao?.id || null,
         tipo_solicitacao_id,
@@ -4028,14 +4053,21 @@ module.exports = {
 
       const criarSolicitacaoCadastroObra = async () => sequelize.transaction(async (transaction) => {
         const resultado = await Solicitacao.create(dadosSolicitacao, { transaction });
-        await SolicitacaoCadastroObraUsuario.bulkCreate(
-          pessoasCadastroObra.map((pessoa) => ({
+        await Promise.all([
+          SolicitacaoCadastroObraUsuario.bulkCreate(
+            pessoasCadastroObra.map((pessoa) => ({
+              solicitacao_id: resultado.id,
+              usuario_id: pessoa.id,
+              criado_por: usuarioId
+            })),
+            { transaction }
+          ),
+          SolicitacaoCadastroObraDados.create({
             solicitacao_id: resultado.id,
-            usuario_id: pessoa.id,
+            ...dadosCadastroObraValidados,
             criado_por: usuarioId
-          })),
-          { transaction }
-        );
+          }, { transaction })
+        ]);
         return { resultado, saldo: null };
       });
 
@@ -4100,7 +4132,7 @@ module.exports = {
         status: 'SUCCESS',
         descricao: 'Solicitacao criada',
         metadata: {
-          obra_id,
+          obra_id: usaFluxoCadastroObra ? null : obra_id,
           tipo_solicitacao_id,
           area_responsavel: areaResponsavelPersistida,
           setor_destino_pos_aprovacao: null,
@@ -4177,6 +4209,7 @@ module.exports = {
           id: Number(pessoa.id),
           nome: pessoa.nome
         }));
+        metadata.cadastro_obra_dados = dadosCadastroObraValidados;
       }
       await Historico.create({
         solicitacao_id: solicitacao.id,
@@ -4244,7 +4277,13 @@ module.exports = {
 
       const tiposUploadInicial = [];
       if (String(boleto_anexo_nome || '').trim()) tiposUploadInicial.push('BOLETO');
-      if (nomesAnexosPendentes.length > 0) tiposUploadInicial.push('SOLICITACAO');
+      if (nomesAnexosPendentes.length > 0) {
+        tiposUploadInicial.push(usaFluxoCadastroObra ? 'PLANILHA_ORCAMENTARIA' : 'SOLICITACAO');
+      }
+      if (usaFluxoCadastroObra && Array.isArray(cadastroObraDocumentosNomes)
+        && cadastroObraDocumentosNomes.length > 0) {
+        tiposUploadInicial.push('DOCUMENTO_OBRA');
+      }
       const criacaoUploadToken = gerarTokenUploadCriacaoSolicitacao({
         solicitacaoId: solicitacao.id,
         usuarioId,
@@ -4395,6 +4434,25 @@ module.exports = {
               required: false,
               attributes: ['id', 'nome']
             }]
+          },
+          {
+            model: SolicitacaoCadastroObraDados,
+            as: 'dadosCadastroObra',
+            required: false,
+            include: [
+              {
+                model: User,
+                as: 'responsavelTecnico',
+                required: false,
+                attributes: ['id', 'nome']
+              },
+              {
+                model: Obra,
+                as: 'obraCadastrada',
+                required: false,
+                attributes: ['id', 'codigo', 'nome', 'fase_obra', 'documentacao_pendente']
+              }
+            ]
           },
           {
             model: Parceiro,

@@ -3,7 +3,12 @@ const { env } = require('../config/env');
 
 const ESCOPO = 'SOLICITACAO_CRIACAO_UPLOAD';
 const AUDIENCIA = 'solicitacao-criacao-upload';
-const TIPOS_PERMITIDOS = new Set(['BOLETO', 'SOLICITACAO']);
+const TIPOS_PERMITIDOS = new Set([
+  'BOLETO',
+  'SOLICITACAO',
+  'PLANILHA_ORCAMENTARIA',
+  'DOCUMENTO_OBRA'
+]);
 
 function normalizarTipos(tipos = []) {
   return Array.from(new Set(

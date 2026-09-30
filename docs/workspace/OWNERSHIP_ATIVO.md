@@ -781,3 +781,43 @@ do deploy em dev.
 Ownership da sessao `codex-hotfix-cadastro-obra-migration-2026-09-29` liberado apos tornar a
 migration exclusivamente estrutural, mover o provisionamento idempotente do tipo para a camada
 da aplicacao e repetir testes de dominio, regressao, sintaxe, build e `git diff --check`.
+
+## Ownership ativo - codex-cadastro-obra-fluxo-independente-2026-09-30
+- `backend/migrations/202609300002_cadastro_obra_fluxo_independente.js`
+- `backend/package.json`
+- `backend/scripts/validarCadastroObraSolicitacao.js`
+- `backend/src/controllers/AnexoController.js`
+- `backend/src/controllers/ObraController.js`
+- `backend/src/controllers/SolicitacaoController.js`
+- `backend/src/models/Obra.js`
+- `backend/src/models/Solicitacao.js`
+- `backend/src/models/SolicitacaoCadastroObraDados.js`
+- `backend/src/models/index.js`
+- `backend/src/routes.js`
+- `backend/src/services/novaSolicitacaoCamposConfig.js`
+- `backend/src/services/solicitacaoCriacaoUploadTokenService.js`
+- `backend/src/services/tipoSolicitacaoBehaviorService.js`
+- `backend/src/validators/operationalValidators.js`
+- `frontend/src/components/obras/ObraCadastroModal.jsx`
+- `frontend/src/pages/NovaSolicitacao.jsx`
+- `frontend/src/pages/Obras.jsx`
+- `frontend/src/pages/SolicitacaoDetalhe/Header.jsx`
+- `frontend/src/pages/SolicitacaoDetalhe/index.jsx`
+- `frontend/src/services/obras.js`
+- `frontend/src/services/solicitacoes.js`
+- `frontend/src/utils/novaSolicitacaoCampos.js`
+- `frontend/src/utils/tipoSolicitacao.js`
+- `docs/handoffs/2026-09-30-cadastro-obra-fluxo-independente.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Ownership temporario da sessao `/root` iniciado em 2026-09-30 para transformar
+`CADASTRO DE OBRA` em fluxo independente de obra/centro de custo, persistir os
+dados cadastrais e documentais, manter GEO como destino interno e abrir o modal
+reutilizavel de cadastro definitivo pre-preenchido no detalhe da solicitacao.
+Preservar `outputs/` e alteracoes paralelas; sem banco externo, deploy, commit ou
+push nesta etapa.
+
+Ownership da sessao `codex-cadastro-obra-fluxo-independente-2026-09-30` liberado
+apos validacao de sintaxe, teste de dominio, build do frontend, `git diff --check`
+e registro do handoff. A migration e a homologacao integrada permanecem como
+passos controlados do deploy em desenvolvimento.

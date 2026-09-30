@@ -12,6 +12,7 @@ import FinanceiroCard from './FinanceiroCard';
 import AcoesContrato from './AcoesContrato';
 import RetornoSolicitacaoBar from './RetornoSolicitacaoBar';
 import RecargaCartaoDetalhe from './RecargaCartaoDetalhe';
+import ObraCadastroModal from '../../components/obras/ObraCadastroModal';
 import CompraEtapas from './CompraEtapas';
 import { getContratoParcelas } from '../../services/contratos';
 import { API_URL, authHeaders, fileUrl } from '../../services/api';
@@ -70,6 +71,7 @@ import {
   canCatalogarItensManuaisCompras,
   canCreateCompraSolicitacao,
   canDeleteSolicitacaoAnexo,
+  canManageCadastroObras,
   canAnexarEspelhoComprasPedidos,
   canEditarApropriacoesItemCompraDireta,
   canEditarApropriacoesItemSolicitacaoCompra,
@@ -354,6 +356,7 @@ export default function SolicitacaoDetalhe() {
   const [falhaContrato, setFalhaContrato] = useState('');
   const [loading, setLoading] = useState(true);
   const [modalStatus, setModalStatus] = useState(false);
+  const [modalCadastroObraAberto, setModalCadastroObraAberto] = useState(false);
   const [aprovandoSolicitacao, setAprovandoSolicitacao] = useState(false);
   const [statusDependenciasVersao, setStatusDependenciasVersao] = useState(0);
   // Mapeamento configurável setor+estado → ação em destaque (Configurações
@@ -424,6 +427,10 @@ export default function SolicitacaoDetalhe() {
   const isSolicitacaoCompra = isCompraDiretaSolicitacao || tipoSolicitacaoNormalizado.includes('SOLICITACAO DE COMPRA');
   const isRecargaCartaoSolicitacao = tipoSolicitacaoNormalizado.includes('RECARGA DE CARTAO');
   const isCadastroObraSolicitacao = getTipoSolicitacaoBehavior(solicitacao?.tipo).usa_fluxo_cadastro_obra === true;
+  const dadosCadastroObra = solicitacao?.dadosCadastroObra || null;
+  const podeCadastrarObraDaSolicitacao = isCadastroObraSolicitacao
+    && !dadosCadastroObra?.obra_cadastrada_id
+    && canManageCadastroObras(user);
   // Numa solicitacao de Abertura de Contrato o rateio que vale e o do CONTRATO
   // (`contrato_apropriacoes`). O card da solicitacao grava em `solicitacao_apropriacoes`, que ali
   // ninguem consome — deixa-lo aberto convidava a criar uma segunda verdade sobre o mesmo contrato.
@@ -1852,6 +1859,47 @@ export default function SolicitacaoDetalhe() {
         solicitacao={solicitacao}
         contratoDoFluxo={contratoDoFluxo}
         mostrarContratoInfo={moduloContratosHabilitado}
+      />
+
+      {isCadastroObraSolicitacao && dadosCadastroObra && (
+        <BlocoConteudo
+          titulo="Cadastro da obra"
+          variante="secundario"
+          descricao={dadosCadastroObra.obraCadastrada
+            ? `Obra ${dadosCadastroObra.obraCadastrada.codigo} cadastrada a partir desta solicitação.`
+            : 'Dados aprovados para gerar o cadastro operacional da obra.'}
+          acoes={podeCadastrarObraDaSolicitacao ? (
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setModalCadastroObraAberto(true)}>
+              Cadastrar obra
+            </button>
+          ) : null}
+        >
+          <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div><span className="block text-xs text-[var(--c-muted)]">Tipo</span><strong>{dadosCadastroObra.tipo_obra || '—'}</strong></div>
+            <div><span className="block text-xs text-[var(--c-muted)]">Fase</span><strong>{dadosCadastroObra.fase_obra === 'OBRA_INICIADA' ? 'Obra iniciada' : 'Pré-Obra'}</strong></div>
+            <div><span className="block text-xs text-[var(--c-muted)]">Valor da obra</span><strong>{formatarMoedaLocal(dadosCadastroObra.valor_obra)}</strong></div>
+            <div><span className="block text-xs text-[var(--c-muted)]">Responsável técnico</span><strong>{dadosCadastroObra.responsavelTecnico?.nome || '—'}</strong></div>
+            <div className="sm:col-span-2 lg:col-span-3"><span className="block text-xs text-[var(--c-muted)]">Endereço</span><strong>{dadosCadastroObra.endereco || '—'}</strong></div>
+            <div>
+              <span className="block text-xs text-[var(--c-muted)]">Documentação</span>
+              <strong className={dadosCadastroObra.documentacao_pendente ? 'text-[var(--sem-warning)]' : 'text-[var(--sem-success)]'}>
+                {dadosCadastroObra.documentacao_pendente ? 'Pendente' : 'Regular'}
+              </strong>
+            </div>
+          </div>
+        </BlocoConteudo>
+      )}
+
+      <ObraCadastroModal
+        aberto={modalCadastroObraAberto}
+        onFechar={() => setModalCadastroObraAberto(false)}
+        solicitacaoId={solicitacao.id}
+        dadosIniciais={{
+          ...(dadosCadastroObra || {}),
+          nome: solicitacao.descricao || '',
+          responsavel_tecnico_id: dadosCadastroObra?.responsavel_tecnico_id || ''
+        }}
+        onCriada={() => carregar({ silent: true })}
       />
 
       {isRecargaCartaoSolicitacao && (

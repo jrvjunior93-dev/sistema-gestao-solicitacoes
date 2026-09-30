@@ -454,20 +454,14 @@ function resolverCamposNovaSolicitacao(comportamentoTipo, config, tipoId, contex
   }
 
   if (behavior.usa_fluxo_cadastro_obra === true) {
-    const camposObrigatorios = new Set([
-      'obra',
-      'area_responsavel',
-      'descricao',
-      'pessoas_vinculadas',
-      'data_vencimento',
-      'anexos'
-    ]);
+    const camposVisiveis = new Set(['descricao', 'anexos']);
+    const camposObrigatorios = new Set(['descricao']);
     Object.keys(campos).forEach((campoId) => {
       campos[campoId] = {
         ...campos[campoId],
-        visivel: camposObrigatorios.has(campoId),
+        visivel: camposVisiveis.has(campoId),
         obrigatorio: camposObrigatorios.has(campoId),
-        visivel_padrao: camposObrigatorios.has(campoId),
+        visivel_padrao: camposVisiveis.has(campoId),
         obrigatorio_padrao: camposObrigatorios.has(campoId)
       };
     });

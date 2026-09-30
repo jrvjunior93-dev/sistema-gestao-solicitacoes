@@ -12,7 +12,7 @@ import {
   useConfirmacao
 } from '../components/padrao';
 import { getMinhasObras } from '../services/obras';
-import { getTiposSolicitacaoDisponiveis } from '../services/tiposSolicitacao';
+import { getTiposSolicitacao, getTiposSolicitacaoDisponiveis } from '../services/tiposSolicitacao';
 import { createSolicitacao, getApropriacaoPadraoSolicitacao, getObrasDistribuicaoCentroCusto, getSaldoDespesaEventual, getUsuariosAtivosCadastroObra, solicitarRetornoSolicitacao } from '../services/solicitacoes';
 import { uploadArquivos } from '../services/uploads';
 import { getTiposSubContrato } from '../services/tiposSubContrato';
@@ -188,6 +188,8 @@ export default function NovaSolicitacao() {
   const [obraBusca, setObraBusca] = useState('');
   const [obraBuscaAtiva, setObraBuscaAtiva] = useState(false);
   const [tipos, setTipos] = useState([]);
+  const [tipoCadastroObraDisponivel, setTipoCadastroObraDisponivel] = useState(null);
+  const [modoCadastroObra, setModoCadastroObra] = useState(false);
   const [catalogoDestino, setCatalogoDestino] = useState({
     status: 'idle', contexto: null, destino: null, tipoAutomatico: false, areasConfiguracaoCampos: [], erro: ''
   });
@@ -242,8 +244,14 @@ export default function NovaSolicitacao() {
   const [usuariosCadastroObra, setUsuariosCadastroObra] = useState([]);
   const [usuariosCadastroObraStatus, setUsuariosCadastroObraStatus] = useState('idle');
   const [usuariosCadastroObraErro, setUsuariosCadastroObraErro] = useState('');
-  const [cadastroObraUsuarioIds, setCadastroObraUsuarioIds] = useState([]);
-  const [cadastroObraBuscaPessoa, setCadastroObraBuscaPessoa] = useState('');
+  const [cadastroObraDados, setCadastroObraDados] = useState({
+    tipo_obra: '',
+    fase_obra: 'PRE_OBRA',
+    valor_obra: '',
+    responsavel_tecnico_id: '',
+    endereco: ''
+  });
+  const [documentosCadastroObra, setDocumentosCadastroObra] = useState([]);
   const [boletoArquivos, setBoletoArquivos] = useState([]);
   const [despesaEventualSaldo, setDespesaEventualSaldo] = useState({ status: 'idle', dados: null, erro: '' });
   const [despesaEventualDeclaracoes, setDespesaEventualDeclaracoes] = useState({
@@ -360,7 +368,14 @@ export default function NovaSolicitacao() {
 
   useEffect(() => {
     async function load() {
-      setObras(await getMinhasObras({ modo: 'CRIACAO', escopo: 'TODOS' }));
+      const [obrasDisponiveis, catalogoTipos] = await Promise.all([
+        getMinhasObras({ modo: 'CRIACAO', escopo: 'TODOS' }),
+        getTiposSolicitacao()
+      ]);
+      setObras(obrasDisponiveis);
+      setTipoCadastroObraDisponivel((Array.isArray(catalogoTipos) ? catalogoTipos : []).find((tipo) => (
+        getTipoSolicitacaoBehavior(tipo).usa_fluxo_cadastro_obra === true
+      )) || null);
       try {
         const [cfgCamposNovaSolicitacao, cfgAutomacaoDestino] = await Promise.all([
           getCamposNovaSolicitacao(),
@@ -382,7 +397,26 @@ export default function NovaSolicitacao() {
   }, []);
 
   useEffect(() => {
-    if (!form.obra_id) {
+    if (!usaFluxoCadastroObra && !form.obra_id) {
+      if (modoCadastroObra && tipoCadastroObraDisponivel) {
+        setTipos([tipoCadastroObraDisponivel]);
+        setCatalogoDestino({
+          status: 'success',
+          contexto: 'CADASTRO_OBRA',
+          destino: null,
+          tipoAutomatico: true,
+          areasConfiguracaoCampos: [],
+          erro: ''
+        });
+        setForm((atual) => ({
+          ...atual,
+          obra_id: '',
+          area_responsavel: '',
+          tipo_solicitacao_id: String(tipoCadastroObraDisponivel.id),
+          tipo_sub_id: ''
+        }));
+        return undefined;
+      }
       setTipos([]);
       setCatalogoDestino({
         status: 'idle', contexto: null, destino: null, tipoAutomatico: false, areasConfiguracaoCampos: [], erro: ''
@@ -403,7 +437,9 @@ export default function NovaSolicitacao() {
     getTiposSolicitacaoDisponiveis(form.obra_id)
       .then((data) => {
         if (cancelado) return;
-        const tiposDisponiveis = Array.isArray(data?.tipos) ? data.tipos : [];
+        const tiposDisponiveis = (Array.isArray(data?.tipos) ? data.tipos : []).filter((tipo) => (
+          getTipoSolicitacaoBehavior(tipo).usa_fluxo_cadastro_obra !== true
+        ));
         const idsDisponiveis = new Set(tiposDisponiveis.map((tipo) => String(tipo.id)));
         setTipos(tiposDisponiveis);
         setCatalogoDestino({
@@ -450,7 +486,7 @@ export default function NovaSolicitacao() {
       });
 
     return () => { cancelado = true; };
-  }, [form.obra_id]);
+  }, [form.obra_id, modoCadastroObra, tipoCadastroObraDisponivel]);
 
   useEffect(() => {
     if (!form.obra_id || obraSelecionadaEhObra) {
@@ -519,7 +555,7 @@ export default function NovaSolicitacao() {
       return;
     }
 
-    if (!obraSelecionadaEhObra) {
+    if (!usaFluxoCadastroObra && !obraSelecionadaEhObra) {
       setContratos([]);
       setContratosRef([]);
       setApropriacoes([]);
@@ -944,8 +980,6 @@ export default function NovaSolicitacao() {
       setUsuariosCadastroObra([]);
       setUsuariosCadastroObraStatus('idle');
       setUsuariosCadastroObraErro('');
-      setCadastroObraUsuarioIds([]);
-      setCadastroObraBuscaPessoa('');
       return undefined;
     }
 
@@ -966,20 +1000,6 @@ export default function NovaSolicitacao() {
       });
     return () => { cancelado = true; };
   }, [usaFluxoCadastroObra]);
-
-  const usuariosCadastroObraFiltrados = useMemo(() => {
-    const busca = normalizarBusca(cadastroObraBuscaPessoa);
-    if (!busca) return usuariosCadastroObra;
-    return usuariosCadastroObra.filter((usuario) => normalizarBusca(usuario?.nome).includes(busca));
-  }, [usuariosCadastroObra, cadastroObraBuscaPessoa]);
-
-  function alternarPessoaCadastroObra(usuarioId) {
-    limparErroCampo('pessoas_vinculadas');
-    const id = Number(usuarioId);
-    setCadastroObraUsuarioIds((atual) => (
-      atual.includes(id) ? atual.filter((item) => item !== id) : [...atual, id]
-    ));
-  }
 
   useEffect(() => {
     if (!usaApropriacaoAutomaticaObra || !form.obra_id || !form.tipo_solicitacao_id) {
@@ -1580,6 +1600,62 @@ export default function NovaSolicitacao() {
     }
   }
 
+  function adicionarDocumentosCadastroObra(files) {
+    const lista = Array.from(files || []).filter(Boolean);
+    const tiposInvalidos = lista.filter((file) => !arquivoDocumentoPermitido(file));
+    const tiposValidos = lista.filter((file) => arquivoDocumentoPermitido(file));
+    const { arquivos: aceitos, rejeitados } = concatenarAnexosPendentes(documentosCadastroObra, tiposValidos, {
+      maxFileSizeMb: UPLOAD_MAX_FILE_SIZE_MB_PADRAO
+    });
+    setDocumentosCadastroObra(aceitos);
+    if (tiposInvalidos.length > 0) avisar.alerta(montarMensagemTiposArquivoNaoPermitidos(tiposInvalidos));
+    if (rejeitados.length > 0) {
+      avisar.alerta(montarMensagemArquivosAcimaDoLimite(rejeitados, UPLOAD_MAX_FILE_SIZE_MB_PADRAO));
+    }
+  }
+
+  function ativarCadastroObra() {
+    if (!tipoCadastroObraDisponivel) {
+      avisar.erro('O tipo CADASTRO DE OBRA nao esta disponivel.');
+      return;
+    }
+    setModoCadastroObra(true);
+    setObraBusca('');
+    setForm((atual) => ({
+      ...atual,
+      obra_id: '',
+      tipo_solicitacao_id: String(tipoCadastroObraDisponivel.id),
+      tipo_sub_id: '',
+      area_responsavel: '',
+      descricao: ''
+    }));
+    setArquivos([]);
+    setDocumentosCadastroObra([]);
+    setErrosCampo({});
+  }
+
+  function sairCadastroObra() {
+    setModoCadastroObra(false);
+    setTipos([]);
+    setForm((atual) => ({
+      ...atual,
+      obra_id: '',
+      tipo_solicitacao_id: '',
+      tipo_sub_id: '',
+      descricao: ''
+    }));
+    setCadastroObraDados({
+      tipo_obra: '',
+      fase_obra: 'PRE_OBRA',
+      valor_obra: '',
+      responsavel_tecnico_id: '',
+      endereco: ''
+    });
+    setArquivos([]);
+    setDocumentosCadastroObra([]);
+    setErrosCampo({});
+  }
+
   function selecionarArquivoBoleto(files) {
     const lista = Array.from(files || []).filter(Boolean);
     const { arquivos: aceitos, rejeitados } = concatenarAnexosPendentes([], lista.slice(0, 1), {
@@ -1874,7 +1950,7 @@ export default function NovaSolicitacao() {
       reprovarCampo('anexos', 'Anexe ao menos um arquivo para enviar a solicitacao de medicao.');
       return;
     }
-    if (!tipoEhDeMedicao && anexosObrigatorios && arquivos.length === 0) {
+    if (!tipoEhDeMedicao && !usaFluxoCadastroObra && anexosObrigatorios && arquivos.length === 0) {
       reprovarCampo('anexos', usaFluxoCadastroObra
         ? 'Anexe a planilha orçamentária da obra.'
         : (usaRegraAnexoPorFormaPagamento
@@ -1883,9 +1959,31 @@ export default function NovaSolicitacao() {
       return;
     }
 
-    if (usaFluxoCadastroObra && cadastroObraUsuarioIds.length === 0) {
-      reprovarCampo('pessoas_vinculadas', 'Selecione ao menos uma pessoa vinculada.');
-      return;
+    if (usaFluxoCadastroObra) {
+      if (!cadastroObraDados.tipo_obra) {
+        reprovarCampo('cadastro_obra_tipo', 'Selecione o tipo da obra.');
+        return;
+      }
+      if (!cadastroObraDados.fase_obra) {
+        reprovarCampo('cadastro_obra_fase', 'Selecione a fase da obra.');
+        return;
+      }
+      if (!Number(cadastroObraDados.valor_obra) || Number(cadastroObraDados.valor_obra) <= 0) {
+        reprovarCampo('cadastro_obra_valor', 'Informe o valor da obra.');
+        return;
+      }
+      if (!cadastroObraDados.responsavel_tecnico_id) {
+        reprovarCampo('cadastro_obra_responsavel', 'Selecione o responsável técnico.');
+        return;
+      }
+      if (!String(cadastroObraDados.endereco || '').trim()) {
+        reprovarCampo('cadastro_obra_endereco', 'Informe o endereço da obra.');
+        return;
+      }
+      if (cadastroObraDados.fase_obra === 'OBRA_INICIADA' && arquivos.length === 0) {
+        reprovarCampo('anexos', 'Anexe a planilha orçamentária para uma obra iniciada.');
+        return;
+      }
     }
 
     if (usaFluxoDespesaEventual) {
@@ -2226,7 +2324,17 @@ export default function NovaSolicitacao() {
       boleto_anexo_nome: pagamentoViaBoleto ? (boletoArquivos[0]?.nome || null) : null,
       despesa_eventual_declaracoes: usaFluxoDespesaEventual ? despesaEventualDeclaracoes : undefined,
       cartao_recarga_id: usaFluxoRecargaCartao ? Number(cartaoRecargaId) : undefined,
-      cadastro_obra_usuario_ids: usaFluxoCadastroObra ? cadastroObraUsuarioIds : undefined,
+      cadastro_obra_usuario_ids: usaFluxoCadastroObra && cadastroObraDados.responsavel_tecnico_id
+        ? [Number(cadastroObraDados.responsavel_tecnico_id)]
+        : undefined,
+      cadastro_obra_dados: usaFluxoCadastroObra ? {
+        ...cadastroObraDados,
+        responsavel_tecnico_id: Number(cadastroObraDados.responsavel_tecnico_id),
+        valor_obra: Number(cadastroObraDados.valor_obra)
+      } : undefined,
+      cadastro_obra_documentos_nomes: usaFluxoCadastroObra
+        ? documentosCadastroObra.map((arquivo) => arquivo.nome).filter(Boolean)
+        : undefined,
       justificativa: exibirJustificativa ? form.justificativa : null,
       apropriacao_id: exibirCampoApropriacao ? (form.apropriacao_id || null) : null,
       contrato_id: exibirCamposContrato ? (form.contrato_id || null) : null,
@@ -2258,7 +2366,7 @@ export default function NovaSolicitacao() {
             observacao: String(item.observacao || '').trim() || null
           }))
         : [],
-      distribuicao_centro_custo: !obraSelecionadaEhObra
+      distribuicao_centro_custo: !usaFluxoCadastroObra && !obraSelecionadaEhObra
         ? {
             criterio: distribuicaoCentroCusto.criterio,
             abrangencia: distribuicaoCentroCusto.todas ? 'TODAS' : 'OBRA',
@@ -2296,13 +2404,13 @@ export default function NovaSolicitacao() {
         }
       }
 
-      if (exibirAnexos && arquivos.length > 0) {
+      if ((exibirAnexos || usaFluxoCadastroObra) && arquivos.length > 0) {
         try {
           await uploadArquivos({
             files: extrairFilesAnexosPendentes(arquivos),
             solicitacao_id: solicitacao.id,
             medicao_id: medicaoIdCriada,
-            tipo: 'SOLICITACAO',
+            tipo: usaFluxoCadastroObra ? 'PLANILHA_ORCAMENTARIA' : 'SOLICITACAO',
             criacao_upload_token: solicitacao.criacao_upload_token || null
           });
         } catch (uploadError) {
@@ -2310,6 +2418,25 @@ export default function NovaSolicitacao() {
           await avisarAntesDeSair(
             'Solicitacao criada sem os anexos',
             `A solicitacao ${solicitacao.codigo || solicitacao.id} foi criada, mas os anexos nao foram enviados. Abra a solicitacao e envie os anexos novamente.`
+          );
+          navigate(`/solicitacoes/${solicitacao.id}`, { replace: true });
+          return;
+        }
+      }
+
+      if (usaFluxoCadastroObra && documentosCadastroObra.length > 0) {
+        try {
+          await uploadArquivos({
+            files: extrairFilesAnexosPendentes(documentosCadastroObra),
+            solicitacao_id: solicitacao.id,
+            tipo: 'DOCUMENTO_OBRA',
+            criacao_upload_token: solicitacao.criacao_upload_token || null
+          });
+        } catch (uploadError) {
+          console.error(uploadError);
+          await avisarAntesDeSair(
+            'Solicitacao criada sem todos os documentos',
+            `A solicitacao ${solicitacao.codigo || solicitacao.id} foi criada, mas a ART ou os documentos complementares nao foram enviados. Abra a solicitacao e envie-os novamente.`
           );
           navigate(`/solicitacoes/${solicitacao.id}`, { replace: true });
           return;
@@ -2365,8 +2492,8 @@ export default function NovaSolicitacao() {
   const valorObrigatorio = exibirValor && (!obraSelecionadaEhObra || !tipoSemValor);
   const exibirCampoDescricao = exibirDescricao && !usaMedicaoFluxoNovo;
   const descricaoExigida = descricaoObrigatoria && !usaMedicaoFluxoNovo;
-  const exibirCampoDataVencimento = exibirDataVencimento && !usaMedicaoFluxoNovo;
-  const dataVencimentoExigida = dataVencimentoObrigatoria && !usaMedicaoFluxoNovo;
+  const exibirCampoDataVencimento = exibirDataVencimento && !usaMedicaoFluxoNovo && !usaFluxoCadastroObra;
+  const dataVencimentoExigida = dataVencimentoObrigatoria && !usaMedicaoFluxoNovo && !usaFluxoCadastroObra;
   // Fora do fluxo novo o par continua onde sempre esteve: o card nao existe para recebe-lo.
   const exibirPeriodoMedicaoSolto = exibirPeriodoMedicao && !usaMedicaoFluxoNovo;
   // Campo que nao aparece nao pode ser exigido: o bloco de rateio some na medicao do fluxo novo, e
@@ -2766,8 +2893,26 @@ export default function NovaSolicitacao() {
           titulo="Dados da solicitação"
           variante="primario"
           cor="var(--sem-info)"
-          descricao="A obra ou centro de custo define os tipos disponíveis. Toda nova solicitação entra em GEO com status PENDENTE."
+          descricao={usaFluxoCadastroObra
+            ? 'Informe os dados que serão usados no cadastro definitivo da nova obra.'
+            : 'A obra ou centro de custo define os tipos disponíveis para a solicitação.'}
         >
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--c-border)] pb-3">
+            <span className="text-sm text-[var(--c-muted)]">
+              {usaFluxoCadastroObra ? 'Fluxo: cadastro de uma nova obra' : 'Fluxo: solicitação vinculada a um cadastro existente'}
+            </span>
+            {(usaFluxoCadastroObra || tipoCadastroObraDisponivel) ? (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={usaFluxoCadastroObra ? sairCadastroObra : ativarCadastroObra}
+              >
+                {usaFluxoCadastroObra ? 'Voltar para solicitação comum' : 'Solicitar cadastro de obra'}
+              </button>
+            ) : null}
+          </div>
+
+          {!usaFluxoCadastroObra && (
           <FormSecao legenda="Origem" colunas={2}>
             <CampoForm
               label="Obra/Centro de Custo"
@@ -2870,6 +3015,7 @@ export default function NovaSolicitacao() {
               </p>
             )}
           </FormSecao>
+          )}
 
           {/* Campos da recarga de cartão: componente próprio, largura inteira. */}
           <RecargaCartaoFields
@@ -3640,7 +3786,7 @@ export default function NovaSolicitacao() {
           <BlocoConteudo
             titulo={usaFluxoCadastroObra ? 'Dados para cadastro da obra' : 'Identificação e prazos'}
             descricao={usaFluxoCadastroObra
-              ? 'Informe a nova obra, as pessoas que deverão ser vinculadas e o prazo de resposta do GEO.'
+              ? 'Todos os campos abaixo serão reaproveitados no cadastro definitivo da obra.'
               : 'O que a solicitação diz de si e as datas que ela precisa cumprir.'}
           >
             <FormSecao colunas={2}>
@@ -3674,49 +3820,92 @@ export default function NovaSolicitacao() {
               )}
 
               {usaFluxoCadastroObra && (
-                <CampoForm
-                  label="Pessoas vinculadas"
-                  obrigatorio
-                  tipo="texto-longo"
-                  erro={errosCampo.pessoas_vinculadas || usuariosCadastroObraErro || undefined}
-                  hint={`${cadastroObraUsuarioIds.length} pessoa(s) selecionada(s). A lista exibe somente usuários ativos.`}
-                >
-                  <div className="grid gap-2 rounded-lg border border-[var(--c-border)] bg-[var(--ui-surface-2)] p-2">
-                    <input
-                      type="search"
+                <>
+                  <CampoForm label="Tipo da Obra" obrigatorio erro={errosCampo.cadastro_obra_tipo}>
+                    <select
                       className="input input-sm"
-                      value={cadastroObraBuscaPessoa}
-                      onChange={(event) => setCadastroObraBuscaPessoa(event.target.value)}
-                      placeholder="Pesquisar pessoa por nome"
-                      aria-label="Pesquisar pessoa vinculada por nome"
-                    />
-                    <div
-                      className="max-h-52 overflow-y-auto rounded border border-[var(--c-border)] bg-[var(--c-surface)]"
-                      role="group"
-                      aria-label="Usuários ativos"
+                      value={cadastroObraDados.tipo_obra}
+                      onChange={(event) => {
+                        limparErroCampo('cadastro_obra_tipo');
+                        setCadastroObraDados((atual) => ({ ...atual, tipo_obra: event.target.value }));
+                      }}
                     >
-                      {usuariosCadastroObraStatus === 'loading' && (
-                        <p className="px-3 py-2 text-sm text-[var(--c-muted)]">Carregando usuários ativos...</p>
-                      )}
-                      {usuariosCadastroObraStatus === 'success' && usuariosCadastroObraFiltrados.length === 0 && (
-                        <p className="px-3 py-2 text-sm text-[var(--c-muted)]">Nenhum usuário ativo encontrado.</p>
-                      )}
-                      {usuariosCadastroObraFiltrados.map((usuario) => (
-                        <label
-                          key={usuario.id}
-                          className="flex cursor-pointer items-center gap-2 border-b border-[var(--c-border)] px-3 py-2 text-sm last:border-b-0 hover:bg-[var(--ui-surface-2)]"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={cadastroObraUsuarioIds.includes(Number(usuario.id))}
-                            onChange={() => alternarPessoaCadastroObra(usuario.id)}
-                          />
-                          <span className="text-[var(--c-text)]">{usuario.nome}</span>
-                        </label>
+                      <option value="">Selecione</option>
+                      <option value="PUBLICA">Pública</option>
+                      <option value="PRIVADA">Privada</option>
+                      <option value="PROPRIA">Própria</option>
+                    </select>
+                  </CampoForm>
+
+                  <CampoForm label="Fase da Obra" obrigatorio erro={errosCampo.cadastro_obra_fase}>
+                    <select
+                      className="input input-sm"
+                      value={cadastroObraDados.fase_obra}
+                      onChange={(event) => {
+                        limparErroCampo('cadastro_obra_fase');
+                        setCadastroObraDados((atual) => ({ ...atual, fase_obra: event.target.value }));
+                      }}
+                    >
+                      <option value="PRE_OBRA">Pré-Obra</option>
+                      <option value="OBRA_INICIADA">Obra iniciada</option>
+                    </select>
+                  </CampoForm>
+
+                  <CampoForm label="Valor da Obra" obrigatorio erro={errosCampo.cadastro_obra_valor}>
+                    <input
+                      className="input input-sm"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={cadastroObraDados.valor_obra}
+                      onChange={(event) => {
+                        limparErroCampo('cadastro_obra_valor');
+                        setCadastroObraDados((atual) => ({ ...atual, valor_obra: event.target.value }));
+                      }}
+                      placeholder="R$ 0,00"
+                    />
+                  </CampoForm>
+
+                  <CampoForm
+                    label="Responsável Técnico"
+                    obrigatorio
+                    erro={errosCampo.cadastro_obra_responsavel || usuariosCadastroObraErro || undefined}
+                    hint="A lista exibe somente usuários ativos."
+                  >
+                    <select
+                      className="input input-sm"
+                      value={cadastroObraDados.responsavel_tecnico_id}
+                      onChange={(event) => {
+                        limparErroCampo('cadastro_obra_responsavel');
+                        setCadastroObraDados((atual) => ({ ...atual, responsavel_tecnico_id: event.target.value }));
+                      }}
+                      disabled={usuariosCadastroObraStatus === 'loading'}
+                    >
+                      <option value="">{usuariosCadastroObraStatus === 'loading' ? 'Carregando...' : 'Selecione'}</option>
+                      {usuariosCadastroObra.map((usuario) => (
+                        <option key={usuario.id} value={usuario.id}>{usuario.nome}</option>
                       ))}
-                    </div>
-                  </div>
-                </CampoForm>
+                    </select>
+                  </CampoForm>
+
+                  <CampoForm
+                    label="Endereço da Obra"
+                    obrigatorio
+                    tipo="texto-longo"
+                    erro={errosCampo.cadastro_obra_endereco}
+                  >
+                    <textarea
+                      className="input input-sm nova-solicitacao-textarea"
+                      rows={3}
+                      value={cadastroObraDados.endereco}
+                      onChange={(event) => {
+                        limparErroCampo('cadastro_obra_endereco');
+                        setCadastroObraDados((atual) => ({ ...atual, endereco: event.target.value }));
+                      }}
+                      placeholder="Logradouro, número, bairro, cidade, UF e CEP"
+                    />
+                  </CampoForm>
+                </>
               )}
 
               {exibirJustificativa && (
@@ -3910,14 +4099,16 @@ export default function NovaSolicitacao() {
         )}
 
         {tipoSolicitacaoEscolhido && (
-          <BlocoConteudo titulo={exibirAnexos ? 'Anexos e envio' : 'Envio'}>
-            {exibirAnexos && (
+          <BlocoConteudo titulo={(exibirAnexos || usaFluxoCadastroObra) ? 'Anexos e envio' : 'Envio'}>
+            {(exibirAnexos || usaFluxoCadastroObra) && (
               /* Mesmo motivo do boleto: o gatilho do seletor de arquivo é um
                  <label>, então este campo usa as classes `.form-*` direto em
                  vez do `CampoForm` (que também é um <label>). A tela ANTIGA
                  tinha exatamente esse aninhamento aqui. */
               <div className="form-group nova-solicitacao-anexos">
-                <span className={`form-label${(anexosObrigatorios && !medicaoContratoDados?.pagamento?.via_boleto) ? ' form-label--required' : ''}`}>
+                <span className={`form-label${((usaFluxoCadastroObra
+                  ? cadastroObraDados.fase_obra === 'OBRA_INICIADA'
+                  : anexosObrigatorios) && !medicaoContratoDados?.pagamento?.via_boleto) ? ' form-label--required' : ''}`}>
                   {tipoEhDeMedicao
                     ? 'Anexo da medição'
                     : (usaFluxoCadastroObra
@@ -3958,6 +4149,46 @@ export default function NovaSolicitacao() {
                   removeButtonClassName="px-2 font-semibold text-[var(--c-primary)]"
                 />
                 {errosCampo.anexos ? <span className="form-error">{errosCampo.anexos}</span> : null}
+                {usaFluxoCadastroObra && cadastroObraDados.fase_obra === 'PRE_OBRA' ? (
+                  <span className="form-hint">
+                    Opcional na Pré-Obra. A pendência documental permanece até a mudança para Obra iniciada,
+                    quando a planilha passa a ser obrigatória.
+                  </span>
+                ) : null}
+              </div>
+            )}
+
+            {usaFluxoCadastroObra && (
+              <div className="form-group nova-solicitacao-anexos">
+                <span className="form-label">ART e demais documentos pertinentes</span>
+                <div className="flex flex-wrap items-center gap-2 nova-solicitacao-inline-actions">
+                  <label className="btn btn-outline btn-sm inline-flex cursor-pointer items-center gap-2">
+                    <HiPaperClip className="h-4 w-4" />
+                    <span>Anexar documentos</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept={UPLOAD_DOCUMENT_ACCEPT}
+                      className="hidden"
+                      onChange={(event) => {
+                        adicionarDocumentosCadastroObra(event.target.files);
+                        event.target.value = '';
+                      }}
+                    />
+                  </label>
+                  <span className="text-xs text-[var(--c-muted)]">
+                    {documentosCadastroObra.length > 0
+                      ? `${documentosCadastroObra.length} documento(s) selecionado(s)`
+                      : 'Nenhum documento complementar selecionado'}
+                  </span>
+                </div>
+                <PendingAttachmentsList
+                  items={documentosCadastroObra}
+                  onRemove={(index) => setDocumentosCadastroObra((atual) => atual.filter((_, itemIndex) => itemIndex !== index))}
+                  className="mt-2 space-y-1"
+                  itemClassName="nova-solicitacao-file-item flex items-center justify-between gap-3 text-sm bg-[var(--c-surface)] border border-[var(--c-border)] rounded px-2 py-1"
+                  removeButtonClassName="px-2 font-semibold text-[var(--c-primary)]"
+                />
               </div>
             )}
 

@@ -236,7 +236,9 @@ function normalizeTipoSolicitacaoBehavior(tipo) {
       exige_itens_apropriacao: false,
       exige_apropriacoes_contrato: false,
       mostrar_anexos: true,
-      exige_anexos: true
+      // Na PRE_OBRA a planilha e opcional e gera pendencia documental. A obrigatoriedade
+      // passa a ser condicional quando a fase informada e OBRA_INICIADA.
+      exige_anexos: false
     });
   }
 

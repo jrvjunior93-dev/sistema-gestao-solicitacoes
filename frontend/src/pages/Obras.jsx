@@ -230,7 +230,9 @@ function ObraCadastroCard({
           <StatusBadge status={obra.ativo ? 'Ativa' : 'Inativa'} />
           <span className="obra-cadastro-card__tipo">{getTipoCadastroLabel(obra)}</span>
           {cadastroEhObra && classificacao ? (
-            <span className="obra-cadastro-card__tipo">{classificacao === 'PRIVADA' ? 'Privada' : 'Pública'}</span>
+            <span className="obra-cadastro-card__tipo">
+              {classificacao === 'PRIVADA' ? 'Privada' : classificacao === 'PROPRIA' ? 'Própria' : 'Pública'}
+            </span>
           ) : null}
         </div>
       </header>
@@ -859,6 +861,7 @@ export default function Obras() {
                   <option value="">Não definida</option>
                   <option value="PRIVADA">Privada</option>
                   <option value="PUBLICA">Pública</option>
+                  <option value="PROPRIA">Própria</option>
                 </select>
               </label>
 

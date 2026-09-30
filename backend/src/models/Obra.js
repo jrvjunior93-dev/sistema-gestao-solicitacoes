@@ -32,6 +32,31 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: null
     },
+    fase_obra: {
+      type: DataTypes.STRING(30),
+      allowNull: true,
+      defaultValue: null
+    },
+    valor_obra: {
+      type: DataTypes.DECIMAL(14, 2),
+      allowNull: true,
+      defaultValue: null
+    },
+    responsavel_tecnico_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null
+    },
+    documentacao_pendente: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
+    solicitacao_cadastro_origem_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null
+    },
     vgv: {
       type: DataTypes.DECIMAL(14, 2),
       allowNull: true,

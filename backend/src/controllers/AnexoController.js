@@ -106,6 +106,8 @@ class AnexoController {
         'CONTRATO',
         'COMPROVANTE',
         'BOLETO',
+        'PLANILHA_ORCAMENTARIA',
+        'DOCUMENTO_OBRA',
         'PRESTACAO_RECARGA'
       ];
 

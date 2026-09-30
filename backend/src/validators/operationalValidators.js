@@ -1783,6 +1783,8 @@ function validateSolicitacaoCreateBody(body = {}) {
       // recusado com "contem campos nao permitidos", sem chegar ao controller.
       'medicao_pagamento',
       'cadastro_obra_usuario_ids',
+      'cadastro_obra_dados',
+      'cadastro_obra_documentos_nomes',
       // Nomes dos arquivos selecionados antes da criacao. O upload real continua na rota de
       // anexos; a aprovacao da medicao confere o registro efetivamente gravado.
       'anexos_pendentes_nomes'
@@ -1791,7 +1793,10 @@ function validateSolicitacaoCreateBody(body = {}) {
   );
 
   return {
-    obra_id: parseInteger(body.obra_id, 'Obra', { required: true }),
+    // CADASTRO DE OBRA e o unico fluxo que nasce sem obra/centro de custo. O controller
+    // confirma o comportamento do tipo antes de aceitar a ausencia; os demais continuam
+    // obrigatorios no servidor.
+    obra_id: parseInteger(body.obra_id, 'Obra'),
     tipo_solicitacao_id: parseInteger(body.tipo_solicitacao_id, 'Tipo de solicitacao', { required: true }),
     tipo_macro_id: parseInteger(body.tipo_macro_id, 'Tipo macro'),
     tipo_sub_id: parseInteger(body.tipo_sub_id, 'Tipo sub'),
@@ -1830,6 +1835,37 @@ function validateSolicitacaoCreateBody(body = {}) {
       'Pessoas vinculadas',
       { maxItems: 500 }
     ),
+    cadastro_obra_dados: (() => {
+      const dados = body.cadastro_obra_dados;
+      if (dados === undefined) return undefined;
+      if (!dados || typeof dados !== 'object' || Array.isArray(dados)) {
+        throw new ValidationError('Dados do cadastro da obra invalidos.');
+      }
+      ensureAllowedKeys(
+        dados,
+        ['tipo_obra', 'fase_obra', 'valor_obra', 'responsavel_tecnico_id', 'endereco'],
+        'Dados do cadastro da obra'
+      );
+      return {
+        tipo_obra: parseOptionalText(dados.tipo_obra, 'Tipo da obra', 20),
+        fase_obra: parseOptionalText(dados.fase_obra, 'Fase da obra', 30),
+        valor_obra: dados.valor_obra === '' || dados.valor_obra == null
+          ? undefined
+          : parseDecimal(dados.valor_obra, 'Valor da obra', { min: 0 }),
+        responsavel_tecnico_id: parseInteger(dados.responsavel_tecnico_id, 'Responsavel tecnico'),
+        endereco: parseOptionalText(dados.endereco, 'Endereco da obra', 2000)
+      };
+    })(),
+    cadastro_obra_documentos_nomes: (() => {
+      if (body.cadastro_obra_documentos_nomes === undefined) return undefined;
+      if (!Array.isArray(body.cadastro_obra_documentos_nomes)
+        || body.cadastro_obra_documentos_nomes.length > 50) {
+        throw new ValidationError('Lista de documentos da obra invalida.');
+      }
+      return body.cadastro_obra_documentos_nomes
+        .map((nome) => parseOptionalText(nome, 'Documento da obra', 255))
+        .filter(Boolean);
+    })(),
     apropriacoes_rateio: Array.isArray(body.apropriacoes_rateio) ? body.apropriacoes_rateio : undefined,
     distribuicao_centro_custo: (() => {
       const distribuicao = body.distribuicao_centro_custo;
