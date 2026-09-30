@@ -397,26 +397,39 @@ export default function NovaSolicitacao() {
   }, []);
 
   useEffect(() => {
-    if (!usaFluxoCadastroObra && !form.obra_id) {
-      if (modoCadastroObra && tipoCadastroObraDisponivel) {
-        setTipos([tipoCadastroObraDisponivel]);
-        setCatalogoDestino({
-          status: 'success',
-          contexto: 'CADASTRO_OBRA',
-          destino: null,
-          tipoAutomatico: true,
-          areasConfiguracaoCampos: [],
-          erro: ''
-        });
-        setForm((atual) => ({
+    // O modo independente nao possui obra nem area visivel. Ele precisa ter
+    // precedencia sobre as regras do fluxo comum; derivar esta decisao do tipo
+    // selecionado criava uma corrida entre a inclusao do tipo e sua validacao.
+    if (modoCadastroObra && tipoCadastroObraDisponivel) {
+      setTipos([tipoCadastroObraDisponivel]);
+      setCatalogoDestino({
+        status: 'success',
+        contexto: 'CADASTRO_OBRA',
+        destino: null,
+        tipoAutomatico: true,
+        areasConfiguracaoCampos: [],
+        erro: ''
+      });
+      setForm((atual) => {
+        const tipoId = String(tipoCadastroObraDisponivel.id);
+        if (
+          !atual.obra_id
+          && !atual.area_responsavel
+          && atual.tipo_solicitacao_id === tipoId
+          && !atual.tipo_sub_id
+        ) return atual;
+        return {
           ...atual,
           obra_id: '',
           area_responsavel: '',
-          tipo_solicitacao_id: String(tipoCadastroObraDisponivel.id),
+          tipo_solicitacao_id: tipoId,
           tipo_sub_id: ''
-        }));
-        return undefined;
-      }
+        };
+      });
+      return undefined;
+    }
+
+    if (!form.obra_id) {
       setTipos([]);
       setCatalogoDestino({
         status: 'idle', contexto: null, destino: null, tipoAutomatico: false, areasConfiguracaoCampos: [], erro: ''
@@ -1620,6 +1633,15 @@ export default function NovaSolicitacao() {
       return;
     }
     setModoCadastroObra(true);
+    setTipos([tipoCadastroObraDisponivel]);
+    setCatalogoDestino({
+      status: 'success',
+      contexto: 'CADASTRO_OBRA',
+      destino: null,
+      tipoAutomatico: true,
+      areasConfiguracaoCampos: [],
+      erro: ''
+    });
     setObraBusca('');
     setForm((atual) => ({
       ...atual,
@@ -2774,6 +2796,9 @@ export default function NovaSolicitacao() {
   ), [tipos]);
 
   useEffect(() => {
+    // GEO e o destino interno do cadastro de obra, mas a area nao aparece no
+    // formulario. A validacao do fluxo comum nao pode apagar seu tipo automatico.
+    if (modoCadastroObra) return;
     if (!form.area_responsavel) {
       if (form.tipo_solicitacao_id) {
         setForm(prev => ({ ...prev, tipo_solicitacao_id: '', tipo_sub_id: '' }));
@@ -2787,7 +2812,7 @@ export default function NovaSolicitacao() {
     if (!existe) {
       setForm(prev => ({ ...prev, tipo_solicitacao_id: '', tipo_sub_id: '' }));
     }
-  }, [form.area_responsavel, form.tipo_solicitacao_id, tiposDisponiveis]);
+  }, [form.area_responsavel, form.tipo_solicitacao_id, modoCadastroObra, tiposDisponiveis]);
 
   useEffect(() => {
     if (!form.obra_id || !form.area_responsavel || !form.tipo_solicitacao_id) return;

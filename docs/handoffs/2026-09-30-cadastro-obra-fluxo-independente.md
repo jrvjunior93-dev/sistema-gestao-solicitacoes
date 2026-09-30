@@ -51,3 +51,16 @@ A migration é exclusivamente estrutural. Não classifica nem altera solicitaç�
   por nome quando uma tentativa anterior tiver parado após removê-la.
 - Solicitações antigas de `CADASTRO DE OBRA` continuam preservadas; o novo registro detalhado vale para solicitações criadas após a migration.
 - `outputs/` já existia sem rastreamento e foi preservado sem alterações intencionais.
+
+## Correção da abertura do formulário (2026-09-30)
+
+- Corrigida uma disputa de estado na Nova Solicitação: a validação do fluxo comum
+  removia o tipo automático porque o cadastro independente mantém a área GEO
+  oculta e, portanto, `area_responsavel` vazia no formulário.
+- O clique em `Solicitar cadastro de obra` agora ativa de forma conjunta o modo,
+  o catálogo e o tipo especial; a regra do fluxo comum ignora esse modo.
+- Adicionado `npm run test:cadastro-obra-formulario` para proteger a abertura do
+  formulário contra regressões.
+- Validações repetidas: teste específico, `npx vite build` e `git diff --check`,
+  todos concluídos com sucesso. O build manteve somente o aviso conhecido de
+  chunk acima de 500 kB.

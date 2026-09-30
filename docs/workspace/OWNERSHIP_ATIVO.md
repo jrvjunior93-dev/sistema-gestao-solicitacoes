@@ -835,3 +835,19 @@ que falhou ao recriar a chave estrangeira de `solicitacoes.obra_id` em dev.
 Ownership da sessao `codex-hotfix-cadastro-obra-case-fk-2026-09-30` liberado apos
 validacao estrutural da migration, teste de dominio e `git diff --check`. A retomada
 em dev deve repetir a mesma migration; ela detecta e restaura a FK se necessario.
+
+## Ownership ativo - codex-hotfix-abertura-cadastro-obra-2026-09-30
+- `frontend/src/pages/NovaSolicitacao.jsx`
+- `frontend/scripts/validarAberturaCadastroObra.mjs`
+- `frontend/package.json`
+- `docs/handoffs/2026-09-30-cadastro-obra-fluxo-independente.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Ownership temporario da sessao `/root` iniciado em 2026-09-30 para corrigir a
+disputa de estado que fecha o formulario independente ao clicar em `Solicitar
+cadastro de obra`, adicionar regressao automatizada e preservar o fluxo normal
+de solicitacoes. Preservar `outputs/`; sem banco externo, deploy, commit ou push.
+
+Ownership da sessao `codex-hotfix-abertura-cadastro-obra-2026-09-30` liberado
+apos teste especifico, build do frontend, `git diff --check` e atualizacao do
+handoff. Nenhum banco externo foi acessado e `outputs/` foi preservado.

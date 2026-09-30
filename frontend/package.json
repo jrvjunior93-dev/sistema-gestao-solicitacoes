@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:cadastro-obra-formulario": "node scripts/validarAberturaCadastroObra.mjs",
     "test:pedido-entregas": "node scripts/validarPedidoEntregaUI.mjs",
     "test:apropriacao-compra": "node scripts/validarModalApropriacaoCompra.mjs",
     "dev": "vite",
