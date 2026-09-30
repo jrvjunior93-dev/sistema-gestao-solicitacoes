@@ -53,7 +53,17 @@ import {
   normalizarConfigAutomacaoDestinoNovaSolicitacao,
   obterRegraAutomacaoDestinoNovaSolicitacao
 } from '../utils/novaSolicitacaoAutomacaoDestino';
-import { getCpfCnpjError, getPixDocumentError, maskCep, maskCpfCnpj, maskPhone, onlyDigits } from '../utils/formatters';
+import {
+  formatCurrencyInput,
+  getCpfCnpjError,
+  getPixDocumentError,
+  maskCep,
+  maskCpfCnpj,
+  maskPhone,
+  normalizeCurrencyTyping,
+  onlyDigits,
+  parseCurrencyInput
+} from '../utils/formatters';
 import {
   UPLOAD_DOCUMENT_ACCEPT,
   UPLOAD_MAX_FILE_SIZE_MB_PADRAO,
@@ -1763,7 +1773,9 @@ export default function NovaSolicitacao() {
     // pode ficar colado num campo que já foi corrigido.
     setErrosCampo({});
 
-    if (!form.obra_id) {
+    // O cadastro de obra e o unico fluxo que nasce sem origem preexistente.
+    // Vincular este erro ao campo de origem oculto fazia o clique parecer inerte.
+    if (!usaFluxoCadastroObra && !form.obra_id) {
       reprovarCampo('obra_id', 'Selecione uma obra/centro de custo');
       return;
     }
@@ -1828,7 +1840,9 @@ export default function NovaSolicitacao() {
       reprovarCampo('valor', 'Informe o valor da solicitação.');
       return;
     }
-    if (!obraSelecionadaEhObra) {
+    // Sem obra selecionada, o fluxo especial tambem nao e Centro de Custo e
+    // nao participa da distribuicao gerencial por obras.
+    if (!usaFluxoCadastroObra && !obraSelecionadaEhObra) {
       if (distribuicaoCentroCusto.status !== 'success') {
         reprovarCampo(
           'distribuicao_centro_custo',
@@ -1990,7 +2004,7 @@ export default function NovaSolicitacao() {
         reprovarCampo('cadastro_obra_fase', 'Selecione a fase da obra.');
         return;
       }
-      if (!Number(cadastroObraDados.valor_obra) || Number(cadastroObraDados.valor_obra) <= 0) {
+      if (parseCurrencyInput(cadastroObraDados.valor_obra) <= 0) {
         reprovarCampo('cadastro_obra_valor', 'Informe o valor da obra.');
         return;
       }
@@ -2352,7 +2366,7 @@ export default function NovaSolicitacao() {
       cadastro_obra_dados: usaFluxoCadastroObra ? {
         ...cadastroObraDados,
         responsavel_tecnico_id: Number(cadastroObraDados.responsavel_tecnico_id),
-        valor_obra: Number(cadastroObraDados.valor_obra)
+        valor_obra: parseCurrencyInput(cadastroObraDados.valor_obra)
       } : undefined,
       cadastro_obra_documentos_nomes: usaFluxoCadastroObra
         ? documentosCadastroObra.map((arquivo) => arquivo.nome).filter(Boolean)
@@ -2510,7 +2524,12 @@ export default function NovaSolicitacao() {
   // mandar outro.
   //
   // Contrato LEGADO nao entra em nada disto — a medicao dele cria solicitacao propria.
-  const exibirValor = (!obraSelecionadaEhObra || !tipoSemValor) && !usaMedicaoFluxoNovo;
+  // Cadastro de obra possui seu proprio valor contratual. Sem esta excecao,
+  // a ausencia deliberada de obra fazia o fluxo parecer um Centro de Custo e
+  // reativava o campo financeiro generico (inclusive sua validacao).
+  const exibirValor = !usaFluxoCadastroObra
+    && (!obraSelecionadaEhObra || !tipoSemValor)
+    && !usaMedicaoFluxoNovo;
   const valorObrigatorio = exibirValor && (!obraSelecionadaEhObra || !tipoSemValor);
   const exibirCampoDescricao = exibirDescricao && !usaMedicaoFluxoNovo;
   const descricaoExigida = descricaoObrigatoria && !usaMedicaoFluxoNovo;
@@ -3878,15 +3897,20 @@ export default function NovaSolicitacao() {
 
                   <CampoForm label="Valor da Obra" obrigatorio erro={errosCampo.cadastro_obra_valor}>
                     <input
-                      className="input input-sm"
-                      type="number"
-                      min="0.01"
-                      step="0.01"
+                      className="input input-sm input-moeda w-full"
+                      inputMode="decimal"
                       value={cadastroObraDados.valor_obra}
                       onChange={(event) => {
                         limparErroCampo('cadastro_obra_valor');
-                        setCadastroObraDados((atual) => ({ ...atual, valor_obra: event.target.value }));
+                        setCadastroObraDados((atual) => ({
+                          ...atual,
+                          valor_obra: normalizeCurrencyTyping(event.target.value)
+                        }));
                       }}
+                      onBlur={(event) => setCadastroObraDados((atual) => ({
+                        ...atual,
+                        valor_obra: formatCurrencyInput(event.target.value)
+                      }))}
                       placeholder="R$ 0,00"
                     />
                   </CampoForm>

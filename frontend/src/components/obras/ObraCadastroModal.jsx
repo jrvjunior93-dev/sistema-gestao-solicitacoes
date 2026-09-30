@@ -3,6 +3,7 @@ import OverlayModal from '../ui/OverlayModal';
 import { criarObra } from '../../services/obras';
 import { getEmpresasGrupo } from '../../services/empresasGrupo';
 import { getUsuariosAtivosCadastroObra } from '../../services/solicitacoes';
+import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from '../../utils/formatters';
 
 const VAZIO = {
   codigo: '',
@@ -34,7 +35,7 @@ export default function ObraCadastroModal({ aberto, onFechar, dadosIniciais, sol
       ...(dadosIniciais || {}),
       classificacao: dadosIniciais?.tipo_obra || dadosIniciais?.classificacao || '',
       responsavel_tecnico_id: String(dadosIniciais?.responsavel_tecnico_id || ''),
-      valor_obra: dadosIniciais?.valor_obra != null ? String(dadosIniciais.valor_obra) : '',
+      valor_obra: dadosIniciais?.valor_obra != null ? formatCurrencyInput(dadosIniciais.valor_obra) : '',
       endereco_logradouro: dadosIniciais?.endereco || dadosIniciais?.endereco_logradouro || ''
     });
     setErro('');
@@ -56,7 +57,7 @@ export default function ObraCadastroModal({ aberto, onFechar, dadosIniciais, sol
   async function salvar(event) {
     event.preventDefault();
     if (!form.codigo.trim() || !form.nome.trim() || !form.classificacao || !form.fase_obra
-      || !Number(form.valor_obra) || !form.responsavel_tecnico_id || !form.endereco_logradouro.trim()
+      || parseCurrencyInput(form.valor_obra) <= 0 || !form.responsavel_tecnico_id || !form.endereco_logradouro.trim()
       || !form.nivel_apropriacao_formulario) {
       setErro('Preencha os campos obrigatorios antes de cadastrar a obra.');
       return;
@@ -66,7 +67,7 @@ export default function ObraCadastroModal({ aberto, onFechar, dadosIniciais, sol
       const criada = await criarObra({
         ...form,
         tipo_centro_custo: 'OBRA',
-        valor_obra: Number(form.valor_obra),
+        valor_obra: parseCurrencyInput(form.valor_obra),
         responsavel_tecnico_id: Number(form.responsavel_tecnico_id),
         empresa_grupo_id: form.empresa_grupo_id ? Number(form.empresa_grupo_id) : null,
         margem_custo_esperada: form.margem_custo_esperada !== '' ? Number(form.margem_custo_esperada) : null,
@@ -110,7 +111,14 @@ export default function ObraCadastroModal({ aberto, onFechar, dadosIniciais, sol
           </select>
         </label>
         <label className="grid gap-1 text-sm font-medium">Valor da obra *
-          <input className="input" type="number" min="0.01" step="0.01" value={form.valor_obra} onChange={(e) => alterar('valor_obra', e.target.value)} />
+          <input
+            className="input input-moeda w-full"
+            inputMode="decimal"
+            value={form.valor_obra}
+            onChange={(e) => alterar('valor_obra', normalizeCurrencyTyping(e.target.value))}
+            onBlur={(e) => alterar('valor_obra', formatCurrencyInput(e.target.value))}
+            placeholder="R$ 0,00"
+          />
         </label>
         <label className="grid gap-1 text-sm font-medium">Responsável técnico *
           <select className="input" value={form.responsavel_tecnico_id} onChange={(e) => alterar('responsavel_tecnico_id', e.target.value)}>

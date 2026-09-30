@@ -64,3 +64,18 @@ A migration é exclusivamente estrutural. Não classifica nem altera solicitaç�
 - Validações repetidas: teste específico, `npx vite build` e `git diff --check`,
   todos concluídos com sucesso. O build manteve somente o aviso conhecido de
   chunk acima de 500 kB.
+
+## Correção do envio e valor monetário (2026-09-30)
+
+- O frontend ainda executava três regras do fluxo comum no Cadastro de Obra:
+  exigia `obra_id`, tentava validar distribuição de Centro de Custo e reativava
+  o campo financeiro genérico. Como a origem fica oculta, o primeiro erro não
+  aparecia e o botão parecia não responder.
+- As três regras agora excluem explicitamente `usaFluxoCadastroObra`. O payload
+  continua sem obra e sem distribuição, conforme o contrato já aceito pelo
+  validator e pelo controller do backend.
+- `Valor da Obra` recebeu máscara brasileira na solicitação e no modal definitivo;
+  a interface mantém `R$ 1.234,56` e converte para decimal somente ao validar e
+  enviar à API.
+- Verificações concluídas: teste frontend do fluxo, teste backend
+  `test:cadastro-obra-solicitacao`, build Vite e `git diff --check`.

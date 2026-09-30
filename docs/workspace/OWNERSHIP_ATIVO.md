@@ -851,3 +851,20 @@ de solicitacoes. Preservar `outputs/`; sem banco externo, deploy, commit ou push
 Ownership da sessao `codex-hotfix-abertura-cadastro-obra-2026-09-30` liberado
 apos teste especifico, build do frontend, `git diff --check` e atualizacao do
 handoff. Nenhum banco externo foi acessado e `outputs/` foi preservado.
+
+## Ownership ativo - codex-moeda-valor-cadastro-obra-2026-09-30
+- `frontend/src/pages/NovaSolicitacao.jsx`
+- `frontend/src/components/obras/ObraCadastroModal.jsx`
+- `frontend/scripts/validarAberturaCadastroObra.mjs`
+- `docs/handoffs/2026-09-30-cadastro-obra-fluxo-independente.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Ownership temporario da sessao `/root` iniciado em 2026-09-30 para aplicar a
+mascara monetaria brasileira ao valor da obra na solicitacao e no modal de
+cadastro definitivo, mantendo numero decimal no payload. Preservar `outputs/`;
+sem banco externo, deploy, commit ou push nesta etapa.
+
+Ownership da sessao `codex-moeda-valor-cadastro-obra-2026-09-30` liberado apos
+mapear o submit ate o controller, corrigir as validacoes herdadas do fluxo comum,
+aplicar a mascara monetaria, executar testes frontend/backend, build e
+`git diff --check`. Nenhum banco externo foi acessado e `outputs/` foi preservado.
