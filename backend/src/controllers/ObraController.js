@@ -9,6 +9,7 @@ const {
   Setor,
   ConfiguracaoSistema,
   EmpresaGrupo,
+  SolicitacaoCadastroObraUsuario,
   SolicitacaoCadastroObraDados,
   Anexo,
   User,
@@ -292,6 +293,7 @@ module.exports = {
       classificacao,
       fase_obra,
       valor_obra,
+      responsavel_tecnico,
       responsavel_tecnico_id,
       solicitacao_cadastro_origem_id,
       vgv,
@@ -328,6 +330,12 @@ module.exports = {
       return res.status(400).json({ error: 'Valor da obra invalido.' });
     }
     const responsavelTecnicoId = responsavel_tecnico_id ? Number(responsavel_tecnico_id) : null;
+    const responsavelTecnicoTexto = responsavel_tecnico == null
+      ? null
+      : String(responsavel_tecnico).trim();
+    if (responsavelTecnicoTexto && responsavelTecnicoTexto.length > 160) {
+      return res.status(400).json({ error: 'Responsavel tecnico deve ter no maximo 160 caracteres.' });
+    }
     if (responsavelTecnicoId) {
       const responsavel = await User.findOne({ where: { id: responsavelTecnicoId, ativo: true }, attributes: ['id'] });
       if (!responsavel) return res.status(400).json({ error: 'Responsavel tecnico nao encontrado ou inativo.' });
@@ -362,6 +370,7 @@ module.exports = {
     try {
       const obra = await sequelize.transaction(async (transaction) => {
         let dadosOrigem = null;
+        let usuariosAcesso = [];
         if (solicitacao_cadastro_origem_id) {
           dadosOrigem = await SolicitacaoCadastroObraDados.findOne({
             where: { solicitacao_id: Number(solicitacao_cadastro_origem_id) },
@@ -373,6 +382,24 @@ module.exports = {
           }
           if (dadosOrigem.obra_cadastrada_id) {
             throw Object.assign(new Error('Esta solicitacao ja gerou uma obra.'), { status: 409 });
+          }
+          const vinculosSolicitados = await SolicitacaoCadastroObraUsuario.findAll({
+            where: { solicitacao_id: Number(solicitacao_cadastro_origem_id) },
+            attributes: ['usuario_id'],
+            transaction
+          });
+          const idsAcesso = [...new Set(
+            vinculosSolicitados.map((item) => Number(item.usuario_id)).filter(Boolean)
+          )];
+          usuariosAcesso = idsAcesso.length > 0
+            ? await User.findAll({
+                where: { id: { [Op.in]: idsAcesso }, ativo: true },
+                attributes: ['id', 'perfil'],
+                transaction
+              })
+            : [];
+          if (usuariosAcesso.length !== idsAcesso.length) {
+            throw Object.assign(new Error('Revise os usuarios vinculados: um ou mais estao inativos.'), { status: 400 });
           }
           const faseEfetiva = faseObraNorm || dadosOrigem.fase_obra;
           if (faseEfetiva === 'OBRA_INICIADA') {
@@ -393,6 +420,7 @@ module.exports = {
         const classificacaoEfetiva = classificacaoNorm || dadosOrigem?.tipo_obra || null;
         const valorEfetivo = valorObraNumero ?? (dadosOrigem ? Number(dadosOrigem.valor_obra) : null);
         const responsavelEfetivo = responsavelTecnicoId || dadosOrigem?.responsavel_tecnico_id || null;
+        const responsavelTextoEfetivo = responsavelTecnicoTexto || dadosOrigem?.responsavel_tecnico || null;
         const criada = await Obra.create({
           codigo: String(codigo).toUpperCase(),
           cidade: cidade || null,
@@ -411,6 +439,7 @@ module.exports = {
           fase_obra: faseEfetiva,
           valor_obra: valorEfetivo,
           responsavel_tecnico_id: responsavelEfetivo,
+          responsavel_tecnico: responsavelTextoEfetivo,
           documentacao_pendente: faseEfetiva === 'PRE_OBRA',
           solicitacao_cadastro_origem_id: solicitacao_cadastro_origem_id
             ? Number(solicitacao_cadastro_origem_id)
@@ -420,6 +449,17 @@ module.exports = {
           margem_custo_esperada: margem_custo_esperada != null ? Number(margem_custo_esperada) : null,
           nivel_apropriacao_formulario: nivelApropriacao
         }, { transaction });
+
+        if (usuariosAcesso.length > 0) {
+          await UsuarioObra.bulkCreate(
+            usuariosAcesso.map((usuario) => ({
+              user_id: usuario.id,
+              obra_id: criada.id,
+              perfil: usuario.perfil || 'USUARIO'
+            })),
+            { transaction }
+          );
+        }
 
         await garantirApropriacoesPadraoNovaObra({
           obra: criada,
@@ -465,6 +505,7 @@ module.exports = {
       classificacao,
       fase_obra,
       valor_obra,
+      responsavel_tecnico,
       responsavel_tecnico_id,
       vgv,
       planilha_geral,
@@ -521,6 +562,12 @@ module.exports = {
       dados.documentacao_pendente = fase === 'PRE_OBRA';
     }
     if (valor_obra !== undefined) dados.valor_obra = valor_obra !== '' && valor_obra !== null ? Number(valor_obra) : null;
+    if (responsavel_tecnico !== undefined) {
+      dados.responsavel_tecnico = responsavel_tecnico == null ? null : String(responsavel_tecnico).trim();
+      if (dados.responsavel_tecnico && dados.responsavel_tecnico.length > 160) {
+        return res.status(400).json({ error: 'Responsavel tecnico deve ter no maximo 160 caracteres.' });
+      }
+    }
     if (responsavel_tecnico_id !== undefined) dados.responsavel_tecnico_id = responsavel_tecnico_id ? Number(responsavel_tecnico_id) : null;
     if (planilha_geral !== undefined) dados.planilha_geral = planilha_geral != null ? Number(planilha_geral) : null;
     if (margem_custo_esperada !== undefined) dados.margem_custo_esperada = margem_custo_esperada != null ? Number(margem_custo_esperada) : null;

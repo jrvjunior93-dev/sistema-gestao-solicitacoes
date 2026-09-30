@@ -1843,7 +1843,7 @@ function validateSolicitacaoCreateBody(body = {}) {
       }
       ensureAllowedKeys(
         dados,
-        ['tipo_obra', 'fase_obra', 'valor_obra', 'responsavel_tecnico_id', 'endereco'],
+        ['tipo_obra', 'fase_obra', 'valor_obra', 'responsavel_tecnico', 'responsavel_tecnico_id', 'endereco'],
         'Dados do cadastro da obra'
       );
       return {
@@ -1852,6 +1852,9 @@ function validateSolicitacaoCreateBody(body = {}) {
         valor_obra: dados.valor_obra === '' || dados.valor_obra == null
           ? undefined
           : parseDecimal(dados.valor_obra, 'Valor da obra', { min: 0 }),
+        responsavel_tecnico: parseOptionalText(dados.responsavel_tecnico, 'Responsavel tecnico', 160),
+        // Compatibilidade com clientes anteriores ao campo textual. O controller converte o
+        // usuario legado no nome correspondente sem voltar a misturar acesso com responsabilidade.
         responsavel_tecnico_id: parseInteger(dados.responsavel_tecnico_id, 'Responsavel tecnico'),
         endereco: parseOptionalText(dados.endereco, 'Endereco da obra', 2000)
       };

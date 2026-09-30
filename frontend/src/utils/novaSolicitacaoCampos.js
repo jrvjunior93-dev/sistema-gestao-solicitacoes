@@ -20,7 +20,7 @@ export const CAMPOS_NOVA_SOLICITACAO = [
   { id: 'contrato_responsavel', label: 'Responsável pela contratação', descricao: 'Usuário responsável pelo acompanhamento da contratação.', somenteFluxoContratoNovo: true },
   { id: 'contrato_vigencia_inicio', label: 'Vigência inicial do contrato', descricao: 'Data de início da vigência contratual.', somenteFluxoContratoNovo: true },
   { id: 'contrato_vigencia_fim', label: 'Vigência final do contrato', descricao: 'Data final da vigência contratual.', somenteFluxoContratoNovo: true },
-  { id: 'pessoas_vinculadas', label: 'Pessoas vinculadas', descricao: 'Usuários ativos que deverão ser vinculados à nova obra.', somenteFluxoCadastroObra: true },
+  { id: 'pessoas_vinculadas', label: 'Usuários com acesso à obra', descricao: 'Usuários ativos que receberão acesso quando a nova obra for cadastrada.', somenteFluxoCadastroObra: true },
   { id: 'descricao', label: 'Título', descricao: 'Título curto usado para identificar a solicitação.' },
   { id: 'justificativa', label: 'Justificativa', descricao: 'Motivo e necessidade da solicitação.', excetoFluxoContratoNovo: true },
   { id: 'anexos', label: 'Anexos', descricao: 'Arquivos anexados na abertura da solicitação.' }
@@ -249,8 +249,8 @@ export function resolverCamposNovaSolicitacaoFrontend(behavior, config, tipoId, 
   }
 
   if (behavior?.usa_fluxo_cadastro_obra === true) {
-    const camposVisiveis = new Set(['descricao', 'anexos']);
-    const camposObrigatorios = new Set(['descricao']);
+    const camposVisiveis = new Set(['descricao', 'pessoas_vinculadas', 'anexos']);
+    const camposObrigatorios = new Set(['descricao', 'pessoas_vinculadas']);
     Object.keys(campos).forEach((campoId) => {
       campos[campoId] = {
         ...campos[campoId],

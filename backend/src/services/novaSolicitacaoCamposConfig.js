@@ -187,8 +187,8 @@ const CAMPOS_NOVA_SOLICITACAO = [
   },
   {
     id: 'pessoas_vinculadas',
-    label: 'Pessoas vinculadas',
-    descricao: 'Usuarios ativos que deverao ser vinculados a nova obra.',
+    label: 'Usuarios com acesso a obra',
+    descricao: 'Usuarios ativos que receberao acesso quando a nova obra for cadastrada.',
     somenteFluxoCadastroObra: true,
     visivelPadrao: (behavior) => Boolean(behavior.usa_fluxo_cadastro_obra),
     obrigatorioPadrao: (behavior) => Boolean(behavior.usa_fluxo_cadastro_obra)
@@ -454,8 +454,8 @@ function resolverCamposNovaSolicitacao(comportamentoTipo, config, tipoId, contex
   }
 
   if (behavior.usa_fluxo_cadastro_obra === true) {
-    const camposVisiveis = new Set(['descricao', 'anexos']);
-    const camposObrigatorios = new Set(['descricao']);
+    const camposVisiveis = new Set(['descricao', 'pessoas_vinculadas', 'anexos']);
+    const camposObrigatorios = new Set(['descricao', 'pessoas_vinculadas']);
     Object.keys(campos).forEach((campoId) => {
       campos[campoId] = {
         ...campos[campoId],

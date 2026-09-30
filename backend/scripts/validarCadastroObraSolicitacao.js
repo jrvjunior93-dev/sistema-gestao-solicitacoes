@@ -42,8 +42,8 @@ function run() {
     .filter((campo) => campo.obrigatorio)
     .map((campo) => campo.id)
     .sort();
-  const esperados = ['anexos', 'descricao'].sort();
-  const obrigatoriosEsperados = ['descricao'];
+  const esperados = ['anexos', 'descricao', 'pessoas_vinculadas'].sort();
+  const obrigatoriosEsperados = ['descricao', 'pessoas_vinculadas'].sort();
 
   assert.deepStrictEqual(visiveis, esperados);
   assert.deepStrictEqual(obrigatorios, obrigatoriosEsperados);
@@ -51,12 +51,12 @@ function run() {
   const payload = validateSolicitacaoCreateBody({
     tipo_solicitacao_id: 999,
     descricao: 'Obra de teste',
-    cadastro_obra_usuario_ids: [3],
+    cadastro_obra_usuario_ids: [3, 4],
     cadastro_obra_dados: {
       tipo_obra: 'PRIVADA',
       fase_obra: 'PRE_OBRA',
       valor_obra: 250000,
-      responsavel_tecnico_id: 3,
+      responsavel_tecnico: 'Eng. Responsavel pela obra',
       endereco: 'Rua de teste, 100'
     },
     cadastro_obra_documentos_nomes: ['art.pdf']
@@ -64,6 +64,8 @@ function run() {
   assert.strictEqual(payload.obra_id, undefined);
   assert.strictEqual(payload.cadastro_obra_dados.fase_obra, 'PRE_OBRA');
   assert.strictEqual(payload.cadastro_obra_dados.valor_obra, 250000);
+  assert.strictEqual(payload.cadastro_obra_dados.responsavel_tecnico, 'Eng. Responsavel pela obra');
+  assert.deepStrictEqual(payload.cadastro_obra_usuario_ids, [3, 4]);
   assert.deepStrictEqual(payload.cadastro_obra_documentos_nomes, ['art.pdf']);
 
   assert.throws(
@@ -91,6 +93,18 @@ function run() {
   assert(!migrationSource.includes("references: { model: 'obras'"));
   assert(migrationSource.includes("name: 'fk_solicitacoes_obra_id_obras'"));
 
+  const migrationResponsavelSource = fs.readFileSync(
+    path.resolve(__dirname, '../migrations/202609300003_cadastro_obra_responsavel_e_acessos.js'),
+    'utf8'
+  );
+  assert.doesNotThrow(() => assertMigrationSourceIsSchemaOnly(
+    '202609300003_cadastro_obra_responsavel_e_acessos.js',
+    migrationResponsavelSource
+  ));
+  assert(!/\bINSERT\s+INTO\b/i.test(migrationResponsavelSource));
+  assert(!/\bUPDATE\s+[^\r\n]+\s+SET\b/i.test(migrationResponsavelSource));
+  assert(migrationResponsavelSource.includes("'responsavel_tecnico'"));
+
   const solicitacaoControllerSource = fs.readFileSync(
     path.resolve(__dirname, '../src/controllers/SolicitacaoController.js'),
     'utf8'
@@ -107,6 +121,8 @@ function run() {
   assert(obraControllerSource.includes('solicitacao_cadastro_origem_id'));
   assert(obraControllerSource.includes('Esta solicitacao ja gerou uma obra'));
   assert(obraControllerSource.includes("tipo: 'PLANILHA_ORCAMENTARIA'"));
+  assert(obraControllerSource.includes('SolicitacaoCadastroObraUsuario.findAll'));
+  assert(obraControllerSource.includes('UsuarioObra.bulkCreate'));
 
   const disponibilidadeSource = fs.readFileSync(
     path.resolve(__dirname, '../src/services/tipoSolicitacaoDisponibilidadeService.js'),

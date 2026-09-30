@@ -1878,12 +1878,21 @@ export default function SolicitacaoDetalhe() {
             <div><span className="block text-xs text-[var(--c-muted)]">Tipo</span><strong>{dadosCadastroObra.tipo_obra || '—'}</strong></div>
             <div><span className="block text-xs text-[var(--c-muted)]">Fase</span><strong>{dadosCadastroObra.fase_obra === 'OBRA_INICIADA' ? 'Obra iniciada' : 'Pré-Obra'}</strong></div>
             <div><span className="block text-xs text-[var(--c-muted)]">Valor da obra</span><strong>{formatarMoedaLocal(dadosCadastroObra.valor_obra)}</strong></div>
-            <div><span className="block text-xs text-[var(--c-muted)]">Responsável técnico</span><strong>{dadosCadastroObra.responsavelTecnico?.nome || '—'}</strong></div>
+            <div><span className="block text-xs text-[var(--c-muted)]">Responsável técnico</span><strong>{dadosCadastroObra.responsavel_tecnico || dadosCadastroObra.responsavelTecnico?.nome || '—'}</strong></div>
             <div className="sm:col-span-2 lg:col-span-3"><span className="block text-xs text-[var(--c-muted)]">Endereço</span><strong>{dadosCadastroObra.endereco || '—'}</strong></div>
             <div>
               <span className="block text-xs text-[var(--c-muted)]">Documentação</span>
               <strong className={dadosCadastroObra.documentacao_pendente ? 'text-[var(--sem-warning)]' : 'text-[var(--sem-success)]'}>
                 {dadosCadastroObra.documentacao_pendente ? 'Pendente' : 'Regular'}
+              </strong>
+            </div>
+            <div className="sm:col-span-2 lg:col-span-4">
+              <span className="block text-xs text-[var(--c-muted)]">Usuários com acesso à obra</span>
+              <strong>
+                {(solicitacao.pessoasCadastroObra || [])
+                  .map((item) => item?.usuario?.nome)
+                  .filter(Boolean)
+                  .join(', ') || '—'}
               </strong>
             </div>
           </div>
@@ -1897,7 +1906,9 @@ export default function SolicitacaoDetalhe() {
         dadosIniciais={{
           ...(dadosCadastroObra || {}),
           nome: solicitacao.descricao || '',
-          responsavel_tecnico_id: dadosCadastroObra?.responsavel_tecnico_id || ''
+          responsavel_tecnico: dadosCadastroObra?.responsavel_tecnico
+            || dadosCadastroObra?.responsavelTecnico?.nome
+            || ''
         }}
         onCriada={() => carregar({ silent: true })}
       />

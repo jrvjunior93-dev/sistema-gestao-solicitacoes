@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import OverlayModal from '../ui/OverlayModal';
 import { criarObra } from '../../services/obras';
 import { getEmpresasGrupo } from '../../services/empresasGrupo';
-import { getUsuariosAtivosCadastroObra } from '../../services/solicitacoes';
 import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from '../../utils/formatters';
 
 const VAZIO = {
@@ -11,7 +10,7 @@ const VAZIO = {
   classificacao: '',
   fase_obra: 'PRE_OBRA',
   valor_obra: '',
-  responsavel_tecnico_id: '',
+  responsavel_tecnico: '',
   endereco_logradouro: '',
   cidade: '',
   endereco_uf: '',
@@ -24,7 +23,6 @@ const VAZIO = {
 export default function ObraCadastroModal({ aberto, onFechar, dadosIniciais, solicitacaoId, onCriada }) {
   const [form, setForm] = useState(VAZIO);
   const [empresas, setEmpresas] = useState([]);
-  const [usuarios, setUsuarios] = useState([]);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState('');
 
@@ -34,17 +32,18 @@ export default function ObraCadastroModal({ aberto, onFechar, dadosIniciais, sol
       ...VAZIO,
       ...(dadosIniciais || {}),
       classificacao: dadosIniciais?.tipo_obra || dadosIniciais?.classificacao || '',
-      responsavel_tecnico_id: String(dadosIniciais?.responsavel_tecnico_id || ''),
+      responsavel_tecnico: dadosIniciais?.responsavel_tecnico
+        || dadosIniciais?.responsavelTecnico?.nome
+        || '',
       valor_obra: dadosIniciais?.valor_obra != null ? formatCurrencyInput(dadosIniciais.valor_obra) : '',
       endereco_logradouro: dadosIniciais?.endereco || dadosIniciais?.endereco_logradouro || ''
     });
     setErro('');
-    Promise.all([getEmpresasGrupo(), getUsuariosAtivosCadastroObra()])
-      .then(([listaEmpresas, listaUsuarios]) => {
+    getEmpresasGrupo()
+      .then((listaEmpresas) => {
         setEmpresas((Array.isArray(listaEmpresas) ? listaEmpresas : []).filter((item) => (
           String(item.tipo_empresa || 'OPERACIONAL').toUpperCase() !== 'HOLDING' && item.ativo !== false
         )));
-        setUsuarios(Array.isArray(listaUsuarios) ? listaUsuarios : []);
       })
       .catch((error) => setErro(error?.message || 'Nao foi possivel carregar os dados do cadastro.'));
   }, [aberto, dadosIniciais]);
@@ -57,7 +56,7 @@ export default function ObraCadastroModal({ aberto, onFechar, dadosIniciais, sol
   async function salvar(event) {
     event.preventDefault();
     if (!form.codigo.trim() || !form.nome.trim() || !form.classificacao || !form.fase_obra
-      || parseCurrencyInput(form.valor_obra) <= 0 || !form.responsavel_tecnico_id || !form.endereco_logradouro.trim()
+      || parseCurrencyInput(form.valor_obra) <= 0 || !form.responsavel_tecnico.trim() || !form.endereco_logradouro.trim()
       || !form.nivel_apropriacao_formulario) {
       setErro('Preencha os campos obrigatorios antes de cadastrar a obra.');
       return;
@@ -68,7 +67,7 @@ export default function ObraCadastroModal({ aberto, onFechar, dadosIniciais, sol
         ...form,
         tipo_centro_custo: 'OBRA',
         valor_obra: parseCurrencyInput(form.valor_obra),
-        responsavel_tecnico_id: Number(form.responsavel_tecnico_id),
+        responsavel_tecnico: form.responsavel_tecnico.trim(),
         empresa_grupo_id: form.empresa_grupo_id ? Number(form.empresa_grupo_id) : null,
         margem_custo_esperada: form.margem_custo_esperada !== '' ? Number(form.margem_custo_esperada) : null,
         solicitacao_cadastro_origem_id: solicitacaoId ? Number(solicitacaoId) : null
@@ -121,10 +120,12 @@ export default function ObraCadastroModal({ aberto, onFechar, dadosIniciais, sol
           />
         </label>
         <label className="grid gap-1 text-sm font-medium">Responsável técnico *
-          <select className="input" value={form.responsavel_tecnico_id} onChange={(e) => alterar('responsavel_tecnico_id', e.target.value)}>
-            <option value="">Selecione</option>
-            {usuarios.map((item) => <option key={item.id} value={item.id}>{item.nome}</option>)}
-          </select>
+          <input
+            className="input"
+            maxLength={160}
+            value={form.responsavel_tecnico}
+            onChange={(e) => alterar('responsavel_tecnico', e.target.value.slice(0, 160))}
+          />
         </label>
         <label className="grid gap-1 text-sm font-medium md:col-span-2">Endereço da obra *
           <textarea className="input" rows={2} value={form.endereco_logradouro} onChange={(e) => alterar('endereco_logradouro', e.target.value)} />

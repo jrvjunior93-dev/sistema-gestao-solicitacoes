@@ -3258,8 +3258,14 @@ module.exports = {
         const tipoObra = String(cadastroObraDados?.tipo_obra || '').trim().toUpperCase();
         const faseObra = String(cadastroObraDados?.fase_obra || '').trim().toUpperCase();
         const valorObra = Number(cadastroObraDados?.valor_obra);
-        const responsavelTecnicoId = Number(cadastroObraDados?.responsavel_tecnico_id);
+        const responsavelTecnicoIdLegado = Number(cadastroObraDados?.responsavel_tecnico_id);
+        let responsavelTecnico = String(cadastroObraDados?.responsavel_tecnico || '').trim();
         const endereco = String(cadastroObraDados?.endereco || '').trim();
+        const usuarioIds = [...new Set(
+          (Array.isArray(cadastroObraUsuarioIds) ? cadastroObraUsuarioIds : [])
+            .map(Number)
+            .filter((id) => Number.isInteger(id) && id > 0)
+        )];
         if (!['PUBLICA', 'PRIVADA', 'PROPRIA'].includes(tipoObra)) {
           return res.status(400).json({ error: 'Selecione o tipo da obra: Publica, Privada ou Propria.' });
         }
@@ -3269,27 +3275,43 @@ module.exports = {
         if (!Number.isFinite(valorObra) || valorObra <= 0) {
           return res.status(400).json({ error: 'Informe um valor valido para a obra.' });
         }
-        if (!Number.isInteger(responsavelTecnicoId) || responsavelTecnicoId <= 0 || !endereco) {
-          return res.status(400).json({ error: 'Informe o responsavel tecnico e o endereco da obra.' });
+        if (!endereco) {
+          return res.status(400).json({ error: 'Informe o endereco da obra.' });
         }
-        const responsavel = await User.findOne({
-          where: { id: responsavelTecnicoId, ativo: true },
-          attributes: ['id', 'nome']
+        if (!responsavelTecnico && Number.isInteger(responsavelTecnicoIdLegado) && responsavelTecnicoIdLegado > 0) {
+          const responsavelLegado = await User.findOne({
+            where: { id: responsavelTecnicoIdLegado, ativo: true },
+            attributes: ['id', 'nome']
+          });
+          responsavelTecnico = String(responsavelLegado?.nome || '').trim();
+        }
+        if (!responsavelTecnico) {
+          return res.status(400).json({ error: 'Informe o responsavel tecnico da obra.' });
+        }
+        if (usuarioIds.length === 0) {
+          return res.status(400).json({ error: 'Selecione ao menos um usuario com acesso a obra.' });
+        }
+        pessoasCadastroObra = await User.findAll({
+          where: { id: { [Op.in]: usuarioIds }, ativo: true },
+          attributes: ['id', 'nome', 'perfil'],
+          order: [['nome', 'ASC'], ['id', 'ASC']]
         });
-        if (!responsavel) {
-          return res.status(400).json({ error: 'O responsavel tecnico informado nao existe ou esta inativo.' });
+        if (pessoasCadastroObra.length !== usuarioIds.length) {
+          return res.status(400).json({ error: 'Um ou mais usuarios selecionados nao existem ou estao inativos.' });
         }
         const temPlanilha = (Array.isArray(anexosPendentesNomes) ? anexosPendentesNomes : [])
           .some((nome) => String(nome || '').trim());
         if (faseObra === 'OBRA_INICIADA' && !temPlanilha) {
           return res.status(400).json({ error: 'Anexe a planilha orcamentaria para uma obra iniciada.' });
         }
-        pessoasCadastroObra = [responsavel];
         dadosCadastroObraValidados = {
           tipo_obra: tipoObra,
           fase_obra: faseObra,
           valor_obra: valorObra,
-          responsavel_tecnico_id: responsavelTecnicoId,
+          responsavel_tecnico: responsavelTecnico.slice(0, 160),
+          responsavel_tecnico_id: Number.isInteger(responsavelTecnicoIdLegado) && responsavelTecnicoIdLegado > 0
+            ? responsavelTecnicoIdLegado
+            : null,
           endereco,
           documentacao_pendente: faseObra === 'PRE_OBRA'
         };

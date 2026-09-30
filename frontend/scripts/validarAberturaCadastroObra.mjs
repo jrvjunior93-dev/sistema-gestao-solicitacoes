@@ -9,6 +9,10 @@ const modal = readFileSync(
   fileURLToPath(new URL('../src/components/obras/ObraCadastroModal.jsx', import.meta.url)),
   'utf8'
 );
+const campos = readFileSync(
+  fileURLToPath(new URL('../src/utils/novaSolicitacaoCampos.js', import.meta.url)),
+  'utf8'
+);
 
 assert.match(
   fonte,
@@ -49,6 +53,26 @@ assert.match(
   fonte,
   /const exibirValor = !usaFluxoCadastroObra\s*&& \(!obraSelecionadaEhObra \|\| !tipoSemValor\)/,
   'O valor contratual da obra nao pode reativar nem exigir o campo financeiro generico.'
+);
+assert.match(
+  fonte,
+  /cadastro_obra_usuario_ids: usaFluxoCadastroObra \? cadastroObraUsuarioIds : undefined/,
+  'O payload deve enviar separadamente todos os usuarios selecionados para acesso a obra.'
+);
+assert.match(
+  fonte,
+  /label="Responsável Técnico"[\s\S]*?type="text"[\s\S]*?maxLength=\{160\}/,
+  'O responsavel tecnico deve ser um texto curto, sem depender do cadastro de usuarios.'
+);
+assert.match(
+  fonte,
+  /Usuários com acesso à obra[\s\S]*?usuariosCadastroObraFiltrados\.map/,
+  'O formulario deve listar os usuarios ativos para selecao multipla de acesso.'
+);
+assert.match(
+  campos,
+  /camposVisiveis = new Set\(\['descricao', 'pessoas_vinculadas', 'anexos'\]\)/,
+  'Pessoas vinculadas deve permanecer visivel no modo independente de cadastro de obra.'
 );
 assert.equal(normalizeCurrencyTyping('123456'), 'R$ 1.234,56');
 assert.equal(parseCurrencyInput('R$ 1.234,56'), 1234.56);

@@ -254,11 +254,13 @@ export default function NovaSolicitacao() {
   const [usuariosCadastroObra, setUsuariosCadastroObra] = useState([]);
   const [usuariosCadastroObraStatus, setUsuariosCadastroObraStatus] = useState('idle');
   const [usuariosCadastroObraErro, setUsuariosCadastroObraErro] = useState('');
+  const [cadastroObraUsuarioIds, setCadastroObraUsuarioIds] = useState([]);
+  const [buscaUsuarioCadastroObra, setBuscaUsuarioCadastroObra] = useState('');
   const [cadastroObraDados, setCadastroObraDados] = useState({
     tipo_obra: '',
     fase_obra: 'PRE_OBRA',
     valor_obra: '',
-    responsavel_tecnico_id: '',
+    responsavel_tecnico: '',
     endereco: ''
   });
   const [documentosCadastroObra, setDocumentosCadastroObra] = useState([]);
@@ -991,6 +993,8 @@ export default function NovaSolicitacao() {
   const usaFluxoDespesaEventual = tipoConfiguradoComoDespesaEventual;
   const usaFluxoRecargaCartao = tipoConfiguradoComoRecargaCartao;
   const usaFluxoCadastroObra = Boolean(comportamentoTipo.usa_fluxo_cadastro_obra);
+  const exibirPessoasCadastroObra = usaFluxoCadastroObra && campoVisivel('pessoas_vinculadas');
+  const pessoasCadastroObraObrigatorias = exibirPessoasCadastroObra && campoObrigatorio('pessoas_vinculadas');
   const usaApropriacaoAutomaticaObra = Boolean(comportamentoTipo.usa_apropriacao_automatica_obra);
   const rotuloDataSolicitacao = obterRotuloDataSolicitacao(comportamentoTipo, {
     recargaCartao: usaFluxoRecargaCartao
@@ -1023,6 +1027,22 @@ export default function NovaSolicitacao() {
       });
     return () => { cancelado = true; };
   }, [usaFluxoCadastroObra]);
+
+  const usuariosCadastroObraFiltrados = useMemo(() => {
+    const termo = normalizarBusca(buscaUsuarioCadastroObra);
+    if (!termo) return usuariosCadastroObra;
+    return usuariosCadastroObra.filter((usuario) => normalizarBusca(usuario?.nome).includes(termo));
+  }, [buscaUsuarioCadastroObra, usuariosCadastroObra]);
+
+  function alternarUsuarioCadastroObra(usuarioId) {
+    const id = Number(usuarioId);
+    limparErroCampo('cadastro_obra_usuarios');
+    setCadastroObraUsuarioIds((atuais) => (
+      atuais.includes(id)
+        ? atuais.filter((item) => item !== id)
+        : [...atuais, id]
+    ));
+  }
 
   useEffect(() => {
     if (!usaApropriacaoAutomaticaObra || !form.obra_id || !form.tipo_solicitacao_id) {
@@ -1680,9 +1700,11 @@ export default function NovaSolicitacao() {
       tipo_obra: '',
       fase_obra: 'PRE_OBRA',
       valor_obra: '',
-      responsavel_tecnico_id: '',
+      responsavel_tecnico: '',
       endereco: ''
     });
+    setCadastroObraUsuarioIds([]);
+    setBuscaUsuarioCadastroObra('');
     setArquivos([]);
     setDocumentosCadastroObra([]);
     setErrosCampo({});
@@ -2008,8 +2030,12 @@ export default function NovaSolicitacao() {
         reprovarCampo('cadastro_obra_valor', 'Informe o valor da obra.');
         return;
       }
-      if (!cadastroObraDados.responsavel_tecnico_id) {
-        reprovarCampo('cadastro_obra_responsavel', 'Selecione o responsável técnico.');
+      if (!String(cadastroObraDados.responsavel_tecnico || '').trim()) {
+        reprovarCampo('cadastro_obra_responsavel', 'Informe o responsável técnico.');
+        return;
+      }
+      if (pessoasCadastroObraObrigatorias && cadastroObraUsuarioIds.length === 0) {
+        reprovarCampo('cadastro_obra_usuarios', 'Selecione ao menos um usuário com acesso à obra.');
         return;
       }
       if (!String(cadastroObraDados.endereco || '').trim()) {
@@ -2360,12 +2386,10 @@ export default function NovaSolicitacao() {
       boleto_anexo_nome: pagamentoViaBoleto ? (boletoArquivos[0]?.nome || null) : null,
       despesa_eventual_declaracoes: usaFluxoDespesaEventual ? despesaEventualDeclaracoes : undefined,
       cartao_recarga_id: usaFluxoRecargaCartao ? Number(cartaoRecargaId) : undefined,
-      cadastro_obra_usuario_ids: usaFluxoCadastroObra && cadastroObraDados.responsavel_tecnico_id
-        ? [Number(cadastroObraDados.responsavel_tecnico_id)]
-        : undefined,
+      cadastro_obra_usuario_ids: usaFluxoCadastroObra ? cadastroObraUsuarioIds : undefined,
       cadastro_obra_dados: usaFluxoCadastroObra ? {
         ...cadastroObraDados,
-        responsavel_tecnico_id: Number(cadastroObraDados.responsavel_tecnico_id),
+        responsavel_tecnico: String(cadastroObraDados.responsavel_tecnico || '').trim(),
         valor_obra: parseCurrencyInput(cadastroObraDados.valor_obra)
       } : undefined,
       cadastro_obra_documentos_nomes: usaFluxoCadastroObra
@@ -3918,24 +3942,68 @@ export default function NovaSolicitacao() {
                   <CampoForm
                     label="Responsável Técnico"
                     obrigatorio
-                    erro={errosCampo.cadastro_obra_responsavel || usuariosCadastroObraErro || undefined}
-                    hint="A lista exibe somente usuários ativos."
+                    erro={errosCampo.cadastro_obra_responsavel}
+                    hint="Informe o nome do responsável técnico pela obra."
                   >
-                    <select
+                    <input
                       className="input input-sm"
-                      value={cadastroObraDados.responsavel_tecnico_id}
+                      type="text"
+                      maxLength={160}
+                      value={cadastroObraDados.responsavel_tecnico}
                       onChange={(event) => {
                         limparErroCampo('cadastro_obra_responsavel');
-                        setCadastroObraDados((atual) => ({ ...atual, responsavel_tecnico_id: event.target.value }));
+                        setCadastroObraDados((atual) => ({
+                          ...atual,
+                          responsavel_tecnico: event.target.value.slice(0, 160)
+                        }));
                       }}
-                      disabled={usuariosCadastroObraStatus === 'loading'}
-                    >
-                      <option value="">{usuariosCadastroObraStatus === 'loading' ? 'Carregando...' : 'Selecione'}</option>
-                      {usuariosCadastroObra.map((usuario) => (
-                        <option key={usuario.id} value={usuario.id}>{usuario.nome}</option>
-                      ))}
-                    </select>
+                      placeholder="Nome do responsável técnico"
+                    />
                   </CampoForm>
+
+                  {exibirPessoasCadastroObra && (
+                    <div className="form-group form-campo--span2">
+                      <span className={`form-label${pessoasCadastroObraObrigatorias ? ' form-label--required' : ''}`}>
+                        Usuários com acesso à obra
+                      </span>
+                      <input
+                        className="input input-sm w-full"
+                        type="search"
+                        value={buscaUsuarioCadastroObra}
+                        onChange={(event) => setBuscaUsuarioCadastroObra(event.target.value)}
+                        placeholder={usuariosCadastroObraStatus === 'loading' ? 'Carregando usuários...' : 'Filtrar usuários ativos'}
+                        disabled={usuariosCadastroObraStatus === 'loading'}
+                      />
+                      <div className="grid max-h-48 gap-x-4 gap-y-1 overflow-y-auto rounded border border-[var(--c-border)] p-2 md:grid-cols-2">
+                        {usuariosCadastroObraFiltrados.map((usuario) => {
+                          const inputId = `cadastro-obra-usuario-${usuario.id}`;
+                          return (
+                            <label key={usuario.id} htmlFor={inputId} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-[var(--ui-surface-soft)]">
+                              <input
+                                id={inputId}
+                                type="checkbox"
+                                checked={cadastroObraUsuarioIds.includes(Number(usuario.id))}
+                                onChange={() => alternarUsuarioCadastroObra(usuario.id)}
+                              />
+                              <span>{usuario.nome}</span>
+                            </label>
+                          );
+                        })}
+                        {usuariosCadastroObraStatus === 'success' && usuariosCadastroObraFiltrados.length === 0 ? (
+                          <span className="px-2 py-1.5 text-sm text-[var(--c-muted)] md:col-span-2">
+                            Nenhum usuário ativo encontrado.
+                          </span>
+                        ) : null}
+                      </div>
+                      {usuariosCadastroObraErro || errosCampo.cadastro_obra_usuarios ? (
+                        <span className="form-error">{usuariosCadastroObraErro || errosCampo.cadastro_obra_usuarios}</span>
+                      ) : (
+                        <span className="form-hint">
+                          {cadastroObraUsuarioIds.length} usuário(s) selecionado(s). Eles serão vinculados quando a obra for cadastrada.
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   <CampoForm
                     label="Endereço da Obra"

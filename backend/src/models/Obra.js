@@ -47,6 +47,11 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: null
     },
+    responsavel_tecnico: {
+      type: DataTypes.STRING(160),
+      allowNull: true,
+      defaultValue: null
+    },
     documentacao_pendente: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
