@@ -2709,14 +2709,14 @@ router.put('/contratos/medicoes/:id', criticalRateLimit, validateRequest({ param
 // sob o prefixo `fluxo-novo` — o prefixo seria uma mentira sobre o alcance. As tres rotas antigas
 // seguem logo abaixo apenas por compatibilidade, apontando para os mesmos handlers.
 router.get('/contratos/:id/aditivos/teto', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoFluxoNovoController.tetoAditivo);
-router.post('/contratos/:id/aditivos', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), criticalRateLimit, requireContratoAccess, ContratoFluxoNovoController.criarAditivo);
+router.post('/contratos/:id/aditivos', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), criticalRateLimit, requireContratoAccess, uploadRateLimit, uploadNegociacaoContrato.single('negociacao'), ContratoFluxoNovoController.criarAditivo);
 router.post('/contratos/aditivos/:aditivoId/decisao', validateRequest({ params: validateNumericIdParam('aditivoId', 'Aditivo') }), criticalRateLimit, ContratoFluxoNovoController.decidirAditivo);
 // Listar e cancelar (item 26, 23/08). A listagem nao existia — o aditivo era pedido e sumia da tela.
 router.get('/contratos/:id/aditivos', validateRequest({ params: validateNumericIdParam('id', 'Contrato') }), requireContratoAccess, ContratoFluxoNovoController.listarAditivos);
 router.post('/contratos/aditivos/:aditivoId/cancelar', validateRequest({ params: validateNumericIdParam('aditivoId', 'Aditivo') }), criticalRateLimit, ContratoFluxoNovoController.cancelarAditivo);
 
 router.get('/contratos/fluxo-novo/:id/aditivos/teto', requireContratoAccess, ContratoFluxoNovoController.tetoAditivo);
-router.post('/contratos/fluxo-novo/:id/aditivos', criticalRateLimit, requireContratoAccess, ContratoFluxoNovoController.criarAditivo);
+router.post('/contratos/fluxo-novo/:id/aditivos', criticalRateLimit, requireContratoAccess, uploadRateLimit, uploadNegociacaoContrato.single('negociacao'), ContratoFluxoNovoController.criarAditivo);
 router.post('/contratos/fluxo-novo/aditivos/:aditivoId/decisao', criticalRateLimit, ContratoFluxoNovoController.decidirAditivo);
 router.get('/contratos/fluxo-novo/:id/aditivos', requireContratoAccess, ContratoFluxoNovoController.listarAditivos);
 router.post('/contratos/fluxo-novo/aditivos/:aditivoId/cancelar', criticalRateLimit, ContratoFluxoNovoController.cancelarAditivo);

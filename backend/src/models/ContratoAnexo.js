@@ -9,6 +9,12 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       allowNull: false
     },
+    // Termo aditivo dono do documento, quando o anexo for uma negociacao detalhada de aditivo.
+    // Continua nulo nos anexos gerais e nos documentos do contrato criados antes desta regra.
+    aditivo_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
     nome_original: {
       type: DataTypes.STRING,
       allowNull: false

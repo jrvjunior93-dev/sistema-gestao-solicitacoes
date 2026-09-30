@@ -686,6 +686,16 @@ db.ContratoAditivo.belongsTo(db.Contrato, {
   as: 'contrato'
 });
 
+db.ContratoAditivo.hasOne(db.ContratoAnexo, {
+  foreignKey: 'aditivo_id',
+  as: 'negociacaoDetalhada'
+});
+
+db.ContratoAnexo.belongsTo(db.ContratoAditivo, {
+  foreignKey: 'aditivo_id',
+  as: 'aditivo'
+});
+
 db.ContratoParcela.hasMany(db.MedicaoParcela, {
   foreignKey: 'contrato_parcela_id',
   as: 'medicoes'

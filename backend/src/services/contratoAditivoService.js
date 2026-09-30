@@ -1,6 +1,6 @@
 'use strict';
 
-const { sequelize, Contrato, ContratoAditivo, ContratoParcela, ConfiguracaoSistema, Historico, Solicitacao } = require('../models');
+const { sequelize, Contrato, ContratoAditivo, ContratoAnexo, ContratoParcela, ConfiguracaoSistema, Historico, Solicitacao } = require('../models');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const gerarCodigoSolicitacao = require('./solicitacao/gerarCodigo');
 const { paraCentavos, somenteData, formatarISO } = require('./contratoParcelasService');
@@ -8,6 +8,8 @@ const { obterLimiteJuridico } = require('./contratoLimiteConfigService');
 const { validarResponsavelVinculadoObra } = require('./contratoResponsavelService');
 const { validarNovaVigencia } = require('./contratoAditivoVigencia');
 const { validarCronogramaParcelas } = require('./contratoAditivoCronograma');
+const { uploadToS3 } = require('./s3');
+const { normalizeOriginalName } = require('../utils/fileName');
 const {
   calcularRoteamentoSolicitacaoAditivo,
   SETOR_GERENCIA_PROCESSOS,
@@ -70,6 +72,7 @@ const TIPOS_SEM_VALOR = new Set([TIPO.PRAZO]);
 // Teto de parcelas do contrato, o mesmo da criacao (17/08). Conferido na SOLICITACAO, e nao so na
 // aprovacao: quem pede precisa saber na hora, nao depois de a Gerencia analisar.
 const MAXIMO_PARCELAS = 24;
+const TIPO_ANEXO_NEGOCIACAO_ADITIVO = 'NEGOCIACAO_DETALHADA_ADITIVO';
 
 /**
  * Divide o valor do aditivo entre N parcelas em centavos inteiros, com o resto na ULTIMA.
@@ -235,7 +238,10 @@ async function obterTipoSolicitacaoAditivoLegado(transaction) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-async function solicitarAditivo(dados, { usuarioId } = {}) {
+async function solicitarAditivo(
+  dados,
+  { usuarioId, negociacaoArquivo, uploadArquivo = uploadToS3 } = {}
+) {
   const {
     contrato_id: contratoId,
     valor,
@@ -251,6 +257,10 @@ async function solicitarAditivo(dados, { usuarioId } = {}) {
     // setor para ela cair. No fluxo novo a solicitacao ja existe e a area vem dela.
     area_responsavel: areaResponsavel
   } = dados || {};
+
+  if (!negociacaoArquivo) {
+    throw erro('Anexe a Negociacao Detalhada do termo aditivo em .docx ou .pdf.');
+  }
 
   if (!String(justificativa || '').trim()) {
     throw erro('Justificativa do aditivo e obrigatoria.');
@@ -420,6 +430,14 @@ async function solicitarAditivo(dados, { usuarioId } = {}) {
       }
     }
 
+    // O upload acontece somente depois de todas as validacoes de negocio. Assim, arquivo invalido
+    // nao cria aditivo e regra invalida nao envia documento desnecessariamente ao armazenamento.
+    const negociacaoCaminho = await uploadArquivo(
+      negociacaoArquivo,
+      `contratos/${String(contrato.codigo || contrato.id)}/aditivos/negociacao`
+    );
+    const negociacaoNomeOriginal = normalizeOriginalName(negociacaoArquivo.originalname);
+
     const aditivo = await ContratoAditivo.create({
       contrato_id: contratoId,
       solicitacao_id: solicitacaoId || solicitacaoDoAditivo || null,
@@ -435,6 +453,15 @@ async function solicitarAditivo(dados, { usuarioId } = {}) {
       responsavel_id: responsavelAditivoId,
       status: STATUS.PENDENTE,
       criado_por: usuarioId || null
+    }, { transaction });
+
+    const negociacao = await ContratoAnexo.create({
+      contrato_id: contratoId,
+      aditivo_id: aditivo.id,
+      nome_original: negociacaoNomeOriginal,
+      caminho_arquivo: negociacaoCaminho,
+      uploaded_by: usuarioId,
+      tipo: TIPO_ANEXO_NEGOCIACAO_ADITIVO
     }, { transaction });
 
     // Entra na linha do tempo da solicitacao — a existente, no fluxo novo; a recem-criada, no
@@ -487,7 +514,8 @@ async function solicitarAditivo(dados, { usuarioId } = {}) {
           valor_original_contrato: valorOriginalCent / 100,
           encaminhado_direto_ao_juridico: encaminharDiretoAoJuridico,
           area_anterior: areaAnterior,
-          area_nova: areaAtual
+          area_nova: areaAtual,
+          negociacao_anexo_id: negociacao.id
         })
       }, { transaction });
 
@@ -515,7 +543,16 @@ async function solicitarAditivo(dados, { usuarioId } = {}) {
     }
 
     return {
-      aditivo: { id: aditivo.id, valor: valorCent / 100, status: STATUS.PENDENTE },
+      aditivo: {
+        id: aditivo.id,
+        valor: valorCent / 100,
+        status: STATUS.PENDENTE,
+        negociacao_detalhada: {
+          id: negociacao.id,
+          nome_original: negociacao.nome_original,
+          caminho_arquivo: negociacao.caminho_arquivo
+        }
+      },
       solicitacao_id: solicitacaoDoAditivo,
       criou_solicitacao: criouSolicitacao,
       setor_destino: setorDestino,
@@ -1122,6 +1159,12 @@ async function cancelarAditivo(aditivoId, { usuario, motivo } = {}) {
 async function listarAditivosDoContrato(contratoId) {
   const aditivos = await ContratoAditivo.findAll({
     where: { contrato_id: Number(contratoId) },
+    include: [{
+      model: ContratoAnexo,
+      as: 'negociacaoDetalhada',
+      attributes: ['id', 'nome_original', 'caminho_arquivo'],
+      required: false
+    }],
     order: [['id', 'DESC']]
   });
 
@@ -1138,7 +1181,12 @@ async function listarAditivosDoContrato(contratoId) {
     criado_por: a.criado_por,
     aprovado_por: a.aprovado_por,
     aprovado_em: a.aprovado_em,
-    createdAt: a.createdAt
+    createdAt: a.createdAt,
+    negociacao_detalhada: a.negociacaoDetalhada ? {
+      id: a.negociacaoDetalhada.id,
+      nome_original: a.negociacaoDetalhada.nome_original,
+      caminho_arquivo: a.negociacaoDetalhada.caminho_arquivo
+    } : null
   }));
 }
 

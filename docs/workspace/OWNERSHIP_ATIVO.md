@@ -1,5 +1,16 @@
 # Ownership Ativo
 
+Ownership temporario da sessao `/root` iniciado em 2026-09-30 para tornar a
+Negociacao Detalhada obrigatoria na solicitacao de termo aditivo, com arquivo
+proprio por aditivo e acesso na decisao. Escopo: modal e service frontend de
+contratos, lista de aditivos, rotas/controller/service/models de contratos no
+backend, migration estrutural, validacoes, handoff e este registro. Preservar
+`outputs/` e alteracoes paralelas; sem banco ou deploy nesta etapa. Commit e push
+da implementacao foram autorizados pelo usuario em 2026-09-30.
+
+Implementacao local concluida e validada; ownership de edicao liberado. Handoff:
+`docs/handoffs/2026-09-30-termo-aditivo-negociacao-detalhada.md`.
+
 Ownership temporario da sessao `/root` iniciado em 2026-09-29 para diferenciar
 visualmente as linhas de entradas e saidas no grafico de fluxo de caixa. Escopo:
 `frontend/src/pages/FinanceiroRelatorios.jsx`, `frontend/src/index.css`, handoff e

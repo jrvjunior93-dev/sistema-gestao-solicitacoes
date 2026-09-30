@@ -4,6 +4,7 @@ import {
   decidirAditivoContrato,
   cancelarAditivoContrato
 } from '../../services/contratos';
+import { getLinkSeguroAnexoSolicitacao } from '../../services/solicitacoes';
 import StatusBadge from '../../components/StatusBadge';
 import { BlocoConteudo, TabelaPadrao, CelulaDupla, useConfirmacao } from '../../components/padrao';
 
@@ -50,6 +51,7 @@ export default function AditivosDoContrato({ contrato, onMudou }) {
   const [aditivos, setAditivos] = useState([]);
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(null);
+  const [abrindoAnexoId, setAbrindoAnexoId] = useState(null);
   const { confirmar, elementoConfirmacao } = useConfirmacao();
 
   const contratoId = contrato?.id || null;
@@ -71,6 +73,25 @@ export default function AditivosDoContrato({ contrato, onMudou }) {
   // Card inteiro oculto quando nao ha aditivo: um card vazio em toda solicitacao de contrato seria
   // ruido — a maioria dos contratos nunca tem aditivo.
   if (!contratoId || aditivos.length === 0) return null;
+
+  async function abrirNegociacao(aditivo) {
+    const anexo = aditivo?.negociacao_detalhada;
+    if (!anexo?.caminho_arquivo || abrindoAnexoId) return;
+    const janela = typeof window !== 'undefined' ? window.open('', '_blank') : null;
+    setErro('');
+    setAbrindoAnexoId(anexo.id);
+    try {
+      const url = await getLinkSeguroAnexoSolicitacao(anexo.caminho_arquivo);
+      if (!janela) throw new Error('O navegador bloqueou a abertura do arquivo. Libere pop-ups e tente novamente.');
+      janela.opener = null;
+      janela.location.href = url;
+    } catch (e) {
+      janela?.close();
+      setErro(e.message || 'Nao foi possivel abrir a Negociacao Detalhada.');
+    } finally {
+      setAbrindoAnexoId(null);
+    }
+  }
 
   async function agir(aditivo, acao) {
     // R26: o alvo e fixado AQUI, antes de qualquer `await`. A partir daqui a
@@ -162,6 +183,22 @@ export default function AditivosDoContrato({ contrato, onMudou }) {
                   sub={a.motivo_rejeicao ? `Motivo: ${a.motivo_rejeicao}` : null}
                 />
               )
+            },
+            {
+              id: 'negociacao',
+              titulo: 'Negociação detalhada',
+              tipo: 'texto',
+              render: (a) => (a.negociacao_detalhada ? (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={abrindoAnexoId !== null}
+                  onClick={() => abrirNegociacao(a)}
+                  title={a.negociacao_detalhada.nome_original}
+                >
+                  {abrindoAnexoId === a.negociacao_detalhada.id ? 'Abrindo...' : 'Abrir documento'}
+                </button>
+              ) : '—')
             },
             {
               id: 'status',

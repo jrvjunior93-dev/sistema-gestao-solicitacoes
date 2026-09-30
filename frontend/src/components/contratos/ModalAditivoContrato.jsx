@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { getOpcoesFormularioContrato, getTetoAditivo, solicitarAditivoContrato } from '../../services/contratos';
 import { formatCurrencyBRL, normalizeCurrencyTyping, parseCurrencyInput } from '../../utils/formatters';
@@ -37,6 +37,12 @@ import DateInputBR from '../DateInputBR';
  */
 
 const moeda = (v) => formatCurrencyBRL(v);
+
+function criarChaveIdempotenciaAditivo() {
+  const sufixo = globalThis.crypto?.randomUUID?.()
+    || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `aditivo:${sufixo}`;
+}
 
 function formatarDataContrato(valor) {
   const partes = String(valor || '').slice(0, 10).split('-');
@@ -145,6 +151,8 @@ export default function ModalAditivoContrato({ contratoId, contratoRotulo, areaR
   const [enviando, setEnviando] = useState(false);
   const [usuarios, setUsuarios] = useState([]);
   const [campos, setCampos] = useState(criarCamposVazios);
+  const [negociacaoArquivo, setNegociacaoArquivo] = useState(null);
+  const idempotencyKeyRef = useRef('');
 
   // Recarrega o teto toda vez que abre: entre uma abertura e outra outro aditivo pode ter sido
   // aprovado, e mostrar um disponivel velho induziria a pessoa a pedir um valor que sera negado.
@@ -153,6 +161,8 @@ export default function ModalAditivoContrato({ contratoId, contratoRotulo, areaR
     let cancelado = false;
     setErro('');
     setCampos(criarCamposVazios());
+    setNegociacaoArquivo(null);
+    idempotencyKeyRef.current = criarChaveIdempotenciaAditivo();
     setTeto(null);
     setCarregando(true);
 
@@ -263,6 +273,7 @@ export default function ModalAditivoContrato({ contratoId, contratoRotulo, areaR
     && !erroNovaVigencia
     && (soPrazo || valorNumero > 0)
     && String(campos.justificativa || '').trim().length > 0
+    && Boolean(negociacaoArquivo)
     && !passaDoTeto
     && !enviando;
 
@@ -272,6 +283,18 @@ export default function ModalAditivoContrato({ contratoId, contratoRotulo, areaR
     const tipo = e.target.value;
     setErro('');
     setCampos((atuais) => ({ ...atuais, tipo, parcelas: [], qtde_parcelas: '' }));
+  }
+
+  function selecionarNegociacao(e) {
+    const arquivo = e.target.files?.[0] || null;
+    if (arquivo && !/\.(pdf|docx)$/i.test(String(arquivo.name || ''))) {
+      setErro('Envie a Negociacao Detalhada em formato .pdf ou .docx.');
+      setNegociacaoArquivo(null);
+      e.target.value = '';
+      return;
+    }
+    setErro('');
+    setNegociacaoArquivo(arquivo);
   }
 
   function adicionarParcela() {
@@ -353,10 +376,11 @@ export default function ModalAditivoContrato({ contratoId, contratoRotulo, areaR
           : null,
         justificativa: String(campos.justificativa).trim(),
         responsavel_id: campos.responsavel_id ? Number(campos.responsavel_id) : null,
+        negociacao_arquivo: negociacaoArquivo,
         // PI-16: no contrato LEGADO o aditivo abre uma solicitacao propria, e ela precisa de um
         // setor. No fluxo novo o backend ignora isto e usa a solicitacao que ja existe.
         area_responsavel: areaResponsavel || null
-      });
+      }, { idempotencyKey: idempotencyKeyRef.current });
       onSolicitado?.(r);
       onFechar?.();
     } catch (e) {
@@ -400,7 +424,7 @@ export default function ModalAditivoContrato({ contratoId, contratoRotulo, areaR
               <p className="mt-1 text-xs text-[var(--c-muted)]">{contratoRotulo}</p>
             )}
           </div>
-          <button type="button" className="btn btn-outline btn-sm" onClick={onFechar}>Fechar</button>
+          <button type="button" className="btn btn-outline btn-sm" onClick={onFechar} disabled={enviando}>Fechar</button>
         </div>
 
         {/* Corpo rolavel: em tela baixa o modal nao pode empurrar rodape para fora da viewport. */}
@@ -651,6 +675,22 @@ export default function ModalAditivoContrato({ contratoId, contratoRotulo, areaR
               )}
             </section>
           )}
+
+          <label className="block text-sm">
+            Negociação Detalhada *
+            <input
+              className="input w-full"
+              type="file"
+              name="aditivo_negociacao_detalhada"
+              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              onChange={selecionarNegociacao}
+              required
+              disabled={!contratoAceita || enviando}
+            />
+            <span className="mt-1 block text-xs text-[var(--c-muted)]">
+              Anexe o documento negociado deste termo em PDF ou DOCX. Ele ficará disponível para a aprovação.
+            </span>
+          </label>
 
           <label className="block text-sm">Justificativa do aditivo *
             <textarea

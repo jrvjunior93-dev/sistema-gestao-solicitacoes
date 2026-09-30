@@ -26,6 +26,23 @@ const idempotenciaCriacao = criarEscopoIdempotencia({
   mensagemEmAndamento: 'Este contrato ja esta sendo criado. Aguarde a conclusao antes de tentar novamente.'
 });
 
+const idempotenciaAditivo = criarEscopoIdempotencia({
+  mensagemEmAndamento: 'Este termo aditivo ja esta sendo solicitado. Aguarde a conclusao antes de tentar novamente.'
+});
+
+function parseParcelasAditivo(valor) {
+  if (Array.isArray(valor) || valor == null || valor === '') return valor || null;
+  try {
+    const parcelas = JSON.parse(String(valor));
+    if (!Array.isArray(parcelas)) throw new Error('formato');
+    return parcelas;
+  } catch {
+    const error = new Error('O cronograma financeiro do aditivo esta em formato invalido.');
+    error.statusCode = 400;
+    throw error;
+  }
+}
+
 // Controllers finos: as regras, permissoes e transacoes vivem no servico (auditado nas
 // 5 rodadas do bloco). Aqui so a traducao HTTP.
 function responderErro(res, error, fallback) {
@@ -138,6 +155,8 @@ module.exports = {
   },
 
   async criarAditivo(req, res) {
+    const idempotencia = idempotenciaAditivo.preparar(req, res);
+    if (idempotencia.handled) return undefined;
     try {
       const { Contrato } = require('../models');
       const contrato = await Contrato.findByPk(Number(req.params.id), {
@@ -147,9 +166,14 @@ module.exports = {
         await assertPodeInteragirSolicitacao(req, contrato.solicitacao_id);
       }
       const resultado = await solicitarAditivo(
-        { ...(req.body || {}), contrato_id: Number(req.params.id) },
-        { usuarioId: req.user?.id }
+        {
+          ...(req.body || {}),
+          parcelas: parseParcelasAditivo(req.body?.parcelas),
+          contrato_id: Number(req.params.id)
+        },
+        { usuarioId: req.user?.id, negociacaoArquivo: req.file }
       );
+      idempotenciaAditivo.armazenar(idempotencia.scopeKey, resultado);
       // `area_responsavel` ja vem no corpo; o servico decide se abre solicitacao (legado) ou usa
       // a que existe (fluxo novo).
       return res.status(201).json(resultado);

@@ -344,11 +344,20 @@ export async function getTetoAditivo(contratoId) {
   return json;
 }
 
-export async function solicitarAditivoContrato(contratoId, dados) {
+export async function solicitarAditivoContrato(contratoId, dados, { idempotencyKey } = {}) {
+  const { negociacao_arquivo: negociacaoArquivo, ...campos } = dados || {};
+  const formData = new FormData();
+
+  Object.entries(campos).forEach(([chave, valor]) => {
+    if (valor == null) return;
+    formData.append(chave, typeof valor === 'object' ? JSON.stringify(valor) : String(valor));
+  });
+  if (negociacaoArquivo) formData.append('negociacao', negociacaoArquivo);
+
   const res = await fetch(`${API_URL}/contratos/${contratoId}/aditivos`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(dados)
+    headers: authHeaders(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : undefined),
+    body: formData
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json?.error || 'Erro ao solicitar aditivo');

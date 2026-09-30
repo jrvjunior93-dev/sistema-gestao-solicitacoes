@@ -12,6 +12,7 @@ const {
   sequelize,
   Contrato,
   ContratoAditivo,
+  ContratoAnexo,
   EtapaSetor,
   Historico,
   Obra,
@@ -32,6 +33,7 @@ async function limpar({ solicitacaoId, contratoId }) {
     await Historico.destroy({ where: { solicitacao_id: solicitacaoId }, force: true });
   }
   if (contratoId) {
+    await ContratoAnexo.destroy({ where: { contrato_id: contratoId }, force: true });
     await ContratoAditivo.destroy({ where: { contrato_id: contratoId }, force: true });
   }
   if (solicitacaoId) {
@@ -45,15 +47,16 @@ async function limpar({ solicitacaoId, contratoId }) {
     await Solicitacao.destroy({ where: { id: solicitacaoId }, force: true });
   }
 
-  const [solicitacoesRestantes, contratosRestantes, aditivosRestantes, historicosRestantes] = await Promise.all([
+  const [solicitacoesRestantes, contratosRestantes, aditivosRestantes, anexosRestantes, historicosRestantes] = await Promise.all([
     solicitacaoId ? Solicitacao.count({ where: { id: solicitacaoId } }) : 0,
     contratoId ? Contrato.count({ where: { id: contratoId } }) : 0,
     contratoId ? ContratoAditivo.count({ where: { contrato_id: contratoId } }) : 0,
+    contratoId ? ContratoAnexo.count({ where: { contrato_id: contratoId } }) : 0,
     solicitacaoId ? Historico.count({ where: { solicitacao_id: solicitacaoId } }) : 0
   ]);
 
   garantir(
-    solicitacoesRestantes + contratosRestantes + aditivosRestantes + historicosRestantes === 0,
+    solicitacoesRestantes + contratosRestantes + aditivosRestantes + anexosRestantes + historicosRestantes === 0,
     'A limpeza do teste nao devolveu integralmente o estado do banco.'
   );
 }
@@ -100,7 +103,15 @@ async function executar() {
       tipo: 'VALOR',
       valor: 10,
       justificativa: `${PREFIXO} validar fila`
-    }, { usuarioId: usuario.id });
+    }, {
+      usuarioId: usuario.id,
+      negociacaoArquivo: {
+        originalname: 'negociacao-detalhada-teste.pdf',
+        mimetype: 'application/pdf',
+        buffer: Buffer.from('%PDF-1.4 teste controlado')
+      },
+      uploadArquivo: async () => `testes/${PREFIXO}/negociacao-detalhada.pdf`
+    });
 
     await solicitacao.reload();
     garantir(resultado.solicitacao_id === solicitacao.id, 'O aditivo nao permaneceu ligado a solicitacao-mae.');
