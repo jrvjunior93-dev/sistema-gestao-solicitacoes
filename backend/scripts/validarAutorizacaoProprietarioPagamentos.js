@@ -44,6 +44,16 @@ assert(approvalService.includes('O preparador nao pode autorizar o proprio lote.
 assert(approvalService.includes('copyStorageObject'), 'Documentos do dossie devem ser copiados para area isolada.');
 assert(approvalService.includes('sha256(storedMaterial) === sha256(currentMaterial)'), 'Revalidacao material do dossie ausente.');
 
+const authorizationService = fs.readFileSync(path.resolve(__dirname, '../src/services/authorizationService.js'), 'utf8');
+assert(
+  /async function userHasNominalAreaPermission[\s\S]*?if \(isSuperadmin\(user\)\) return true;/.test(authorizationService),
+  'SUPERADMIN deve preservar o bypass global das permissoes do modulo.'
+);
+assert(
+  approvalService.includes('Usuario nao cadastrado como autorizador nominal de pagamentos.'),
+  'Assinatura financeira deve continuar exigindo autorizador nominal ativo.'
+);
+
 const pushService = fs.readFileSync(path.resolve(__dirname, '../src/services/webPushService.js'), 'utf8');
 assert(!pushService.includes('valor_total'), 'Push nao pode expor valores financeiros.');
 assert(!pushService.includes('credor'), 'Push nao pode expor credores.');

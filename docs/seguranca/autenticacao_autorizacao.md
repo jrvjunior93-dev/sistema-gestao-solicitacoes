@@ -14,7 +14,10 @@ A autorizacao efetiva combina modulo habilitado, perfil, permissoes granulares, 
 
 Os perfis centrais aceitos pela importacao de usuarios sao `USUARIO`, `ESTAGIARIO`, `ADMIN`, `ADMINISTRADOR` e `SUPERADMIN`.
 
-- `SUPERADMIN`: excecao tecnica ampla; por padrao pode atravessar o bloqueio de modulo em rotas autenticadas. Rotas publicas sensiveis podem desativar expressamente esse bypass.
+- `SUPERADMIN`: excecao tecnica ampla e usuario configurador global; atravessa bloqueios
+  de modulo e permissoes granulares em rotas autenticadas. Requisitos de identidade do
+  dominio, como estar cadastrado como autorizador nominal e assinar com passkey, nao sao
+  meras permissoes e continuam obrigatorios.
 - `ADMINISTRADOR`: junto com `SUPERADMIN`, forma o conceito `BusinessAdmin` e ignora a matriz granular de areas. Nao recebe automaticamente o bypass de modulo reservado ao `SUPERADMIN`.
 - `ADMIN`: nao e administrador global; suas excecoes dependem de permissoes e capacidades do setor, como `eh_setor_geo`.
 - `USUARIO` e `ESTAGIARIO`: seguem permissoes e escopos atribuídos.
@@ -76,6 +79,8 @@ aceita em atos de assinatura, cadastro de passkey ou autorizacao financeira nomi
 
 ## Novas operacoes sensiveis
 
-Uma nova autorizacao pode desativar expressamente bypass de `SUPERADMIN` e
-`BusinessAdmin`. Aprovar pagamento em nome do proprietario, por exemplo, exige
-autorizador nominal e nao deve herdar a compatibilidade ampla das telas financeiras.
+O `SUPERADMIN` preserva o bypass global de acesso e configuracao. Uma operacao
+sensivel ainda pode exigir identidade ou credencial adicional do dominio: aprovar
+pagamento em nome do proprietario, por exemplo, requer cadastro nominal ativo e
+passkey mesmo quando o usuario possui perfil `SUPERADMIN`. Isso impede que o bypass
+administrativo seja confundido com a assinatura financeira do proprietario.

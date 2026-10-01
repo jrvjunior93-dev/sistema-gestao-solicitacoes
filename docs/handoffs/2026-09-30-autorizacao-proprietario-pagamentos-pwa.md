@@ -26,7 +26,9 @@ Incluído:
 - lotes, itens, documentos isolados, eventos encadeados, autorizadores nominais,
   credenciais WebAuthn e assinaturas Web Push;
 - permissões granulares `visualizar`, `preparar`, `decidir`, `configurar` e `auditar`;
-- ausência de bypass administrativo para decisão e bloqueio do modo `Testar usuário`;
+- bypass de `SUPERADMIN` para acesso/configuração, mantendo cadastro nominal e passkey
+  obrigatórios quando ele próprio atuar como signatário, além do bloqueio do modo
+  `Testar usuário`;
 - separação obrigatória: preparador não decide o próprio lote;
 - challenge Redis de cinco minutos, consumido uma vez e vinculado às decisões e ao hash
   do dossiê;

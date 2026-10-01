@@ -31,7 +31,8 @@ Objetivos:
 - lista/dossiê móvel sem link de edição da solicitação e documentos por URL assinada curta;
 - WebAuthn/passkeys com `userVerification: required`, challenge Redis consumido uma vez,
   bloqueio durante `Testar usuário`, cadastro, uso e revogação de passkeys;
-- proibição de o preparador autorizar o próprio lote e ausência de bypass de `SUPERADMIN`;
+- proibição de o preparador autorizar o próprio lote, com bypass global de
+  `SUPERADMIN` para acesso/configuração e exigência nominal preservada para assinatura;
 - autorização/rejeição parcial, revalidação material antes da decisão e reuso do enqueue
   transacional/idempotente da Fila de Pagamentos;
 - PWA instalável para iOS/Android, service worker limitado ao shell estático e Web Push
@@ -255,9 +256,12 @@ financeiro.autorizacoes_pagamento.configurar
 financeiro.autorizacoes_pagamento.auditar
 ```
 
-Para ações de decisão, não deve existir bypass automático de `SUPERADMIN`,
-administrador de negócio ou setor. O usuário precisa estar nominalmente ativo em
-`pagamento_autorizadores` e possuir a permissão exata.
+`SUPERADMIN` possui bypass das permissões granulares para acessar, visualizar,
+preparar, configurar e auditar o módulo, coerente com sua função de configurador
+global do sistema. Esse bypass não transforma o usuário em signatário: para decidir
+um lote, inclusive o `SUPERADMIN` precisa estar nominalmente ativo em
+`pagamento_autorizadores` e possuir uma passkey válida. Os demais perfis dependem das
+permissões granulares correspondentes.
 
 Regras adicionais:
 
@@ -361,7 +365,8 @@ O preflight deve conferir:
 - existência de passkey válida para cada autorizador do piloto;
 - VAPID e push, quando habilitado;
 - integração interna com a fila;
-- inexistência de bypass direto no modo `ENFORCED`;
+- inexistência de bypass da assinatura no modo `ENFORCED`: até `SUPERADMIN` precisa
+  ser autorizador nominal ativo e confirmar a decisão com passkey;
 - proteção contra impersonação;
 - configuração de retenção/auditoria.
 

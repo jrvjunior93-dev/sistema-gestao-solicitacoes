@@ -958,3 +958,25 @@ liberado após implementação da base inativa, PWA, passkeys, push, cópia isol
 documentos, revalidação, teste específico, checagens sintáticas, build frontend e
 `git diff --check`. A flag continua `OFF`; nenhum banco, EC2, Vercel, Redis ou S3
 externo foi alterado, e não houve commit/push nesta tarefa.
+
+## Ownership ativo - codex-superadmin-autorizacoes-2026-10-01
+- `backend/src/services/authorizationService.js`
+- `backend/src/services/pagamentoAutorizacaoService.js`
+- `backend/scripts/validarAutorizacaoProprietarioPagamentos.js`
+- `docs/modulos/financeiro/AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md`
+- `docs/seguranca/autenticacao_autorizacao.md`
+- `docs/handoffs/2026-09-30-autorizacao-proprietario-pagamentos-pwa.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Ownership temporario da sessao `/root` iniciado em 2026-10-01 para alinhar o
+bypass global de `SUPERADMIN` ao modulo de autorizacoes de pagamento. O bypass
+abrange acesso, visualizacao, preparacao, configuracao e auditoria; a assinatura
+financeira continua exigindo autorizador nominal ativo e passkey para preservar a
+identidade criptografica da decisao. Preservar `outputs/`; sem banco, deploy, commit
+ou push nesta etapa.
+
+Ownership da sessao `codex-superadmin-autorizacoes-2026-10-01` liberado apos o
+alinhamento do bypass, atualizacao dos documentos canonicos e aprovacao dos testes
+`test:autorizacao-proprietario`, `test:fila-pagamentos`, `test:docs`, checagens
+sintaticas e `git diff --check`. Nenhum banco, Redis, EC2, deploy, commit ou push foi
+alterado nesta tarefa.

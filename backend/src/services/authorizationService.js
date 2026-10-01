@@ -1155,9 +1155,14 @@ async function userHasStrictAreaPermission(user, permissionKeys = []) {
   return esperadas.every((chave) => concedidas.has(chave));
 }
 
-/** Permissao nominal sem bypass, inclusive para SUPERADMIN. */
+/**
+ * Permissao nominal para perfis comuns. SUPERADMIN preserva o bypass global de
+ * configuracao e operacao; requisitos de identidade do dominio (por exemplo,
+ * autorizador ativo e passkey) continuam sendo validados pelo servico chamador.
+ */
 async function userHasNominalAreaPermission(user, permissionKeys = []) {
   if (!user?.id) return false;
+  if (isSuperadmin(user)) return true;
   const esperadas = (Array.isArray(permissionKeys) ? permissionKeys : [])
     .map((item) => String(item || '').trim().toLowerCase())
     .filter(Boolean);
