@@ -868,3 +868,93 @@ Ownership da sessao `codex-moeda-valor-cadastro-obra-2026-09-30` liberado apos
 mapear o submit ate o controller, corrigir as validacoes herdadas do fluxo comum,
 aplicar a mascara monetaria, executar testes frontend/backend, build e
 `git diff --check`. Nenhum banco externo foi acessado e `outputs/` foi preservado.
+
+## Ownership ativo - codex-planejamento-autorizacao-proprietario-2026-09-30
+- `docs/modulos/financeiro/AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md`
+- `docs/modulos/financeiro/README.md`
+- `docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`
+- `docs/handoffs/2026-09-30-autorizacao-proprietario-pagamentos-pwa.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+- `docs/workspace/SESSOES_ATIVAS.md`
+- `docs/workspace/QUADRO_AGENTES.md`
+- `docs/workspace/HANDOFF_GLOBAL.md`
+
+Ownership temporario da sessao `/root` iniciado em 2026-09-30 para documentar o
+plano de autorizacao de pagamentos pelo proprietario via PWA, passkeys e push,
+sempre protegido por feature flag backend com padrao `OFF`, e preparar o handoff
+para um segundo agente na branch `refactor/frontend`. Escopo exclusivamente
+documental; sem codigo funcional, migration, banco, deploy, commit ou push.
+
+Ownership da sessao `codex-planejamento-autorizacao-proprietario-2026-09-30`
+liberado apos criacao da especificacao canonica, atualizacao do guia de deploy e
+registro dos handoffs. Nenhum arquivo funcional foi reservado; o agente que iniciar
+a Fase 0 deve registrar novo ownership no SHA vigente antes de editar.
+
+## Ownership ativo - codex-revisao-documentacao-completa-2026-09-30
+- `README.md`
+- `AGENTS.md`
+- `docs/**`
+
+Ownership temporario da sessao `/root` iniciado em 2026-09-30 para auditar toda a
+documentacao versionada contra o codigo atual da branch `refactor/frontend`, corrigir
+fontes canonicas, classificar material historico e preparar a entrada de outro agente.
+Escopo exclusivamente documental. Nenhum arquivo de `backend/`, `frontend/`, `mobile/`
+ou `legal-pages/` esta reservado; preservar `outputs/` e alteracoes paralelas.
+
+Ownership da sessao `codex-revisao-documentacao-completa-2026-09-30` liberado apos
+revisao dos canonicos e guias ativos, auditoria de 438 Markdown sem links locais
+quebrados, `npm run test:docs` e `git diff --check`. Os arquivos documentais permanecem
+modificados localmente, mas nao estao mais reservados por esta sessao.
+
+## Ownership ativo - codex-autorizacao-proprietario-pagamentos-2026-09-30
+- `backend/migrations/202609300004_pagamento_autorizacao_proprietario.js`
+- `backend/src/config/env.js`
+- `backend/src/constants/moduloPermissoes.js`
+- `backend/src/controllers/AuthController.js`
+- `backend/src/controllers/PagamentoAutorizacaoController.js`
+- `backend/src/models/index.js`
+- `backend/src/models/PagamentoAutorizacao*.js`
+- `backend/src/models/PagamentoAutorizador.js`
+- `backend/src/models/WebauthnCredential.js`
+- `backend/src/routes.js`
+- `backend/src/services/pagamentoAutorizacaoService.js`
+- `backend/src/services/pagamentoManualFilaService.js`
+- `backend/src/services/webauthnChallengeStore.js`
+- `backend/src/services/webPushService.js`
+- `backend/src/services/s3.js`
+- `backend/src/validators/paymentValidators.js`
+- `backend/package.json`
+- `backend/package-lock.json`
+- `backend/.env.example`
+- `backend/scripts/validarAutorizacaoProprietarioPagamentos.js`
+- `frontend/public/manifest.webmanifest`
+- `frontend/public/fluxy-pwa-icon.svg`
+- `frontend/public/sw.js`
+- `frontend/src/App.jsx`
+- `frontend/src/main.jsx`
+- `frontend/src/navigation/navigationConfig.jsx`
+- `frontend/src/pages/FinanceiroAutorizacoesPagamento.jsx`
+- `frontend/src/pages/FinanceiroTitulos.jsx`
+- `frontend/src/pages/SolicitacaoDetalhe/FinanceiroCard.jsx`
+- `frontend/src/services/pagamentoAutorizacao.js`
+- `frontend/src/utils/acessoProduto.js`
+- `frontend/src/utils/webauthn.js`
+- `frontend/src/utils/webPush.js`
+- `frontend/src/styles/financeiro-autorizacoes-pagamento.css`
+- `docs/modulos/financeiro/AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md`
+- `docs/handoffs/2026-09-30-autorizacao-proprietario-pagamentos-pwa.md`
+- `docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Ownership temporario da sessao `/root` iniciado em 2026-09-30 para implementar o
+fluxo de autorizacao de titulos pelo proprietario em celular/PWA, com autorizadores
+nominais, passkeys, revalidacao transacional e encaminhamento interno para a fila.
+A flag mestre permanece `OFF` por padrao e deve preservar integralmente o fluxo
+legado quando inativa. Preservar `outputs/` e as alteracoes documentais existentes;
+sem banco externo, migration aplicada, deploy, commit ou push nesta etapa.
+
+Ownership da sessão `codex-autorizacao-proprietario-pagamentos-2026-09-30`
+liberado após implementação da base inativa, PWA, passkeys, push, cópia isolada de
+documentos, revalidação, teste específico, checagens sintáticas, build frontend e
+`git diff --check`. A flag continua `OFF`; nenhum banco, EC2, Vercel, Redis ou S3
+externo foi alterado, e não houve commit/push nesta tarefa.

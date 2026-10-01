@@ -10,4 +10,10 @@ Antes de alterar um modulo:
 4. confira regras detalhadas ainda referenciadas em `../regras_negocio/`;
 5. valide todos os consumidores e efeitos indicados.
 
-Modulos canonicos: Solicitacoes, Obras, Contratos, Compras, Cotacoes e Pedidos, Financeiro, Provisionamento, Comercial, CRM, RH/DP, SST, Fiscal, Boletos, Comunicacao Interna, Biblioteca de Modelos, Treinamento e Governanca. Configuracoes e Painel sao documentados como dominios transversais.
+Modulos canonicos: Solicitacoes, Obras, Contratos, Compras, Cotacoes e Pedidos,
+Financeiro, Provisionamento, Custos e Recebiveis, Comercial, CRM, RH/DP, SST,
+Fiscal, Boletos, Comunicacao Interna, Biblioteca de Modelos, Treinamento e
+Governanca. Configuracoes e Painel sao documentados como dominios transversais.
+
+O catalogo de runtime possui ainda uma integracao antiga desabilitada, documentada
+somente em `../arquitetura/ESTADO_RUNTIME_E_LEGADOS.md`; ela nao e modulo operacional.

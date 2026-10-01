@@ -31,7 +31,7 @@ O codigo ainda reconhece perfis especializados em fluxos especificos, como `FINA
 
 2. Perfil e permissao de area
    - registro central em `backend/src/constants/moduloPermissoes.js`;
-   - estado atualizado em 2026-09-10: 19 grupos, 100 areas e 349 permissoes;
+   - estado atualizado em 2026-09-30: 19 grupos, 106 areas e 372 permissoes;
    - formato `modulo.area.acao`, por exemplo `financeiro.titulos.criar`;
    - configuracao `PERMISSOES_AREAS_USUARIOS` contem permissoes por usuario, bloqueios por usuario e padroes por setor/perfil;
    - a permissao efetiva e a uniao de padrao do setor/perfil, sessao e concessao individual, menos os bloqueios;
@@ -66,3 +66,16 @@ Excecao segura para modulo novo: `CUSTOS_RECEBIVEIS` nao usa esse fallback legad
 Seu backend resolve as concessoes explicitas diretamente da matriz central, aplica os
 bloqueios individuais e concede bypass somente a `SUPERADMIN`. Sem
 `custos_recebiveis.modulo.acessar`, o acesso permanece negado.
+
+## Troca de usuario em desenvolvimento
+
+O middleware pode carregar ator real e usuario efetivo quando a troca rapida esta
+explicitamente habilitada no ambiente de desenvolvimento. Eventos de seguranca devem
+registrar os dois. A funcionalidade permanece desligada em producao e nao pode ser
+aceita em atos de assinatura, cadastro de passkey ou autorizacao financeira nominal.
+
+## Novas operacoes sensiveis
+
+Uma nova autorizacao pode desativar expressamente bypass de `SUPERADMIN` e
+`BusinessAdmin`. Aprovar pagamento em nome do proprietario, por exemplo, exige
+autorizador nominal e nao deve herdar a compatibilidade ampla das telas financeiras.

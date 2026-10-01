@@ -177,6 +177,13 @@ db.PaymentReconciliation = require('./PaymentReconciliation')(sequelize, Sequeli
 db.PaymentJob = require('./PaymentJob')(sequelize, Sequelize);
 db.PagamentoManualFilaItem = require('./PagamentoManualFilaItem')(sequelize, Sequelize);
 db.PagamentoManualFilaComprovante = require('./PagamentoManualFilaComprovante')(sequelize, Sequelize);
+db.PagamentoAutorizador = require('./PagamentoAutorizador')(sequelize, Sequelize);
+db.PagamentoAutorizacaoLote = require('./PagamentoAutorizacaoLote')(sequelize, Sequelize);
+db.PagamentoAutorizacaoItem = require('./PagamentoAutorizacaoItem')(sequelize, Sequelize);
+db.PagamentoAutorizacaoDocumento = require('./PagamentoAutorizacaoDocumento')(sequelize, Sequelize);
+db.PagamentoAutorizacaoEvento = require('./PagamentoAutorizacaoEvento')(sequelize, Sequelize);
+db.WebauthnCredential = require('./WebauthnCredential')(sequelize, Sequelize);
+db.WebPushSubscription = require('./WebPushSubscription')(sequelize, Sequelize);
 db.FinanceiroDdaSincronizacao = require('./FinanceiroDdaSincronizacao')(sequelize, Sequelize);
 db.FinanceiroDdaBoleto = require('./FinanceiroDdaBoleto')(sequelize, Sequelize);
 db.FinanceiroDdaEvento = require('./FinanceiroDdaEvento')(sequelize, Sequelize);
@@ -4860,6 +4867,23 @@ db.PagamentoManualFilaComprovante.belongsTo(db.PagamentoManualFilaItem, {
   foreignKey: 'fila_id',
   as: 'fila'
 });
+
+db.User.hasOne(db.PagamentoAutorizador, { foreignKey: 'usuario_id', as: 'pagamentoAutorizador' });
+db.PagamentoAutorizador.belongsTo(db.User, { foreignKey: 'usuario_id', as: 'usuario' });
+db.PagamentoAutorizacaoLote.belongsTo(db.User, { foreignKey: 'criado_por', as: 'criadoPor' });
+db.PagamentoAutorizacaoLote.belongsTo(db.User, { foreignKey: 'decidido_por', as: 'decididoPor' });
+db.PagamentoAutorizacaoLote.hasMany(db.PagamentoAutorizacaoItem, { foreignKey: 'lote_id', as: 'itens' });
+db.PagamentoAutorizacaoItem.belongsTo(db.PagamentoAutorizacaoLote, { foreignKey: 'lote_id', as: 'lote' });
+db.PagamentoAutorizacaoItem.belongsTo(db.TituloFinanceiro, { foreignKey: 'titulo_financeiro_id', as: 'titulo' });
+db.PagamentoAutorizacaoItem.belongsTo(db.PagamentoManualFilaItem, { foreignKey: 'fila_item_id', as: 'filaItem' });
+db.PagamentoAutorizacaoItem.hasMany(db.PagamentoAutorizacaoDocumento, { foreignKey: 'item_id', as: 'documentos' });
+db.PagamentoAutorizacaoDocumento.belongsTo(db.PagamentoAutorizacaoItem, { foreignKey: 'item_id', as: 'item' });
+db.PagamentoAutorizacaoLote.hasMany(db.PagamentoAutorizacaoEvento, { foreignKey: 'lote_id', as: 'eventos' });
+db.PagamentoAutorizacaoEvento.belongsTo(db.PagamentoAutorizacaoLote, { foreignKey: 'lote_id', as: 'lote' });
+db.User.hasMany(db.WebauthnCredential, { foreignKey: 'usuario_id', as: 'webauthnCredentials' });
+db.WebauthnCredential.belongsTo(db.User, { foreignKey: 'usuario_id', as: 'usuario' });
+db.User.hasMany(db.WebPushSubscription, { foreignKey: 'usuario_id', as: 'webPushSubscriptions' });
+db.WebPushSubscription.belongsTo(db.User, { foreignKey: 'usuario_id', as: 'usuario' });
 
 db.MovimentoFinanceiro.hasMany(db.PaymentReconciliation, {
   foreignKey: 'movimento_financeiro_id',

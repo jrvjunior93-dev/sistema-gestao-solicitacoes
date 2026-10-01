@@ -96,3 +96,28 @@ Quando houver uma sessao explicitamente autorizada, registrar data, repositorios
 - Regra: titulo nasce como previsao sem custo de obra; pagamento parcial encerra pelo valor pago;
   prestacao e rateio independem da conciliacao; custo entra nas obras somente apos validacao GEO.
 - Validacoes: build, QA transacional com rollback, relatorios de obras e rota autenticada.
+
+## 2026-09-30 — Autorização do proprietário para pagamentos
+
+- Sessão: `codex-planejamento-autorizacao-proprietario-2026-09-30`.
+- Status: implementação local concluída e inativa; sem commit/push/deploy nesta tarefa.
+- Documento canônico: `docs/modulos/financeiro/AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md`.
+- Handoff: `docs/handoffs/2026-09-30-autorizacao-proprietario-pagamentos-pwa.md`.
+- Regra de segurança: o código permanece desativado com
+  `PAYMENT_OWNER_APPROVAL_MODE=OFF`; valor ausente ou inválido também significa `OFF`.
+- Entrega: schema-only, domínio idempotente, reuso da fila, dossiê isolado, passkeys,
+  revogação, PWA responsiva, push genérico, preflight e testes de contrato.
+- Próximo passo: promoção em dev ainda em `OFF`, migration, preflight e homologação
+  controlada em `PILOT`; `ENFORCED` continua bloqueado até aceite.
+- Ambientes externos: nenhum acesso, deploy, migration ou ativação realizado.
+
+## 2026-09-30 — Revisao completa da documentacao
+
+- Sessao: `codex-revisao-documentacao-completa-2026-09-30`.
+- Status: concluida localmente; sem commit ou push nesta etapa.
+- Handoff: `docs/handoffs/2026-09-30-revisao-documentacao-completa.md`.
+- Escopo: entradas raiz, contexto, arquitetura, modulos, seguranca, colaboracao,
+  deploy e classificacao do historico reconciliados com `ca6ac22a`.
+- Validacoes: 438 Markdown sem links locais quebrados, `npm run test:docs` aprovado
+  com 19 canonicos e `git diff --check` aprovado.
+- Ambientes externos: nenhum banco, migration, deploy, API ou processo PM2 acionado.

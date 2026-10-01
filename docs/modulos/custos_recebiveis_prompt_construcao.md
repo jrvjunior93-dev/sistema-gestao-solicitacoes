@@ -1,5 +1,9 @@
 # PROMPT DE CONSTRUÇÃO — Módulo Custos e Recebíveis por Obra (Fluxy)
 
+> Documento historico de construcao. O modulo ja esta implementado e este prompt nao
+> define mais branch, fases nem comportamento vigente. Para manutencao, use
+> `docs/modulos/custos-recebiveis/README.md` e o codigo atual.
+
 > **Este arquivo é o prompt de execução.** Entregue-o inteiro ao agente responsável pela
 > construção. Ele foi escrito para ser autossuficiente: um agente que abra o repositório
 > sem histórico de conversa deve conseguir executar apenas com este documento mais os
@@ -13,7 +17,8 @@
    qualquer preferência sua de estilo. Em especial: sistema em produção, evitar mudanças
    destrutivas, padrão visual corporativo denso (não landing page), idempotência
    obrigatória em operações críticas.
-2. **Trabalhe em branch própria**, a partir de `dev-v2`. Nunca commite direto em `main`.
+2. **Instrucao historica:** a construcao original previa branch propria a partir de
+   `dev-v2`; nao reproduza esse fluxo no estado atual.
 3. **Uma fase = um PR.** As fases estão na seção 14. Não inicie a fase seguinte antes de a
    anterior estar validada.
 4. **Pare e pergunte** nos pontos listados na seção 17. Não decida por conta própria

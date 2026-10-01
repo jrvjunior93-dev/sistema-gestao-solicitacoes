@@ -67,6 +67,19 @@ A Fila de Pagamentos separa a preparacao da carteira da execucao no banco. Em Co
 
 Permissoes independentes: `visualizar`, `preparar`, `baixar`, `reportar` e `resolver`. Elas nao liberam as demais telas do Financeiro.
 
+### Autorização do proprietário antes da fila
+
+A branch `refactor/frontend` possui uma primeira implementação completa e ainda inativa da
+camada opcional de autorização do proprietário por PWA e passkey antes do ingresso na Fila
+de Pagamentos. Ela inclui dossiê isolado, segregação entre preparador e autorizador,
+revalidação material, WebAuthn, Web Push genérico, revogação de dispositivo, auditoria e
+reuso transacional da fila atual. O contrato, estado de homologação e limites estão em
+[`AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md`](./AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md).
+
+Enquanto `PAYMENT_OWNER_APPROVAL_MODE=OFF`, a fila manual descrita acima continua sendo a
+regra operacional vigente, sem mudança de comportamento. Nenhuma migration, configuração
+de ambiente ou ativação foi executada por esta implementação local.
+
 ## Cheques de terceiros e baixa com multiplas fontes
 
 Cheques recebidos de terceiros sao controlados em carteira de custodia, sem simular uma conta bancaria. O financeiro pode registrar/importar saldo legado, transferir a custodia entre empresas, depositar em conta da mesma empresa ou utilizar o cheque integralmente como um componente de uma baixa composta.
@@ -77,12 +90,31 @@ Regras, endpoints, permissoes e limites: [`CARTEIRA_CHEQUES_BAIXA_COMPOSTA.md`](
 
 ## Relatorios
 
-- previsto: titulos abertos ou parciais;
+- previsto: titulos `PREVISAO`, `ABERTO` ou `PARCIAL`, conforme periodo e data de corte;
 - realizado: movimentos ativos;
 - movimentos estornados nao compoem realizado;
 - DRE por competencia e fluxo de caixa por movimento nao podem usar a mesma data sem regra explicita;
 - Resultado de Obras deve refletir estorno imediatamente;
 - toda agregacao deve permitir rastrear o lancamento de origem.
+
+### Fluxo de caixa previsto x realizado
+
+- historico planejado preserva o valor original do titulo para datas ja alcancadas;
+- projecao futura usa o saldo ainda aberto e nao repete titulo quitado;
+- realizado usa `data_movimento` e nunca trata data futura como baixa;
+- comparativo limita previsto e realizado a mesma data de corte;
+- datas futuras do realizado aparecem como indisponiveis, nao como zero acumulado;
+- seletor oferece periodos historicos, atuais, futuros e intervalo personalizado;
+- nas visoes por natureza, entradas sao verdes e saidas vermelhas; no comparativo,
+  as cores distinguem previsto e realizado.
+
+## Contrato de venda recebido por cheque
+
+Quando a forma efetiva do contrato de venda e cheque, o titulo a receber deve nascer
+quitado e o cheque permanece em carteira/custodia. A quitacao e o cadastro do cheque
+sao atomicos e idempotentes. Devolucao do cheque reabre a obrigacao vinculada, sem
+apagar a baixa ou a trilha anterior; os novos cheques podem compor nova baixa conforme
+as regras da baixa composta.
 
 ## Conciliacao OFX
 

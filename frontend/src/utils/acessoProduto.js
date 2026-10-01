@@ -1880,6 +1880,15 @@ export function hasConfiguredAreaPermissions(user) {
   return Array.isArray(lista) && lista.length > 0;
 }
 
+export function canAccessAutorizacoesPagamento(user) {
+  const capability = user?.autorizacao_pagamentos;
+  return Boolean(capability?.enabled && (capability.can_view || capability.can_prepare || capability.can_decide || capability.can_configure));
+}
+
+export function devePrepararAutorizacaoPagamento(user) {
+  return Boolean(user?.autorizacao_pagamentos?.enabled && user?.autorizacao_pagamentos?.prepare_required);
+}
+
 export function hasAnyPermissao(user, permKeys = []) {
   return (Array.isArray(permKeys) ? permKeys : []).some((permKey) => hasPermissao(user, permKey));
 }

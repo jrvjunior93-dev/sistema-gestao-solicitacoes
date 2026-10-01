@@ -36,8 +36,9 @@ import {
 import CategoriaFinanceiraAutocomplete from '../../components/ui/CategoriaFinanceiraAutocomplete';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFecharAoSair } from '../../hooks/useFecharAoSair';
-import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos } from '../../utils/acessoProduto';
+import { canManagePaymentBeneficiaries, canPrepareFilaPagamentos, devePrepararAutorizacaoPagamento } from '../../utils/acessoProduto';
 import { listarComprovantesFila } from '../../utils/comprovantesFila';
+import { criarAutorizacaoPagamento } from '../../services/pagamentoAutorizacao';
 import {
   atualizarPaymentBeneficiary,
   criarPaymentBeneficiary,
@@ -1272,19 +1273,24 @@ export default function FinanceiroCard({
 
   async function enviarSelecionadosParaFila() {
     if (!podeEnviarParaFila || enviandoFila || titulosSelecionados.length === 0) return;
+    const requerAutorizacao = devePrepararAutorizacaoPagamento(user);
     const { ok } = await confirmar({
-      titulo: 'Enviar títulos para pagamento?',
-      mensagem: `${titulosSelecionados.length} título(s) ficarão disponíveis na Fila de Pagamentos.`,
-      rotuloConfirmar: 'Enviar para pagamento'
+      titulo: requerAutorizacao ? 'Enviar para autorização?' : 'Enviar títulos para pagamento?',
+      mensagem: requerAutorizacao
+        ? `${titulosSelecionados.length} título(s) serão reunidos para decisão do proprietário.`
+        : `${titulosSelecionados.length} título(s) ficarão disponíveis na Fila de Pagamentos.`,
+      rotuloConfirmar: requerAutorizacao ? 'Solicitar autorização' : 'Enviar para pagamento'
     });
     if (!ok) return;
     setEnviandoFila(true);
     try {
       const chave = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      await enviarTitulosFilaPagamentos(titulosSelecionados, `solicitacao-${chave}`);
+      if (requerAutorizacao) await criarAutorizacaoPagamento(titulosSelecionados, `solicitacao-${chave}`);
+      else await enviarTitulosFilaPagamentos(titulosSelecionados, `solicitacao-${chave}`);
       await carregarTitulos();
       await onSolicitacaoAtualizada?.();
-      avisar.sucesso('Títulos enviados para a Fila de Pagamentos.');
+      setTitulosSelecionados([]);
+      avisar.sucesso(requerAutorizacao ? 'Títulos enviados ao proprietário para autorização.' : 'Títulos enviados para a Fila de Pagamentos.');
     } catch (error) {
       avisar.erro(error?.message || 'Não foi possível enviar os títulos para pagamento.');
     } finally {
@@ -2601,7 +2607,7 @@ export default function FinanceiroCard({
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm text-[var(--c-muted)]">Selecione os títulos abertos na tabela.</span>
               <button type="button" className="btn btn-primary btn-sm" onClick={enviarSelecionadosParaFila} disabled={!titulosSelecionados.length || enviandoFila}>
-                {enviandoFila ? 'Enviando...' : `Enviar para fila de pagamento${titulosSelecionados.length ? ` (${titulosSelecionados.length})` : ''}`}
+                {enviandoFila ? 'Enviando...' : `${devePrepararAutorizacaoPagamento(user) ? 'Solicitar autorização' : 'Enviar para fila de pagamento'}${titulosSelecionados.length ? ` (${titulosSelecionados.length})` : ''}`}
               </button>
             </div>
           ) : null

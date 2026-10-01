@@ -1155,6 +1155,17 @@ async function userHasStrictAreaPermission(user, permissionKeys = []) {
   return esperadas.every((chave) => concedidas.has(chave));
 }
 
+/** Permissao nominal sem bypass, inclusive para SUPERADMIN. */
+async function userHasNominalAreaPermission(user, permissionKeys = []) {
+  if (!user?.id) return false;
+  const esperadas = (Array.isArray(permissionKeys) ? permissionKeys : [])
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean);
+  if (esperadas.length === 0) return false;
+  const concedidas = new Set(await montarPermissoesConcedidas(user));
+  return esperadas.every((chave) => concedidas.has(chave));
+}
+
 async function userHasAreaPermission(user, permissionKeys = []) {
   if (isBusinessAdmin(user)) return true;
 
@@ -3489,6 +3500,7 @@ module.exports = {
   userHasAreaPermission,
   userHasAreaPermissionWhenConfigured,
   userHasStrictAreaPermission,
+  userHasNominalAreaPermission,
   userHasFinanceiroAccessConfig,
   userHasAllObrasAccess,
   userHasAnyRhDpCapability,

@@ -1,5 +1,9 @@
 # Auditoria: o que está em `C:\Fluxy` e não veio para `Fluxy-V4`
 
+> Documento historico de 20/08/2026. A comparacao abaixo retrata repositorios e SHAs
+> daquele dia; nao descreve o runtime nem a branch atual. Consulte `docs/README.md` e
+> `docs/contexto/ESTADO_ATUAL_REFACTOR_FRONTEND.md` antes de qualquer decisao.
+
 Data: 20/08/2026. Auditoria **somente leitura** — nada foi trazido, nada foi commitado.
 
 ---

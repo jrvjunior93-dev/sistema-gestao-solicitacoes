@@ -1,4 +1,8 @@
-# Transformacao de dev-v2 para Fluxy-V4
+# Transformacao historica para Fluxy-V4
+
+> Processo concluido e mantido como evidencia. A promocao vigente usa
+> `../arquitetura/promocao_refactor_frontend_para_main.md`; nao repita a substituicao
+> de snapshots descrita aqui em `main`.
 
 ## Objetivo
 

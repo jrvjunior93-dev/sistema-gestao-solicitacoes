@@ -115,6 +115,7 @@ async function ensureRateLimitStoreReady() {
 }
 
 module.exports = {
+  getRedisClient,
   incrementRateLimitHit,
   ensureRateLimitStoreReady
 };

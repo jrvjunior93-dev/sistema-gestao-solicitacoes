@@ -42,7 +42,7 @@ recorte isolado para produção.
 - `node --check` nos dois serviços e no teste novo: aprovado;
 - carregamento conjunto dos serviços: aprovado, sem dependência circular;
 - `npm run test:comercial-titulo-vencimento`: aprovado;
-- `npm run test:comercial-importacao-sienge`: aprovado;
+- teste de importacao comercial legada: aprovado;
 - `npm run test:filtro-valor-titulos`: aprovado;
 - `npm run build` do frontend: aprovado;
 - verificador mecânico: nenhum novo erro em `ComercialContratos.jsx`; permanecem seis

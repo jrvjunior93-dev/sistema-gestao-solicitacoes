@@ -32,7 +32,7 @@ O modulo administra fornecedores convidados, escopo de itens por fornecedor, tok
 - o mapa comparativo considera apenas fornecedores nao cancelados com resposta valida;
 - itens sem resposta ou sem vencedor precisam de tratamento explicito;
 - cada rodada e registrada em `SolicitacaoCompraFechamento` como `PARCIAL` ou `FINAL`;
-- fechamento parcial exige permissao `compras.cotacoes.fechar_parcial`, confirmacao explicita e justificativa;
+- fechamento parcial exige permissao `compras.cotacoes.fechar_parcial` e confirmacao explicita; a pratica normal de fechar apenas parte dos itens nao exige justificativa;
 - enquanto houver saldo, a solicitacao permanece em `FECHAMENTO_PARCIAL` e pode receber novas rodadas;
 - fechamento final exige permissao de encerramento, consome todo o saldo elegivel e muda a solicitacao para `ENCERRADO`;
 - encerramento sem pedido exige `compras.cotacoes.encerrar_sem_pedido`, confirmacao e justificativa; cria uma rodada `SEM_PEDIDO`, registra a quantidade nao comprada, preserva pedidos anteriores e nao cria alocacoes nem novos pedidos;
@@ -57,7 +57,10 @@ O modulo administra fornecedores convidados, escopo de itens por fornecedor, tok
 - pedidos legados sem `fechamento_id` continuam validos;
 - alteracoes posteriores de quantidade, item e preco sao auditadas;
 - status configuravel pode bloquear edicao;
-- cancelamento verifica efeitos fiscais e financeiros; item/pedido sem titulo financeiro pode devolver saldo para nova rodada, mas a existencia de titulo bloqueia essa reversao;
+- cancelamento verifica efeitos fiscais e financeiros; item/pedido sem efeito financeiro impeditivo marca a quantidade como cancelada, cancela as alocacoes ativas e devolve o saldo ao fluxo de remanejamento;
+- itens de pedido cancelado permanecem no historico, mas o saldo liberado pode ser remanejado para outra resposta de fornecedor da mesma cotacao;
+- o remanejamento cria ou reaproveita o pedido de destino conforme as regras da rodada, transfere a quantidade em transacao e registra origem, destino, quantidade e motivo; o pedido de destino ainda precisa seguir o fechamento operacional normal;
+- titulo financeiro, frete titulado ou outro efeito financeiro impeditivo bloqueia cancelamento/remanejamento ate regularizacao pelo setor competente;
 - PDF e uma representacao; o estado oficial permanece no banco.
 
 ## Dependencias

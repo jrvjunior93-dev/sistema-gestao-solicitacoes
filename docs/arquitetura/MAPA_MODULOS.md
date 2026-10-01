@@ -12,6 +12,7 @@ Este documento define as dependencias que precisam ser avaliadas antes de altera
 | Compras | solicitacoes, itens, parceiros/credores e apropriacoes | cotacoes, pedidos, fiscal e financeiro | compra duplicada, credor incorreto ou apropriacao invalida |
 | Cotacoes e Pedidos | compras, fornecedores e matriz de itens por fornecedor | links publicos, comparativo, pedidos, PDFs, fiscal e financeiro | item enviado ao fornecedor errado, vencedor incorreto ou pedido duplicado |
 | Financeiro | solicitacoes, compras, comercial, RH/DP e obras | conciliacao, relatorios, governanca | saldo, baixa ou realizado incorreto |
+| Custos e Recebiveis | obras, financeiro, compras, contratos e RH/DP | bloqueios operacionais, relatorios, painel | bloquear obra indevida ou liberar operacao vencida |
 
 ## Modulos especializados
 
@@ -32,6 +33,7 @@ Este documento define as dependencias que precisam ser avaliadas antes de altera
 - Treinamento organiza conteudos e leituras por usuario.
 - Governanca agrega auditoria, saude tecnica e indicadores sem alterar registros operacionais.
 - Configuracoes define modulos, permissoes e regras parametrizaveis.
+- Painel do Gestor agrega resultados e saldos, mas nao e dono dos calculos de origem.
 
 ## Regras de dependencia
 
@@ -44,6 +46,12 @@ Este documento define as dependencias que precisam ser avaliadas antes de altera
 - `fornecedores[].itens` define o escopo de cada link de cotacao e todo item precisa pertencer a mesma solicitacao de compra;
 - SST pode referenciar colaboradores de RH/DP e obras, sem sincronizacao ou automacao entre os modulos.
 - Um modulo consumidor nunca passa a ser dono do dado apenas porque o proprietario esta desabilitado.
+- Cadastro de Obra e uma excecao explicita da Nova Solicitacao: nasce sem obra/centro de
+  custo preexistente e so cria a obra definitiva depois da etapa autorizada.
+- Contratos operacionais legado e novo coexistem; qualquer consolidacao precisa preservar
+  titulos, medicoes e pagamentos historicos.
+- Bloqueios de Custos e Recebiveis devem ser revalidados no backend de cada operacao
+  consumidora, inclusive Compras, jornada/ticket e aditivo quando configurados.
 
 ## Checklist de impacto
 

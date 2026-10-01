@@ -9,23 +9,23 @@ Guia operacional para comparar a produção atual (`main`) com a linha de homolo
 
 ## 1. Fotografia usada nesta revisão
 
-Documento atualizado em **28/09/2026** com as referências remotas disponíveis naquele
+Documento atualizado em **30/09/2026** com as referências remotas disponíveis naquele
 momento:
 
 | Referência | Commit |
 |---|---|
 | Base comum entre `main` e `refactor/frontend` | `6e62031018c82bd4f6e539a9829c64d098243dd6` |
-| `main` observada na revisão | `6346726c` — `feat(main): adicionar consulta de apropriacoes em modal` |
-| Alvo revisado de `refactor/frontend` | `6de5e234` — `Ajusta cadastro rapido de favorecido` |
-| Intervalo auditado | `6e620310..6de5e234` |
+| `main` observada na revisão | `e2b8d3db` — `Corrige filtro de itens em pedido cancelado` |
+| Alvo revisado de `refactor/frontend` | `ca6ac22a` — `feat: separar responsavel e acessos no cadastro de obra` |
+| Intervalo auditado | `6e620310..ca6ac22a` |
 
-No intervalo existem **505 commits** e **1.225 arquivos alterados**: 734 adicionados,
-444 modificados e 47 removidos, com aproximadamente 256 mil inserções e 61 mil
+No intervalo existem **562 commits** e **1.303 arquivos alterados**, com aproximadamente
+279 mil inserções e 64 mil
 remoções. Esses números incluem a transformação ampla do frontend, testes e
-documentação; não representam 1.225 funcionalidades independentes.
+documentação; não representam 1.303 funcionalidades independentes.
 
-As branches estão divergentes: na fotografia acima, `main` possui **47 commits** após a
-base comum e `refactor/frontend` possui **505**. A promoção deve integrar e validar os dois
+As branches estão divergentes: na fotografia acima, `main` possui **49 commits** após a
+base comum e `refactor/frontend` possui **562**. A promoção deve integrar e validar os dois
 lados; não presuma que substituir `main` pelo histórico da refatoração preservará os
 hotfixes já publicados.
 
@@ -40,7 +40,7 @@ git log --oneline --reverse origin/main..origin/refactor/frontend
 git diff --stat origin/main..origin/refactor/frontend
 ```
 
-Se o commit de destino não for mais `6de5e234`, revise os commits posteriores e registre
+Se o commit de destino não for mais `ca6ac22a`, revise os commits posteriores e registre
 o novo SHA neste documento antes de promover.
 
 ## 2. Resumo executivo: produção atual versus novo comportamento
@@ -1427,7 +1427,7 @@ Não existe migration para esta correção. Execute no backend:
 
 ```bash
 npm run test:comercial-titulo-vencimento
-npm run test:comercial-importacao-sienge
+npm run test:comercial-titulo-vencimento
 npm run test:filtro-valor-titulos
 ```
 
@@ -1477,3 +1477,37 @@ Após aplicar a migration em desenvolvimento:
 6. validar um cheque próprio apresentado em data posterior;
 7. comparar o relatório de movimentação da conta para confirmar que só depósito e
    devolução afetam o saldo bancário.
+
+## 23. Implementação inativa — autorização do proprietário para pagamentos
+
+A branch possui uma implementação ainda não implantada para inserir a autorização do
+proprietário entre a preparação dos títulos e a Fila de Pagamentos. A solução usa PWA,
+Web Push, cópia isolada dos documentos do dossiê e passkey/WebAuthn. A especificação e o
+estado de homologação estão em
+`docs/modulos/financeiro/AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md`.
+
+Qualquer promoção deve ocorrer com a variável backend abaixo definida explicitamente:
+
+```text
+PAYMENT_OWNER_APPROVAL_MODE=OFF
+```
+
+Regras de implantação:
+
+- ausência ou valor inválido deve resultar em `OFF` no backend;
+- `OFF` deve manter o fluxo legado exatamente como está hoje;
+- migrations devem ser somente estruturais e não podem criar lotes, autorizadores,
+  credenciais ou classificações por seed/backfill;
+- não habilitar `PILOT` ou `ENFORCED` no mesmo passo do deploy do código;
+- dev e produção usam RP IDs WebAuthn distintos; credenciais não são copiadas;
+- service worker não pode cachear API, documentos, dossiês ou dados financeiros;
+- nenhuma integração push/WhatsApp pode executar quando a flag mestre estiver `OFF`;
+- após uso real, o congelamento emergencial correto é `PAUSED`, não a reabertura
+  automática do fluxo legado com `OFF`;
+- antes de `ENFORCED`, executar `npm run preflight:autorizacao-proprietario` e a matriz de
+  homologação móvel, segurança, idempotência e não regressão.
+
+Dependências de ativação: migration `202609300004_pagamento_autorizacao_proprietario.js`,
+Redis, RP ID/origins WebAuthn corretos por ambiente, chaves VAPID, autorizador nominal,
+permissões granulares e ao menos uma passkey homologada. O deploy de código/migration e a
+mudança para `PILOT` devem ocorrer em passos separados.

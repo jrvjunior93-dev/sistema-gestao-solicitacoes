@@ -4,6 +4,7 @@
 
 - React/Vite no frontend web;
 - Expo/React Native no aplicativo mobile;
+- Capacitor disponivel no frontend web para empacotamento controlado, sem substituir o projeto Expo;
 - API REST Node.js/Express;
 - Sequelize e MySQL;
 - S3 para arquivos privados;
@@ -29,6 +30,23 @@ Dependencias declaradas devem ser aplicadas tanto no frontend quanto no backend.
 Por compatibilidade, uma chave de modulo desconhecida e considerada habilitada no backend. O frontend tambem considera habilitado quando a sessao nao contem lista de modulos ou quando a chave nao existe nela. Portanto, todo novo modulo precisa ser incluido no catalogo, exposto na sessao, protegido no backend e frontend e coberto pela validacao documental. Esse comportamento de compatibilidade nao deve ser usado como mecanismo de habilitacao.
 
 O inventario do runtime e os componentes descontinuados ainda presentes no codigo estao em `ESTADO_RUNTIME_E_LEGADOS.md`.
+
+## Linhas de entrega
+
+- `refactor/frontend`: homologacao ampla, incluindo backend, frontend, migrations,
+  testes e documentacao apesar do nome da branch;
+- `main`: producao;
+- backend de desenvolvimento: processo `backend-dev` e porta local da EC2 dev;
+- backend de producao: processo `backend-solicitacoes` e porta 8000.
+
+Promocao exige reconciliar os commits exclusivos das duas branches. Nao substituir a
+`main` pela refatoracao sem revisar os hotfixes de producao.
+
+## Operacoes criticas
+
+Criacao de solicitacao, titulo, lote, pedido, baixa, aprovacao, anexo e mudanca de
+status deve combinar bloqueio de interface, idempotencia backend, transacao e lock
+quando houver concorrencia. O frontend nunca e a unica barreira.
 
 ## Regra de mudanca
 

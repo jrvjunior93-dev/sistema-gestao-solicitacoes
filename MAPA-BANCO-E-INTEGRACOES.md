@@ -1,5 +1,10 @@
 # Mapa do banco e das integrações entre as áreas
 
+> **Registro historico.** As contagens e integracoes deste levantamento pertencem ao
+> momento em que ele foi produzido. Para runtime vigente, consulte
+> `docs/arquitetura/ESTADO_RUNTIME_E_LEGADOS.md`, `MAPA-DO-SISTEMA.md` e os READMEs
+> canonicos em `docs/modulos/`.
+
 Levantado em 20/08/2026, a pedido do cliente, depois de um campo de tela ter sido ligado à **fonte
 errada**.
 

@@ -135,6 +135,16 @@ A disponibilidade e acumulada por fornecedor e item, sem depender do ID versiona
 
 Reabrir um pedido libera ajustes operacionais, mas preserva as alocacoes ja compradas. Sem historico financeiro, Compras pode executar a reabertura diretamente. Se existir ou tiver existido titulo do pedido, a reabertura exige aprovacao do GEO e o tratamento financeiro descrito acima. Edicao e remanejamento permanecem bloqueados enquanto houver efeito financeiro impeditivo ou frete titulado. No remanejamento, origem e destino sao atualizados na mesma transacao, com validacao do saldo do fornecedor, custos gerenciais, descontos e fretes pendentes. Depois do ajuste, o usuario fecha novamente os pedidos; a solicitacao e as cotacoes sao sincronizadas automaticamente conforme todos os pedidos ativos estejam fechados ou algum pedido seja cancelado.
 
+## Cancelamento e remanejamento de itens
+
+- cancelar um pedido sem efeito financeiro impeditivo marca seus itens como removidos, registra a quantidade cancelada e cancela as alocacoes ativas, liberando o saldo para nova decisao de compra;
+- o cancelamento nao apaga pedido, item, alocacao nem historico;
+- a tela do pedido cancelado pode oferecer candidatos de outras respostas da mesma cotacao para o item liberado;
+- o remanejamento nao significa que a compra terminou: ele transfere a quantidade para o fornecedor escolhido, cria ou atualiza o pedido de destino e esse pedido segue o fluxo normal ate ser fechado;
+- quantidade remanejada e limitada pelo saldo liberado na origem e pela disponibilidade ainda real do fornecedor de destino;
+- itens com titulo financeiro, frete titulado ou outro efeito financeiro impeditivo precisam ser regularizados antes do cancelamento ou remanejamento;
+- a rotina de regularizacao de pedidos cancelados existe para corrigir registros historicos em que o status do pedido foi cancelado, mas itens ou alocacoes permaneceram ativos; ela deve ser executada primeiro em simulacao e somente no banco explicitamente confirmado.
+
 ## Mudanca segura
 
 Testar compra normal e direta, destinos iniciais, compatibilidade de registros antigos, credor, itens cadastrados/manuais, importacao, rateio, edicao de apropriacoes, permissoes, cancelamento, cotacao, pedido, relatorios de compras e registros de origem.

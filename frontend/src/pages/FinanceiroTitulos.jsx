@@ -36,6 +36,7 @@ import {
   importarCodigosBarrasTitulos
 } from '../services/financeiro';
 import { getMinhasObras } from '../services/obras';
+import { criarAutorizacaoPagamento } from '../services/pagamentoAutorizacao';
 import { buscarParceiros } from '../services/parceiros';
 import { normalizeCurrencyTyping } from '../utils/formatters';
 import {
@@ -43,6 +44,7 @@ import {
   canImportTitulosFinanceiros,
   canPrepareFilaPagamentos,
   canResolverFilaPagamentos,
+  devePrepararAutorizacaoPagamento,
   hasPermissao
 } from '../utils/acessoProduto';
 import FinanceiroTitulosImportacaoPanel from '../components/financeiro/FinanceiroTitulosImportacaoPanel';
@@ -1981,10 +1983,13 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
       setError('Selecione ao menos um titulo em aberto ou parcial para enviar ao pagamento.');
       return;
     }
+    const requerAutorizacao = devePrepararAutorizacaoPagamento(user);
     const { ok } = await confirmar({
-      titulo: 'Enviar títulos para pagamento?',
-      mensagem: `${selectedTitulosBaixaveis.length} título(s), no total de ${formatCurrency(selectedSaldo)}, ficarão disponíveis na Fila de Pagamentos.`,
-      rotuloConfirmar: 'Enviar para pagamento'
+      titulo: requerAutorizacao ? 'Enviar para autorização?' : 'Enviar títulos para pagamento?',
+      mensagem: requerAutorizacao
+        ? `${selectedTitulosBaixaveis.length} título(s), no total de ${formatCurrency(selectedSaldo)}, serão reunidos em um dossiê para decisão do proprietário.`
+        : `${selectedTitulosBaixaveis.length} título(s), no total de ${formatCurrency(selectedSaldo)}, ficarão disponíveis na Fila de Pagamentos.`,
+      rotuloConfirmar: requerAutorizacao ? 'Solicitar autorização' : 'Enviar para pagamento'
     });
     if (!ok) return;
 
@@ -1992,11 +1997,13 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
     setSendingFilaPagamentos(true);
     setError('');
     try {
-      const result = await enviarTitulosFilaPagamentos(
-        selectedTitulosBaixaveis.map((titulo) => Number(titulo.id)),
-        `titulos-${random}`
-      );
-      avisar.sucesso(`${result?.quantidade || selectedTitulosBaixaveis.length} título(s) enviado(s) para a Fila de Pagamentos.`);
+      const tituloIds = selectedTitulosBaixaveis.map((titulo) => Number(titulo.id));
+      const result = requerAutorizacao
+        ? await criarAutorizacaoPagamento(tituloIds, `titulos-${random}`)
+        : await enviarTitulosFilaPagamentos(tituloIds, `titulos-${random}`);
+      avisar.sucesso(requerAutorizacao
+        ? `Lote ${result?.codigo || ''} enviado ao proprietário para autorização.`
+        : `${result?.quantidade || selectedTitulosBaixaveis.length} título(s) enviado(s) para a Fila de Pagamentos.`);
       const data = await getTitulosFinanceiros({
         ...compactFilters(appliedFilters),
         ...(ordenacao ? { ordenar_por: ordenacao.coluna, direcao: ordenacao.direcao } : {}),
@@ -3205,7 +3212,7 @@ export default function FinanceiroTitulos({ tipoFixo = null }) {
                 disabled={selectedTitulosBaixaveis.length === 0 || savingBaixaMassa || sendingFilaPagamentos}
                 title="Disponibilizar os títulos na fila operacional de pagamento"
               >
-                {sendingFilaPagamentos ? 'Enviando...' : 'Enviar para pagamento'}
+                {sendingFilaPagamentos ? 'Enviando...' : (devePrepararAutorizacaoPagamento(user) ? 'Solicitar autorização' : 'Enviar para pagamento')}
                 {!sendingFilaPagamentos && selectedTitulosBaixaveis.length > 0 ? ` (${selectedTitulosBaixaveis.length})` : ''}
               </button>
             ) : null}

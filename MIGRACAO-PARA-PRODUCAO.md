@@ -11,10 +11,9 @@
 Processo para levar o trabalho feito em `Fluxy-V4` (ambiente local) para a produção em
 `main`, sem regressão e sem quebrar o sistema em uso.
 
-> **Documento vivo.** As seções [Variáveis de ambiente novas](#1-variáveis-de-ambiente-novas)
-> e [Inventário de alterações](#3-inventário-de-alterações-fora-do-frontend) são atualizadas a
-> cada mudança que exija ação manual sua. Consulte-as imediatamente antes de migrar — elas são
-> o contrato entre o que foi desenvolvido aqui e o que precisa ser preparado lá.
+> **Uso atual:** as secoes abaixo ajudam a entender o historico e as dependencias que
+> surgiram na consolidacao. Elas nao sao mais o contrato de deploy vigente e devem ser
+> confrontadas com o guia pos-deploy e o codigo do SHA que sera promovido.
 
 Última atualização do conteúdo histórico: **2026-08-25**
 

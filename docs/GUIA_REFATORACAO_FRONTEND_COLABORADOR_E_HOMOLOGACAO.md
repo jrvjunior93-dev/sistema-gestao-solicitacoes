@@ -1,6 +1,28 @@
 # Guia da refatoracao do frontend: colaboracao, GitHub e homologacao isolada
 
-## 1. Objetivo
+> **Estado vigente em 30/09/2026:** `refactor/frontend` e a branch integrada de
+> desenvolvimento e homologacao e ja divergiu significativamente de `dev-v2` e `main`.
+> O fluxo `refactor/frontend -> dev-v2` descrito abaixo e historico e nao deve ser
+> executado. Para trabalho atual, leia
+> `docs/contexto/ESTADO_ATUAL_REFACTOR_FRONTEND.md`,
+> `docs/COLABORACAO_CODEX.md` e
+> `docs/arquitetura/promocao_refactor_frontend_para_main.md`.
+
+## Fluxo atual resumido
+
+- trabalhar no checkout e na branch explicitamente definidos pela tarefa;
+- na `refactor/frontend`, registrar sessao, escopo e ownership em `docs/workspace/`;
+- nao editar arquivo reservado por outro agente nem limpar alteracoes desconhecidas;
+- validar localmente e usar a EC2 dev somente quando houver autorizacao expressa;
+- promocao para `main` ocorre por escopo aprovado, com revisao de migrations,
+  configuracoes de banco, preflight e rollback;
+- commit, push, merge, migration, reinicio e deploy nao sao implicitos;
+- o ambiente dev usa `backend-dev`; producao usa `backend-solicitacoes`.
+
+O restante deste arquivo preserva o procedimento inicial de 01/09/2026 apenas como
+registro historico da criacao da branch.
+
+## 1. Objetivo historico
 
 Este documento define o fluxo oficial para o desenvolvedor que atuara na refatoracao do frontend do FLUXY.
 

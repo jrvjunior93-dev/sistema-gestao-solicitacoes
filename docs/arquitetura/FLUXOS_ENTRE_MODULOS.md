@@ -9,6 +9,17 @@
 
 Validar: idempotencia, status de origem, permissao, historico e notificacao.
 
+## Solicitacao para cadastro de obra
+
+1. Usuario escolhe o fluxo especial sem informar obra/centro de custo existente.
+2. Backend resolve o tipo e o destino GEO, valida dados, usuarios ativos e documentos.
+3. A solicitacao preserva os dados cadastrais e a pendencia documental de Pre-Obra.
+4. Usuario com permissao de cadastro abre o modal definitivo pre-preenchido.
+5. A criacao da obra e unica por solicitacao, transacional e vincula os usuarios escolhidos.
+
+Validar: fase, planilha obrigatoria, valor monetario, responsavel tecnico textual,
+usuarios ativos, anexos, idempotencia e ausencia de obra duplicada.
+
 ## Compras para cotacao e pedido
 
 1. Compra normal nasce liberada diretamente para Compras e fica apta a cotar sem aprovacao de diretoria ou etapa externa adicional.
@@ -29,7 +40,33 @@ Validar: tipo PAGAR/RECEBER, parceiro, empresa, obra, categoria, vencimento, val
 
 ## Financeiro para obras e relatorios
 
-Titulos em aberto representam previsto. Movimentos ativos representam realizado. Estornos deixam de compor o realizado sem apagar a trilha. Resultado de obras, DRE e fluxo de caixa devem usar a mesma regra financeira.
+Titulos `PREVISAO`, `ABERTO` e `PARCIAL` representam planejamento conforme a data de
+corte; movimentos ativos representam realizado. Estornos deixam de compor o realizado
+sem apagar a trilha. Resultado de obras, DRE e fluxo de caixa devem usar a mesma regra
+financeira e explicitar quando a data de competencia difere da data do movimento.
+
+## Titulos para fila de pagamentos
+
+Contas a Pagar seleciona titulos elegiveis e o backend cria itens na fila com
+idempotencia, transacao e locks. A solicitacao vinculada muda de status somente no
+enqueue efetivo. A autorizacao do proprietario antes desse ponto esta implementada sob
+`PAYMENT_OWNER_APPROVAL_MODE`: em `OFF` o caminho acima permanece
+inalterado; em `PILOT`/`ENFORCED`, o preparador cria dossie isolado e somente a decisao
+nominal por passkey chama o enqueue interno. `PAUSED` congela novos envios sem apagar a
+fila existente.
+
+## Contrato para medicao, rescisao e financeiro
+
+Fluxos legado e novo usam fontes distintas. O resumo operacional prioriza vinculos
+explicitos e movimentos financeiros. Rescisao cancela apenas saldo nao medido e
+previsoes sem movimento; nao reduz titulo medido ou parcialmente pago. Aditivo novo
+exige documento proprio sem alterar o arquivo original do contrato.
+
+## Custos e Recebiveis para bloqueios operacionais
+
+Prazos/documentos vencidos podem bloquear operacoes da obra. Cada consumidor consulta
+a decisao no backend antes de gravar; o Painel apenas explica o estado e nao concede
+liberacao. Regularizacao segue o fluxo configurado e deixa auditoria.
 
 ## Comercial para financeiro
 

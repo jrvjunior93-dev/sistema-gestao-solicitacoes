@@ -2,7 +2,7 @@
 
 ## Processos PM2 por ambiente
 
-- desenvolvimento, branch `dev-v2`: `backend-dev`;
+- desenvolvimento/homologacao, checkout atual `refactor/frontend`: `backend-dev`;
 - producao, branch `main`: `backend-solicitacoes`.
 
 Os processos nao sao intercambiaveis. Uma atualizacao de dev deve reiniciar somente `backend-dev`; uma atualizacao de producao deve reiniciar somente `backend-solicitacoes`.
@@ -21,12 +21,16 @@ Os processos nao sao intercambiaveis. Uma atualizacao de dev deve reiniciar some
 1. confirmar backup e commit alvo;
 2. atualizar o codigo;
 3. executar `npm install` em `backend/`;
-4. revisar migrations pendentes;
-5. reiniciar com `pm2 restart backend-solicitacoes --update-env`;
-6. validar health check, login e logs;
-7. executar smoke tests dos modulos afetados.
+4. executar `npm run preflight:schema`;
+5. aplicar migrations estruturais explicitamente, quando autorizadas;
+6. repetir `npm run preflight:schema` e exigir zero pendencias;
+7. executar testes dos modulos afetados;
+8. reiniciar somente o processo do ambiente;
+9. validar health check local/publico, login e logs.
 
-Na sequencia acima, usar `backend-dev` quando a implantacao for da `dev-v2`. O comando exibido no item 5 e exclusivo da producao em `main`.
+Na homologacao, reiniciar `backend-dev`. Em producao, reiniciar
+`backend-solicitacoes`. Sempre confirme branch, diretorio, host e banco antes de uma
+operacao de schema.
 
 ## Sequencia do frontend
 
@@ -38,6 +42,9 @@ Na sequencia acima, usar `backend-dev` quando a implantacao for da `dev-v2`. O c
 ## Rollback
 
 Rollback de codigo nao implica rollback automatico de banco. Toda migration deve ter estrategia de compatibilidade e restauracao. Nunca apagar dados operacionais para adequar uma versao anterior.
+
+Guia completo: `../deploy/POS_DEPLOY_REFACTOR_FRONTEND.md` e
+`promocao_refactor_frontend_para_main.md`.
 
 ## Observabilidade
 

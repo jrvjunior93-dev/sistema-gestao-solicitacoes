@@ -29,3 +29,17 @@ Pagamentos removidos da tela de detalhes.
 
 Sessao `codex-aditivo-aprovado-volta-obra-2026-08-26` concluida; aditivo aprovado devolve a
 solicitacao para `OBRA / APROVADA`.
+
+Sessao `codex-planejamento-autorizacao-proprietario-2026-09-30` concluida.
+Arquitetura, feature flag, fases, limites de seguranca e handoff para outro agente
+foram registrados. Nenhum arquivo funcional permanece reservado por esta sessao.
+
+Sessao `codex-revisao-documentacao-completa-2026-09-30` concluida. Canonicos e guias
+ativos foram reconciliados com o codigo, 438 Markdown foram auditados sem links locais
+quebrados e o ownership documental foi liberado. As alteracoes ainda aguardam eventual
+commit e push mediante pedido do usuario.
+
+Sessao `codex-autorizacao-proprietario-pagamentos-2026-09-30` concluida localmente.
+Implementacao inativa da PWA/passkeys/push e gate anterior a fila validada; feature flag
+permanece `OFF`. Nenhum ambiente externo foi alterado e o conjunto aguarda eventual
+commit/publicacao mediante pedido do usuario.

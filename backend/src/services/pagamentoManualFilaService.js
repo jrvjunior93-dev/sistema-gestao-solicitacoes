@@ -23,6 +23,9 @@ const { uploadToS3, getPresignedUrl } = require('./s3');
 const { canAccessSolicitacaoFile } = require('./fileAccessService');
 const { canAccessFilaPagamentos, getFinanceiroObraScopeIds } = require('./authorizationService');
 const { encaminharSolicitacaoParaFinanceiroAoEnfileirar } = require('./solicitacaoFinanceiroStatusService');
+const { env } = require('../config/env');
+const { userHasNominalAreaPermission } = require('./authorizationService');
+const { resolvePaymentQueueGate } = require('./paymentOwnerApprovalPolicy');
 
 const ACTIVE_STATUSES = ['PENDENTE', 'NAO_PAGO', 'DIVERGENTE'];
 const PAYMENT_INTENT_INACTIVE_STATUSES = ['CANCELADO', 'REJEITADO', 'REJEITADO_BANCO', 'FALHA_INTEGRACAO', 'BAIXADO'];
@@ -179,7 +182,24 @@ async function listarContasPagadorasFila() {
   });
 }
 
-async function enfileirarTitulos(req, payload = {}) {
+async function enfileirarTitulos(req, payload = {}, options = {}) {
+  const participantePiloto = !options.autorizacaoInterna && env.paymentOwnerApprovalMode === 'PILOT'
+    ? await userHasNominalAreaPermission(req.user, ['financeiro.autorizacoes_pagamento.preparar'])
+    : false;
+  const gate = resolvePaymentQueueGate({
+    mode: env.paymentOwnerApprovalMode,
+    pilotParticipant: participantePiloto,
+    internalAuthorization: Boolean(options.autorizacaoInterna)
+  });
+  if (gate === 'PAUSED') {
+    throw createHttpError(423, 'O envio para a fila esta temporariamente pausado pela governanca de pagamentos.');
+  }
+  if (gate === 'AUTHORIZATION_REQUIRED') {
+    throw createHttpError(409, 'Envie os titulos para autorizacao do proprietario antes da fila de pagamentos.');
+  }
+  if (options.autorizacaoInterna && !Number.isInteger(Number(options.autorizacaoLoteId))) {
+    throw createHttpError(403, 'Contexto interno de autorizacao invalido.');
+  }
   const tituloIds = payload.titulo_ids || [];
   const obrasPermitidas = await getFinanceiroObraScopeIds(req.user);
   const requestKey = payload.idempotency_key || crypto.randomUUID();
@@ -277,10 +297,22 @@ async function enfileirarTitulos(req, payload = {}) {
     recursoId: requestKey,
     status: 'SUCCESS',
     descricao: 'Titulos encaminhados para a fila de pagamentos',
-    metadata: { titulo_ids: tituloIds, quantidade: items.length }
+    metadata: {
+      titulo_ids: tituloIds,
+      quantidade: items.length,
+      autorizacao_lote_id: options.autorizacaoLoteId || null
+    }
   });
 
-  return { quantidade: items.length, ids: items.map((item) => item.id) };
+  return {
+    quantidade: items.length,
+    ids: items.map((item) => item.id),
+    itens: items.map((item) => ({ id: Number(item.id), titulo_financeiro_id: Number(item.titulo_financeiro_id) }))
+  };
+}
+
+function enfileirarTitulosAutorizados(req, payload, autorizacaoLoteId) {
+  return enfileirarTitulos(req, payload, { autorizacaoInterna: true, autorizacaoLoteId });
 }
 
 async function anexarComprovanteFila(req, filaId, file) {
@@ -748,6 +780,7 @@ module.exports = {
   aprovarDivergenciasFila,
   classificarDivergenciaPagamento,
   enfileirarTitulos,
+  enfileirarTitulosAutorizados,
   informarNaoPagamento,
   listarContasPagadorasFila,
   listarFilaPagamentos,

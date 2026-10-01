@@ -1,5 +1,9 @@
 # Migração da reforma para o repositório oficial
 
+> Documento historico de 01/09/2026. O porte descrito aqui ja ocorreu e as branches
+> divergiram desde entao. Nao use estas instrucoes para promover o codigo atual. Consulte
+> `docs/arquitetura/promocao_refactor_frontend_para_main.md`.
+
 Inventário e plano de porte do trabalho feito neste repositório
 (`savioleal12-debug/FLUXY`) para o repositório oficial do projeto
 (`jrvjunior93-dev/sistema-gestao-solicitacoes`).

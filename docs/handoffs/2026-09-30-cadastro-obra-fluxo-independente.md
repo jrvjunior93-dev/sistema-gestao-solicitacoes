@@ -13,10 +13,16 @@ Branch: `refactor/frontend`
 - No detalhe da solicitação, usuários com `obras.cadastro.gerenciar` recebem o botão `Cadastrar obra`. O modal abre pré-preenchido e solicita somente os dados operacionais ainda necessários.
 - A criação definitiva é transacional e idempotente por solicitação: uma segunda tentativa não gera outra obra.
 - A obra criada mantém o vínculo com a solicitação de origem e a mudança posterior para `OBRA_INICIADA` exige a planilha na solicitação.
+- Atualizacao posterior no mesmo dia separou `Responsavel Tecnico` dos usuarios com
+  acesso: o primeiro passou a ser texto curto e o segundo uma selecao multipla de
+  usuarios ativos. Ao menos um usuario com acesso e obrigatorio e os vinculos sao
+  criados junto com a obra definitiva.
 
 ## Persistência
 
 Migration nova: `backend/migrations/202609300002_cadastro_obra_fluxo_independente.js`.
+
+Complemento estrutural: `backend/migrations/202609300003_cadastro_obra_responsavel_e_acessos.js`.
 
 Ela:
 
@@ -25,6 +31,10 @@ Ela:
 - cria `solicitacao_cadastro_obra_dados`, com unicidade por solicitação e por obra gerada.
 
 A migration é exclusivamente estrutural. Não classifica nem altera solicitações ou obras existentes.
+
+O complemento tambem e somente estrutural: adiciona o responsavel textual e ajusta a
+persistencia necessaria para separar acesso de responsabilidade tecnica, sem seed ou
+backfill automatico.
 
 ## Validações executadas
 

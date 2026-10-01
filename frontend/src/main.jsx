@@ -22,6 +22,10 @@ import { API_URL } from './services/api';
 applyNativeDocumentAttributes();
 installFetchSecurityDefaults();
 
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
+
 // Marca de versão legível pelo harness de QA (window.__FLUXY_BUILD__): o SHA
 // do commit que gerou este bundle, injetado pelo vite.config (define).
 // eslint-disable-next-line no-undef

@@ -2,9 +2,22 @@
 
 ## Trabalho em andamento
 
-Nao ha trabalho ativo desta sessao.
+Nao ha trabalho ativo registrado por esta sessao.
+
+## Trabalho planejado aguardando inicio
+
+Nao ha nova implementacao planejada aguardando inicio nesta sessao.
 
 ## Trabalho concluido aguardando publicacao
+
+- id: 2026-09-30-autorizacao-proprietario-pagamentos-pwa
+  sessao: codex-autorizacao-proprietario-pagamentos-2026-09-30
+  responsavel: Codex / sessao atual
+  status: implementado localmente, inativo e aguardando commit/publicacao autorizados
+  escopo: PWA, passkeys, push, dossie isolado e gate seguro antes da fila de pagamentos.
+  validacao: teste especifico, sintaxe backend, build frontend e diff-check aprovados.
+  pendencias: migration/configuracao em dev e homologacao `PILOT`; `ENFORCED` bloqueado.
+  handoff: `docs/handoffs/2026-09-30-autorizacao-proprietario-pagamentos-pwa.md`.
 
 - id: 2026-09-03-aditivo-direto-juridico
   sessao: codex-aditivo-direto-juridico-2026-09-03

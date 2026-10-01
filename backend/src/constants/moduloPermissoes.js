@@ -456,6 +456,17 @@ const MODULO_PERMISSION_GROUPS = [
         ]
       },
       {
+        key: 'financeiro.autorizacoes_pagamento',
+        label: 'Autorizacoes do Proprietario',
+        permissoes: [
+          { key: 'financeiro.autorizacoes_pagamento.visualizar', label: 'Visualizar autorizacoes', descricao: 'Consultar lotes e decisoes de autorizacao sem abrir a solicitacao operacional.' },
+          { key: 'financeiro.autorizacoes_pagamento.preparar', label: 'Preparar autorizacoes', descricao: 'Selecionar titulos elegiveis e montar dossies para o proprietario.' },
+          { key: 'financeiro.autorizacoes_pagamento.decidir', label: 'Autorizar pagamentos', descricao: 'Decidir nominalmente, com passkey, quais titulos podem seguir para a fila.' },
+          { key: 'financeiro.autorizacoes_pagamento.configurar', label: 'Configurar autorizadores', descricao: 'Gerenciar a lista nominal de proprietarios autorizadores e limites.' },
+          { key: 'financeiro.autorizacoes_pagamento.auditar', label: 'Auditar autorizacoes', descricao: 'Consultar eventos, hashes e rastreabilidade das decisoes.' }
+        ]
+      },
+      {
         key: 'financeiro.dda',
         label: 'DDA Bancario',
         permissoes: [

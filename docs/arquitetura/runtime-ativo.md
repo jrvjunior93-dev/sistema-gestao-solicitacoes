@@ -19,5 +19,17 @@
 - Vercel para frontend
 - EC2 + Nginx + PM2 para backend
 
+## Ambientes e branches
+
+- homologacao: checkout `refactor/frontend`, processo `backend-dev`, API dev;
+- producao: branch `main`, processo `backend-solicitacoes`, API oficial;
+- o rotulo historico `dev-v2` identifica o ambiente/linha anterior e nao deve ser
+  usado para presumir a branch atual sem `git branch --show-current`.
+
+## Schema
+
+O startup apenas chama a verificacao de migrations em modo leitura. Aplicacao do
+schema ocorre fora do runtime, com autorizacao explicita e preflight antes/depois.
+
 ## Decisao importante
 Qualquer refactor que toque nesses entrypoints deve ser tratado como alteracao estrutural.

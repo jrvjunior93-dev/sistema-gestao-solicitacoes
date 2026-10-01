@@ -26,6 +26,8 @@
     "perf:compras:resumo": "node scripts/resumirComprasPerformance.js",
     "test:payments": "node scripts/validarPagamentosEngine.js",
     "test:fila-pagamentos": "node scripts/validarFilaPagamentosManuais.js",
+    "test:autorizacao-proprietario": "node scripts/validarAutorizacaoProprietarioPagamentos.js",
+    "preflight:autorizacao-proprietario": "node scripts/preflightAutorizacaoProprietarioPagamentos.js",
     "test:fila-comprovantes-pdf": "node scripts/validarComprovantesPdfFila.js",
     "test:ultimo-preco": "node scripts/testarUltimoPrecoInsumo.js",
     "test:importacao-titulos": "node scripts/validarImportacaoTitulos.js",
@@ -105,6 +107,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.888.0",
     "@aws-sdk/s3-request-presigner": "^3.888.0",
+    "@simplewebauthn/server": "13.3.3",
     "bcryptjs": "^3.0.3",
     "bwip-js": "^4.10.1",
     "cookie-parser": "^1.4.7",
@@ -126,6 +129,7 @@
     "puppeteer-core": "^24.40.0",
     "qrcode": "^1.5.4",
     "redis": "^5.11.0",
-    "sequelize": "^6.37.0"
+    "sequelize": "^6.37.0",
+    "web-push": "3.6.7"
   }
 }

@@ -52,6 +52,7 @@ const {
   isDevUserSwitchRuntimeEnabled,
   isSuperadmin
 } = require('../services/devUserSwitchService');
+const { capabilitiesForUser: getPaymentOwnerApprovalCapabilities } = require('../services/pagamentoAutorizacaoService');
 
 const SETOR_ATTRIBUTES = [
   'id',
@@ -158,6 +159,8 @@ async function buildSessionUser(user) {
     mfa_setup_pending: mfaRequiredByPolicy && !mfaEnabled,
     custos_recebiveis_pendencia: custosRecebiveisPendencia
   };
+
+  sessionUser.autorizacao_pagamentos = await getPaymentOwnerApprovalCapabilities(userForGuard);
 
   sessionUser.dev_user_switch_enabled = isDevUserSwitchRuntimeEnabled() && isSuperadmin(user);
 
