@@ -173,6 +173,14 @@ export default function GestaoApropriacoes() {
     }
   }
 
+  async function recarregarCadastroEConfiguracao(obraId = obraSelecionada) {
+    if (!obraId) return;
+    await Promise.all([
+      carregarApropriacoes(obraId),
+      carregarConfiguracaoMacros(obraId, false)
+    ]);
+  }
+
   function alternarMacro(id) {
     setNivelConfiguracao('PERSONALIZADO');
     setMacrosSelecionadas((atual) => {
@@ -260,10 +268,8 @@ export default function GestaoApropriacoes() {
     return itens.filter((item) => codigosImportacao.has(String(item.codigo)));
   }, [previaXlsx, nivelImportacao, codigosImportacao]);
   const itensConfiguracao = useMemo(() => {
-    const itens = Array.isArray(configuracaoMacros?.candidatas) ? configuracaoMacros.candidatas : [];
-    if (nivelConfiguracao === 'PERSONALIZADO') return itens;
-    return itens.filter((item) => macrosSelecionadas.has(Number(item.id)));
-  }, [configuracaoMacros, nivelConfiguracao, macrosSelecionadas]);
+    return Array.isArray(configuracaoMacros?.candidatas) ? configuracaoMacros.candidatas : [];
+  }, [configuracaoMacros]);
 
   function limparFormulario() {
     setEditandoId(null);
@@ -309,7 +315,7 @@ export default function GestaoApropriacoes() {
 
       limparFormulario();
       avisar.sucesso(editandoId ? 'Apropriacao atualizada.' : 'Apropriacao criada.');
-      await carregarApropriacoes();
+      await recarregarCadastroEConfiguracao();
     } catch (error) {
       console.error(error);
       avisar.erro(error?.message || 'Erro ao salvar apropriacao');
@@ -397,7 +403,7 @@ export default function GestaoApropriacoes() {
 
     // Só sai da marcação o que realmente foi excluído.
     setSelecionados((atual) => new Set([...atual].filter((id) => !excluidos.has(id))));
-    await carregarApropriacoes();
+    await recarregarCadastroEConfiguracao();
 
     if (!falhas.length) {
       avisar.sucesso(`${excluidos.size} de ${alvos.length} apropriacao(oes) excluida(s).`);
@@ -465,7 +471,7 @@ export default function GestaoApropriacoes() {
       }
 
       setTextoMassa(naoGravadas.join('\n'));
-      await carregarApropriacoes(obraAlvo);
+      await recarregarCadastroEConfiguracao(obraAlvo);
 
       const sobreIgnoradas = ignoradas.length
         ? ` ${ignoradas.length} linha(s) sem codigo foram ignoradas e continuam na caixa.`
@@ -849,6 +855,11 @@ export default function GestaoApropriacoes() {
                 </button>
               </div>
 
+              <p className="text-sm" style={{ color: 'var(--c-text-muted)' }}>
+                Todas as apropriações ativas da obra aparecem abaixo. Ao marcar ou desmarcar uma opção,
+                o nível muda automaticamente para Personalizado.
+              </p>
+
               <TabelaPadrao
                 colunas={colunasMacros}
                 itens={itensConfiguracao}
@@ -856,11 +867,11 @@ export default function GestaoApropriacoes() {
                 getId={(item) => Number(item.id)}
                 storageKey="tabela:gestao-apropriacoes-macros"
                 rotuloRolagem="Apropriacoes exibidas nos formularios"
-                selecao={nivelConfiguracao === 'PERSONALIZADO' ? {
+                selecao={{
                   selecionados: macrosSelecionadas,
                   aoAlternar: (id) => alternarMacro(id),
                   aoAlternarTodos: alternarMacrosVisiveis
-                } : undefined}
+                }}
                 vazio="Nenhuma apropriacao foi identificada neste nivel."
               />
             </div>
