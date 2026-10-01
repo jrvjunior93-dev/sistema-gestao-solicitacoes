@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:apropriacoes-gestao": "node scripts/validarGestaoApropriacoesSincronizacao.mjs",
     "dev": "vite",
     "build": "vite build",
     "test:responsive": "node scripts/validarResponsividadeFrontend.mjs",

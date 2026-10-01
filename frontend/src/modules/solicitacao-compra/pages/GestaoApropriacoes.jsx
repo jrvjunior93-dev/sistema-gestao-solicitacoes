@@ -109,6 +109,14 @@ export default function GestaoApropriacoes() {
     }
   }
 
+  async function recarregarCadastroEConfiguracao(obraId = obraSelecionada) {
+    if (!obraId) return;
+    await Promise.all([
+      carregarApropriacoes(obraId),
+      carregarConfiguracaoMacros(obraId, false)
+    ]);
+  }
+
   function alternarMacro(id) {
     setMacrosSelecionadas((atual) => {
       const proximo = new Set(atual);
@@ -198,7 +206,7 @@ export default function GestaoApropriacoes() {
       }
 
       limparFormulario();
-      await carregarApropriacoes();
+      await recarregarCadastroEConfiguracao();
     } catch (error) {
       console.error(error);
       alert(error.message || 'Erro ao salvar apropriacao');
@@ -240,7 +248,7 @@ export default function GestaoApropriacoes() {
         await deletarApropriacao(id);
       }
       setSelecionados([]);
-      await carregarApropriacoes();
+      await recarregarCadastroEConfiguracao();
       alert('Operacao concluida com sucesso.');
     } catch (error) {
       console.error(error);
@@ -276,7 +284,7 @@ export default function GestaoApropriacoes() {
         });
       }
       setTextoMassa('');
-      await carregarApropriacoes();
+      await recarregarCadastroEConfiguracao();
       alert(`${linhas.length} apropriacao(oes) importada(s) com sucesso.`);
     } catch (error) {
       console.error(error);
