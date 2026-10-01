@@ -980,3 +980,22 @@ alinhamento do bypass, atualizacao dos documentos canonicos e aprovacao dos test
 `test:autorizacao-proprietario`, `test:fila-pagamentos`, `test:docs`, checagens
 sintaticas e `git diff --check`. Nenhum banco, Redis, EC2, deploy, commit ou push foi
 alterado nesta tarefa.
+
+## Ownership ativo - codex-redis-rate-limit-2026-10-01
+- `backend/src/services/rateLimitStore.js`
+- `backend/src/middlewares/rateLimit.js`
+- `backend/scripts/validarAutorizacaoProprietarioPagamentos.js`
+- `docs/modulos/financeiro/AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md`
+- `docs/handoffs/2026-09-30-autorizacao-proprietario-pagamentos-pwa.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Ownership temporario da sessao `/root` iniciado em 2026-10-01 para corrigir a
+integracao do rate limit com Redis e impedir que rejeicoes assincronas encerrem o
+backend durante a homologacao das autorizacoes de pagamento. Preservar `outputs/`;
+sem banco, deploy, commit ou push nesta etapa.
+
+Ownership da sessao `codex-redis-rate-limit-2026-10-01` liberado apos a correcao
+do metodo `pTTL`, tratamento HTTP 503 fail-closed, protecao do middleware assincrono,
+atualizacao documental e aprovacao de `test:autorizacao-proprietario`,
+`test:fila-pagamentos`, `test:docs`, checagens sintaticas e `git diff --check`.
+Nenhum banco, Redis, EC2, deploy, commit ou push foi alterado nesta tarefa.

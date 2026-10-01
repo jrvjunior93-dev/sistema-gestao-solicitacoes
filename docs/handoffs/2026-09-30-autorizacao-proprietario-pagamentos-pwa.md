@@ -99,3 +99,23 @@ de `caniuse-lite` desatualizado e chunk principal acima de 500 kB.
   binário/Object Lock do S3 ainda é hardening futuro;
 - faltam testes E2E reais com MySQL, Redis, S3, iOS e Android;
 - WhatsApp não foi implementado e não deve aprovar pagamentos por mensagem.
+
+## Correção durante a homologação Redis — 01/10/2026
+
+Ao adicionar um autorizador nominal em dev, o PM2 reiniciava o `backend-dev` e o
+navegador exibia CORS e `ERR_INCOMPLETE_CHUNKED_ENCODING`. A validação de preflight,
+os headers OPTIONS e os health checks estavam corretos; o log do processo revelou
+`TypeError: client.pTtl is not a function` em `rateLimitStore.js`.
+
+Correções aplicadas no código:
+
+- chamada atualizada para `client.pTTL`, conforme a API do cliente Redis instalado;
+- falha de Redis obrigatório marcada com HTTP `503`;
+- middleware assíncrono protegido com `try/catch` e encaminhamento por `next(error)`;
+- teste de contrato ampliado para impedir regressão da grafia do método e da captura
+  de rejeições.
+
+Com isso, o rate limit continua fail-closed quando Redis é obrigatório, mas uma
+indisponibilidade deixa de encerrar o processo Node. Ainda é necessário promover o
+commit para a EC2 dev, reiniciar somente `backend-dev` e repetir o teste de inclusão
+do autorizador.

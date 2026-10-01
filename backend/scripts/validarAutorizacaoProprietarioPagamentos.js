@@ -58,4 +58,12 @@ const pushService = fs.readFileSync(path.resolve(__dirname, '../src/services/web
 assert(!pushService.includes('valor_total'), 'Push nao pode expor valores financeiros.');
 assert(!pushService.includes('credor'), 'Push nao pode expor credores.');
 
+const rateLimitStore = fs.readFileSync(path.resolve(__dirname, '../src/services/rateLimitStore.js'), 'utf8');
+assert(rateLimitStore.includes('client.pTTL(namespacedKey)'), 'Rate limit deve usar o metodo pTTL da API do Redis.');
+assert(!rateLimitStore.includes('client.pTtl('), 'Rate limit nao pode usar o metodo Redis inexistente pTtl.');
+assert(rateLimitStore.includes('error.statusCode = 503;'), 'Falha do Redis obrigatorio deve retornar indisponibilidade controlada.');
+
+const rateLimitMiddleware = fs.readFileSync(path.resolve(__dirname, '../src/middlewares/rateLimit.js'), 'utf8');
+assert(rateLimitMiddleware.includes('return next(error);'), 'Rate limit deve encaminhar rejeicoes assincronas ao tratador de erros.');
+
 console.log('Autorizacao do proprietario validada: OFF preserva legado, gates, schema, permissoes, hashes e cache seguro.');

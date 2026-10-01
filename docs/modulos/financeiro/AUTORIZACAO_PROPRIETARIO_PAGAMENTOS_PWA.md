@@ -458,3 +458,16 @@ Cada agente deve registrar sua sessão, ownership e fase nos arquivos de workspa
 
 Essas decisões não impedem documentar o plano, mas devem estar registradas antes de
 qualquer ativação fora de `OFF`.
+
+## 19. Correção operacional do rate limit Redis em homologação
+
+Em 01/10/2026, a homologação em modo `PILOT` identificou que o armazenamento do
+rate limit chamava `pTtl`, método inexistente na versão instalada do cliente Redis.
+A API correta é `pTTL`. A rejeição ocorria dentro de middleware assíncrono e podia
+encerrar o processo Node, fazendo Nginx e navegador apresentarem erros secundários
+como `ERR_INCOMPLETE_CHUNKED_ENCODING` e uma mensagem aparente de CORS.
+
+O armazenamento passou a usar `pTTL` e o middleware passou a encaminhar qualquer
+falha por `next(error)`. Quando `REDIS_REQUIRED=true` e o Redis estiver
+indisponível, a aplicação permanece em modo fail-closed e responde `503`, sem
+reiniciar o backend nem liberar o rate limit em memória.
