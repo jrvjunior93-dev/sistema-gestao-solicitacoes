@@ -498,15 +498,15 @@ async function decideBatch(req, lotId, payload = {}) {
         const stillEligible = title && String(title.tipo).toUpperCase() === 'PAGAR' && ['ABERTO', 'PARCIAL'].includes(String(title.status).toUpperCase()) && roundCurrency(title.valor_saldo) === roundCurrency(item.valor_snapshot) && sha256(storedMaterial) === sha256(currentMaterial);
         if (!stillEligible) {
           await item.update({ status: 'INVALIDADO', motivo_decisao: 'Titulo ou saldo alterado apos a montagem do dossie.', decidido_em: new Date() }, { transaction });
-          await recordEvent({ loteId, itemId: item.id, userId: req.user.id, type: 'ITEM_INVALIDADO', data: { titulo_id: item.titulo_financeiro_id }, transaction });
+          await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_INVALIDADO', data: { titulo_id: item.titulo_financeiro_id }, transaction });
           continue;
         }
         await item.update({ status: 'AUTORIZADO', motivo_decisao: decision.motivo, decidido_em: new Date() }, { transaction });
-        await recordEvent({ loteId, itemId: item.id, userId: req.user.id, type: 'ITEM_AUTORIZADO', data: { snapshot_hash: item.snapshot_hash }, transaction });
+        await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_AUTORIZADO', data: { snapshot_hash: item.snapshot_hash }, transaction });
       } else {
         if (!decision.motivo) throw httpError(400, 'Informe o motivo para rejeitar um pagamento.');
         await item.update({ status: 'REJEITADO', motivo_decisao: decision.motivo, decidido_em: new Date() }, { transaction });
-        await recordEvent({ loteId, itemId: item.id, userId: req.user.id, type: 'ITEM_REJEITADO', data: { motivo: decision.motivo }, transaction });
+        await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_REJEITADO', data: { motivo: decision.motivo }, transaction });
       }
     }
     stage = 'CREDENTIAL_UPDATE';
@@ -550,7 +550,7 @@ async function enqueueAuthorizedItems(req, lotId, options = {}) {
       const item = await PagamentoAutorizacaoItem.findOne({ where: { lote_id: lotId, titulo_financeiro_id: queuedItem.titulo_financeiro_id }, transaction, lock: transaction.LOCK.UPDATE });
       if (!item) continue;
       await item.update({ status: 'ENFILEIRADO', fila_item_id: queuedItem.id }, { transaction });
-      await recordEvent({ loteId, itemId: item.id, userId: req.user.id, type: 'ITEM_ENFILEIRADO', data: { fila_item_id: queuedItem.id }, transaction });
+      await recordEvent({ loteId: lotId, itemId: item.id, userId: req.user.id, type: 'ITEM_ENFILEIRADO', data: { fila_item_id: queuedItem.id }, transaction });
     }
     const [pending, enqueued] = await Promise.all([
       PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, status: 'PENDENTE' }, transaction }),

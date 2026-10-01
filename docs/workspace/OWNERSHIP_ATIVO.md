@@ -1033,3 +1033,20 @@ instrumentacao por etapas, sanitizacao de origens e tokens, atualizacao do hando
 aprovacao de `test:autorizacao-proprietario`, `test:fila-pagamentos`, `test:docs`,
 checagem sintatica e `git diff --check`. Nenhum banco, Redis, EC2 ou deploy foi
 alterado nesta tarefa.
+
+## Ownership ativo - codex-lote-id-autorizacao-2026-10-01
+- `backend/src/services/pagamentoAutorizacaoService.js`
+- `backend/scripts/validarAutorizacaoProprietarioPagamentos.js`
+- `docs/handoffs/2026-09-30-autorizacao-proprietario-pagamentos-pwa.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Ownership temporario da sessao `/root` iniciado em 2026-10-01 para corrigir o
+`ReferenceError` causado pelo uso de `loteId` no escopo que recebe `lotId`, mantendo
+rollback, idempotencia e rastreabilidade. Preservar `outputs/`; sem banco ou deploy
+nesta etapa.
+
+Ownership da sessao `codex-lote-id-autorizacao-2026-10-01` liberado apos corrigir
+as quatro chamadas de evento, adicionar teste de regressao, atualizar o handoff e
+aprovar `test:autorizacao-proprietario`, `test:fila-pagamentos`, `test:docs`, checagem
+sintatica e `git diff --check`. Nenhum banco, Redis, EC2 ou deploy foi alterado nesta
+tarefa.

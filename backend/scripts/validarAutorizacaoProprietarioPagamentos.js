@@ -76,6 +76,10 @@ assert(
   'Falhas da decisao devem identificar a etapa segura no backend.'
 );
 assert(
+  !/await\s+recordEvent\(\{\s*loteId\s*,/.test(approvalService),
+  'Eventos da decisao devem mapear explicitamente loteId: lotId para evitar ReferenceError.'
+);
+assert(
   approvalService.includes("throw httpError(403, 'Nao foi possivel validar a passkey neste dispositivo."),
   'Falhas WebAuthn devem retornar resposta operacional controlada.'
 );

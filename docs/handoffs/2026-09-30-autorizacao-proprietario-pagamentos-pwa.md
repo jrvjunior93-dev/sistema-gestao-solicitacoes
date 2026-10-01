@@ -142,3 +142,11 @@ consumo do challenge, bloqueios transacionais, biblioteca WebAuthn, revalidaçã
 itens, atualização do lote, enfileiramento e carga da resposta. Mensagens técnicas
 são sanitizadas, substituindo origens e tokens longos antes do log
 `[payment-owner-decision-failed]`.
+
+O diagnóstico ampliado identificou `ITEM_REVALIDATION` com `ReferenceError: loteId
+is not defined`. O serviço recebia o parâmetro `lotId`, mas quatro chamadas de
+eventos usavam o shorthand inexistente `loteId`: autorização, rejeição, invalidação
+e enfileiramento. Todas passaram a mapear explicitamente `loteId: lotId`, e o teste
+de contrato bloqueia a reintrodução desse shorthand. As tentativas anteriores foram
+integralmente revertidas pela transação; nenhum item ou fila ficou parcialmente
+gravado.
