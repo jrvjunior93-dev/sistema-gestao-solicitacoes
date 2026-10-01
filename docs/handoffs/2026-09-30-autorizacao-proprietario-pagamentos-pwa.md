@@ -150,3 +150,28 @@ e enfileiramento. Todas passaram a mapear explicitamente `loteId: lotId`, e o te
 de contrato bloqueia a reintrodução desse shorthand. As tentativas anteriores foram
 integralmente revertidas pela transação; nenhum item ou fila ficou parcialmente
 gravado.
+
+## Valor individual no celular e diagnóstico do Web Push — 01/10/2026
+
+- a descrição congelada do título deixa de repetir `Valor total`, que representava
+  o total da solicitação e podia confundir o autorizador;
+- em telas móveis, `Valor do título` usa `valor_snapshot` e aparece logo abaixo da
+  identificação do título; a coluna distante de valor fica oculta somente no móvel;
+- a sessão informa separadamente se Web Push está configurado no ambiente e se há
+  assinatura ativa do usuário no backend;
+- a tela não trata apenas a permissão do Android como assinatura válida: quando o
+  navegador possui uma assinatura que não consta ativa no backend, oferece novamente
+  `Ativar avisos` para ressincronizá-la;
+- se VAPID estiver ausente, o botão permanece visível e desabilitado como `Avisos não
+  configurados`, evitando a impressão de que a permissão do aparelho seria suficiente;
+- o backend passou a registrar diagnósticos sem endpoint, chaves, credor ou valor:
+  `VAPID_NOT_CONFIGURED`, `NO_ACTIVE_SUBSCRIPTIONS`, falha/expiração no provedor e um
+  resumo de entregas por quantidade.
+
+Para homologar na EC2 dev, confirmar as três variáveis
+`WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY` e
+`WEB_PUSH_VAPID_SUBJECT`, reiniciar somente `backend-dev`, sair e entrar novamente
+no PWA, tocar em `Ativar avisos` e criar outro lote. O log esperado é
+`[payment-owner-push-delivery-summary]` com `sent_count` maior que zero. Permissão de
+notificação concedida no Android, isoladamente, não cria nem salva a assinatura Web
+Push usada pelo backend.

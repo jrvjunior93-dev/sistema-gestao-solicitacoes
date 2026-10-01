@@ -87,6 +87,18 @@ assert(
 const pushService = fs.readFileSync(path.resolve(__dirname, '../src/services/webPushService.js'), 'utf8');
 assert(!pushService.includes('valor_total'), 'Push nao pode expor valores financeiros.');
 assert(!pushService.includes('credor'), 'Push nao pode expor credores.');
+assert(pushService.includes('[payment-owner-push-${marker}]'), 'Push deve produzir diagnostico seguro de configuracao e entrega.');
+assert(pushService.includes("reason: 'VAPID_NOT_CONFIGURED'"), 'Push deve distinguir ambiente sem VAPID.');
+assert(pushService.includes("reason: 'NO_ACTIVE_SUBSCRIPTIONS'"), 'Push deve distinguir autorizador sem assinatura ativa.');
+assert(pushService.includes("logPushDiagnostic('error', 'delivery-failed'"), 'Push deve identificar rejeicoes do provedor sem expor a assinatura.');
+assert(pushService.includes("logPushDiagnostic('info', 'delivery-summary'"), 'Push deve resumir quantas assinaturas receberam o aviso.');
+assert(approvalService.includes('push_subscribed: pushSubscribed'), 'Sessao deve informar se a assinatura push esta ativa no backend.');
+
+const approvalPage = fs.readFileSync(path.resolve(__dirname, '../../frontend/src/pages/FinanceiroAutorizacoesPagamento.jsx'), 'utf8');
+assert(approvalPage.includes('Valor do título'), 'Tela movel deve identificar o valor individual do titulo junto ao item.');
+assert(approvalPage.includes('money(item.valor_snapshot)'), 'Valor exibido no item deve vir do snapshot individual autorizado.');
+assert(approvalPage.includes('titleDescription(snapshot.descricao)'), 'Descricao deve remover o total agregado que confundia o autorizador.');
+assert(approvalPage.includes('caps.push_subscribed'), 'Tela deve reconciliar a assinatura do navegador com o backend.');
 
 const rateLimitStore = fs.readFileSync(path.resolve(__dirname, '../src/services/rateLimitStore.js'), 'utf8');
 assert(rateLimitStore.includes('client.pTTL(namespacedKey)'), 'Rate limit deve usar o metodo pTTL da API do Redis.');

@@ -24,6 +24,9 @@ import '../styles/financeiro-autorizacoes-pagamento.css';
 
 const money = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const date = (value) => value ? new Date(value).toLocaleString('pt-BR') : '-';
+const titleDescription = (value) => String(value || '')
+  .replace(/\s*valor total\s*:\s*r\$\s*[\d.]+(?:,\d{1,2})?/gi, '')
+  .trim();
 
 function Status({ value }) {
   return <span className={`pa-status pa-status--${String(value || '').toLowerCase()}`}>{String(value || '').replaceAll('_', ' ')}</span>;
@@ -71,8 +74,14 @@ export default function FinanceiroAutorizacoesPagamento() {
   useEffect(() => { load(); }, []);
   useEffect(() => { setSelectedItems(pendingItems.map((item) => Number(item.id))); }, [selected?.id, pendingItems.length]);
   useEffect(() => {
-    if (caps.can_decide && caps.push_available && suportaWebPush()) obterAssinaturaPush().then((subscription) => setPushActive(Boolean(subscription))).catch(() => {});
-  }, [caps.can_decide, caps.push_available]);
+    if (!caps.can_decide || !caps.push_available || !suportaWebPush()) {
+      setPushActive(false);
+      return;
+    }
+    obterAssinaturaPush()
+      .then((subscription) => setPushActive(Boolean(subscription) && Boolean(caps.push_subscribed)))
+      .catch(() => setPushActive(false));
+  }, [caps.can_decide, caps.push_available, caps.push_subscribed]);
 
   async function registerPasskey() {
     if (!suportaPasskeys()) return avisar.erro('Este navegador não oferece suporte a passkeys.');
@@ -184,7 +193,7 @@ export default function FinanceiroAutorizacoesPagamento() {
       <div className="pa-toolbar">
         <div><strong>Modo {caps.mode}</strong><span>{caps.paused ? 'Novas decisões pausadas' : 'Dossiês sem acesso de edição à solicitação'}</span></div>
         <div className="pa-toolbar__actions">
-          {caps.can_decide && caps.push_available && <button type="button" className="btn btn-secondary btn-sm" onClick={togglePush} disabled={busy}><HiOutlineBell /> {pushActive ? 'Desativar avisos' : 'Ativar avisos'}</button>}
+          {caps.can_decide && <button type="button" className="btn btn-secondary btn-sm" onClick={togglePush} disabled={busy || !caps.push_available || !suportaWebPush()} title={!caps.push_available ? 'O envio de avisos ainda não foi configurado neste ambiente.' : (!suportaWebPush() ? 'Este navegador não oferece notificações push.' : undefined)}><HiOutlineBell /> {!caps.push_available ? 'Avisos não configurados' : (pushActive ? 'Desativar avisos' : 'Ativar avisos')}</button>}
           {caps.can_decide && <button type="button" className="btn btn-secondary btn-sm" onClick={registerPasskey} disabled={busy}><HiOutlineFingerPrint /> {caps.passkey_count ? 'Adicionar passkey' : 'Cadastrar passkey'}</button>}
         </div>
       </div>
@@ -210,14 +219,14 @@ export default function FinanceiroAutorizacoesPagamento() {
             </header>
             <div className="pa-table-wrap">
               <table className="pa-table">
-                <thead><tr><th aria-label="Selecionar" /><th>Título</th><th>Credor e pagamento</th><th>Obra</th><th>Vencimento</th><th className="num">Valor</th><th>Documentos</th><th>Status</th></tr></thead>
+                <thead><tr><th aria-label="Selecionar" /><th>Título</th><th>Credor e pagamento</th><th>Obra</th><th>Vencimento</th><th className="num pa-value-column">Valor</th><th>Documentos</th><th>Status</th></tr></thead>
                 <tbody>{(selected.itens || []).map((item) => {
                   const snapshot = item.snapshot_json || {};
                   return <tr key={item.id}>
                     <td>{item.status === 'PENDENTE' && <input type="checkbox" checked={selectedItems.includes(Number(item.id))} onChange={(event) => setSelectedItems((current) => event.target.checked ? [...current, Number(item.id)] : current.filter((id) => id !== Number(item.id)))} />}</td>
-                    <td><strong>{snapshot.codigo || `#${snapshot.titulo_id}`}</strong><small>{snapshot.descricao}</small></td>
+                    <td><strong>{snapshot.codigo || `#${snapshot.titulo_id}`}</strong><small>{titleDescription(snapshot.descricao)}</small><small className="pa-title-value"><span>Valor do título</span><strong>{money(item.valor_snapshot)}</strong></small></td>
                     <td>{snapshot.favorecido_pagamento?.nome || snapshot.credor?.nome || '-'}<small>{snapshot.favorecido_pagamento?.documento_mascarado || snapshot.credor?.documento_mascarado || ''}</small><small>{snapshot.forma_pagamento?.nome || snapshot.favorecido_pagamento?.metodo || ''}{snapshot.favorecido_pagamento?.pix_mascarado ? ` · ${snapshot.favorecido_pagamento.pix_mascarado}` : ''}</small></td>
-                    <td>{snapshot.obra?.nome || '-'}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num">{money(item.valor_snapshot)}</td>
+                    <td>{snapshot.obra?.nome || '-'}</td><td>{snapshot.data_vencimento || '-'}</td><td className="num pa-value-column">{money(item.valor_snapshot)}</td>
                     <td><div className="pa-documents">{(item.documentos || []).map((doc) => <button type="button" key={doc.id} onClick={() => openDocument(doc.id)} title={doc.nome}><HiOutlineDocumentText /><span>{doc.nome}</span></button>)}</div></td>
                     <td><Status value={item.status} /></td>
                   </tr>;

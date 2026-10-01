@@ -23,7 +23,7 @@ const { userHasNominalAreaPermission } = require('./authorizationService');
 const { enfileirarTitulosAutorizados } = require('./pagamentoManualFilaService');
 const { copyStorageObject, getPresignedUrl } = require('./s3');
 const { saveChallenge, consumeChallenge } = require('./webauthnChallengeStore');
-const { isConfigured: isPushConfigured, saveSubscription, removeSubscription, sendPendingAuthorizationNotification } = require('./webPushService');
+const { isConfigured: isPushConfigured, saveSubscription, removeSubscription, hasActiveSubscription, sendPendingAuthorizationNotification } = require('./webPushService');
 const { registrarEventoSeguranca } = require('./securityLogService');
 
 const PERMISSIONS = Object.freeze({
@@ -107,15 +107,16 @@ async function assertActiveAuthorizer(user) {
 
 async function capabilitiesForUser(user) {
   const mode = env.paymentOwnerApprovalMode;
-  const base = { mode, enabled: mode !== 'OFF', paused: mode === 'PAUSED', prepare_required: false, can_view: false, can_prepare: false, can_decide: false, can_configure: false, passkey_count: 0, push_available: isPushConfigured(), push_public_key: isPushConfigured() ? env.webPushVapidPublicKey : null };
+  const base = { mode, enabled: mode !== 'OFF', paused: mode === 'PAUSED', prepare_required: false, can_view: false, can_prepare: false, can_decide: false, can_configure: false, passkey_count: 0, push_available: isPushConfigured(), push_subscribed: false, push_public_key: isPushConfigured() ? env.webPushVapidPublicKey : null };
   if (!user?.id || mode === 'OFF') return base;
-  const [canView, canPrepare, canDecidePermission, canConfigure, authorizer, passkeyCount] = await Promise.all([
+  const [canView, canPrepare, canDecidePermission, canConfigure, authorizer, passkeyCount, pushSubscribed] = await Promise.all([
     hasPermission(user, PERMISSIONS.VIEW),
     hasPermission(user, PERMISSIONS.PREPARE),
     hasPermission(user, PERMISSIONS.DECIDE),
     hasPermission(user, PERMISSIONS.CONFIGURE),
     getAuthorizer(user.id),
-    WebauthnCredential.count({ where: { usuario_id: user.id, ativo: true } })
+    WebauthnCredential.count({ where: { usuario_id: user.id, ativo: true } }),
+    hasActiveSubscription(user.id)
   ]);
   return {
     ...base,
@@ -125,7 +126,8 @@ async function capabilitiesForUser(user) {
     can_configure: canConfigure,
     prepare_required: mode === 'ENFORCED' || (mode === 'PILOT' && canPrepare),
     pilot: Boolean(authorizer?.piloto),
-    passkey_count: passkeyCount
+    passkey_count: passkeyCount,
+    push_subscribed: pushSubscribed
   };
 }
 
