@@ -216,15 +216,9 @@ function sugerirIdsMacros(apropriacoes = []) {
 }
 
 function listarCandidatasMacro(apropriacoes = []) {
-  const ordenadas = ordenarApropriacoes(apropriacoes).map(asPlain);
-  const rootIds = new Set(
-    ordenadas.filter((item) => !item.apropriacao_pai_id).map((item) => Number(item.id))
-  );
-  return ordenadas.filter((item) => (
-    apropriacaoEhSomadora(item)
-      || apropriacaoEhMacroFormulario(item)
-      || rootIds.has(Number(item.apropriacao_pai_id))
-  ));
+  return ordenarApropriacoes(apropriacoes)
+    .map(asPlain)
+    .filter((item) => item?.ativo !== false && Number(item?.ativo) !== 0);
 }
 
 module.exports = {

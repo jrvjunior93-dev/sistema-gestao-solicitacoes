@@ -1,6 +1,7 @@
 const assert = require('assert');
 const {
   apropriacaoPodeReceberLancamento,
+  listarCandidatasMacro,
   mapaNiveisHierarquia,
   normalizarNivelApropriacaoFormulario,
   selecionarApropriacoesPorNivel,
@@ -28,6 +29,15 @@ const obra109 = [
 
 assert.deepStrictEqual(sugerirIdsMacros(obra110), [1, 4]);
 assert.deepStrictEqual(sugerirIdsMacros(obra109), [11, 12, 14, 16]);
+assert.deepStrictEqual(
+  listarCandidatasMacro([
+    ...obra110,
+    { id: 5, obra_id: 64, codigo: '00.001', somadora: false, ativo: true },
+    { id: 6, obra_id: 64, codigo: '00.002', somadora: false, ativo: false }
+  ]).map((item) => item.id),
+  [1, 2, 3, 4, 5],
+  'Apropriacao analitica criada manualmente na raiz deve poder ser marcada para os formularios.'
+);
 assert.strictEqual(normalizarNivelApropriacaoFormulario(' servico '), 'SERVICO');
 assert.strictEqual(normalizarNivelApropriacaoFormulario('invalido'), null);
 assert.deepStrictEqual(
