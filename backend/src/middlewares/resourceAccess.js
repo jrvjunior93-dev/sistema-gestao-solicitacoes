@@ -4,6 +4,7 @@ const {
   canAccessContratosGlobal,
   getUserObraScopeIds,
   isBusinessAdmin,
+  userCanCreateInAllObras,
   userHasAreaPermission
 } = require('../services/authorizationService');
 const { userHasSetorCapability } = require('../services/setorCapabilityService');
@@ -52,16 +53,22 @@ function createBodyObraAccessMiddleware({
   resourceType,
   description,
   hasLegacyGlobalAccess,
+  hasCreationAccess,
+  source = 'body',
   optional = false
 }) {
   return async (req, res, next) => {
-    if (optional && (req.body?.[bodyField] === undefined || req.body?.[bodyField] === null || String(req.body?.[bodyField]).trim() === '')) {
+    if (optional && (req[source]?.[bodyField] === undefined || req[source]?.[bodyField] === null || String(req[source]?.[bodyField]).trim() === '')) {
       return next();
     }
 
-    const obraId = Number(req.body?.[bodyField]);
+    const obraId = Number(req[source]?.[bodyField]);
     if (!Number.isInteger(obraId) || obraId <= 0) {
       return res.status(400).json({ error: 'Obra invalida.' });
+    }
+
+    if (hasCreationAccess && await hasCreationAccess(req.user)) {
+      return next();
     }
 
     const obrasPermitidas = await getUserObraScopeIds(req.user);
@@ -204,7 +211,18 @@ const requireCompraBodyObraAccess = createBodyObraAccessMiddleware({
   bodyField: 'obra_id',
   resourceType: 'SOLICITACAO_COMPRA',
   description: 'Usuario tentou criar solicitacao de compra em obra fora do seu escopo',
-  hasLegacyGlobalAccess: hasLegacyCompraGlobalAccess
+  hasLegacyGlobalAccess: hasLegacyCompraGlobalAccess,
+  hasCreationAccess: userCanCreateInAllObras
+});
+
+// Referencias para preencher uma compra nova seguem o escopo de criacao, nao o da lista.
+const requireCompraQueryObraCreationAccess = createBodyObraAccessMiddleware({
+  bodyField: 'obra_id',
+  source: 'query',
+  resourceType: 'SOLICITACAO_COMPRA',
+  description: 'Usuario tentou baixar modelo de compra em obra fora do seu escopo de criacao',
+  hasLegacyGlobalAccess: hasLegacyCompraGlobalAccess,
+  hasCreationAccess: userCanCreateInAllObras
 });
 
 const requireContratoOptionalBodyObraAccess = createBodyObraAccessMiddleware({
@@ -257,6 +275,7 @@ const requirePedidoCompraAccess = createResourceAccessMiddleware({
 module.exports = {
   requireCompraAccess,
   requireCompraBodyObraAccess,
+  requireCompraQueryObraCreationAccess,
   requireContratoAccess,
   requireContratoBodyObraAccess,
   requireContratoOptionalBodyObraAccess,

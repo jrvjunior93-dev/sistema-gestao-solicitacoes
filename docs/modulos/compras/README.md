@@ -15,6 +15,23 @@ Compras e dono da solicitacao de compra, origem normal/direta, itens, quantidade
 - cancelamento exige motivo, interrompe novas acoes e preserva o registro visivel no historico;
 - exclusao de solicitacao integrada, cotada ou com pedido deve ser bloqueada.
 
+## Criacao sem vinculo de visualizacao com a obra
+
+`Configuracoes > Status e Vinculos > Criacao em Todas as Obras` permite aos setores
+marcados criar compra normal ou direta em qualquer obra/centro de custo. A permissao
+funcional `compras.solicitacoes.criar` continua obrigatoria conforme a matriz de
+autorizacao existente. A excecao consulta `SETORES_CRIACAO_TODAS_OBRAS` e nao cria
+vinculos `UsuarioObra`, nao altera `SETORES_ACESSO_TODAS_OBRAS` e nao amplia listas,
+detalhes ou alteracoes de compras de terceiros. O acesso do proprio solicitante
+ao recurso criado segue a regra ja existente.
+
+A guarda de criacao tambem vale na importacao de itens da compra normal e no
+download do seu modelo XLSX. Existencia da obra, tipos disponiveis, apropriacoes,
+bloqueios operacionais e regras transacionais continuam validados no fluxo.
+Desmarcar o setor remove a excecao na proxima consulta da configuracao.
+
+Validacao local sem banco: `npm run test:compra-criacao-obras` em `backend/`.
+
 ## Compra direta
 
 - usa fluxo proprio de criacao/revisao e pode importar itens por XLSX;

@@ -15,6 +15,7 @@
     "test:compra-remanejamento": "node scripts/validarCompraRemanejamento.js",
     "repair:pedido-cancelado": "node scripts/regularizarPedidoCancelado.js",
     "test:compra-importacao-itens": "node scripts/validarImportacaoItensSolicitacaoCompra.js",
+    "test:compra-criacao-obras": "node scripts/validarCompraCriacaoTodasObras.js",
     "test:compra-catalogacao-insumos": "node scripts/validarCatalogacaoItensManuais.js",
     "test:compra-unidade-item": "node scripts/validarUnidadeItemCompra.js",
     "test:solicitacao-pix-apropriacoes": "node scripts/validarFluxosPixApropriacoesSolicitacao.js",
