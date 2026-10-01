@@ -13,6 +13,7 @@
     "test:compra-remanejamento": "node scripts/validarCompraRemanejamento.js",
     "repair:pedido-cancelado": "node scripts/regularizarPedidoCancelado.js",
     "test:compra-importacao-itens": "node scripts/validarImportacaoItensSolicitacaoCompra.js",
+    "test:compra-criacao-obras": "node scripts/validarCompraCriacaoTodasObras.js",
     "test:compra-direta-frete": "node scripts/validarCompraDiretaFrete.js",
     "test:compras-performance": "node scripts/validarComprasPerformance.js",
     "test:compras-performance-fases": "node scripts/validarComprasPerformanceFases.js",

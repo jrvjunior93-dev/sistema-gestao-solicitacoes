@@ -7,6 +7,7 @@ const {
 const { normalizeModuloPermissaoList } = require('../constants/moduloPermissoes');
 
 const CHAVE_SETORES_ACESSO_TODAS_OBRAS = 'SETORES_ACESSO_TODAS_OBRAS';
+const CHAVE_SETORES_CRIACAO_TODAS_OBRAS = 'SETORES_CRIACAO_TODAS_OBRAS';
 const CHAVE_USUARIOS_ACESSO_FINANCEIRO = 'USUARIOS_ACESSO_FINANCEIRO';
 const CHAVE_USUARIOS_PERMISSOES_RH_DP = 'USUARIOS_PERMISSOES_RH_DP';
 const CHAVE_PERMISSOES_AREAS_USUARIOS = 'PERMISSOES_AREAS_USUARIOS';
@@ -1164,6 +1165,31 @@ async function userHasAllObrasAccess(user) {
 
   const tokensUsuario = await buildUserScopeTokens(user);
   return tokensUsuario.some((token) => setoresPermitidos.includes(normalizeToken(token)));
+}
+
+// Excecao exclusiva de criacao. Nunca usar para listar ou operar recursos existentes.
+// A permissao funcional de criar compra continua sendo exigida pela rota.
+async function userCanCreateInAllObras(user) {
+  if (!user?.id) return false;
+  if (isSuperadmin(user)) return true;
+
+  const item = await ConfiguracaoSistema.findOne({
+    where: { chave: CHAVE_SETORES_CRIACAO_TODAS_OBRAS },
+    order: [['id', 'DESC']],
+    attributes: ['valor']
+  });
+  let setores;
+  try {
+    const config = JSON.parse(item?.valor || '{}');
+    setores = Array.isArray(config?.setores) ? config.setores.map(normalizeToken).filter(Boolean) : [];
+  } catch {
+    return false;
+  }
+  if (!setores.length) return false;
+
+  // A configuracao e por setor, nao por perfil. Usa apenas dados do usuario autenticado.
+  const tokens = await buildUserScopeTokens({ ...user, perfil: null });
+  return tokens.some((token) => setores.includes(token));
 }
 
 async function userHasFinanceiroAccessConfig(user) {
@@ -3147,6 +3173,7 @@ module.exports = {
   userHasAreaPermission,
   userHasFinanceiroAccessConfig,
   userHasAllObrasAccess,
+  userCanCreateInAllObras,
   userHasAnyRhDpCapability,
   userHasRhDpCapabilityConfig,
   shouldRestrictContratosToObras
