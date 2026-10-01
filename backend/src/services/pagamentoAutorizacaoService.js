@@ -333,6 +333,27 @@ function logWebauthnVerificationFailure({ req, lotId, error, reason }) {
   }));
 }
 
+function sanitizeDecisionDiagnosticMessage(error) {
+  return String(error?.message || '')
+    .replace(/https?:\/\/[^\s"']+/gi, '[origin]')
+    .replace(/[A-Za-z0-9_-]{20,}/g, '[redacted]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+}
+
+function logPaymentDecisionFailure({ req, lotId, stage, error }) {
+  console.error('[payment-owner-decision-failed]', JSON.stringify({
+    stage,
+    error_name: String(error?.name || 'Error').slice(0, 80),
+    error_code: String(error?.original?.code || error?.code || '').slice(0, 80) || null,
+    status_code: Number(error?.statusCode || error?.status) || null,
+    message: sanitizeDecisionDiagnosticMessage(error) || null,
+    user_id: Number(req.user?.id) || null,
+    lote_id: Number(lotId) || null
+  }));
+}
+
 async function registrationOptions(req) {
   assertFeatureAvailable(); assertNoDevSwitch(req); assertWebauthnConfig();
   await assertActiveAuthorizer(req.user);
@@ -419,21 +440,28 @@ async function authenticationOptions(req, lotId, decisions) {
 }
 
 async function decideBatch(req, lotId, payload = {}) {
-  assertFeatureAvailable(); assertNoDevSwitch(req); assertWebauthnConfig();
-  const authorizer = await assertActiveAuthorizer(req.user);
-  const decisions = normalizeDecisions(payload.decisoes);
-  if (decisions.some((item) => !['AUTORIZAR', 'REJEITAR'].includes(item.decisao))) throw httpError(400, 'Decisao invalida.');
-  const stored = await consumeChallenge({ purpose: 'decide', userId: req.user.id, lotId });
-  if (!stored?.challenge || stored.decisions_hash !== sha256(decisions)) throw httpError(409, 'Desafio expirado ou diferente da decisao confirmada.');
-  const credentialId = payload.credential?.id;
+  let stage = 'PRECONDITIONS';
+  try {
+    assertFeatureAvailable(); assertNoDevSwitch(req); assertWebauthnConfig();
+    const authorizer = await assertActiveAuthorizer(req.user);
+    const decisions = normalizeDecisions(payload.decisoes);
+    if (decisions.some((item) => !['AUTORIZAR', 'REJEITAR'].includes(item.decisao))) throw httpError(400, 'Decisao invalida.');
+    stage = 'CHALLENGE_CONSUME';
+    const stored = await consumeChallenge({ purpose: 'decide', userId: req.user.id, lotId });
+    if (!stored?.challenge || stored.decisions_hash !== sha256(decisions)) throw httpError(409, 'Desafio expirado ou diferente da decisao confirmada.');
+    const credentialId = payload.credential?.id;
 
-  let shouldEnqueue = false;
-  const lot = await sequelize.transaction(async (transaction) => {
-    const credential = await WebauthnCredential.findOne({ where: { usuario_id: req.user.id, credential_id: credentialId, ativo: true }, transaction, lock: transaction.LOCK.UPDATE });
+    let shouldEnqueue = false;
+    stage = 'TRANSACTION_START';
+    const lot = await sequelize.transaction(async (transaction) => {
+    stage = 'CREDENTIAL_LOCK';
+      const credential = await WebauthnCredential.findOne({ where: { usuario_id: req.user.id, credential_id: credentialId, ativo: true }, transaction, lock: transaction.LOCK.UPDATE });
     if (!credential) throw httpError(403, 'Passkey nao reconhecida para este autorizador.');
+    stage = 'WEBAUTHN_LIBRARY';
     const { verifyAuthenticationResponse } = await webauthnLib();
     let verification;
     try {
+      stage = 'WEBAUTHN_VERIFY';
       verification = await verifyAuthenticationResponse({ response: payload.credential, expectedChallenge: stored.challenge, expectedOrigin: env.webauthnOrigins, expectedRPID: env.webauthnRpId, credential: credentialForLibrary(credential), requireUserVerification: true });
     } catch (error) {
       logWebauthnVerificationFailure({ req, lotId, error });
@@ -443,16 +471,19 @@ async function decideBatch(req, lotId, payload = {}) {
       logWebauthnVerificationFailure({ req, lotId, error: null, reason: 'NOT_VERIFIED' });
       throw httpError(403, 'Confirmacao biometrica invalida.', 'PAYMENT_OWNER_WEBAUTHN_NOT_VERIFIED');
     }
+    stage = 'LOT_LOCK';
     const currentLot = await PagamentoAutorizacaoLote.findByPk(lotId, { transaction, lock: transaction.LOCK.UPDATE });
     if (!currentLot || currentLot.status !== 'AGUARDANDO' || new Date(currentLot.expira_em).getTime() <= Date.now()) throw httpError(409, 'Lote indisponivel ou expirado.');
     if (Number(currentLot.criado_por) === Number(req.user.id)) throw httpError(403, 'O preparador nao pode autorizar o proprio lote.');
     if (stored.dossie_hash !== currentLot.dossie_hash) throw httpError(409, 'O dossie foi alterado. Recarregue antes de decidir.');
+    stage = 'ITEMS_LOCK';
     const items = await PagamentoAutorizacaoItem.findAll({ where: { lote_id: lotId, id: { [Op.in]: decisions.map((item) => item.item_id) }, status: 'PENDENTE' }, transaction, lock: transaction.LOCK.UPDATE });
     if (items.length !== decisions.length) throw httpError(409, 'Um ou mais itens ja foram decididos ou nao pertencem ao lote.');
     if (authorizer.limite_por_lote && decisions.filter((item) => item.decisao === 'AUTORIZAR').reduce((sum, decision) => sum + roundCurrency(items.find((item) => Number(item.id) === decision.item_id)?.valor_snapshot), 0) > Number(authorizer.limite_por_lote)) throw httpError(403, 'O valor autorizado excede o limite nominal deste autorizador.');
     for (const decision of decisions) {
       const item = items.find((candidate) => Number(candidate.id) === decision.item_id);
       if (decision.decisao === 'AUTORIZAR') {
+        stage = 'ITEM_REVALIDATION';
         const title = await TituloFinanceiro.findByPk(item.titulo_financeiro_id, { include: titleInclude(), transaction, lock: transaction.LOCK.UPDATE });
         const storedDocuments = await PagamentoAutorizacaoDocumento.findAll({ where: { item_id: item.id }, attributes: ['origem_id', 'nome', 'origem_tipo', 'arquivo_hash'], transaction, order: [['origem_id', 'ASC']] });
         const currentAttachments = title?.solicitacao_id ? await Anexo.findAll({ where: { solicitacao_id: title.solicitacao_id, deleted_at: null }, attributes: ['id', 'tipo', 'nome_original', 'caminho_arquivo'], transaction, order: [['id', 'ASC']] }) : [];
@@ -478,7 +509,9 @@ async function decideBatch(req, lotId, payload = {}) {
         await recordEvent({ loteId, itemId: item.id, userId: req.user.id, type: 'ITEM_REJEITADO', data: { motivo: decision.motivo }, transaction });
       }
     }
+    stage = 'CREDENTIAL_UPDATE';
     await credential.update({ counter: Number(verification.authenticationInfo.newCounter || credential.counter), ultimo_uso_em: new Date() }, { transaction });
+    stage = 'LOT_STATUS';
     const [pending, authorized, enqueued] = await Promise.all([
       PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, status: 'PENDENTE' }, transaction }),
       PagamentoAutorizacaoItem.count({ where: { lote_id: lotId, status: 'AUTORIZADO' }, transaction }),
@@ -490,10 +523,18 @@ async function decideBatch(req, lotId, payload = {}) {
     return currentLot;
   });
 
-  if (shouldEnqueue) {
-    await enqueueAuthorizedItems(req, lotId, { skipPermission: true });
+    if (shouldEnqueue) {
+      stage = 'QUEUE_ENQUEUE';
+      await enqueueAuthorizedItems(req, lotId, { skipPermission: true });
+    }
+    stage = 'RESPONSE_LOAD';
+    return getBatch(req, lot.id);
+  } catch (error) {
+    if (!String(error?.code || '').startsWith('PAYMENT_OWNER_WEBAUTHN_')) {
+      logPaymentDecisionFailure({ req, lotId, stage, error });
+    }
+    throw error;
   }
-  return getBatch(req, lot.id);
 }
 
 async function enqueueAuthorizedItems(req, lotId, options = {}) {
@@ -573,5 +614,6 @@ module.exports = {
   subscribePush,
   unsubscribePush,
   sha256,
-  classifyWebauthnVerificationError
+  classifyWebauthnVerificationError,
+  sanitizeDecisionDiagnosticMessage
 };

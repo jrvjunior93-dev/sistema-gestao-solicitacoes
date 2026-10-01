@@ -134,3 +134,11 @@ O serviço passou a classificar falhas em categorias seguras (`CHALLENGE_MISMATC
 `UNCLASSIFIED`). O log registra somente categoria, nome da exceção, usuário e lote;
 credencial, desafio, chave pública, assinatura e conteúdo financeiro não são
 registrados. A API devolve `403` operacional e a transação permanece revertida.
+
+Uma nova tentativa ainda retornou `500`, sem emitir a categoria WebAuthn e sem
+reiniciar o backend. Isso demonstra que a exceção ocorre fora do verificador da
+assinatura. O diagnóstico foi ampliado para identificar a etapa entre pré-condições,
+consumo do challenge, bloqueios transacionais, biblioteca WebAuthn, revalidação dos
+itens, atualização do lote, enfileiramento e carga da resposta. Mensagens técnicas
+são sanitizadas, substituindo origens e tokens longos antes do log
+`[payment-owner-decision-failed]`.

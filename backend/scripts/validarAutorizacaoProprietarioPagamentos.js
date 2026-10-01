@@ -5,7 +5,11 @@ const fs = require('fs');
 const path = require('path');
 const { parsePaymentOwnerApprovalMode } = require('../src/config/env');
 const { resolvePaymentQueueGate } = require('../src/services/paymentOwnerApprovalPolicy');
-const { sha256, classifyWebauthnVerificationError } = require('../src/services/pagamentoAutorizacaoService');
+const {
+  sha256,
+  classifyWebauthnVerificationError,
+  sanitizeDecisionDiagnosticMessage
+} = require('../src/services/pagamentoAutorizacaoService');
 const { ALL_PERMISSION_KEYS } = require('../src/constants/moduloPermissoes');
 
 assert.strictEqual(parsePaymentOwnerApprovalMode(undefined), 'OFF');
@@ -24,6 +28,10 @@ assert.strictEqual(classifyWebauthnVerificationError(new Error('Unexpected RP ID
 assert.strictEqual(classifyWebauthnVerificationError(new Error('Invalid signature')), 'SIGNATURE_INVALID');
 assert.strictEqual(classifyWebauthnVerificationError(new Error('Credential public key was invalid')), 'PUBLIC_KEY_INVALID');
 assert.strictEqual(classifyWebauthnVerificationError(new Error('Unknown verifier failure with sensitive values')), 'UNCLASSIFIED');
+const diagnosticSecret = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';
+const sanitizedDiagnostic = sanitizeDecisionDiagnosticMessage(new Error(`Unexpected token ${diagnosticSecret} at https://refactor-dev.jrfluxy.com.br`));
+assert(!sanitizedDiagnostic.includes(diagnosticSecret), 'Diagnostico nao pode registrar tokens WebAuthn.');
+assert(!sanitizedDiagnostic.includes('https://'), 'Diagnostico nao pode registrar a origem completa.');
 
 for (const key of [
   'financeiro.autorizacoes_pagamento.visualizar',
@@ -62,6 +70,10 @@ assert(
 assert(
   approvalService.includes('[payment-owner-webauthn-verification-failed]'),
   'Falhas WebAuthn devem produzir diagnostico seguro no backend.'
+);
+assert(
+  approvalService.includes('[payment-owner-decision-failed]'),
+  'Falhas da decisao devem identificar a etapa segura no backend.'
 );
 assert(
   approvalService.includes("throw httpError(403, 'Nao foi possivel validar a passkey neste dispositivo."),

@@ -1016,3 +1016,20 @@ categorias seguras de diagnostico, resposta HTTP 403 com rollback preservado,
 atualizacao do handoff e aprovacao de `test:autorizacao-proprietario`,
 `test:fila-pagamentos`, `test:docs`, checagens sintaticas e `git diff --check`.
 Nenhum banco, Redis, EC2 ou deploy foi alterado nesta tarefa.
+
+## Ownership ativo - codex-decisao-pagamento-etapas-2026-10-01
+- `backend/src/services/pagamentoAutorizacaoService.js`
+- `backend/scripts/validarAutorizacaoProprietarioPagamentos.js`
+- `docs/handoffs/2026-09-30-autorizacao-proprietario-pagamentos-pwa.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Ownership temporario da sessao `/root` iniciado em 2026-10-01 para ampliar o
+diagnostico seguro a todas as etapas da decisao, pois a falha HTTP 500 ocorreu fora
+do bloco criptografico previamente instrumentado. Preservar `outputs/`; sem banco ou
+deploy nesta etapa.
+
+Ownership da sessao `codex-decisao-pagamento-etapas-2026-10-01` liberado apos a
+instrumentacao por etapas, sanitizacao de origens e tokens, atualizacao do handoff e
+aprovacao de `test:autorizacao-proprietario`, `test:fila-pagamentos`, `test:docs`,
+checagem sintatica e `git diff --check`. Nenhum banco, Redis, EC2 ou deploy foi
+alterado nesta tarefa.
