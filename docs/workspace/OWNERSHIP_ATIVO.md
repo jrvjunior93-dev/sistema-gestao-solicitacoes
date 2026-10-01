@@ -999,3 +999,20 @@ do metodo `pTTL`, tratamento HTTP 503 fail-closed, protecao do middleware assinc
 atualizacao documental e aprovacao de `test:autorizacao-proprietario`,
 `test:fila-pagamentos`, `test:docs`, checagens sintaticas e `git diff --check`.
 Nenhum banco, Redis, EC2, deploy, commit ou push foi alterado nesta tarefa.
+
+## Ownership ativo - codex-webauthn-decisao-2026-10-01
+- `backend/src/services/pagamentoAutorizacaoService.js`
+- `backend/scripts/validarAutorizacaoProprietarioPagamentos.js`
+- `docs/handoffs/2026-09-30-autorizacao-proprietario-pagamentos-pwa.md`
+- `docs/workspace/OWNERSHIP_ATIVO.md`
+
+Ownership temporario da sessao `/root` iniciado em 2026-10-01 para instrumentar de
+forma segura a falha de verificacao WebAuthn observada apos a biometria no Android.
+O log nao pode registrar credencial, desafio, chave publica nem material financeiro.
+Preservar `outputs/`; sem banco ou deploy nesta etapa.
+
+Ownership da sessao `codex-webauthn-decisao-2026-10-01` liberado apos implementar
+categorias seguras de diagnostico, resposta HTTP 403 com rollback preservado,
+atualizacao do handoff e aprovacao de `test:autorizacao-proprietario`,
+`test:fila-pagamentos`, `test:docs`, checagens sintaticas e `git diff --check`.
+Nenhum banco, Redis, EC2 ou deploy foi alterado nesta tarefa.

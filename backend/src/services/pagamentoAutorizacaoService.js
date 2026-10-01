@@ -309,6 +309,30 @@ function credentialForLibrary(row) {
   return { id: row.credential_id, publicKey: Uint8Array.from(Buffer.from(row.public_key, 'base64')), counter: Number(row.counter || 0), transports: row.transports || undefined };
 }
 
+function classifyWebauthnVerificationError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  if (!message) return 'UNKNOWN';
+  if (message.includes('challenge')) return 'CHALLENGE_MISMATCH';
+  if (message.includes('origin')) return 'ORIGIN_MISMATCH';
+  if (message.includes('rp id') || message.includes('rpid') || message.includes('relying party')) return 'RP_ID_MISMATCH';
+  if (message.includes('signature')) return 'SIGNATURE_INVALID';
+  if (message.includes('public key')) return 'PUBLIC_KEY_INVALID';
+  if (message.includes('counter')) return 'COUNTER_INVALID';
+  if (message.includes('user verification') || message.includes('user verified')) return 'USER_VERIFICATION_REQUIRED';
+  if (message.includes('credential')) return 'CREDENTIAL_INVALID';
+  return 'UNCLASSIFIED';
+}
+
+function logWebauthnVerificationFailure({ req, lotId, error, reason }) {
+  console.error('[payment-owner-webauthn-verification-failed]', JSON.stringify({
+    action: 'AUTHENTICATE',
+    reason: reason || classifyWebauthnVerificationError(error),
+    error_name: String(error?.name || 'Error').slice(0, 80),
+    user_id: Number(req.user?.id) || null,
+    lote_id: Number(lotId) || null
+  }));
+}
+
 async function registrationOptions(req) {
   assertFeatureAvailable(); assertNoDevSwitch(req); assertWebauthnConfig();
   await assertActiveAuthorizer(req.user);
@@ -408,8 +432,17 @@ async function decideBatch(req, lotId, payload = {}) {
     const credential = await WebauthnCredential.findOne({ where: { usuario_id: req.user.id, credential_id: credentialId, ativo: true }, transaction, lock: transaction.LOCK.UPDATE });
     if (!credential) throw httpError(403, 'Passkey nao reconhecida para este autorizador.');
     const { verifyAuthenticationResponse } = await webauthnLib();
-    const verification = await verifyAuthenticationResponse({ response: payload.credential, expectedChallenge: stored.challenge, expectedOrigin: env.webauthnOrigins, expectedRPID: env.webauthnRpId, credential: credentialForLibrary(credential), requireUserVerification: true });
-    if (!verification.verified) throw httpError(403, 'Confirmacao biometrica invalida.');
+    let verification;
+    try {
+      verification = await verifyAuthenticationResponse({ response: payload.credential, expectedChallenge: stored.challenge, expectedOrigin: env.webauthnOrigins, expectedRPID: env.webauthnRpId, credential: credentialForLibrary(credential), requireUserVerification: true });
+    } catch (error) {
+      logWebauthnVerificationFailure({ req, lotId, error });
+      throw httpError(403, 'Nao foi possivel validar a passkey neste dispositivo. Tente novamente; se persistir, recadastre a passkey.', 'PAYMENT_OWNER_WEBAUTHN_VERIFICATION_FAILED');
+    }
+    if (!verification.verified) {
+      logWebauthnVerificationFailure({ req, lotId, error: null, reason: 'NOT_VERIFIED' });
+      throw httpError(403, 'Confirmacao biometrica invalida.', 'PAYMENT_OWNER_WEBAUTHN_NOT_VERIFIED');
+    }
     const currentLot = await PagamentoAutorizacaoLote.findByPk(lotId, { transaction, lock: transaction.LOCK.UPDATE });
     if (!currentLot || currentLot.status !== 'AGUARDANDO' || new Date(currentLot.expira_em).getTime() <= Date.now()) throw httpError(409, 'Lote indisponivel ou expirado.');
     if (Number(currentLot.criado_por) === Number(req.user.id)) throw httpError(403, 'O preparador nao pode autorizar o proprio lote.');
@@ -539,5 +572,6 @@ module.exports = {
   saveAuthorizer,
   subscribePush,
   unsubscribePush,
-  sha256
+  sha256,
+  classifyWebauthnVerificationError
 };

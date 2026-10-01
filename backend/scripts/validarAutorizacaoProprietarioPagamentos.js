@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { parsePaymentOwnerApprovalMode } = require('../src/config/env');
 const { resolvePaymentQueueGate } = require('../src/services/paymentOwnerApprovalPolicy');
-const { sha256 } = require('../src/services/pagamentoAutorizacaoService');
+const { sha256, classifyWebauthnVerificationError } = require('../src/services/pagamentoAutorizacaoService');
 const { ALL_PERMISSION_KEYS } = require('../src/constants/moduloPermissoes');
 
 assert.strictEqual(parsePaymentOwnerApprovalMode(undefined), 'OFF');
@@ -18,6 +18,12 @@ assert.strictEqual(resolvePaymentQueueGate({ mode: 'ENFORCED' }), 'AUTHORIZATION
 assert.strictEqual(resolvePaymentQueueGate({ mode: 'PAUSED', internalAuthorization: true }), 'PAUSED');
 assert.strictEqual(resolvePaymentQueueGate({ mode: 'ENFORCED', internalAuthorization: true }), 'INTERNAL_AUTHORIZED');
 assert.strictEqual(sha256({ b: 2, a: 1 }), sha256({ a: 1, b: 2 }));
+assert.strictEqual(classifyWebauthnVerificationError(new Error('Unexpected authentication response challenge')), 'CHALLENGE_MISMATCH');
+assert.strictEqual(classifyWebauthnVerificationError(new Error('Unexpected authentication response origin')), 'ORIGIN_MISMATCH');
+assert.strictEqual(classifyWebauthnVerificationError(new Error('Unexpected RP ID hash')), 'RP_ID_MISMATCH');
+assert.strictEqual(classifyWebauthnVerificationError(new Error('Invalid signature')), 'SIGNATURE_INVALID');
+assert.strictEqual(classifyWebauthnVerificationError(new Error('Credential public key was invalid')), 'PUBLIC_KEY_INVALID');
+assert.strictEqual(classifyWebauthnVerificationError(new Error('Unknown verifier failure with sensitive values')), 'UNCLASSIFIED');
 
 for (const key of [
   'financeiro.autorizacoes_pagamento.visualizar',
@@ -52,6 +58,14 @@ assert(
 assert(
   approvalService.includes('Usuario nao cadastrado como autorizador nominal de pagamentos.'),
   'Assinatura financeira deve continuar exigindo autorizador nominal ativo.'
+);
+assert(
+  approvalService.includes('[payment-owner-webauthn-verification-failed]'),
+  'Falhas WebAuthn devem produzir diagnostico seguro no backend.'
+);
+assert(
+  approvalService.includes("throw httpError(403, 'Nao foi possivel validar a passkey neste dispositivo."),
+  'Falhas WebAuthn devem retornar resposta operacional controlada.'
 );
 
 const pushService = fs.readFileSync(path.resolve(__dirname, '../src/services/webPushService.js'), 'utf8');

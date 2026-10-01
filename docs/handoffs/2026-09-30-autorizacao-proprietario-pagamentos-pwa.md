@@ -119,3 +119,18 @@ Com isso, o rate limit continua fail-closed quando Redis é obrigatório, mas um
 indisponibilidade deixa de encerrar o processo Node. Ainda é necessário promover o
 commit para a EC2 dev, reiniciar somente `backend-dev` e repetir o teste de inclusão
 do autorizador.
+
+## Diagnóstico seguro da decisão WebAuthn no Android — 01/10/2026
+
+Na primeira homologação móvel, o Android concluiu a biometria, mas o endpoint de
+decisão respondeu `500`. A auditoria somente leitura confirmou que o lote permaneceu
+`AGUARDANDO`, os três itens continuaram `PENDENTE`, nenhum evento ou item de fila foi
+criado e o contador da passkey permaneceu zero. Portanto, a falha ocorreu durante a
+verificação criptográfica, antes de qualquer mutação financeira.
+
+O serviço passou a classificar falhas em categorias seguras (`CHALLENGE_MISMATCH`,
+`ORIGIN_MISMATCH`, `RP_ID_MISMATCH`, `SIGNATURE_INVALID`, `PUBLIC_KEY_INVALID`,
+`COUNTER_INVALID`, `USER_VERIFICATION_REQUIRED`, `CREDENTIAL_INVALID` ou
+`UNCLASSIFIED`). O log registra somente categoria, nome da exceção, usuário e lote;
+credencial, desafio, chave pública, assinatura e conteúdo financeiro não são
+registrados. A API devolve `403` operacional e a transação permanece revertida.
