@@ -125,7 +125,24 @@ const ROTULO_DADO = {
   periodo_fim: 'Fim do período',
   dias_base: 'Dias base',
   total_colaboradores: 'Colaboradores informados',
-  origem: 'Origem'
+  origem: 'Origem',
+  telefone: 'Telefone',
+  telefone_secundario: 'Segundo telefone',
+  email: 'E-mail',
+  endereco: 'Endereço',
+  numero: 'Número',
+  complemento: 'Complemento',
+  bairro: 'Bairro',
+  municipio: 'Município',
+  estado: 'UF',
+  cep: 'CEP',
+  endereco_secundario: 'Segundo endereço',
+  numero_secundario: 'Número do segundo endereço',
+  complemento_secundario: 'Complemento do segundo endereço',
+  bairro_secundario: 'Bairro do segundo endereço',
+  municipio_secundario: 'Município do segundo endereço',
+  estado_secundario: 'UF do segundo endereço',
+  cep_secundario: 'CEP do segundo endereço'
 };
 
 function formatarDado(chave, valor) {

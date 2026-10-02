@@ -42,6 +42,10 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.STRING(30),
       allowNull: true
     },
+    telefone_secundario: {
+      type: DataTypes.STRING(30),
+      allowNull: true
+    },
     email: {
       type: DataTypes.STRING(160),
       allowNull: true
@@ -132,7 +136,15 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.STRING(255),
       allowNull: true
     },
+    endereco_secundario: {
+      type: DataTypes.STRING(255),
+      allowNull: true
+    },
     numero: {
+      type: DataTypes.STRING(50),
+      allowNull: true
+    },
+    numero_secundario: {
       type: DataTypes.STRING(50),
       allowNull: true
     },
@@ -140,7 +152,15 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.STRING(120),
       allowNull: true
     },
+    complemento_secundario: {
+      type: DataTypes.STRING(120),
+      allowNull: true
+    },
     bairro: {
+      type: DataTypes.STRING(120),
+      allowNull: true
+    },
+    bairro_secundario: {
       type: DataTypes.STRING(120),
       allowNull: true
     },
@@ -148,11 +168,23 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.STRING(120),
       allowNull: true
     },
+    municipio_secundario: {
+      type: DataTypes.STRING(120),
+      allowNull: true
+    },
     estado: {
       type: DataTypes.STRING(2),
       allowNull: true
     },
+    estado_secundario: {
+      type: DataTypes.STRING(2),
+      allowNull: true
+    },
     cep: {
+      type: DataTypes.STRING(20),
+      allowNull: true
+    },
+    cep_secundario: {
       type: DataTypes.STRING(20),
       allowNull: true
     },

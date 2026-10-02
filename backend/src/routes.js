@@ -2034,6 +2034,7 @@ router.post('/rh/transferencias/:id/:acao', allowRhDpSolicitacaoVer, criticalRat
 router.get('/rh/solicitacoes', allowRhDpSolicitacaoVer, RhSolicitacaoController.index);
 router.get('/rh/solicitacoes/checklist', allowRhDpSolicitacaoVer, RhSolicitacaoController.checklistDoTipo);
 router.get('/rh/solicitacoes/:id', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.show);
+router.get('/rh/solicitacoes/:id/jornada', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.jornada);
 router.get('/rh/solicitacoes/:id/conferencia', allowRhDpSolicitacaoVer, validateRequest({ params: validateNumericIdParam('id', 'Solicitacao de pessoal') }), RhSolicitacaoController.conferencia);
 router.post('/rh/solicitacoes', allowRhDpSolicitacaoAbrir, criticalRateLimit, RhSolicitacaoController.create);
 // A autorizacao fina continua no controller: somente DP ou usuario vinculado a obra da solicitacao

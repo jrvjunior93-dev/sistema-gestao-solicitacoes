@@ -22,6 +22,7 @@ import {
   anexarNaRhSolicitacao,
   baixarModeloJornadaRh,
   importarJornadaPlanilhaRh,
+  getJornadaEnviadaRh,
   listarRhSolicitacoes,
   registrarJornadaRh,
   solicitarEdicaoJornadaRh
@@ -89,6 +90,10 @@ function formatarData(valor) {
   if (!valor) return '—';
   const data = new Date(`${valor}T00:00:00`);
   return Number.isNaN(data.getTime()) ? valor : data.toLocaleDateString('pt-BR');
+}
+
+function formatarMoeda(valor) {
+  return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 /** Dimensao de valor UNICO: o `ativos` guarda um conjunto, o servico recebe um id. */
@@ -251,6 +256,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   const [edicoesPendentes, setEdicoesPendentes] = useState([]);
   const [jornadasEnviadas, setJornadasEnviadas] = useState([]);
   const [carregandoEnviadas, setCarregandoEnviadas] = useState(false);
+  const [jornadaEmAnalise, setJornadaEmAnalise] = useState(null);
+  const [abrindoJornadaId, setAbrindoJornadaId] = useState(null);
   const [jornadaEnviada, setJornadaEnviada] = useState(null);
   const [anexandoFichas, setAnexandoFichas] = useState(false);
   const [baixandoModelo, setBaixandoModelo] = useState(false);
@@ -332,6 +339,19 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       setCarregandoEnviadas(false);
     }
   }, [avisar, limpar]);
+
+  async function abrirJornadaEnviada(item) {
+    if (abrindoJornadaId) return;
+    setAbrindoJornadaId(item.id);
+    limpar();
+    try {
+      setJornadaEmAnalise(await getJornadaEnviadaRh(item.id));
+    } catch (error) {
+      avisar.erro(error.message || 'Não foi possível abrir a jornada enviada.');
+    } finally {
+      setAbrindoJornadaId(null);
+    }
+  }
 
   useEffect(() => {
     if (secaoAtiva === 'enviadas') carregarJornadasEnviadas();
@@ -902,18 +922,90 @@ export default function RhDpJornada({ onAbrirApuracao }) {
             rotuloRolagem="Jornadas enviadas"
             carregando={carregandoEnviadas}
             vazio="Nenhuma jornada enviada encontrada."
-            acoesLinha={onAbrirApuracao ? (item) => (
-              <button
-                type="button"
-                className="btn btn-outline btn-sm"
-                onClick={() => onAbrirApuracao(item)}
-              >
-                Ir para Apuração
-              </button>
-            ) : undefined}
-            larguraAcoes={onAbrirApuracao ? 150 : undefined}
+            acoesLinha={(item) => (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={Boolean(abrindoJornadaId)}
+                  onClick={() => abrirJornadaEnviada(item)}
+                >
+                  {abrindoJornadaId === item.id ? 'Abrindo...' : 'Abrir jornada'}
+                </button>
+                {onAbrirApuracao ? (
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => onAbrirApuracao(item)}>
+                    Ir para Apuração
+                  </button>
+                ) : null}
+              </div>
+            )}
+            larguraAcoes={onAbrirApuracao ? 280 : 135}
           />
         </BlocoConteudo>
+        {jornadaEmAnalise ? (
+          <OverlayModal
+            rotulo={`Jornada ${jornadaEmAnalise.solicitacao?.codigo || `#${jornadaEmAnalise.solicitacao?.id}`}`}
+            largura="1120px"
+            onFechar={() => setJornadaEmAnalise(null)}
+          >
+            <div className="rh-modal-conteudo space-y-4">
+              <div className="app-page-header-row">
+                <div>
+                  <h2 className="app-bloco-titulo">Jornada enviada · {jornadaEmAnalise.solicitacao?.codigo || `#${jornadaEmAnalise.solicitacao?.id}`}</h2>
+                  <p className="app-bloco-lead">
+                    {jornadaEmAnalise.importacao?.competencia} · {formatarData(jornadaEmAnalise.importacao?.periodo_inicio)} a {formatarData(jornadaEmAnalise.importacao?.periodo_fim)} · {jornadaEmAnalise.importacao?.origem}
+                  </p>
+                </div>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => setJornadaEmAnalise(null)}>Fechar</button>
+              </div>
+              <p className="app-bloco-lead">Dados enviados pela obra. Valores de pagamento são consolidados na Apuração.</p>
+              {jornadaEmAnalise.solicitacao?.dados_json?.observacoes ? (
+                <p className="app-bloco-lead">Observação do envio: {jornadaEmAnalise.solicitacao.dados_json.observacoes}</p>
+              ) : null}
+              <TabelaPadrao
+                colunasConfiguraveis={false}
+                colunas={[
+                  { id: 'colaborador', titulo: 'Colaborador', tipo: 'identidade', render: (linha) => linha.nome_ref || `Colaborador #${linha.colaborador_id}` },
+                  { id: 'situacao', titulo: 'Situação', tipo: 'status', render: (linha) => linha.status === 'SUBSTITUIDA' ? 'Substituída' : linha.status },
+                  { id: 'dias', titulo: 'Dias', tipo: 'numero', render: (linha) => linha.payload_json?.dias_trabalhados ?? '—' },
+                  { id: 'faltas', titulo: 'Faltas', tipo: 'numero', render: (linha) => linha.payload_json?.faltas ?? '—' },
+                  { id: 'acrescimos', titulo: 'Acréscimos', tipo: 'numero', render: (linha) => (
+                    <div>
+                      <div>{formatarMoeda(
+                        ['adicionais', 'adicional_noturno', 'adicional_insalubridade', 'adicional_periculosidade', 'bonificacoes']
+                          .reduce((soma, campo) => soma + Number(linha.payload_json?.[campo] || 0), 0)
+                      )}</div>
+                      {[
+                        ['Outros', 'adicionais'], ['Noturno', 'adicional_noturno'],
+                        ['Insalubridade', 'adicional_insalubridade'], ['Periculosidade', 'adicional_periculosidade'],
+                        ['Bonificação', 'bonificacoes']
+                      ].filter(([, campo]) => Number(linha.payload_json?.[campo] || 0) > 0)
+                        .map(([rotulo, campo]) => (
+                          <div key={campo} className="text-xs text-slate-500">{rotulo}: {formatarMoeda(linha.payload_json[campo])}</div>
+                        ))}
+                    </div>
+                  ) },
+                  { id: 'descontos', titulo: 'Descontos', tipo: 'numero', render: (linha) => formatarMoeda(linha.payload_json?.descontos_informados) },
+                  { id: 'decimo', titulo: '13º', tipo: 'numero', render: (linha) => formatarMoeda(linha.payload_json?.decimo_terceiro) },
+                  { id: 'valor', titulo: 'Valor informado', tipo: 'numero', render: (linha) => (
+                    linha.payload_json?.valor_informado == null ? '—' : formatarMoeda(linha.payload_json.valor_informado)
+                  ) },
+                  { id: 'detalhe', titulo: 'Regime / observação', tipo: 'texto', render: (linha) => (
+                    <div>
+                      <div>{linha.payload_json?.regime_pagamento || 'NORMAL'}{linha.payload_json?.servico_executado ? ` · ${linha.payload_json.servico_executado}` : ''}</div>
+                      {linha.payload_json?.valor_empreitada ? <div>Empreitada: {formatarMoeda(linha.payload_json.valor_empreitada)}</div> : null}
+                      {linha.payload_json?.observacoes ? <div>{linha.payload_json.observacoes}</div> : null}
+                    </div>
+                  ) }
+                ]}
+                itens={jornadaEmAnalise.importacao?.linhas || []}
+                getId={(linha) => linha.id}
+                rotuloRolagem="Linhas da jornada enviada"
+                vazio="Nenhuma linha registrada para esta jornada."
+              />
+            </div>
+          </OverlayModal>
+        ) : null}
         {elementoConfirmacao}
       </div>
     );

@@ -16,7 +16,7 @@ const {
 } = require('../services/rhSolicitacaoService');
 const { checklistDoPedido } = require('../services/rhChecklistService');
 const { Op } = require('sequelize');
-const { RhSolicitacao, Obra, RhColaborador } = require('../models');
+const { RhSolicitacao, RhImportacao, RhImportacaoLinha, Obra, RhColaborador } = require('../models');
 const { responderErroController } = require('../utils/controllerError');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
 const {
@@ -192,6 +192,43 @@ module.exports = {
     } catch (error) {
       console.error(error);
       return responderErroController(res, error, 'Erro ao buscar a solicitacao de pessoal');
+    }
+  },
+
+  async jornada(req, res) {
+    try {
+      await exigirSolicitacaoNoEscopoDoUsuario(req, req.params.id);
+      const pedido = await RhSolicitacao.findByPk(req.params.id);
+      if (pedido.tipo !== 'JORNADA') throw new ValidationError('Solicitacao de jornada nao encontrada.', 404);
+
+      const importacaoId = Number(pedido.dados_json?.importacao_id);
+      if (!Number.isInteger(importacaoId) || importacaoId <= 0) {
+        throw new ValidationError('Esta jornada nao possui linhas registradas para consulta.', 404);
+      }
+      const importacao = await RhImportacao.findOne({
+        where: { id: importacaoId, tipo: 'JORNADA', obra_id: pedido.obra_id },
+        attributes: ['id', 'competencia', 'periodicidade', 'periodo_inicio', 'periodo_fim', 'origem', 'status', 'observacoes', 'total_linhas'],
+        include: [{
+          model: RhImportacaoLinha,
+          as: 'linhas',
+          attributes: ['id', 'numero_linha', 'colaborador_id', 'nome_ref', 'matricula_ref', 'status', 'payload_json'],
+          required: false
+        }],
+        order: [[{ model: RhImportacaoLinha, as: 'linhas' }, 'numero_linha', 'ASC']]
+      });
+      if (!importacao) throw new ValidationError('Registro da jornada nao encontrado.', 404);
+      return res.json({
+        solicitacao: {
+          id: pedido.id,
+          codigo: pedido.codigo,
+          obra_id: pedido.obra_id,
+          situacao: pedido.situacao,
+          dados_json: pedido.dados_json
+        },
+        importacao
+      });
+    } catch (error) {
+      return responderErroController(res, error, 'Erro ao consultar a jornada');
     }
   },
 

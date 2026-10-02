@@ -383,6 +383,11 @@ export async function getRhSolicitacao(id) {
   return parseJson(response, 'Erro ao buscar a solicitacao de pessoal');
 }
 
+export async function getJornadaEnviadaRh(id) {
+  const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/jornada`, { headers: authHeaders() });
+  return parseJson(response, 'Erro ao consultar a jornada enviada');
+}
+
 export async function conferirDocumentacaoRhSolicitacao(id) {
   const response = await fetch(`${API_URL}/rh/solicitacoes/${id}/conferencia`, { headers: authHeaders() });
   return parseJson(response, 'Erro ao conferir a documentacao da solicitacao');

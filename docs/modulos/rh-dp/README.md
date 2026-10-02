@@ -24,11 +24,18 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 - mensalistas podem ter percentuais gerenciais de 40% e 60% vinculados ao cadastro; diaristas usam o valor da diaria;
 - o valor mensal do ticket e mantido no colaborador e o DP acompanha por competencia se houve geracao e pagamento;
 - na jornada, a obra informa colaborador, empresa, cargo, dias trabalhados, faltas, acrescimos, descontos, observacao e decimo terceiro;
+- em `Pagamento de Mao de Obra > Jornadas enviadas`, `Abrir jornada` consulta, sem alterar dados, as linhas originais do envio; `Ir para Apuracao` continua separado. A API valida a permissao de RH/DP e o escopo da obra antes de buscar a importacao vinculada;
 - faltas sao informativas e nao geram desconto automatico;
 - mensalista e calculado pelo salario da parcela aplicavel, acrescido dos valores e reduzido dos descontos informados; acrescimo ou desconto exige justificativa em observacao;
 - diarista e calculado por dias trabalhados multiplicados pela diaria, mais acrescimos e menos descontos informados;
 - o regime `EMPREITADA` exige servico executado e valor a pagar; fichas ou fotos podem ser anexadas depois que a jornada existir;
 - envio, consolidacao e geracao financeira precisam impedir duplicidade por competencia, colaborador e origem.
+
+## Admissao e contatos adicionais
+
+- o pedido de admissao permite informar, opcionalmente, um segundo telefone e um segundo endereco completo;
+- os dados adicionais ficam no pedido para conferencia e, apos aprovacao, no cadastro do colaborador; o cadastro exige a migration de esquema `202610020001_rh_colaborador_contatos_adicionais.js` antes de usar esses campos;
+- ao informar o segundo endereco, logradouro e municipio sao obrigatorios; o segundo telefone, quando preenchido, deve ter DDD.
 
 ## Colaborador em mais de uma obra
 

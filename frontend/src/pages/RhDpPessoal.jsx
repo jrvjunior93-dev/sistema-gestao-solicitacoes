@@ -258,8 +258,12 @@ function formularioVazio(tipo) {
     // Item 8 do escopo: cargo pelo catalogo e carga horaria.
     cargo_id: '',
     carga_horaria_semanal: '',
-    telefone: '', email: '', nome_pai: '', nome_mae: '',
+    telefone: '', telefone_secundario: '', mostrarTelefoneSecundario: false,
+    email: '', nome_pai: '', nome_mae: '',
     endereco: '', numero: '', complemento: '', bairro: '', municipio: '', estado: '', cep: '',
+    endereco_secundario: '', numero_secundario: '', complemento_secundario: '',
+    bairro_secundario: '', municipio_secundario: '', estado_secundario: '', cep_secundario: '',
+    mostrarEnderecoSecundario: false,
     banco: '', agencia: '', conta: '', conta_tipo: '', pix_chave_tipo: '', pix_chave: '',
     // ADMISSAO
     nome: '',
@@ -698,8 +702,11 @@ export default function RhDpPessoal() {
         // Os campos do item 8 viajam em bloco: escrever um por um aqui daria 17 linhas iguais e
         // uma chance de esquecer uma — que so apareceria como campo silenciosamente vazio na ficha.
         ...Object.fromEntries(
-          ['telefone', 'email', 'nome_pai', 'nome_mae', 'endereco', 'numero', 'complemento',
-            'bairro', 'municipio', 'estado', 'cep', 'banco', 'agencia', 'conta', 'conta_tipo',
+          ['telefone', 'telefone_secundario', 'email', 'nome_pai', 'nome_mae',
+            'endereco', 'numero', 'complemento', 'bairro', 'municipio', 'estado', 'cep',
+            'endereco_secundario', 'numero_secundario', 'complemento_secundario',
+            'bairro_secundario', 'municipio_secundario', 'estado_secundario', 'cep_secundario',
+            'banco', 'agencia', 'conta', 'conta_tipo',
             'pix_chave_tipo', 'pix_chave']
             .map((chave) => [chave, f[chave] || undefined])
             .filter(([, valor]) => valor !== undefined)
@@ -1609,6 +1616,14 @@ export default function RhDpPessoal() {
                     onChange={(e) => setFormulario({ ...formulario, telefone: e.target.value })} required />
                 </label>
 
+                {formulario.mostrarTelefoneSecundario ? (
+                  <label className="form-field">
+                    <span className="form-label">Segundo telefone</span>
+                    <input className="form-control" type="tel" maxLength={30} value={formulario.telefone_secundario || ''}
+                      onChange={(e) => setFormulario({ ...formulario, telefone_secundario: e.target.value })} />
+                  </label>
+                ) : null}
+
                 <label className="form-field">
                   <span className="form-label form-label--required">E-mail</span>
                   <input className="form-control" type="email" value={formulario.email || ''}
@@ -1616,6 +1631,13 @@ export default function RhDpPessoal() {
                 </label>
 
               </div>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setFormulario((atual) => ({
+                ...atual,
+                mostrarTelefoneSecundario: !atual.mostrarTelefoneSecundario,
+                telefone_secundario: atual.mostrarTelefoneSecundario ? '' : atual.telefone_secundario
+              }))}>
+                {formulario.mostrarTelefoneSecundario ? 'Remover segundo telefone' : 'Adicionar segundo telefone'}
+              </button>
 
               {/* O escopo pede "nome dos pais". Dois campos, e nao um: a certidao de
                   nascimento e o eSocial tratam pai e mae separadamente. */}
@@ -1678,6 +1700,56 @@ export default function RhDpPessoal() {
                 </label>
 
               </div>
+
+              {formulario.mostrarEnderecoSecundario ? (
+                <div className="rh-colaboradores-filter-grid">
+                  <label className="form-field">
+                    <span className="form-label form-label--required">Segundo endereço</span>
+                    <input className="form-control" maxLength={255} value={formulario.endereco_secundario || ''}
+                      onChange={(e) => setFormulario({ ...formulario, endereco_secundario: e.target.value })} required />
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label">Número</span>
+                    <input className="form-control" maxLength={50} value={formulario.numero_secundario || ''}
+                      onChange={(e) => setFormulario({ ...formulario, numero_secundario: e.target.value })} />
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label">Complemento</span>
+                    <input className="form-control" maxLength={120} value={formulario.complemento_secundario || ''}
+                      onChange={(e) => setFormulario({ ...formulario, complemento_secundario: e.target.value })} />
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label">Bairro</span>
+                    <input className="form-control" maxLength={120} value={formulario.bairro_secundario || ''}
+                      onChange={(e) => setFormulario({ ...formulario, bairro_secundario: e.target.value })} />
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label form-label--required">Município</span>
+                    <input className="form-control" maxLength={120} value={formulario.municipio_secundario || ''}
+                      onChange={(e) => setFormulario({ ...formulario, municipio_secundario: e.target.value })} required />
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label">UF</span>
+                    <input className="form-control" maxLength={2} value={formulario.estado_secundario || ''}
+                      onChange={(e) => setFormulario({ ...formulario, estado_secundario: e.target.value.toUpperCase() })} />
+                  </label>
+                  <label className="form-field">
+                    <span className="form-label">CEP</span>
+                    <input className="form-control" maxLength={20} value={formulario.cep_secundario || ''}
+                      onChange={(e) => setFormulario({ ...formulario, cep_secundario: e.target.value })} />
+                  </label>
+                </div>
+              ) : null}
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setFormulario((atual) => ({
+                ...atual,
+                mostrarEnderecoSecundario: !atual.mostrarEnderecoSecundario,
+                ...(!atual.mostrarEnderecoSecundario ? {} : {
+                  endereco_secundario: '', numero_secundario: '', complemento_secundario: '',
+                  bairro_secundario: '', municipio_secundario: '', estado_secundario: '', cep_secundario: ''
+                })
+              }))}>
+                {formulario.mostrarEnderecoSecundario ? 'Remover segundo endereço' : 'Adicionar segundo endereço'}
+              </button>
 
               {/* Dados bancarios E chave PIX: o escopo pede os dois, e eles nao sao
                   alternativos — a conta recebe a folha, o PIX resolve pagamento avulso. */}
