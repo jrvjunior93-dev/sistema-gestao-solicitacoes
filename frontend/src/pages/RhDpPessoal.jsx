@@ -548,6 +548,8 @@ export default function RhDpPessoal() {
   const [busca, setBusca] = useState('');
 
   const [formulario, setFormulario] = useState(null);
+  const [criandoRascunho, setCriandoRascunho] = useState(false);
+  const criacaoRascunhoEmAndamento = useRef(false);
   const [conferencia, setConferencia] = useState(null);
   const [pedidosDoColaborador, setPedidosDoColaborador] = useState({ id: null, lista: [] });
 
@@ -660,6 +662,7 @@ export default function RhDpPessoal() {
 
   async function abrirPedido(evento) {
     evento.preventDefault();
+    if (criacaoRascunhoEmAndamento.current) return;
     limpar();
 
     const f = formulario;
@@ -784,6 +787,8 @@ export default function RhDpPessoal() {
       });
     }
 
+    criacaoRascunhoEmAndamento.current = true;
+    setCriandoRascunho(true);
     try {
       const criada = await abrirRhSolicitacao({
         tipo: f.tipo,
@@ -831,6 +836,9 @@ export default function RhDpPessoal() {
       avisar[retorno.tipo](retorno.texto);
     } catch (error) {
       avisar.erro(error.message || 'Nao foi possivel abrir a solicitacao.');
+    } finally {
+      criacaoRascunhoEmAndamento.current = false;
+      setCriandoRascunho(false);
     }
   }
 
@@ -2295,13 +2303,14 @@ export default function RhDpPessoal() {
             ) : null}
 
             <div className="app-page-actions">
-              {/*
-                O ROTULO DIZ O QUE O BOTAO FAZ. Ele dizia "Enviar ao Departamento Pessoal" e passou
-                a mentir quando o pedido virou RASCUNHO: aqui so se GRAVA o rascunho e sobem os
-                arquivos. Quem enviava de fato era este botao, e agora e o de Enviar, na lista.
-              */}
-              <button type="submit" className="btn btn-primary">Salvar rascunho</button>
-              <button type="button" className="btn btn-outline" onClick={() => setFormulario(null)}>Cancelar</button>
+              <span className="text-sm opacity-80">
+                A solicitacao sera criada como rascunho. Depois, envie-a ao DP pela aba Solicitacoes.
+              </span>
+              <button type="submit" className="btn btn-primary" disabled={criandoRascunho}>
+                {criandoRascunho ? 'Criando...' : 'Criar rascunho'}
+              </button>
+              <button type="button" className="btn btn-outline" disabled={criandoRascunho}
+                onClick={() => setFormulario(null)}>Cancelar</button>
               </div>
             </form>
           </div>

@@ -71,7 +71,7 @@ async function obrasVisiveis(req) {
 
 async function exigirObraNoEscopoDoUsuario(req, obraId) {
   const escopo = await getRhDpObraScopeIds(req.user);
-  if (!Array.isArray(escopo)) return pedido;
+  if (!Array.isArray(escopo)) return;
 
   const id = Number(obraId);
   if (!id || !escopo.includes(id)) {
@@ -79,12 +79,13 @@ async function exigirObraNoEscopoDoUsuario(req, obraId) {
   }
 }
 
-async function exigirColaboradorNoEscopoDoUsuario(req, colaboradorId) {
+async function exigirColaboradorNoEscopoDoUsuario(req, colaboradorId, { permitirSemObra = false } = {}) {
   const escopo = await getRhDpObraScopeIds(req.user);
   if (!Array.isArray(escopo)) return;
 
   const colaborador = await RhColaborador.findByPk(colaboradorId, { attributes: ['id', 'obra_id'] });
   if (!colaborador) throw new ValidationError('Colaborador nao encontrado.', 404);
+  if (permitirSemObra && !colaborador.obra_id) return;
   if (!colaborador.obra_id || !escopo.includes(Number(colaborador.obra_id))) {
     throw new ValidationError('Acesso negado a este colaborador.', 403);
   }
@@ -99,7 +100,7 @@ async function exigirSolicitacaoNoEscopoDoUsuario(req, solicitacaoId) {
     throw new ValidationError('Acesso negado a esta solicitacao de pessoal.', 403);
   }
   const escopo = await getRhDpObraScopeIds(req.user);
-  if (!Array.isArray(escopo)) return;
+  if (!Array.isArray(escopo)) return pedido;
 
   const solicitacao = await RhSolicitacao.findByPk(solicitacaoId, { attributes: ['id', 'obra_id'] });
   if (!solicitacao) throw new ValidationError('Solicitacao de pessoal nao encontrada.', 404);
@@ -235,13 +236,22 @@ module.exports = {
   async create(req, res) {
     try {
       const payload = req.body || {};
-      if (payload.tipo === 'TROCA_OBRA' || (payload.tipo === 'MOVIMENTACAO' && payload.subtipo === 'TRANSFERENCIA_OBRA')) {
+      const primeiraLotacao = payload.tipo === 'TROCA_OBRA'
+        || (payload.tipo === 'MOVIMENTACAO' && payload.subtipo === 'TRANSFERENCIA_OBRA');
+      if (primeiraLotacao) {
         const colaborador = await RhColaborador.findByPk(payload.colaborador_id, { attributes: ['id', 'obra_id'] });
         if (colaborador?.obra_id) throw new ValidationError('Solicite a transferencia pela aba Transferencias entre obras.');
       }
-      await exigirObraNoEscopoDoUsuario(req, payload.obra_id || payload.dados?.obra_id);
+      // Na primeira lotacao o colaborador ainda nao tem obra de origem. O escopo
+      // autorizado e a obra de destino escolhida, nunca um obra_id vazio.
+      const obraParaEscopo = primeiraLotacao
+        ? payload.dados?.obra_destino_id
+        : payload.obra_id || payload.dados?.obra_id;
+      await exigirObraNoEscopoDoUsuario(req, obraParaEscopo);
       if (payload.colaborador_id) {
-        await exigirColaboradorNoEscopoDoUsuario(req, payload.colaborador_id);
+        await exigirColaboradorNoEscopoDoUsuario(req, payload.colaborador_id, {
+          permitirSemObra: primeiraLotacao
+        });
       }
       const criada = await abrirSolicitacao(payload, contextoDe(req));
       return res.status(201).json(criada);

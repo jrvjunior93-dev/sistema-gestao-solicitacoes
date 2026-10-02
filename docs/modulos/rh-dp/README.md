@@ -19,6 +19,14 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 - para usuario de OBRA, listas, detalhes, solicitacoes e jornada ficam limitados as obras vinculadas em `usuarios_obras`, inclusive quando a API e chamada diretamente;
 - o cadastro geral de colaboradores, documentos, importacoes, fechamentos e relatorios permanece restrito ao RH/DP e aos administradores autorizados.
 
+## Primeira lotacao em obra
+
+- a movimentacao `Vincular a uma obra` aplica-se ao colaborador ainda sem obra; quem ja esta lotado usa a aba `Transferencias entre obras`;
+- para usuario de OBRA, a autorizacao da primeira lotacao e verificada contra a obra de destino vinculada ao usuario; o colaborador sem obra atual nao e rejeitado apenas por nao possuir lotacao anterior;
+- o pedido de primeira lotacao e associado a obra de destino para que a lista e o detalhe respeitem o mesmo escopo; o vinculo efetivo do colaborador so muda na aprovacao;
+- a acao inicial `Criar rascunho` grava o pedido e permite anexar documentos. Ela nao envia ao DP: o envio e uma etapa explicita na aba `Solicitacoes`. A tela bloqueia novo clique enquanto a criacao esta em andamento;
+- a criacao preserva a verificacao de pedido em andamento para o mesmo colaborador, tipo e subtipo, e nao autoriza acesso a destino fora do escopo.
+
 ## Pagamento de mao de obra e jornada
 
 - mensalistas podem ter percentuais gerenciais de 40% e 60% vinculados ao cadastro; diaristas usam o valor da diaria;

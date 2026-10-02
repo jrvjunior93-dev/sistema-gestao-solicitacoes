@@ -478,7 +478,11 @@ async function abrirSolicitacao(payload = {}, contexto = {}) {
         // NASCE RASCUNHO. O anexo precisa de um pedido gravado para se pendurar, entao a obra abre,
         // anexa e ENVIA — e o envio e que cobra os obrigatorios. Ver `enviarSolicitacao`.
         situacao: SITUACOES.RASCUNHO,
-        obra_id: payload.obra_id || dados.obra_id || null,
+        // A primeira lotacao pertence a obra de destino para fins de escopo e
+        // listagem, embora o colaborador continue sem obra ate a aprovacao.
+        obra_id: dados.primeira_lotacao === true
+          ? dados.obra_destino_id
+          : payload.obra_id || dados.obra_id || null,
         setor_origem: setorParaHistorico(contexto.setor) || null,
         dados_json: dados,
         justificativa: payload.justificativa || null,

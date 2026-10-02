@@ -1060,3 +1060,18 @@ do npm em etapas, com testes locais. Sem banco, EC2, migracao, reinicio ou deplo
 
 Ownership liberado apos validacao local, registro do plano e publicacao desta
 remediacao. Permanecem tres alertas moderados de `uuid`, documentados no plano.
+
+## Ownership ativo - primeira lotacao RH/DP - 02/10/2026
+
+Sessao `/root` no worktree isolado `backend-dependency-security`:
+`backend/src/controllers/RhSolicitacaoController.js`,
+`backend/src/services/rhSolicitacaoService.js`,
+`backend/scripts/validarRhPrimeiraLotacao.js`, `backend/package.json`,
+`frontend/src/pages/RhDpPessoal.jsx`, `docs/modulos/rh-dp/README.md` e
+handoff desta tarefa. Corrigir o fluxo de primeira vinculacao a obra e
+esclarecer a acao de criacao do rascunho, preservando a etapa explicita de
+envio ao DP. Sem banco, EC2, migration, reinicio ou deploy nesta etapa.
+
+Ownership liberado apos revisao e validacao local. O erro do GET
+`/api/rh/solicitacoes` permanece sem stack confirmado para diagnostico
+separado em dev.
