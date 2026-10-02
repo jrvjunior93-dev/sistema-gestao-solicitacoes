@@ -1050,3 +1050,13 @@ as quatro chamadas de evento, adicionar teste de regressao, atualizar o handoff 
 aprovar `test:autorizacao-proprietario`, `test:fila-pagamentos`, `test:docs`, checagem
 sintatica e `git diff --check`. Nenhum banco, Redis, EC2 ou deploy foi alterado nesta
 tarefa.
+
+## Ownership ativo - dependencias backend - 02/10/2026
+
+Sessao `/root` no worktree isolado `backend-dependency-security`: `backend/package.json`,
+`backend/package-lock.json`, `backend/scripts/validarDependenciasBackend.js`, plano de
+seguranca e handoff desta tarefa. Remediar alertas
+do npm em etapas, com testes locais. Sem banco, EC2, migracao, reinicio ou deploy.
+
+Ownership liberado apos validacao local, registro do plano e publicacao desta
+remediacao. Permanecem tres alertas moderados de `uuid`, documentados no plano.
