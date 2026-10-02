@@ -1075,3 +1075,12 @@ envio ao DP. Sem banco, EC2, migration, reinicio ou deploy nesta etapa.
 Ownership liberado apos revisao e validacao local. O erro do GET
 `/api/rh/solicitacoes` permanece sem stack confirmado para diagnostico
 separado em dev.
+
+## Ownership ativo - moeda da jornada RH/DP - 02/10/2026
+
+Sessao `/root` no worktree isolado `backend-dependency-security`:
+`frontend/src/pages/RhDpJornada.jsx` e handoff desta tarefa. Corrigir a
+conversao de campos monetarios no envio da jornada, mantendo o backend
+estrito e as regras de autorizacao de edicao. Sem banco, EC2 ou deploy.
+
+Ownership liberado apos validacao local e publicacao na `refactor/frontend`.

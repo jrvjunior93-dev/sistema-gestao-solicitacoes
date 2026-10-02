@@ -29,7 +29,7 @@ import {
 } from '../services/rhDp';
 import { hasAnyExplicitPermissao, isBusinessAdmin } from '../utils/acessoProduto';
 import { userHasSetorCapability } from '../utils/setor';
-import { formatCurrencyInput, normalizeCurrencyTyping } from '../utils/formatters';
+import { formatCurrencyInput, normalizeCurrencyTyping, parseCurrencyInput } from '../utils/formatters';
 
 /**
  * JORNADA PELO FORMULARIO (Fase 4 do modulo DP, 26/08).
@@ -604,9 +604,9 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       .filter((l) => (
         l.dias_trabalhados !== ''
         || l.faltas !== ''
-        || Number(normalizeCurrencyTyping(l.adicionais) || 0) > 0
-        || Number(normalizeCurrencyTyping(l.descontos) || 0) > 0
-        || Number(normalizeCurrencyTyping(l.decimo_terceiro) || 0) > 0
+        || parseCurrencyInput(l.adicionais) > 0
+        || parseCurrencyInput(l.descontos) > 0
+        || parseCurrencyInput(l.decimo_terceiro) > 0
         || l.regime_pagamento === 'EMPREITADA'
       ));
     if (!preenchidas.length) {
@@ -625,8 +625,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     const ajusteSemObservacao = preenchidas.find((linha) => (
       linha.regime_pagamento !== 'EMPREITADA'
       && linha.forma_calculo_gerencial === 'MENSAL'
-      && (Number(normalizeCurrencyTyping(linha.adicionais) || 0) > 0
-        || Number(normalizeCurrencyTyping(linha.descontos) || 0) > 0)
+      && (parseCurrencyInput(linha.adicionais) > 0
+        || parseCurrencyInput(linha.descontos) > 0)
       && !String(linha.observacoes || '').trim()
     ));
     if (ajusteSemObservacao) {
@@ -636,7 +636,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     const empreitadaIncompleta = preenchidas.find((linha) => (
       linha.regime_pagamento === 'EMPREITADA'
       && (!String(linha.servico_executado || '').trim()
-        || Number(normalizeCurrencyTyping(linha.valor_empreitada) || 0) <= 0)
+        || parseCurrencyInput(linha.valor_empreitada) <= 0)
     ));
     if (empreitadaIncompleta) {
       avisar.erro(`Informe o serviço executado e o valor da empreitada de ${empreitadaIncompleta.nome}.`);
@@ -670,13 +670,13 @@ export default function RhDpJornada({ onAbrirApuracao }) {
           dias_trabalhados: Number(l.dias_trabalhados || 0),
           finais_semana_feriados: 0,
           faltas: Number(l.faltas || 0),
-          adicionais: normalizeCurrencyTyping(l.adicionais) || 0,
-          descontos: normalizeCurrencyTyping(l.descontos) || 0,
-          decimo_terceiro: normalizeCurrencyTyping(l.decimo_terceiro) || 0,
+          adicionais: parseCurrencyInput(l.adicionais),
+          descontos: parseCurrencyInput(l.descontos),
+          decimo_terceiro: parseCurrencyInput(l.decimo_terceiro),
           regime_pagamento: l.regime_pagamento,
           servico_executado: l.regime_pagamento === 'EMPREITADA' ? l.servico_executado : undefined,
           valor_empreitada: l.regime_pagamento === 'EMPREITADA'
-            ? (normalizeCurrencyTyping(l.valor_empreitada) || 0)
+            ? parseCurrencyInput(l.valor_empreitada)
             : 0,
           observacoes: l.observacoes || undefined
         }))
