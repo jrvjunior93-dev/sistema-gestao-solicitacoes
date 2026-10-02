@@ -33,6 +33,8 @@ module.exports = (sequelize, DataTypes) => sequelize.define(
       type: DataTypes.DATEONLY,
       allowNull: true
     },
+    etapa_pagamento: { type: DataTypes.STRING(20), allowNull: true },
+    idempotency_key: { type: DataTypes.STRING(80), allowNull: true },
     empresa_grupo_id: {
       type: DataTypes.INTEGER,
       allowNull: true

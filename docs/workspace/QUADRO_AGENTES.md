@@ -2,7 +2,12 @@
 
 ## Trabalho em andamento
 
-Nao ha trabalho ativo registrado por esta sessao.
+- id: 2026-10-02-rhdp-jornadas-40-60
+  sessao: codex-rhdp-jornadas-40-60-2026-10-02
+  responsavel: Codex / sessao atual
+  status: em_andamento
+  escopo: separar envios e pagamentos 40%/60% de mensalistas, jornadas independentes de diaristas, rateio multiobra e vigencia do regime.
+  pendencias: apropriacao contabil do acerto misto, integracao em banco dev e homologacao antes de ativar as flags; commit/push do codigo inativo autorizados, sem migration ou deploy.
 
 ## Trabalho planejado aguardando inicio
 

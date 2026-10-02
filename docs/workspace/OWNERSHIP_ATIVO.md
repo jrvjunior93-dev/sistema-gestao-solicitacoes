@@ -1,5 +1,15 @@
 # Ownership Ativo
 
+## Ownership ativo - jornadas RH/DP em duas etapas - 02/10/2026
+
+Sessao `codex-rhdp-jornadas-40-60-2026-10-02` reserva temporariamente os
+servicos e modelos de jornada, apuracao, fechamento e cadastro de colaborador,
+as telas `RhDpJornada.jsx`, `RhDpApuracao.jsx` e `RhDpColaboradores.jsx`,
+migrations/testes RH/DP, documentacao do modulo e arquivos de controle desta
+sessao. Sem banco, EC2, migration executada ou reinicio. O usuario autorizou
+commit e push do pacote ainda inativo na `refactor/frontend`; a implementacao
+contabil restante continua pendente e as flags nao devem ser habilitadas.
+
 Ownership temporario da sessao `/root` iniciado em 2026-09-30 para tornar a
 Negociacao Detalhada obrigatoria na solicitacao de termo aditivo, com arquivo
 proprio por aditivo e acesso na decisao. Escopo: modal e service frontend de

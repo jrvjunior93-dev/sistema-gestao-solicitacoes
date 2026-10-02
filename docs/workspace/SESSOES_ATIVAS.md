@@ -1,5 +1,10 @@
 # Sessoes Ativas
 
+Sessao `codex-rhdp-jornadas-40-60-2026-10-02` em andamento no worktree
+`backend-dependency-security`. Escopo: duas etapas de jornada para mensalistas,
+pagamentos por envio para diaristas, rateio multiobra e vigencia da mudanca de regime.
+Sem alteracao em banco ou deploy durante a implementacao local.
+
 Sessao `codex-correcao-regra-aditivo-juridico-2026-09-03` concluida. Confirmado que a mudanca e
 exclusiva do termo aditivo e que somente o valor original do contrato decide seu destino.
 

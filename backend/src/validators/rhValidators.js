@@ -8,6 +8,7 @@ const { onlyDigits, isValidCpf, isValidCnpj, isValidCpfCnpj } = require('../util
 
 const RH_TIPOS_VINCULO = ['CLT', 'NAO_CLT'];
 const RH_FORMAS_CALCULO_GERENCIAL = ['MENSAL', 'DIARIA'];
+const RH_ETAPAS_PAGAMENTO = ['ADIANTAMENTO_40', 'SALDO_60', 'DIARIA'];
 const RH_STATUS_COLABORADOR = ['ATIVO', 'INATIVO', 'AFASTADO'];
 const RH_STATUS_DOCUMENTO = ['ENVIADO', 'CONFERIDO', 'REJEITADO', 'SUBSTITUIDO'];
 const RH_VALIDADE_STATUS = ['SEM_VALIDADE', 'VALIDO', 'A_VENCER', 'VENCIDO'];
@@ -469,6 +470,7 @@ function validateRhColaboradorUpdateBody(body = {}) {
       'valor_diaria',
       'valor_ticket',
       'pagamento_automatico_40_60',
+      'calculo_vigencia_inicio',
       'observacoes',
       'pagamento'
     ],
@@ -505,6 +507,7 @@ function validateRhColaboradorUpdateBody(body = {}) {
       ? body.pagamento_automatico_40_60 === true
         || String(body.pagamento_automatico_40_60 || '').toLowerCase() === 'true'
       : undefined,
+    calculo_vigencia_inicio: parseDateOnly(body.calculo_vigencia_inicio, 'Data efetiva da forma de calculo'),
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000),
     pagamento: Object.prototype.hasOwnProperty.call(body, 'pagamento')
       ? normalizePagamentoPayload(body.pagamento)
@@ -688,12 +691,13 @@ function validateRhJornadasMultiobraQuery(query = {}) {
 function validateRhApuracaoMultiobraBody(body = {}) {
   ensureAllowedKeys(
     body,
-    ['competencia', 'colaborador_id', 'dias_base', 'observacoes'],
+    ['competencia', 'colaborador_id', 'etapa_pagamento', 'dias_base', 'observacoes'],
     'Consolidacao multiobra RH/DP'
   );
   return {
     competencia: parseCompetencia(body.competencia, 'Competencia', { required: true }),
     colaborador_id: parseInteger(body.colaborador_id, 'Colaborador', { required: true }),
+    etapa_pagamento: parseEnum(body.etapa_pagamento, 'Etapa de pagamento', RH_ETAPAS_PAGAMENTO),
     dias_base: parseDiasBaseApuracao(body.dias_base),
     observacoes: parseOptionalText(body.observacoes, 'Observacoes', 4000)
   };

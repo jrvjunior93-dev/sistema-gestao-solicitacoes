@@ -216,6 +216,8 @@ assert.deepStrictEqual(apuracaoTest.whereApuracaoRecorte({
   tipo_vinculo: 'CLT'
 }, 'CONFERIDA'), {
   competencia: '2026-09',
+  etapa_pagamento: null,
+  importacao_id: null,
   empresa_grupo_id: 2,
   obra_id: 3,
   tipo_vinculo: 'CLT',

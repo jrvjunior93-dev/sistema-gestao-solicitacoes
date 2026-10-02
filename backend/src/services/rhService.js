@@ -13,6 +13,7 @@ const {
 } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
 const rhVinculoObraService = require('./rhVinculoObraService');
+const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
 
 /**
  * Importado por funcao, e nao no topo: `rhSolicitacaoService` requer `rhVinculoObraService`, que
@@ -1088,6 +1089,10 @@ async function criarColaboradorRh(data, user) {
       { transaction }
     );
 
+    if (String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() === 'ON') {
+      await rhCalculoHistoricoService.registrarInicial(created, user?.id, transaction);
+    }
+
     await upsertPagamentoColaborador(created.id, data.pagamento, transaction);
 
     // Abre o vinculo de lotacao. `obra_id` no colaborador continua sendo a obra corrente; esta
@@ -1113,7 +1118,7 @@ async function criarColaboradorRh(data, user) {
 
 async function atualizarColaboradorRh(id, data, user) {
   return sequelize.transaction(async (transaction) => {
-    const colaborador = await RhColaborador.findByPk(id, { transaction });
+    const colaborador = await RhColaborador.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
     if (!colaborador) {
       throw new ValidationError('Colaborador nao encontrado.', 404);
     }
@@ -1225,7 +1230,17 @@ async function atualizarColaboradorRh(id, data, user) {
       collaboratorPayload.pagamento_automatico_40_60 = false;
     }
 
+    const calculoAnterior = colaborador.get({ plain: true });
     await colaborador.update(collaboratorPayload, { transaction });
+    if (String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() === 'ON') {
+      await rhCalculoHistoricoService.registrarMudanca(
+        calculoAnterior,
+        colaborador,
+        data.calculo_vigencia_inicio,
+        user?.id,
+        transaction
+      );
+    }
 
     // REDE DE SEGURANCA (Fase 1, mantida na Fase 2).
     //

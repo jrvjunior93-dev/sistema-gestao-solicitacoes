@@ -77,6 +77,14 @@ function formatNumber(value) {
   });
 }
 
+function acertoContabilPendente(detalhe) {
+  return (detalhe?.itens || []).some((item) => {
+    const acerto = item.detalhes_json?.resumo?.acerto_conversao;
+    return acerto && (Number(acerto.ajuste_mensal || 0) !== 0
+      || Number(acerto.credito_restante || 0) > 0);
+  });
+}
+
 function getLastDayOfCompetencia(competencia) {
   const [year, month] = String(competencia || '').split('-').map(Number);
   if (!year || !month) {
@@ -176,7 +184,8 @@ function toEditState(item) {
   };
 }
 
-function buildFechamentoAjustes(itens = []) {
+function buildFechamentoAjustes(itens = [], etapaPagamento = null) {
+  if (etapaPagamento) return {};
   return Object.fromEntries(
     itens
       .filter((item) => item?.colaborador?.forma_calculo_gerencial !== 'DIARIA'
@@ -337,7 +346,7 @@ export default function RhDpApuracao() {
       data_vencimento_60: anticipateWeekend(getLastDayOfCompetencia(detalhe?.competencia)),
       categoria_financeira_id: '',
       observacoes: '',
-      ajustes_titulos: buildFechamentoAjustes(detalhe?.itens || [])
+      ajustes_titulos: buildFechamentoAjustes(detalhe?.itens || [], detalhe?.etapa_pagamento)
     });
   }, [detalhe]);
 
@@ -411,6 +420,7 @@ export default function RhDpApuracao() {
       const apuracao = await consolidarRhJornadasMultiobra({
         competencia: form.competencia,
         colaborador_id: Number(colaboradorMultiobra.colaborador_id),
+        etapa_pagamento: colaboradorMultiobra.etapa_pagamento || undefined,
         dias_base: Number(form.dias_base || 30),
         observacoes: form.observacoes || undefined
       });
@@ -789,6 +799,14 @@ export default function RhDpApuracao() {
                 render: (item) => <CelulaDupla principal={item.nome} sub={item.matricula || item.cargo || 'Sem matrícula'} />
               },
               {
+                id: 'etapa_pagamento',
+                titulo: 'Etapa',
+                tipo: 'texto',
+                render: (item) => item.etapa_pagamento === 'ADIANTAMENTO_40'
+                  ? '40%'
+                  : item.etapa_pagamento === 'SALDO_60' ? '60%' : 'Legado'
+              },
+              {
                 id: 'empresa',
                 titulo: 'Empresa',
                 tipo: 'texto',
@@ -909,6 +927,16 @@ export default function RhDpApuracao() {
               render: (item) => item.obra?.nome || (item.obra_id == null ? 'Consolidada multiobra' : '-')
             },
             {
+              id: 'etapa_pagamento',
+              titulo: 'Pagamento',
+              tipo: 'texto',
+              render: (item) => item.etapa_pagamento === 'ADIANTAMENTO_40'
+                ? '40%'
+                : item.etapa_pagamento === 'SALDO_60'
+                  ? '60%'
+                  : item.etapa_pagamento === 'DIARIA' ? `Diária #${item.importacao_id}` : 'Legado'
+            },
+            {
               id: 'empresa',
               titulo: 'Empresa',
               tipo: 'texto',
@@ -984,7 +1012,7 @@ export default function RhDpApuracao() {
 
       {detalhe ? (
         <BlocoConteudo
-          titulo={`Apuração ${detalhe.competencia} - ${detalhe.obra?.nome || 'consolidada multiobra'}`}
+          titulo={`Apuração ${detalhe.competencia} - ${detalhe.obra?.nome || 'consolidada multiobra'}${detalhe.etapa_pagamento ? ` · ${detalhe.etapa_pagamento === 'ADIANTAMENTO_40' ? '40%' : detalhe.etapa_pagamento === 'SALDO_60' ? '60%' : 'Diária'}` : ''}`}
           contagem={`${detalhe.total_colaboradores || 0} colaborador(es)`}
           descricao={`Recorte: empresa do cadastro do colaborador | ${detalhe.tipo_vinculo || 'todos os vinculos'} | base ${detalhe.dias_base || 30} dias | criada em ${formatDateTime(detalhe.createdAt)} por ${detalhe.criadoPor?.nome || 'sistema'}`}
           acoes={(
@@ -1026,6 +1054,14 @@ export default function RhDpApuracao() {
               sub="Parametro usado no cálculo proporcional"
             />
           </StatGrid>
+
+          {acertoContabilPendente(detalhe) ? (
+            <Alert
+              type="warning"
+              title="Acerto de conversao em conferencia"
+              message="O saldo mensal e as diarias estao calculados para analise do DP. O fechamento financeiro deste acerto permanece bloqueado ate a apropriacao contabil separar mensal, diarias e eventual credito por obra. Nenhum titulo sera gerado com rateio incorreto."
+            />
+          ) : null}
 
           {detalhe.observacoes ? (
             <p className="app-note">
@@ -1129,8 +1165,10 @@ export default function RhDpApuracao() {
                 </FormSecao>
 
                 <div className="app-actionbar">
-                  <button type="submit" className="btn btn-primary" disabled={fechando}>
-                    {fechando ? 'Fechando competencia...' : 'Fechar competencia e gerar titulos'}
+                  <button type="submit" className="btn btn-primary" disabled={fechando || acertoContabilPendente(detalhe)}>
+                    {acertoContabilPendente(detalhe)
+                      ? 'Aguardando apropriacao do acerto'
+                      : fechando ? 'Fechando competencia...' : 'Fechar competencia e gerar titulos'}
                   </button>
                 </div>
               </form>
@@ -1168,9 +1206,12 @@ export default function RhDpApuracao() {
                 id: 'calculo',
                 titulo: 'Calculo',
                 tipo: 'badge',
-                render: (item) => item.colaborador?.forma_calculo_gerencial === 'DIARIA'
-                  ? `Diaria ${formatCurrency(item.colaborador?.valor_diaria || 0)}`
-                  : (item.colaborador?.pagamento_automatico_40_60 ? 'Mensal 40% / 60%' : 'Mensal')
+                render: (item) => (item.detalhes_json?.forma_calculo_gerencial
+                  || item.colaborador?.forma_calculo_gerencial) === 'DIARIA'
+                  ? `Diaria ${formatCurrency(item.detalhes_json?.resumo?.valor_diaria
+                    || item.colaborador?.valor_diaria || 0)}`
+                  : ((item.detalhes_json?.pagamento_automatico_40_60
+                    ?? item.colaborador?.pagamento_automatico_40_60) ? 'Mensal 40% / 60%' : 'Mensal')
               },
               {
                 id: 'parcelas_40_60',
@@ -1178,6 +1219,19 @@ export default function RhDpApuracao() {
                 titulo: 'Distribuição dos títulos',
                 tipo: 'texto',
                 render: (item) => {
+                  if (detalhe.etapa_pagamento === 'ADIANTAMENTO_40') return 'Somente 40%';
+                  if (detalhe.etapa_pagamento === 'SALDO_60') return 'Somente saldo 60%';
+                  if (detalhe.etapa_pagamento === 'DIARIA') {
+                    const acerto = item.detalhes_json?.resumo?.acerto_conversao;
+                    if (!acerto) return 'Diária deste envio';
+                    return (
+                      <div className="space-y-1">
+                        <div>Diária + acerto mensal até {acerto.fim_mensal}</div>
+                        <div className="app-note">Mensal devido {formatCurrency(acerto.mensal_devido)} · pago {formatCurrency(acerto.mensal_pago)}</div>
+                        <div className="app-note">Ajuste neste envio {formatCurrency(acerto.ajuste_mensal)} · crédito restante {formatCurrency(acerto.credito_restante)}</div>
+                      </div>
+                    );
+                  }
                   const automatico = item.colaborador?.forma_calculo_gerencial !== 'DIARIA'
                     && item.colaborador?.pagamento_automatico_40_60;
                   if (!automatico) return 'Título único';

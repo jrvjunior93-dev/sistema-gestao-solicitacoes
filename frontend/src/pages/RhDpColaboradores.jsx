@@ -72,6 +72,7 @@ function emptyForm() {
     salario_base: '',
     valor_contratual: '',
     forma_calculo_gerencial: 'MENSAL',
+    calculo_vigencia_inicio: '',
     valor_diaria: '',
     valor_ticket: '',
     pagamento_automatico_40_60: false,
@@ -171,6 +172,7 @@ function toFormData(data) {
     salario_base: formatCurrencyInput(data?.salario_base),
     valor_contratual: formatCurrencyInput(data?.valor_contratual),
     forma_calculo_gerencial: data?.forma_calculo_gerencial || 'MENSAL',
+    calculo_vigencia_inicio: '',
     valor_diaria: formatCurrencyInput(data?.valor_diaria),
     valor_ticket: formatCurrencyInput(data?.valor_ticket),
     pagamento_automatico_40_60: Boolean(data?.pagamento_automatico_40_60),
@@ -211,6 +213,9 @@ function buildPayload(form) {
     salario_base: form.salario_base === '' ? undefined : form.salario_base,
     valor_contratual: form.valor_contratual === '' ? undefined : form.valor_contratual,
     forma_calculo_gerencial: form.forma_calculo_gerencial,
+    calculo_vigencia_inicio: form.id && form.calculo_vigencia_inicio
+      ? form.calculo_vigencia_inicio
+      : undefined,
     valor_diaria: form.forma_calculo_gerencial === 'DIARIA' && form.valor_diaria !== ''
       ? form.valor_diaria
       : undefined,
@@ -1392,6 +1397,18 @@ export default function RhDpColaboradores() {
                     <option value="DIARIA">Por diaria</option>
                   </select>
                 </CampoForm>
+                {form.id && String(import.meta.env.VITE_RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() === 'ON' ? (
+                  <CampoForm label="Data efetiva da mudanca de calculo">
+                    <input
+                      className="form-control"
+                      type="date"
+                      value={form.calculo_vigencia_inicio}
+                      onChange={(e) => setForm((prev) => ({ ...prev, calculo_vigencia_inicio: e.target.value }))}
+                      disabled={!podeEditar}
+                    />
+                    <small>Obrigatoria ao mudar entre mensal e diaria, o valor da diaria ou o parcelamento 40%/60%.</small>
+                  </CampoForm>
+                ) : null}
                 {form.forma_calculo_gerencial === 'DIARIA' ? (
                   <CampoForm label="Valor da diaria" obrigatorio>
                     <input

@@ -2,6 +2,7 @@ const {
   Obra,
   RhApuracao,
   RhApuracaoEvento,
+  RhApuracaoEventoItem,
   RhColaborador,
   RhColaboradorVinculo,
   RhColaboradorPagamento,
@@ -17,6 +18,7 @@ const {
 const { Op } = require('sequelize');
 const { ValidationError } = require('../middlewares/validation');
 const { codigoDoSetor } = require('../utils/codigoDoSetor');
+const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
 
 const APURACAO_ITEM_INCLUDE = [
   {
@@ -203,6 +205,8 @@ async function detalharApuracaoPorPk(id, transaction) {
 function whereApuracaoRecorte(data, status) {
   return {
     competencia: data.competencia,
+    etapa_pagamento: data.etapa_pagamento || null,
+    importacao_id: data.importacao_id || null,
     empresa_grupo_id: data.empresa_grupo_id || null,
     obra_id: data.obra_id || null,
     tipo_vinculo: data.tipo_vinculo || null,
@@ -234,8 +238,10 @@ async function resolveExistingDraft(data, transaction) {
 async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolidados = false } = {}) {
   const importacaoWhere = {
     status: 'CONFIRMADA',
-    competencia: data.competencia
+    competencia: data.competencia,
+    etapa_pagamento: data.etapa_pagamento || null
   };
+  if (data.importacao_id) importacaoWhere.id = Number(data.importacao_id);
   addExactRecorteFilter(importacaoWhere, 'empresa_grupo_id', data.empresa_grupo_id);
   addExactRecorteFilter(importacaoWhere, 'obra_id', data.obra_id);
 
@@ -252,7 +258,7 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
         model: RhImportacao,
         as: 'importacao',
         required: true,
-        attributes: ['id', 'tipo', 'competencia', 'empresa_grupo_id', 'obra_id', 'tipo_vinculo'],
+        attributes: ['id', 'tipo', 'competencia', 'empresa_grupo_id', 'obra_id', 'tipo_vinculo', 'etapa_pagamento', 'periodo_inicio', 'periodo_fim'],
         where: importacaoWhere
       },
       {
@@ -314,7 +320,10 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
           as: 'importacao',
           required: true,
           attributes: ['obra_id'],
-          where: { status: 'CONFIRMADA', competencia: data.competencia, tipo: 'JORNADA' }
+          where: {
+            status: 'CONFIRMADA', competencia: data.competencia, tipo: 'JORNADA',
+            etapa_pagamento: data.etapa_pagamento || null
+          }
         }],
         transaction
       })
@@ -339,7 +348,16 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
     const itemAtual =
       agrupados.get(colaboradorId) ||
       {
-        colaborador: linha.colaborador,
+        colaborador: {
+          ...linha.colaborador.get({ plain: true }),
+          forma_calculo_gerencial: linha.payload_json?.forma_calculo_gerencial
+            || linha.colaborador.forma_calculo_gerencial,
+          valor_diaria: linha.payload_json?.valor_diaria ?? linha.colaborador.valor_diaria,
+          salario_base: linha.payload_json?.salario_base ?? linha.colaborador.salario_base,
+          valor_contratual: linha.payload_json?.valor_contratual ?? linha.colaborador.valor_contratual,
+          pagamento_automatico_40_60: linha.payload_json?.pagamento_automatico_40_60
+            ?? linha.colaborador.pagamento_automatico_40_60
+        },
         importacao_ids: new Set(),
         observacoes: new Set(),
         jornada: {
@@ -421,6 +439,20 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
   const idsMultiobraPorVinculo = new Set();
   if (!incluirConsolidados && resultadoCompleto.length) {
     const periodo = periodoDaCompetencia(data.competencia);
+    const periodosPorColaborador = new Map();
+    if (data.etapa_pagamento) {
+      linhas.forEach((linha) => {
+        const id = Number(linha.colaborador_id);
+        const inicio = String(linha.importacao?.periodo_inicio || '').slice(0, 10);
+        const fim = String(linha.importacao?.periodo_fim || '').slice(0, 10);
+        if (!inicio || !fim) return;
+        const atual = periodosPorColaborador.get(id);
+        periodosPorColaborador.set(id, {
+          inicio: atual && atual.inicio < inicio ? atual.inicio : inicio,
+          fim: atual && atual.fim > fim ? atual.fim : fim
+        });
+      });
+    }
     const vinculosDoPeriodo = await RhColaboradorVinculo.findAll({
       where: {
         colaborador_id: {
@@ -430,12 +462,16 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
         vigencia_inicio: { [Op.lte]: periodo.fim },
         [Op.or]: [{ vigencia_fim: null }, { vigencia_fim: { [Op.gte]: periodo.inicio } }]
       },
-      attributes: ['colaborador_id', 'obra_id'],
+      attributes: ['colaborador_id', 'obra_id', 'vigencia_inicio', 'vigencia_fim'],
       transaction
     });
     const obrasPorColaborador = new Map();
     vinculosDoPeriodo.forEach((vinculo) => {
       const colaboradorId = Number(vinculo.colaborador_id);
+      const periodoDaEtapa = periodosPorColaborador.get(colaboradorId);
+      if (data.etapa_pagamento && (!periodoDaEtapa
+        || String(vinculo.vigencia_inicio).slice(0, 10) > periodoDaEtapa.fim
+        || (vinculo.vigencia_fim && String(vinculo.vigencia_fim).slice(0, 10) < periodoDaEtapa.inicio))) return;
       if (!obrasPorColaborador.has(colaboradorId)) obrasPorColaborador.set(colaboradorId, new Set());
       obrasPorColaborador.get(colaboradorId).add(Number(vinculo.obra_id));
     });
@@ -446,13 +482,13 @@ async function buildAgrupamentoImportacoes(data, transaction, { incluirConsolida
   // Colaboradores multiobra pertencem ao fluxo de consolidacao do DP. A geracao comum nao pode
   // criar uma apuracao por obra antes de todas as partes chegarem. O historico de vinculos tambem
   // protege jornadas antigas, gravadas antes de a marcacao passar a ser automatica.
-  const resultado = incluirConsolidados
+  const resultado = incluirConsolidados || data.etapa_pagamento === 'DIARIA'
     ? resultadoCompleto
     : resultadoCompleto.filter((item) => (
         !item.jornada?.multiobra
         && !idsMultiobraPorVinculo.has(Number(item.colaborador?.id))
       ));
-  if (incluirConsolidados || !resultado.length) return resultado;
+  if (incluirConsolidados || data.etapa_pagamento === 'DIARIA' || !resultado.length) return resultado;
 
   // Uma jornada ja consolidada pelo DP nao pode reaparecer nas apuracoes isoladas das obras.
   // Sem esta barreira, clicar novamente em "Gerar apuracoes" duplicaria o colaborador depois da
@@ -511,7 +547,7 @@ async function listarRecortesImportacoesConfirmadas(data, transaction) {
         model: RhImportacao,
         as: 'importacao',
         required: true,
-        attributes: ['empresa_grupo_id', 'obra_id'],
+        attributes: ['id', 'empresa_grupo_id', 'obra_id', 'etapa_pagamento'],
         where: importacaoWhere
       },
       {
@@ -536,13 +572,17 @@ async function listarRecortesImportacoesConfirmadas(data, transaction) {
 
     const empresaGrupoId = importacao.empresa_grupo_id || null;
     const tipoVinculo = data.tipo_vinculo || null;
-    const key = [empresaGrupoId || 'null', obraId, tipoVinculo || 'null'].join(':');
+    const etapaPagamento = importacao.etapa_pagamento || null;
+    const importacaoId = etapaPagamento === 'DIARIA' ? Number(importacao.id) : null;
+    const key = [empresaGrupoId || 'null', obraId, tipoVinculo || 'null', etapaPagamento || 'LEGADO', importacaoId || ''].join(':');
     if (!recortes.has(key)) {
       recortes.set(key, {
         ...data,
         empresa_grupo_id: empresaGrupoId,
         obra_id: obraId,
-        tipo_vinculo: tipoVinculo
+        tipo_vinculo: tipoVinculo,
+        etapa_pagamento: etapaPagamento,
+        importacao_id: importacaoId
       });
     }
   });
@@ -811,12 +851,200 @@ async function solicitacaoJornadaTotalmenteProcessada(solicitacao, competencia, 
     const multiobra = Boolean(linha.payload_json?.mais_de_uma_obra);
     return eventos.some((evento) => (
       Number(evento.colaborador_id) === colaboradorId
+      && Array.isArray(evento.detalhes_json?.importacao_ids)
+      && evento.detalhes_json.importacao_ids.map(Number).includes(importacaoId)
       && (multiobra
         ? (evento.apuracao?.obra_id === null || evento.apuracao?.obra_id === undefined)
           && Boolean(evento.detalhes_json?.multiobra)
         : Number(evento.apuracao?.obra_id) === Number(solicitacao.obra_id))
     ));
   });
+}
+
+async function ajustarItemParaEtapa(item, data, transaction) {
+  const conversao = ['ADIANTAMENTO_40', 'SALDO_60'].includes(data.etapa_pagamento)
+    ? await rhCalculoHistoricoService.conversaoMensalParaDiariaNaCompetencia(
+        item.colaborador_id, data.competencia, transaction
+      )
+    : null;
+  const baseMensal = Number(item.detalhes_json?.resumo?.valor_proporcional || 0);
+  const baseMensalDevida = conversao
+    ? rhCalculoHistoricoService.proporcionalMensalAteMudanca(
+        Number(item.valor_base_calculo || 0), conversao.dias_mensais
+      )
+    : baseMensal;
+  if (data.etapa_pagamento === 'ADIANTAMENTO_40') {
+    const adiantamento = formatCurrencyValue(Math.min(baseMensal * 0.4, baseMensalDevida));
+    const creditoPendente = formatCurrencyValue(Number(item.valor_bruto || 0) - baseMensal);
+    const debitoPendente = formatCurrencyValue(item.valor_descontos);
+    item.valor_bruto = adiantamento;
+    item.valor_descontos = 0;
+    item.valor_liquido = adiantamento;
+    item.detalhes_json.resumo = {
+      ...item.detalhes_json.resumo,
+      valor_integral_referencia: formatCurrencyValue(baseMensal),
+      valor_mensal_devido_ate_mudanca: conversao ? baseMensalDevida : null,
+      ajuste_credito_pendente_40: creditoPendente,
+      ajuste_debito_pendente_40: debitoPendente,
+      etapa_pagamento: 'ADIANTAMENTO_40'
+    };
+  } else if (data.etapa_pagamento === 'SALDO_60') {
+    const diferencaBase = formatCurrencyValue(baseMensalDevida - baseMensal);
+    if (diferencaBase) {
+      item.valor_bruto = formatCurrencyValue(Number(item.valor_bruto || 0) + diferencaBase);
+      item.valor_liquido = formatCurrencyValue(Number(item.valor_liquido || 0) + diferencaBase);
+      item.detalhes_json.resumo.valor_proporcional = baseMensalDevida;
+    }
+    const adiantamentos = await RhApuracaoEvento.findAll({
+      where: { colaborador_id: item.colaborador_id },
+      include: [{
+        model: RhApuracao,
+        as: 'apuracao',
+        required: true,
+        where: { competencia: data.competencia, etapa_pagamento: 'ADIANTAMENTO_40' },
+        include: [{ model: RhFechamento, as: 'fechamentoRh', required: true, where: { status: 'FECHADO' } }]
+      }],
+      transaction
+    });
+    if (!adiantamentos.length) {
+      throw new ValidationError(`Feche primeiro os 40% do colaborador #${item.colaborador_id} antes de apurar os 60%.`, 409);
+    }
+    const jaPago = formatCurrencyValue(adiantamentos.reduce(
+      (total, anterior) => total + Number(anterior.valor_liquido || 0), 0
+    ));
+    const creditoPendente = formatCurrencyValue(adiantamentos.reduce((total, anterior) => (
+      total + Number(anterior.detalhes_json?.resumo?.ajuste_credito_pendente_40 || 0)
+    ), 0));
+    const debitoPendente = formatCurrencyValue(adiantamentos.reduce((total, anterior) => (
+      total + Number(anterior.detalhes_json?.resumo?.ajuste_debito_pendente_40 || 0)
+    ), 0));
+    item.valor_bruto = formatCurrencyValue(Number(item.valor_bruto || 0) + creditoPendente - jaPago);
+    item.valor_descontos = formatCurrencyValue(Number(item.valor_descontos || 0) + debitoPendente);
+    item.valor_liquido = formatCurrencyValue(Number(item.valor_liquido || 0) + creditoPendente - debitoPendente - jaPago);
+    item.detalhes_json.resumo = {
+      ...item.detalhes_json.resumo,
+      adiantamento_40_anterior: jaPago,
+      ajuste_credito_pendente_40: creditoPendente,
+      ajuste_debito_pendente_40: debitoPendente,
+      valor_mensal_devido_ate_mudanca: conversao ? baseMensalDevida : null,
+      etapa_pagamento: 'SALDO_60'
+    };
+  }
+  return item;
+}
+
+function calcularAcertoConversao({ diariaLiquida, mensalDevido, mensalPago, ajustesPendentes = 0, creditoAnterior = 0, primeiroEnvio }) {
+  const ajusteMensal = primeiroEnvio
+    ? formatCurrencyValue(mensalDevido - mensalPago + ajustesPendentes)
+    : 0;
+  const valorAntesDoLimite = formatCurrencyValue(diariaLiquida + ajusteMensal - creditoAnterior);
+  return {
+    ajuste_mensal: ajusteMensal,
+    credito_compensado: formatCurrencyValue(Math.min(
+      Math.max(0, diariaLiquida + Math.max(0, ajusteMensal)),
+      Math.max(0, creditoAnterior - Math.min(0, ajusteMensal))
+    )),
+    valor_a_pagar: Math.max(0, valorAntesDoLimite),
+    credito_restante: Math.max(0, formatCurrencyValue(-valorAntesDoLimite))
+  };
+}
+
+async function aplicarAcertoConversaoNaApuracao(apuracao, transaction) {
+  if (apuracao.etapa_pagamento !== 'DIARIA') return;
+  const itens = await RhApuracaoEvento.findAll({ where: { apuracao_id: apuracao.id }, transaction });
+  for (const item of itens) {
+    // eslint-disable-next-line no-await-in-loop
+    const conversao = await rhCalculoHistoricoService.conversaoMensalParaDiariaNaCompetencia(
+      item.colaborador_id, apuracao.competencia, transaction
+    );
+    if (!conversao) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const anteriores = await RhApuracaoEvento.findAll({
+      where: { colaborador_id: item.colaborador_id },
+      include: [{ model: RhApuracao, as: 'apuracao', required: true, where: {
+        competencia: apuracao.competencia,
+        etapa_pagamento: { [Op.in]: ['ADIANTAMENTO_40', 'SALDO_60', 'DIARIA'] },
+        id: { [Op.ne]: apuracao.id }
+      }, include: [{ model: RhFechamento, as: 'fechamentoRh', required: false,
+        where: { status: 'FECHADO' } }] }],
+      transaction
+    });
+    const diarios = anteriores.filter((anterior) => anterior.apuracao.etapa_pagamento === 'DIARIA');
+    if (diarios.some((anterior) => !anterior.apuracao.fechamentoRh)) {
+      throw new ValidationError(
+        `Conclua o fechamento da diaria anterior do colaborador #${item.colaborador_id} antes do proximo acerto.`, 409
+      );
+    }
+    const mensais = anteriores.filter((anterior) => anterior.apuracao.etapa_pagamento !== 'DIARIA');
+    if (mensais.some((anterior) => !anterior.apuracao.fechamentoRh)) {
+      throw new ValidationError(
+        `Conclua o fechamento mensal do colaborador #${item.colaborador_id} antes de apurar diarias.`, 409
+      );
+    }
+    const ultimoDiario = diarios.sort((a, b) => Number(b.id) - Number(a.id))[0] || null;
+    if (ultimoDiario && !ultimoDiario.detalhes_json?.resumo?.acerto_conversao) {
+      throw new ValidationError(
+        `A diaria anterior do colaborador #${item.colaborador_id} nao possui memoria do acerto de regime. Confira no DP.`, 409
+      );
+    }
+    const primeiroEnvio = !ultimoDiario;
+    const mensalPago = formatCurrencyValue(mensais.reduce((total, anterior) => (
+      total + Number(anterior.valor_liquido || 0)
+    ), 0));
+    const jaHouveSaldo = mensais.some((anterior) => anterior.apuracao.etapa_pagamento === 'SALDO_60');
+    // O evento de 40% conserva a base salarial historica mesmo que o cadastro atual ja esteja
+    // em regime de diaria. Sem ele, usa-se o salario contratual ainda registrado no colaborador.
+    const mensalReferencia = mensais.find((anterior) => Number(anterior.valor_base_calculo) > 0);
+    // eslint-disable-next-line no-await-in-loop
+    const colaborador = mensalReferencia ? null : await RhColaborador.findByPk(item.colaborador_id, { transaction });
+    const salarioMensal = Number(mensalReferencia?.valor_base_calculo
+      || (String(colaborador?.tipo_vinculo || '').toUpperCase() === 'CLT'
+        ? colaborador?.salario_base : (colaborador?.valor_contratual || colaborador?.salario_base)) || 0);
+    if (!(salarioMensal > 0)) {
+      throw new ValidationError(`Nao ha salario mensal de referencia para o acerto do colaborador #${item.colaborador_id}.`, 409);
+    }
+    const mensalDevido = rhCalculoHistoricoService.proporcionalMensalAteMudanca(
+      salarioMensal, conversao.dias_mensais
+    );
+    // Quando os 60% ja foram fechados, o liquido mensal inclui adicionais, descontos e
+    // recorrencias de toda a competencia. Eles permanecem devidos uma vez; somente a base
+    // salarial e recalculada proporcionalmente. Com apenas 40% fechado, transferimos os
+    // ajustes que a primeira etapa deixou expressamente pendentes para o acerto diario.
+    const ajustesPendentes = jaHouveSaldo
+      ? formatCurrencyValue(mensalPago - salarioMensal)
+      : formatCurrencyValue(mensais.reduce((total, anterior) => (
+          total + Number(anterior.detalhes_json?.resumo?.ajuste_credito_pendente_40 || 0)
+          - Number(anterior.detalhes_json?.resumo?.ajuste_debito_pendente_40 || 0)
+        ), 0));
+    const diariaLiquida = Number(item.valor_liquido || 0);
+    const creditoAnterior = Number(ultimoDiario?.detalhes_json?.resumo?.acerto_conversao?.credito_restante || 0);
+    const acerto = calcularAcertoConversao({
+      diariaLiquida, mensalDevido, mensalPago, ajustesPendentes, creditoAnterior, primeiroEnvio
+    });
+    const resumo = {
+      ...item.detalhes_json.resumo,
+      acerto_conversao: {
+        ...conversao,
+        salario_mensal_referencia: salarioMensal,
+        mensal_devido: mensalDevido,
+        mensal_pago: mensalPago,
+        ajustes_pendentes_40: ajustesPendentes,
+        diaria_liquida_antes_acerto: formatCurrencyValue(diariaLiquida),
+        primeiro_envio: primeiroEnvio,
+        credito_anterior: creditoAnterior,
+        ...acerto
+      }
+    };
+    // eslint-disable-next-line no-await-in-loop
+    await item.update({
+      valor_bruto: formatCurrencyValue(Number(item.valor_bruto || 0) + Math.max(0, acerto.ajuste_mensal)),
+      valor_descontos: formatCurrencyValue(Number(item.valor_descontos || 0)
+        + Math.min(Math.max(0, diariaLiquida + Math.max(0, acerto.ajuste_mensal)),
+          Math.max(0, creditoAnterior - Math.min(0, acerto.ajuste_mensal)))),
+      valor_liquido: acerto.valor_a_pagar,
+      detalhes_json: { ...item.detalhes_json, resumo }
+    }, { transaction });
+  }
 }
 
 async function gerarApuracaoRecorteRh(data, user, transaction) {
@@ -831,6 +1059,12 @@ async function gerarApuracaoRecorteRh(data, user, transaction) {
     throw new ValidationError(
       'Nao existem colaboradores elegiveis neste recorte. Jornadas multiobra devem ser consolidadas pelo painel do DP.'
     );
+  }
+  if (data.etapa_pagamento) {
+    for (const colaboradorId of [...new Set(agrupados.map((item) => Number(item.colaborador?.id)).filter(Boolean))].sort((a, b) => a - b)) {
+      // eslint-disable-next-line no-await-in-loop
+      await RhColaborador.findByPk(colaboradorId, { attributes: ['id'], transaction, lock: transaction.LOCK.UPDATE });
+    }
   }
   const draft = await resolveExistingDraft(data, transaction);
   const diasBase = Number(data.dias_base || 30);
@@ -856,6 +1090,8 @@ async function gerarApuracaoRecorteRh(data, user, transaction) {
     apuracao = await RhApuracao.create(
       {
         competencia: data.competencia,
+        etapa_pagamento: data.etapa_pagamento || null,
+        importacao_id: data.importacao_id || null,
         empresa_grupo_id: data.empresa_grupo_id || null,
         obra_id: data.obra_id || null,
         tipo_vinculo: data.tipo_vinculo || null,
@@ -869,10 +1105,12 @@ async function gerarApuracaoRecorteRh(data, user, transaction) {
     );
   }
 
-  const itens = agrupados.map((agrupado) => ({
-    apuracao_id: apuracao.id,
-    ...calcularItemApuracao(agrupado, diasBase)
-  }));
+  const itens = [];
+  for (const agrupado of agrupados) {
+    // eslint-disable-next-line no-await-in-loop
+    const item = await ajustarItemParaEtapa(calcularItemApuracao(agrupado, diasBase), data, transaction);
+    itens.push({ apuracao_id: apuracao.id, ...item });
+  }
 
   if (!itens.length) {
     throw new ValidationError('Nao existem colaboradores elegiveis para gerar a apuracao neste recorte.');
@@ -895,7 +1133,18 @@ async function gerarApuracaoRecorteRh(data, user, transaction) {
    * — nao de um contador. Esse e o ponto que impede o adiantamento de 6 parcelas de acabar em 3
    * recalculos.
    */
-  await aplicarRecorrentesNaApuracao(apuracao, transaction);
+  if (data.etapa_pagamento !== 'ADIANTAMENTO_40') {
+    await aplicarRecorrentesNaApuracao(apuracao, transaction);
+  }
+  await aplicarAcertoConversaoNaApuracao(apuracao, transaction);
+  if (data.etapa_pagamento === 'SALDO_60') {
+    const saldoNegativo = await RhApuracaoEvento.findOne({
+      where: { apuracao_id: apuracao.id, valor_liquido: { [Op.lt]: 0 } }, transaction
+    });
+    if (saldoNegativo) {
+      throw new ValidationError('O saldo de 60% ficou negativo apos os ajustes. Revise a jornada e o adiantamento.', 409);
+    }
+  }
 
   await recalcularResumoApuracao(apuracao.id, transaction);
 
@@ -960,6 +1209,41 @@ async function aplicarRecorrentesNaApuracao(apuracao, transaction) {
   });
 
   for (const linha of linhas) {
+    if (apuracao.etapa_pagamento) {
+      // No fluxo em etapas, o evento da competencia pertence a uma unica apuracao do
+      // colaborador, mesmo que ele tenha varios envios de diaria ou troque de regime.
+      // eslint-disable-next-line no-await-in-loop
+      const jaAplicado = await RhApuracaoEventoItem.findOne({
+        where: { origem: 'RECORRENTE' },
+        include: [{
+          model: RhApuracaoEvento,
+          as: 'evento',
+          required: true,
+          where: { colaborador_id: linha.colaborador_id },
+          include: [{
+            model: RhApuracao,
+            as: 'apuracao',
+            required: true,
+            where: { competencia: apuracao.competencia, id: { [Op.ne]: apuracao.id } }
+          }]
+        }],
+        transaction
+      });
+      if (jaAplicado) {
+        const anterior = jaAplicado.evento?.apuracao;
+        const fechamentoAnterior = await RhFechamento.findOne({
+          where: { apuracao_id: anterior.id, status: 'FECHADO' }, transaction
+        });
+        if (!fechamentoAnterior) {
+          throw new ValidationError(
+            `Conclua o fechamento da apuracao #${anterior.id} antes de gerar outro pagamento `
+            + `para o colaborador #${linha.colaborador_id} na mesma competencia.`,
+            409
+          );
+        }
+        continue;
+      }
+    }
     // eslint-disable-next-line no-await-in-loop
     const resultado = await aplicarRecorrentes(linha, apuracao.competencia, transaction);
     if (!resultado.itens.length) continue;
@@ -991,7 +1275,9 @@ function periodoDaCompetencia(competencia) {
   };
 }
 
-async function carregarJornadasMultiobra(competencia, transaction = undefined) {
+async function carregarJornadasMultiobra(competencia, transaction = undefined, etapaPagamento = null) {
+  // Diaristas geram um pagamento por envio/obra; nao ha consolidacao multiobra mensal.
+  if (etapaPagamento === 'DIARIA') return [];
   const periodo = periodoDaCompetencia(competencia);
   const vinculos = await RhColaboradorVinculo.findAll({
     where: {
@@ -999,7 +1285,7 @@ async function carregarJornadasMultiobra(competencia, transaction = undefined) {
       vigencia_inicio: { [Op.lte]: periodo.fim },
       [Op.or]: [{ vigencia_fim: null }, { vigencia_fim: { [Op.gte]: periodo.inicio } }]
     },
-    attributes: ['colaborador_id', 'obra_id'],
+    attributes: ['colaborador_id', 'obra_id', 'vigencia_inicio', 'vigencia_fim'],
     include: [
       {
         model: RhColaborador,
@@ -1034,8 +1320,8 @@ async function carregarJornadasMultiobra(competencia, transaction = undefined) {
     });
   });
 
-  const grupos = Array.from(porColaborador.values()).filter((grupo) => grupo.obras.size > 1);
-  const colaboradorIds = grupos.map((grupo) => Number(grupo.colaborador.id));
+  const gruposCandidatos = Array.from(porColaborador.values()).filter((grupo) => grupo.obras.size > 1);
+  const colaboradorIds = gruposCandidatos.map((grupo) => Number(grupo.colaborador.id));
   if (!colaboradorIds.length) return [];
 
   const linhas = await RhImportacaoLinha.findAll({
@@ -1049,7 +1335,7 @@ async function carregarJornadasMultiobra(competencia, transaction = undefined) {
       as: 'importacao',
       required: true,
       attributes: ['id', 'obra_id', 'empresa_grupo_id', 'periodicidade', 'periodo_inicio', 'periodo_fim', 'confirmado_em'],
-      where: { tipo: 'JORNADA', status: 'CONFIRMADA', competencia }
+      where: { tipo: 'JORNADA', status: 'CONFIRMADA', competencia, etapa_pagamento: etapaPagamento }
     }],
     order: [['id', 'DESC']],
     transaction
@@ -1061,6 +1347,39 @@ async function carregarJornadasMultiobra(competencia, transaction = undefined) {
     jornadaPorColaboradorObra.get(chave).push(linha);
   });
 
+  // A transferencia entre as duas quinzenas nao torna cada quinzena multiobra. Somente as
+  // obras cujo vinculo cruza o periodo efetivamente enviado nesta etapa sao obrigatorias.
+  const periodosPorColaborador = new Map();
+  if (etapaPagamento) {
+    linhas.forEach((linha) => {
+      const id = Number(linha.colaborador_id);
+      const inicio = String(linha.importacao?.periodo_inicio || '').slice(0, 10);
+      const fim = String(linha.importacao?.periodo_fim || '').slice(0, 10);
+      if (!inicio || !fim) return;
+      const atual = periodosPorColaborador.get(id);
+      periodosPorColaborador.set(id, {
+        inicio: atual && atual.inicio < inicio ? atual.inicio : inicio,
+        fim: atual && atual.fim > fim ? atual.fim : fim
+      });
+    });
+  }
+  const grupos = etapaPagamento
+    ? gruposCandidatos.map((grupo) => {
+        const colaboradorId = Number(grupo.colaborador.id);
+        const periodoEtapa = periodosPorColaborador.get(colaboradorId);
+        const obrasDaEtapa = new Map(Array.from(grupo.obras.entries()).filter(([obraId]) => (
+          periodoEtapa && vinculos.some((vinculo) => (
+            Number(vinculo.colaborador_id) === colaboradorId
+            && Number(vinculo.obra_id) === Number(obraId)
+            && String(vinculo.vigencia_inicio).slice(0, 10) <= periodoEtapa.fim
+            && (!vinculo.vigencia_fim || String(vinculo.vigencia_fim).slice(0, 10) >= periodoEtapa.inicio)
+          ))
+        )));
+        return { ...grupo, obras: obrasDaEtapa };
+      }).filter((grupo) => grupo.obras.size > 1)
+    : gruposCandidatos;
+  if (!grupos.length) return [];
+
   const consolidados = await RhApuracaoEvento.findAll({
     where: { colaborador_id: { [Op.in]: colaboradorIds } },
     attributes: ['colaborador_id', 'detalhes_json'],
@@ -1069,7 +1388,12 @@ async function carregarJornadasMultiobra(competencia, transaction = undefined) {
       as: 'apuracao',
       required: true,
       attributes: ['id', 'status', 'updatedAt'],
-      where: { competencia, obra_id: null, status: { [Op.in]: ['RASCUNHO', 'CONFERIDA'] } }
+      where: {
+        competencia,
+        etapa_pagamento: etapaPagamento,
+        obra_id: null,
+        status: { [Op.in]: ['RASCUNHO', 'CONFERIDA'] }
+      }
     }],
     transaction
   });
@@ -1134,6 +1458,7 @@ async function carregarJornadasMultiobra(competencia, transaction = undefined) {
     );
     return {
       colaborador_id: colaboradorId,
+      etapa_pagamento: etapaPagamento,
       nome: grupo.colaborador.nome,
       matricula: grupo.colaborador.matricula || null,
       cargo: grupo.colaborador.cargo || null,
@@ -1156,7 +1481,13 @@ async function carregarJornadasMultiobra(competencia, transaction = undefined) {
 
 async function listarJornadasMultiobraRh(filters = {}) {
   const competencia = String(filters.competencia || '').trim();
-  const colaboradores = await carregarJornadasMultiobra(competencia);
+  const etapas = String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() === 'ON'
+    ? [null, 'ADIANTAMENTO_40', 'SALDO_60']
+    : [null];
+  const grupos = await Promise.all(etapas.map((etapa) => carregarJornadasMultiobra(competencia, undefined, etapa)));
+  const colaboradores = grupos.flat().filter((grupo) => (
+    !grupo.etapa_pagamento || grupo.jornadas_enviadas > 0
+  ));
   return {
     competencia,
     resumo: {
@@ -1244,7 +1575,7 @@ function combinarItensMultiobra(partes, colaborador) {
   };
 }
 
-async function removerItemDeApuracoesIsoladas(colaboradorId, competencia, obraIds, transaction) {
+async function removerItemDeApuracoesIsoladas(colaboradorId, competencia, obraIds, transaction, etapaPagamento = null) {
   const apuracaoProtegida = await RhApuracaoEvento.findOne({
     where: { colaborador_id: colaboradorId },
     include: [{
@@ -1254,6 +1585,7 @@ async function removerItemDeApuracoesIsoladas(colaboradorId, competencia, obraId
       attributes: ['id', 'status', 'obra_id'],
       where: {
         competencia,
+        etapa_pagamento: etapaPagamento,
         obra_id: { [Op.in]: obraIds },
         status: { [Op.ne]: 'RASCUNHO' }
       }
@@ -1275,7 +1607,10 @@ async function removerItemDeApuracoesIsoladas(colaboradorId, competencia, obraId
       as: 'apuracao',
       required: true,
       attributes: ['id', 'status', 'obra_id'],
-      where: { competencia, obra_id: { [Op.in]: obraIds }, status: 'RASCUNHO' }
+      where: {
+        competencia, etapa_pagamento: etapaPagamento,
+        obra_id: { [Op.in]: obraIds }, status: 'RASCUNHO'
+      }
     }],
     transaction,
     lock: transaction.LOCK.UPDATE
@@ -1299,13 +1634,17 @@ async function removerItemDeApuracoesIsoladas(colaboradorId, competencia, obraId
 }
 
 async function gerarApuracaoMultiobraRh(data, user) {
+  if (data.etapa_pagamento && String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() !== 'ON') {
+    throw new ValidationError('O fluxo de jornadas em etapas esta desabilitado.', 409);
+  }
   return sequelize.transaction(async (transaction) => {
     const competencia = String(data.competencia || '').trim();
+    const etapaPagamento = String(data.etapa_pagamento || '').trim().toUpperCase() || null;
     const colaboradorId = Number(data.colaborador_id);
     const diasBase = Number(data.dias_base || 30);
     await RhColaborador.findByPk(colaboradorId, { transaction, lock: transaction.LOCK.UPDATE });
 
-    const grupos = await carregarJornadasMultiobra(competencia, transaction);
+    const grupos = await carregarJornadasMultiobra(competencia, transaction, etapaPagamento);
     const grupo = grupos.find((item) => Number(item.colaborador_id) === colaboradorId);
     if (!grupo) throw new ValidationError('O colaborador nao possui vinculo com mais de uma obra nesta competencia.', 409);
     if (grupo.jornadas_pendentes) {
@@ -1329,6 +1668,7 @@ async function gerarApuracaoMultiobraRh(data, user) {
       // eslint-disable-next-line no-await-in-loop
       const agrupados = await buildAgrupamentoImportacoes({
         competencia,
+        etapa_pagamento: etapaPagamento,
         empresa_grupo_id: obra.empresa_grupo_id || undefined,
         obra_id: obra.id,
         tipo_vinculo: colaborador.tipo_vinculo || undefined
@@ -1342,7 +1682,8 @@ async function gerarApuracaoMultiobraRh(data, user) {
       colaboradorId,
       competencia,
       grupo.obras.map((obra) => Number(obra.id)),
-      transaction
+      transaction,
+      etapaPagamento
     );
 
     let apuracao = apuracaoExistente;
@@ -1356,6 +1697,7 @@ async function gerarApuracaoMultiobraRh(data, user) {
     } else {
       apuracao = await RhApuracao.create({
         competencia,
+        etapa_pagamento: etapaPagamento,
         empresa_grupo_id: colaborador.empresa_grupo_id || null,
         obra_id: null,
         tipo_vinculo: colaborador.tipo_vinculo || null,
@@ -1367,11 +1709,25 @@ async function gerarApuracaoMultiobraRh(data, user) {
       }, { transaction });
     }
 
+    const itemConsolidado = await ajustarItemParaEtapa(
+      combinarItensMultiobra(partes, colaborador),
+      { competencia, etapa_pagamento: etapaPagamento },
+      transaction
+    );
     await RhApuracaoEvento.create({
       apuracao_id: apuracao.id,
-      ...combinarItensMultiobra(partes, colaborador)
+      ...itemConsolidado
     }, { transaction });
-    await aplicarRecorrentesNaApuracao(apuracao, transaction);
+    if (etapaPagamento !== 'ADIANTAMENTO_40') await aplicarRecorrentesNaApuracao(apuracao, transaction);
+    await aplicarAcertoConversaoNaApuracao(apuracao, transaction);
+    if (etapaPagamento === 'SALDO_60') {
+      const saldoNegativo = await RhApuracaoEvento.findOne({
+        where: { apuracao_id: apuracao.id, valor_liquido: { [Op.lt]: 0 } }, transaction
+      });
+      if (saldoNegativo) {
+        throw new ValidationError('O saldo de 60% ficou negativo apos os ajustes. Revise a jornada e o adiantamento.', 409);
+      }
+    }
     await recalcularResumoApuracao(apuracao.id, transaction);
 
     const solicitacoes = await RhSolicitacao.findAll({
@@ -1410,6 +1766,9 @@ async function gerarApuracaoMultiobraRh(data, user) {
 }
 
 async function gerarApuracaoRh(data, user) {
+  if (data.etapa_pagamento && String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() !== 'ON') {
+    throw new ValidationError('O fluxo de jornadas em etapas esta desabilitado.', 409);
+  }
   return sequelize.transaction(async (transaction) => {
     if (data.obra_id) {
       return gerarApuracaoRecorteRh(data, user, transaction);
@@ -1523,7 +1882,58 @@ async function atualizarItemApuracaoRh(apuracaoId, itemId, data, user) {
       payload.ajuste_debito_manual !== undefined ? payload.ajuste_debito_manual : item.ajuste_debito_manual || 0
     );
 
-    payload.valor_liquido = formatCurrencyValue(valorBruto - valorDescontos + ajusteCredito - ajusteDebito);
+    const acertoConversao = detalhesJson.resumo?.acerto_conversao;
+    const creditoManualAnterior = Number(item.ajuste_credito_manual || 0);
+    const debitoManualAnterior = Number(item.ajuste_debito_manual || 0);
+    const deltaManual = formatCurrencyValue(
+      ajusteCredito - creditoManualAnterior - ajusteDebito + debitoManualAnterior
+    );
+    if (acertoConversao && deltaManual !== 0) {
+      if (!String(data.observacoes || item.observacoes || '').trim()) {
+        throw new ValidationError('Informe a justificativa do ajuste manual no acerto de regime.');
+      }
+      const saldoBruto = formatCurrencyValue(Number(item.valor_liquido || 0) + deltaManual
+        - Number(acertoConversao.credito_restante || 0));
+      const novoLiquido = Math.max(0, saldoBruto);
+      const novoCredito = Math.max(0, formatCurrencyValue(-saldoBruto));
+      const liquidoSemNovaCompensacao = formatCurrencyValue(
+        valorBruto - valorDescontos + ajusteCredito - ajusteDebito
+      );
+      payload.valor_descontos = formatCurrencyValue(
+        valorDescontos + liquidoSemNovaCompensacao - novoLiquido
+      );
+      if (payload.valor_descontos < 0) {
+        throw new ValidationError('O ajuste excede o liquido da diaria. Registre o acerto excedente pelo DP.', 409);
+      }
+      payload.valor_liquido = novoLiquido;
+      detalhesJson.resumo = {
+        ...detalhesJson.resumo,
+        acerto_conversao: {
+          ...acertoConversao,
+          credito_restante: novoCredito,
+          ajuste_manual_dp: formatCurrencyValue(Number(acertoConversao.ajuste_manual_dp || 0) + deltaManual),
+          ajuste_manual_por: user?.id || null,
+          ajustes_dp: [
+            ...(Array.isArray(acertoConversao.ajustes_dp) ? acertoConversao.ajustes_dp : []),
+            {
+              em: new Date().toISOString(),
+              por: user?.id || null,
+              delta: deltaManual,
+              liquido_anterior: Number(item.valor_liquido || 0),
+              liquido_novo: novoLiquido,
+              credito_anterior: Number(acertoConversao.credito_restante || 0),
+              credito_novo: novoCredito,
+              justificativa: String(data.observacoes || item.observacoes || '').trim()
+            }
+          ]
+        }
+      };
+      payload.detalhes_json = detalhesJson;
+    } else {
+      payload.valor_liquido = formatCurrencyValue(
+        valorBruto - valorDescontos + ajusteCredito - ajusteDebito
+      );
+    }
 
     await item.update(payload, { transaction });
     await apuracao.update({ atualizado_por: user?.id || null }, { transaction });
@@ -1584,6 +1994,10 @@ module.exports = {
   listarApuracoesRh,
   atualizarItemApuracaoRh,
   __test: {
+    aplicarAcertoConversaoNaApuracao,
+    calcularAcertoConversao,
+    aplicarRecorrentesNaApuracao,
+    ajustarItemParaEtapa,
     combinarItensMultiobra,
     filtrosRecortesImportacoesConfirmadas,
     whereApuracaoRecorte

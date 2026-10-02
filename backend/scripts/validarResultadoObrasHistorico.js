@@ -1,6 +1,8 @@
 const assert = require('node:assert/strict');
 const { Obra, TituloFinanceiro, TituloFinanceiroRateio, ObraCustoHistorico, ContratoComercial } = require('../src/models');
 const controller = require('../src/controllers/ResultadoObrasController');
+const { gerarResultadoObras } = require('../src/services/resultadoObrasService');
+const { Op } = require('sequelize');
 
 const original = {
   obras: Obra.findAll,
@@ -31,11 +33,11 @@ async function main() {
   }];
   ObraCustoHistorico.findAll = async (options) => {
     assert.equal(options.where.ativo, true, 'Historico inativo nao pode entrar no resultado');
-    assert.deepEqual(options.group, ['obra_id', 'tipo']);
     return [
-      { obra_id: 1, tipo: 'PAGAR', valor_total: '30.00', quantidade: '2' },
-      { obra_id: 1, tipo: 'RECEBER', valor_total: '20.00', quantidade: '1' },
-      { obra_id: 2, tipo: 'PAGAR', valor_total: '10.00', quantidade: '1' }
+      { obra_id: 1, tipo: 'PAGAR', valor: '15.00' },
+      { obra_id: 1, tipo: 'PAGAR', valor: '15.00' },
+      { obra_id: 1, tipo: 'RECEBER', valor: '20.00' },
+      { obra_id: 2, tipo: 'PAGAR', valor: '10.00' }
     ];
   };
 
@@ -61,6 +63,34 @@ async function main() {
     [60, 35, 25, 10]
   );
   assert.equal(resultado[1].receber.recebido, 0);
+
+  const flagAnterior = process.env.RH_JORNADA_40_60_ETAPAS;
+  process.env.RH_JORNADA_40_60_ETAPAS = 'ON';
+  try {
+    TituloFinanceiro.findAll = async (options) => {
+      if (options.group) {
+        assert.ok(options.where[Op.or], 'titulos RH com rateio saem do agregado direto');
+      }
+      return [];
+    };
+    TituloFinanceiroRateio.findAll = async (options) => {
+      assert.ok(options.include[0].where[Op.or], 'rateios RH entram pelo centro de custo');
+      return [
+        { obra_id: 1, valor_rateio: '1500.00', tituloFinanceiro: {
+          tipo: 'PAGAR', valor_original: '3000.00', valor_baixado: '3000.00'
+        } },
+        { obra_id: 2, valor_rateio: '1500.00', tituloFinanceiro: {
+          tipo: 'PAGAR', valor_original: '3000.00', valor_baixado: '3000.00'
+        } }
+      ];
+    };
+    ObraCustoHistorico.findAll = async () => [];
+    const porObra = await gerarResultadoObras();
+    assert.deepEqual(porObra.map((obra) => obra.pagar.executado), [1500, 1500]);
+  } finally {
+    if (flagAnterior === undefined) delete process.env.RH_JORNADA_40_60_ETAPAS;
+    else process.env.RH_JORNADA_40_60_ETAPAS = flagAnterior;
+  }
   console.log('Resultado de Obras: historico importado computado no realizado sem gerar baixas nem saldos pendentes.');
 }
 

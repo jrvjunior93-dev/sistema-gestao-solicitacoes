@@ -17,6 +17,7 @@ const {
 const { ValidationError } = require('../middlewares/validation');
 const { setorParaHistorico } = require('../utils/codigoDoSetor');
 const rhVinculoObraService = require('./rhVinculoObraService');
+const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
 const { uploadToS3, getPresignedUrl } = require('./s3');
 const { normalizeOriginalName } = require('../utils/fileName');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
@@ -824,6 +825,10 @@ async function aplicarEfeito(solicitacao, contexto, transaction) {
       },
       { transaction }
     );
+
+    if (String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() === 'ON') {
+      await rhCalculoHistoricoService.registrarInicial(colaborador, contexto.usuarioId, transaction);
+    }
 
     await rhVinculoObraService.registrarVinculo(
       {

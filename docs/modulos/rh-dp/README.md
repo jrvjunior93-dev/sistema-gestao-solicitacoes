@@ -52,6 +52,17 @@ RH/DP e dono do cadastro funcional de colaboradores, documentos, vinculos, compe
 - a consolidacao ocorre em modal e une as partes em uma unica apuracao e em um unico titulo, preservando a distribuicao por obra nos detalhes;
 - enquanto faltar uma das jornadas esperadas, o registro permanece pendente de consolidacao em vez de presumir dias automaticamente.
 
+## Jornadas em etapas (implementacao em homologacao; desligada por padrao)
+
+- `RH_JORNADA_40_60_ETAPAS=ON` no backend e `VITE_RH_JORNADA_40_60_ETAPAS=ON` no build do frontend habilitam o fluxo. Nao ativar sem a migration `202610020002_rh_jornada_etapas_pagamento.js` e homologacao financeira em dev;
+- mensalista com parcelamento automatico envia uma jornada de `ADIANTAMENTO_40` e outra de `SALDO_60` na competencia. O primeiro fechamento gera apenas 40% da base mensal; a segunda apuracao calcula a base mensal uma vez, agrega ajustes das duas jornadas e recorrencias uma vez, desconta os 40% ja fechados e gera apenas o saldo;
+- o mesmo dia nao pode integrar as etapas de 40% e 60%. A interface inicia com 1 a 15 e 16 ao fim do mes, mas permite ajustar os periodos; corrigir envio ja existente continua exigindo autorizacao do DP;
+- cada envio de `DIARIA` e independente, com importacao, apuracao e numero de titulo proprios. A soma dos dias enviados pela obra nao pode ultrapassar os dias de vinculo na competencia;
+- a forma de calculo e o valor da diaria passam a ter vigencia datada. Mudanca durante um periodo exige jornadas separadas antes e depois da data efetiva; envios anteriores preservam o regime registrado na linha;
+- na mudanca de mensalista para diarista no meio da competencia, o mensal vale ate a vespera da data efetiva, com divisor fixo de 30 dias (limitado a 30 dias). A partir da data efetiva, cada envio de diaria e independente. A apuracao calcula o proporcional mensal devido, subtrai os pagamentos mensais ja fechados e mostra o saldo ou credito a compensar com diarias da competencia. Um credito restante ao fim do mes nao migra automaticamente: o DP deve fazer acerto manual documentado. Por seguranca, fechamento financeiro com acerto misto ou credito fica bloqueado ate a apropriacao contabil por obra e fora de obra estar implementada e homologada; nao gera titulo incorreto nem negativo;
+- a obra informa dias e ajustes somente do seu periodo. Para mensalista multiobra, o DP consolida por etapa; no fechamento dos 60%, os rateios de custo dos dois titulos sao reconciliados pelos dias das duas etapas. A baixa e o valor dos 40% nao mudam. O rateio anterior e registrado no fechamento e restaurado se os 60% forem reabertos;
+- enquanto a flag estiver `OFF`, o frontend nao mostra etapas nem campo de vigencia, o backend rejeita envios/geracoes/fechamentos em etapa, e os fluxos legados permanecem disponiveis. O deploy ainda requer a migration antes do backend atualizado, pois o modelo inclui as novas colunas anulaveis. A conversao com compensacao e o rateio contabil dos titulos mistos precisam de homologacao integrada antes de ativar a flag.
+
 ## Ticket de beneficio
 
 - o DP seleciona colaboradores ativos com valor de ticket configurado e ainda sem lote na competencia;

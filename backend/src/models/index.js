@@ -69,6 +69,7 @@ db.RhSolicitacaoAnexo = require('./RhSolicitacaoAnexo')(sequelize, Sequelize);
 db.RhEventoRecorrente = require('./RhEventoRecorrente')(sequelize, Sequelize);
 db.RhApuracaoEventoItem = require('./RhApuracaoEventoItem')(sequelize, Sequelize);
 db.RhColaboradorSalario = require('./RhColaboradorSalario')(sequelize, Sequelize);
+db.RhColaboradorCalculoHistorico = require('./RhColaboradorCalculoHistorico')(sequelize, Sequelize);
 db.RhDocumentoTipo = require('./RhDocumentoTipo')(sequelize, Sequelize);
 // FASE 7 do DP (27/08): o catalogo que os checklists dos itens 8 a 11 cobram.
 db.RhCargo = require('./RhCargo')(sequelize, Sequelize);
@@ -1935,6 +1936,16 @@ db.RhColaborador.hasMany(db.RhColaboradorSalario, {
 });
 
 db.RhColaboradorSalario.belongsTo(db.RhColaborador, {
+  foreignKey: 'colaborador_id',
+  as: 'colaborador'
+});
+
+db.RhColaborador.hasMany(db.RhColaboradorCalculoHistorico, {
+  foreignKey: 'colaborador_id',
+  as: 'calculosHistoricos'
+});
+
+db.RhColaboradorCalculoHistorico.belongsTo(db.RhColaborador, {
   foreignKey: 'colaborador_id',
   as: 'colaborador'
 });

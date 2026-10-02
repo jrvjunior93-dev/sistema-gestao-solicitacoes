@@ -679,6 +679,117 @@ function ratearValorEntreObras(valorTotal, distribuicoes = [], obraPadrao) {
   }).filter((parte) => parte.valor > 0);
 }
 
+function diasPorObraDoItem(item, apuracao) {
+  const distribuicoes = item.detalhes_json?.distribuicao_obras;
+  if (Array.isArray(distribuicoes) && distribuicoes.length) {
+    return distribuicoes.map((parte) => ({
+      obraId: Number(parte.obra_id), peso: Number(parte.dias_trabalhados || 0)
+    }));
+  }
+  return [{ obraId: Number(apuracao.obra_id), peso: Number(item.dias_trabalhados || 0) }];
+}
+
+function juntarDiasPorObra(...conjuntos) {
+  const porObra = new Map();
+  conjuntos.flat().forEach(({ obraId, peso }) => {
+    if (!Number.isInteger(obraId) || obraId <= 0 || !Number.isFinite(peso) || peso < 0) return;
+    porObra.set(obraId, (porObra.get(obraId) || 0) + peso);
+  });
+  const partes = [...porObra].map(([obraId, peso]) => ({ obraId, peso }));
+  if (!partes.some((parte) => parte.peso > 0)) {
+    throw new ValidationError('Informe os dias trabalhados das duas etapas para ratear o custo mensal.', 409);
+  }
+  return partes.sort((a, b) => a.obraId - b.obraId);
+}
+
+async function reclassificarRateiosTitulo(titulo, partes, auditoria, usuarioId, transaction) {
+  const existentes = await TituloFinanceiroRateio.findAll({
+    where: { titulo_financeiro_id: titulo.id }, transaction, lock: transaction.LOCK.UPDATE
+  });
+  const anteriores = existentes.map((rateio) => ({
+    obraId: Number(rateio.obra_id), valor: roundCurrency(rateio.valor_rateio)
+  }));
+  const novoPorObra = new Map(partes.map((parte) => [parte.obraId, parte.valor]));
+  const valorTitulo = roundCurrency(titulo.valor_original);
+  if (roundCurrency(partes.reduce((soma, parte) => soma + parte.valor, 0)) !== valorTitulo) {
+    throw new ValidationError(`O rateio do titulo #${titulo.id} nao fecha com o valor do titulo.`, 409);
+  }
+  for (const rateio of existentes) {
+    const valor = roundCurrency(novoPorObra.get(Number(rateio.obra_id)) || 0);
+    novoPorObra.delete(Number(rateio.obra_id));
+    if (valor > 0) {
+      // eslint-disable-next-line no-await-in-loop
+      await rateio.update({
+        tipo_rateio: 'VALOR', valor_rateio: valor,
+        percentual: Number(((valor / valorTitulo) * 100).toFixed(6)),
+        observacoes: appendAuditText(rateio.observacoes, auditoria),
+        atualizado_por: usuarioId || null
+      }, { transaction });
+    } else {
+      // O snapshot fica no fechamento e na observacao do titulo para permitir estorno auditado.
+      // eslint-disable-next-line no-await-in-loop
+      await rateio.destroy({ transaction });
+    }
+  }
+  for (const [obraId, valor] of novoPorObra) {
+    if (!(valor > 0)) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await TituloFinanceiroRateio.create({
+      titulo_financeiro_id: titulo.id, obra_id: obraId, apropriacao_id: null,
+      tipo_rateio: 'VALOR', valor_rateio: valor,
+      percentual: Number(((valor / valorTitulo) * 100).toFixed(6)),
+      observacoes: auditoria, criado_por: usuarioId || null, atualizado_por: usuarioId || null
+    }, { transaction });
+  }
+  await titulo.update({
+    observacoes: appendAuditText(titulo.observacoes,
+      `${auditoria} | antes=${JSON.stringify(anteriores)} | depois=${JSON.stringify(partes)}`),
+    atualizado_por: usuarioId || null
+  }, { transaction });
+  return anteriores;
+}
+
+async function reconciliarRateioMensal(item, apuracao, tituloSaldo, usuarioId, transaction) {
+  const adiantamento = await RhApuracaoEvento.findOne({
+    where: { colaborador_id: item.colaborador_id },
+    include: [{ model: RhApuracao, as: 'apuracao', required: true,
+      where: { competencia: apuracao.competencia, etapa_pagamento: 'ADIANTAMENTO_40' },
+      include: [{ model: RhFechamento, as: 'fechamentoRh', required: true,
+        where: { status: 'FECHADO' } }] }],
+    transaction
+  });
+  if (!adiantamento) throw new ValidationError('O adiantamento de 40% nao foi encontrado para reconciliar o rateio.', 409);
+  const vinculoTitulo = await RhFechamentoTitulo.findOne({
+    where: { apuracao_evento_id: adiantamento.id, tipo_titulo: 'ADIANTAMENTO_40' },
+    transaction,
+    lock: transaction.LOCK.UPDATE
+  });
+  const tituloAdiantamento = vinculoTitulo
+    ? await TituloFinanceiro.findByPk(vinculoTitulo.titulo_financeiro_id, {
+        transaction, lock: transaction.LOCK.UPDATE
+      })
+    : null;
+  if (!tituloAdiantamento) throw new ValidationError('O titulo dos 40% nao foi encontrado para reconciliar o rateio.', 409);
+  const pesos = juntarDiasPorObra(
+    diasPorObraDoItem(adiantamento, adiantamento.apuracao),
+    diasPorObraDoItem(item, apuracao)
+  );
+  const auditoria = `Rateio RH/DP ${apuracao.competencia}, 40%/60%, colaborador #${item.colaborador_id}, `
+    + `apuracao #${apuracao.id}, em ${new Date().toISOString()}, usuario #${usuarioId || 'sistema'}`;
+  const antigo40 = await reclassificarRateiosTitulo(
+    tituloAdiantamento,
+    ratearValorEntreObras(tituloAdiantamento.valor_original, pesos),
+    auditoria,
+    usuarioId,
+    transaction
+  );
+  await reclassificarRateiosTitulo(
+    tituloSaldo, ratearValorEntreObras(tituloSaldo.valor_original, pesos),
+    auditoria, usuarioId, transaction
+  );
+  return { colaborador_id: Number(item.colaborador_id), titulo_40_id: Number(tituloAdiantamento.id), rateios_40_anteriores: antigo40 };
+}
+
 async function criarTituloRhRateado(payload, {
   distribuicoes,
   obraPadrao,
@@ -709,9 +820,33 @@ async function criarTituloRhRateado(payload, {
 function buildParcelasColaborador(item, apuracao, data = {}, ajuste = null) {
   const colaborador = item.colaborador || {};
   const valorLiquido = roundCurrency(item.valor_liquido);
-  const formaCalculo = String(colaborador.forma_calculo_gerencial || 'MENSAL').toUpperCase();
-  const automatico4060 = formaCalculo === 'MENSAL' && Boolean(colaborador.pagamento_automatico_40_60);
+  const formaCalculo = String(item.detalhes_json?.forma_calculo_gerencial
+    || colaborador.forma_calculo_gerencial || 'MENSAL').toUpperCase();
+  const automatico4060 = formaCalculo === 'MENSAL'
+    && Boolean(item.detalhes_json?.pagamento_automatico_40_60
+      ?? colaborador.pagamento_automatico_40_60);
   const vencimentoIntegral = data.data_vencimento || anticipateWeekend(getLastDayOfCompetencia(apuracao.competencia));
+
+  if (['ADIANTAMENTO_40', 'SALDO_60'].includes(apuracao.etapa_pagamento)) {
+    if (!automatico4060) {
+      throw new ValidationError(`O colaborador ${colaborador.nome} nao tinha parcelamento 40%/60% no periodo desta jornada.`, 409);
+    }
+    if (ajuste) {
+      throw new ValidationError('Ajustes do parcelamento em etapas devem ser feitos na jornada de 60%, antes do fechamento.');
+    }
+    if (valorLiquido <= 0) {
+      throw new ValidationError(`O valor da etapa de ${colaborador.nome} precisa ser positivo.`, 409);
+    }
+    const adiantamento = apuracao.etapa_pagamento === 'ADIANTAMENTO_40';
+    return [{
+      tipoTitulo: adiantamento ? 'ADIANTAMENTO_40' : 'SALDO_60',
+      valor: valorLiquido,
+      dataVencimento: adiantamento
+        ? (data.data_vencimento_40 || anticipateWeekend(getCompetenciaDate(apuracao.competencia, 15)))
+        : (data.data_vencimento_60 || vencimentoIntegral),
+      numeroSufixo: adiantamento ? '40' : '60'
+    }];
+  }
 
   if (!automatico4060) {
     if (ajuste) {
@@ -721,7 +856,10 @@ function buildParcelasColaborador(item, apuracao, data = {}, ajuste = null) {
       tipoTitulo: formaCalculo === 'DIARIA' ? 'DIARIAS' : 'INTEGRAL',
       valor: valorLiquido,
       dataVencimento: vencimentoIntegral,
-      numeroSufixo: formaCalculo === 'DIARIA' ? 'DIARIA' : 'INTEGRAL'
+      numeroSufixo: formaCalculo === 'DIARIA'
+        ? (apuracao.etapa_pagamento === 'DIARIA' && apuracao.importacao_id
+          ? `DIARIA-${apuracao.importacao_id}` : 'DIARIA')
+        : 'INTEGRAL'
     }];
   }
 
@@ -1083,6 +1221,10 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
   return sequelize.transaction(async (transaction) => {
     const apuracao = await carregarApuracaoParaFechamento(apuracaoId, transaction);
 
+    if (apuracao.etapa_pagamento && String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() !== 'ON') {
+      throw new ValidationError('O fluxo de jornadas em etapas esta desabilitado.', 409);
+    }
+
     if (String(apuracao.status || '').trim().toUpperCase() !== 'CONFERIDA') {
       throw new ValidationError('A apuracao precisa estar conferida antes do fechamento.');
     }
@@ -1117,6 +1259,7 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
 
     let totalTitulos = 0;
     let totalValor = 0;
+    const reclassificacoesRateio = [];
     const ajustesTitulos = new Map(
       (data.ajustes_titulos || []).map((ajuste) => [Number(ajuste.apuracao_evento_id), ajuste])
     );
@@ -1129,6 +1272,18 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
         transaction,
         lock: transaction.LOCK.UPDATE
       });
+      const acertoConversao = item.detalhes_json?.resumo?.acerto_conversao;
+      if (acertoConversao && (Number(acertoConversao.ajuste_mensal || 0) !== 0
+        || Number(acertoConversao.credito_restante || 0) > 0)) {
+        // Nao basta pagar o valor liquido: o titulo misto teria de separar o custo mensal
+        // das diarias por obra, e o credito excedente nao pode entrar na DRE como despesa.
+        // O modelo atual de rateio exige obra para 100% do titulo. Bloqueia a escrita
+        // financeira ate existir lancamento contabil proprio e homologacao integrada.
+        throw new ValidationError(
+          `Acerto de conversao do colaborador #${item.colaborador_id} calculado, mas o fechamento financeiro `
+          + 'aguarda a apropriacao contabil separada entre mensal, diarias e credito do DP.', 409
+        );
+      }
       const dadosFechamento = validarItemElegivelParaFechamento(item, apuracao);
       const parceiro = await syncParceiroFavorecido(
         {
@@ -1226,6 +1381,14 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
           usuarioId: user?.id || null,
           transaction
         });
+        if (apuracao.etapa_pagamento === 'SALDO_60' && parcela.tipoTitulo === 'SALDO_60') {
+          // O pagamento de 40% ja pode ter sido baixado. Reclassificamos somente os
+          // rateios de custo das duas parcelas pela distribuicao real de dias do mes.
+          // eslint-disable-next-line no-await-in-loop
+          reclassificacoesRateio.push(await reconciliarRateioMensal(
+            item, apuracao, titulo, user?.id || null, transaction
+          ));
+        }
 
         // eslint-disable-next-line no-await-in-loop
         await RhFechamentoTitulo.create(
@@ -1340,7 +1503,8 @@ async function fecharApuracaoRh(apuracaoId, data, user) {
           categoria_financeira_id: categoria?.id || null,
           data_vencimento: dataVencimento,
           data_vencimento_40: data.data_vencimento_40 || anticipateWeekend(getCompetenciaDate(apuracao.competencia, 15)),
-          data_vencimento_60: dataVencimento
+          data_vencimento_60: dataVencimento,
+          reclassificacoes_rateio: reclassificacoesRateio
         },
         atualizado_por: user?.id || null
       },
@@ -1410,6 +1574,52 @@ async function reabrirFechamentoRh(fechamentoId, data, user) {
       throw new ValidationError('Somente fechamentos em status FECHADO podem ser reabertos.');
     }
 
+    if (fechamento.apuracao?.etapa_pagamento === 'ADIANTAMENTO_40') {
+      const itensAdiantamento = await RhApuracaoEvento.findAll({
+        where: { apuracao_id: fechamento.apuracao_id }, attributes: ['colaborador_id'], transaction
+      });
+      for (const itemAdiantamento of itensAdiantamento) {
+        // O valor dos 60% ja descontou o adiantamento; nao se pode estornar a base primeiro.
+        // eslint-disable-next-line no-await-in-loop
+        const saldoFechado = await RhApuracaoEvento.findOne({
+          where: { colaborador_id: itemAdiantamento.colaborador_id },
+          include: [{ model: RhApuracao, as: 'apuracao', required: true,
+            where: { competencia: fechamento.apuracao.competencia, etapa_pagamento: 'SALDO_60' },
+            include: [{ model: RhFechamento, as: 'fechamentoRh', required: true,
+              where: { status: 'FECHADO' } }] }],
+          transaction
+        });
+        if (saldoFechado) {
+          throw new ValidationError('Reabra primeiro o fechamento dos 60% antes de estornar os 40%.', 409);
+        }
+      }
+    }
+    if (['ADIANTAMENTO_40', 'SALDO_60', 'DIARIA'].includes(fechamento.apuracao?.etapa_pagamento)) {
+      const itensOrigem = await RhApuracaoEvento.findAll({
+        where: { apuracao_id: fechamento.apuracao_id }, attributes: ['colaborador_id'], transaction
+      });
+      for (const itemOrigem of itensOrigem) {
+        // O acerto da conversao forma uma cadeia: reabrir um pagamento mensal ou uma
+        // diaria anterior mudaria o credito usado por diarias posteriores ja fechadas.
+        // eslint-disable-next-line no-await-in-loop
+        const diariaDependente = await RhApuracaoEvento.findOne({
+          where: { colaborador_id: itemOrigem.colaborador_id },
+          include: [{ model: RhApuracao, as: 'apuracao', required: true, where: {
+            competencia: fechamento.apuracao.competencia,
+            etapa_pagamento: 'DIARIA',
+            id: { [Op.ne]: fechamento.apuracao_id }
+          }, include: [{ model: RhFechamento, as: 'fechamentoRh', required: true,
+            where: { status: 'FECHADO', id: { [Op.gt]: fechamento.id } } }] }],
+          transaction
+        });
+        if (diariaDependente) {
+          throw new ValidationError(
+            'Reabra primeiro os fechamentos posteriores de diarias antes de alterar este acerto.', 409
+          );
+        }
+      }
+    }
+
     const titulos = Array.isArray(fechamento.titulos) ? fechamento.titulos : [];
     const tituloIds = titulos
       .map((item) => Number(item?.tituloFinanceiro?.id || 0))
@@ -1451,6 +1661,23 @@ async function reabrirFechamentoRh(fechamentoId, data, user) {
     }
 
     const auditLine = `Reabertura RH/DP em ${new Date().toISOString()} por ${user?.nome || 'Usuario'}: ${justificativa}`;
+    for (const snapshot of fechamento.resumo_json?.reclassificacoes_rateio || []) {
+      // A parcela de 40% pode estar paga; somente o custo contabil foi reclassificado.
+      // Reabrir os 60% restaura sua distribuicao anterior, sem estornar a baixa.
+      // eslint-disable-next-line no-await-in-loop
+      const titulo40 = await TituloFinanceiro.findByPk(snapshot.titulo_40_id, {
+        transaction, lock: transaction.LOCK.UPDATE
+      });
+      if (!titulo40) throw new ValidationError('O titulo dos 40% nao foi encontrado para restaurar o rateio.', 409);
+      // eslint-disable-next-line no-await-in-loop
+      await reclassificarRateiosTitulo(
+        titulo40,
+        snapshot.rateios_40_anteriores,
+        `${auditLine} | rateio dos 40% restaurado`,
+        user?.id || null,
+        transaction
+      );
+    }
 
     for (const item of titulos) {
       const titulo = item.tituloFinanceiro;
@@ -1596,9 +1823,12 @@ if (process.env.NODE_ENV === 'test') {
   module.exports.__test = {
     anticipateWeekend,
     buildParcelasColaborador,
+    diasPorObraDoItem,
     getCompetenciaDate,
     getLastDayOfCompetencia,
+    juntarDiasPorObra,
     ratearValorEntreObras,
+    reclassificarRateiosTitulo,
     roundCurrency
   };
 }

@@ -70,6 +70,14 @@ function round(value) {
 
 async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
   const filters = normalizeFilters(query);
+  const ratearRhPorObra = String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() === 'ON';
+  const excluirRhRateadoDoDireto = ratearRhPorObra ? {
+    [Op.or]: [
+      { origem_titulo: { [Op.ne]: 'RH_DP' } },
+      { origem_titulo: null },
+      { origem_titulo: 'RH_DP', possui_rateio: false }
+    ]
+  } : {};
   const obraWhere = { ativo: true, tipo_centro_custo: TIPO_CENTRO_CUSTO_OBRA };
   if (filters.classificacao) obraWhere.classificacao = filters.classificacao;
   if (filters.obraId) obraWhere.id = filters.obraId;
@@ -98,7 +106,8 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
       where: {
         obra_id: { [Op.in]: obraIds },
         renegociacao_id: null,
-        status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] }
+        status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] },
+        ...excluirRhRateadoDoDireto
       },
       group: ['obra_id', 'tipo'],
       raw: true
@@ -110,7 +119,12 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
         as: 'tituloFinanceiro',
         required: true,
         where: {
-          origem_titulo: 'RECARGA_CARTAO',
+          ...(ratearRhPorObra
+            ? { [Op.or]: [
+                { origem_titulo: 'RECARGA_CARTAO' },
+                { origem_titulo: 'RH_DP', possui_rateio: true }
+              ] }
+            : { origem_titulo: 'RECARGA_CARTAO' }),
           considera_dre: true,
           status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] }
         },
@@ -250,7 +264,8 @@ async function gerarResultadoObras({ query = {}, obraIdsEscopo = null } = {}) {
         where: {
           obra_id: { [Op.in]: obraIds },
           origem_titulo: { [Op.ne]: 'RECARGA_CARTAO' },
-          status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] }
+          status: { [Op.notIn]: ['CANCELADO', 'ESTORNADO'] },
+          ...excluirRhRateadoDoDireto
         },
         attributes: ['obra_id', 'tipo']
       }]

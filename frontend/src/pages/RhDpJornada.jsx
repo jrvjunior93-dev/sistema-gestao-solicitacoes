@@ -57,6 +57,12 @@ const PERIODICIDADES = [
   { valor: 'QUINZENAL', rotulo: 'Quinzenal' },
   { valor: 'MENSAL', rotulo: 'Mensal' }
 ];
+const ETAPAS_HABILITADAS = String(import.meta.env.VITE_RH_JORNADA_40_60_ETAPAS || '').toUpperCase() === 'ON';
+const ETAPAS_PAGAMENTO = [
+  { valor: 'ADIANTAMENTO_40', rotulo: 'Mensalista · 40%' },
+  { valor: 'SALDO_60', rotulo: 'Mensalista · saldo 60%' },
+  { valor: 'DIARIA', rotulo: 'Diarista · novo pagamento' }
+];
 
 function limitesDaCompetencia(competencia) {
   const [ano, mes] = String(competencia || '').split('-').map(Number);
@@ -77,6 +83,22 @@ function periodoPadrao(competencia, periodicidade) {
     return { inicio: limites.inicio, fim: `${competencia}-15`, diasBase: 15 };
   }
   return { ...limites, diasBase: DIAS_BASE_PADRAO };
+}
+
+function periodoPadraoEtapa(competencia, etapa) {
+  const limites = limitesDaCompetencia(competencia);
+  if (etapa === 'ADIANTAMENTO_40') {
+    return { periodicidade: 'QUINZENAL', inicio: limites.inicio, fim: `${competencia}-15`, diasBase: 15 };
+  }
+  if (etapa === 'SALDO_60') {
+    return {
+      periodicidade: 'QUINZENAL',
+      inicio: `${competencia}-16`,
+      fim: limites.fim,
+      diasBase: diasInclusivos(`${competencia}-16`, limites.fim)
+    };
+  }
+  return { periodicidade: 'MENSAL', ...limites, diasBase: DIAS_BASE_PADRAO };
 }
 
 function diasInclusivos(inicio, fim) {
@@ -114,6 +136,8 @@ function linhaVazia(colaborador) {
     forma_calculo_gerencial: colaborador.forma_calculo_gerencial || 'MENSAL',
     valor_diaria: colaborador.valor_diaria,
     pagamento_automatico_40_60: Boolean(colaborador.pagamento_automatico_40_60),
+    regimeEmTransicao: Boolean(colaborador.regime_em_transicao),
+    regimeErro: colaborador.regime_erro || null,
     mais_de_uma_obra: Boolean(colaborador.mais_de_uma_obra),
     obrasVinculadasPeriodo: colaborador.obras_vinculadas_periodo || [],
     totalObrasPeriodo: Number(colaborador.total_obras_periodo || 1),
@@ -204,13 +228,18 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     Quem tranca isso agora e `scripts/provas/ordemDeDeclaracao.mjs`.
   */
   const [competencia, setCompetencia] = useState(COMPETENCIA_ATUAL);
-  const [diasBase, setDiasBase] = useState(DIAS_BASE_PADRAO);
-  const [periodicidade, setPeriodicidade] = useState('MENSAL');
+  const [diasBase, setDiasBase] = useState(ETAPAS_HABILITADAS ? 15 : DIAS_BASE_PADRAO);
+  const [periodicidade, setPeriodicidade] = useState(ETAPAS_HABILITADAS ? 'QUINZENAL' : 'MENSAL');
+  const [etapaPagamento, setEtapaPagamento] = useState(ETAPAS_HABILITADAS ? 'ADIANTAMENTO_40' : '');
   const [periodoInicio, setPeriodoInicio] = useState(
-    () => periodoPadrao(COMPETENCIA_ATUAL, 'MENSAL').inicio
+    () => (ETAPAS_HABILITADAS
+      ? periodoPadraoEtapa(COMPETENCIA_ATUAL, 'ADIANTAMENTO_40')
+      : periodoPadrao(COMPETENCIA_ATUAL, 'MENSAL')).inicio
   );
   const [periodoFim, setPeriodoFim] = useState(
-    () => periodoPadrao(COMPETENCIA_ATUAL, 'MENSAL').fim
+    () => (ETAPAS_HABILITADAS
+      ? periodoPadraoEtapa(COMPETENCIA_ATUAL, 'ADIANTAMENTO_40')
+      : periodoPadrao(COMPETENCIA_ATUAL, 'MENSAL')).fim
   );
 
   const filtrosPreenchidos = useMemo(
@@ -266,6 +295,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   const [fichasImportacao, setFichasImportacao] = useState([]);
   const [importandoPlanilha, setImportandoPlanilha] = useState(false);
   const inputFichasRef = useRef(null);
+  const envioPendenteRef = useRef(false);
+  const idempotencyKeyRef = useRef(null);
 
   const secaoDaUrl = parametros.get('jornada_secao');
   const secaoAtiva = secaoDaUrl === 'enviadas' ? 'enviadas' : 'enviar';
@@ -288,7 +319,10 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   function mudarCompetencia(valor) {
     setJornadaEnviada(null);
     setCompetencia(valor);
-    const proximo = periodoPadrao(valor, periodicidade);
+    const proximo = ETAPAS_HABILITADAS
+      ? periodoPadraoEtapa(valor, etapaPagamento)
+      : periodoPadrao(valor, periodicidade);
+    if (ETAPAS_HABILITADAS) setPeriodicidade(proximo.periodicidade);
     setPeriodoInicio(proximo.inicio);
     setPeriodoFim(proximo.fim);
     setDiasBase(proximo.diasBase);
@@ -306,7 +340,8 @@ export default function RhDpJornada({ onAbrirApuracao }) {
   }
 
   function podeEditarLinha(linha) {
-    return !linha.jaInformado || podeDecidirEdicao || linha.edicaoStatus === 'AUTORIZADA';
+    return !linha.regimeEmTransicao
+      && (!linha.jaInformado || podeDecidirEdicao || linha.edicaoStatus === 'AUTORIZADA');
   }
 
   const carregarEdicoesPendentes = useCallback(async () => {
@@ -420,11 +455,20 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       const lista = await colaboradoresParaJornadaRh({
         obra_id: obra,
         competencia,
+        etapa_pagamento: ETAPAS_HABILITADAS ? etapaPagamento : undefined,
         periodicidade,
         periodo_inicio: periodoInicio,
         periodo_fim: periodoFim
       });
-      setLinhas((Array.isArray(lista) ? lista : []).map(linhaVazia));
+      const elegiveis = (Array.isArray(lista) ? lista : []).filter((colaborador) => {
+        if (!ETAPAS_HABILITADAS) return true;
+        if (colaborador.regime_em_transicao) return true;
+        return etapaPagamento === 'DIARIA'
+          ? colaborador.forma_calculo_gerencial === 'DIARIA'
+          : colaborador.forma_calculo_gerencial === 'MENSAL'
+            && colaborador.pagamento_automatico_40_60;
+      });
+      setLinhas(elegiveis.map(linhaVazia));
       const comecaram = (Array.isArray(lista) ? lista : []).filter((c) => !c.ainda_nao_comecou);
       const futuros = (Array.isArray(lista) ? lista : []).filter((c) => c.ainda_nao_comecou);
 
@@ -444,7 +488,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
     } finally {
       setCarregando(false);
     }
-  }, [obra, competencia, periodicidade, periodoInicio, periodoFim, avisar, limpar]);
+  }, [obra, competencia, etapaPagamento, periodicidade, periodoInicio, periodoFim, avisar, limpar]);
 
   function alterar(indice, campo, valor) {
     setLinhas((atuais) => atuais.map((linha, i) => {
@@ -589,6 +633,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
 
   async function enviar(evento) {
     evento.preventDefault();
+    if (envioPendenteRef.current) return;
     limpar();
 
     /**
@@ -656,9 +701,11 @@ export default function RhDpJornada({ onAbrirApuracao }) {
 
     setJornadaEnviada(null);
     setSalvando(true);
+    envioPendenteRef.current = true;
     try {
-      const resultado = await registrarJornadaRh({
+      const payload = {
         competencia,
+        etapa_pagamento: ETAPAS_HABILITADAS ? etapaPagamento : undefined,
         periodicidade,
         periodo_inicio: periodoInicio,
         periodo_fim: periodoFim,
@@ -680,7 +727,16 @@ export default function RhDpJornada({ onAbrirApuracao }) {
             : 0,
           observacoes: l.observacoes || undefined
         }))
-      });
+      };
+      if (ETAPAS_HABILITADAS) {
+        const assinatura = JSON.stringify(payload);
+        if (idempotencyKeyRef.current?.assinatura !== assinatura) {
+          idempotencyKeyRef.current = { assinatura, chave: crypto.randomUUID() };
+        }
+        payload.idempotency_key = idempotencyKeyRef.current.chave;
+      }
+      const resultado = await registrarJornadaRh(payload);
+      idempotencyKeyRef.current = null;
       setJornadaEnviada(resultado?.solicitacao || null);
       /**
        * A confirmacao vem DEPOIS de remontar a lista, e nao antes.
@@ -699,6 +755,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       avisar.erro(error.message || 'Não foi possível registrar a jornada.');
     } finally {
       setSalvando(false);
+      envioPendenteRef.current = false;
     }
   }
 
@@ -880,6 +937,14 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                 tipo: 'texto',
                 render: (item) => `${formatarData(item.dados_json?.periodo_inicio)} a ${formatarData(item.dados_json?.periodo_fim)}`
               },
+              ...(ETAPAS_HABILITADAS ? [{
+                id: 'etapa',
+                titulo: 'Pagamento',
+                tipo: 'texto',
+                render: (item) => ETAPAS_PAGAMENTO.find(
+                  (opcao) => opcao.valor === item.dados_json?.etapa_pagamento
+                )?.rotulo || 'Legado'
+              }] : []),
               {
                 id: 'periodicidade',
                 titulo: 'Periodicidade',
@@ -1098,7 +1163,9 @@ export default function RhDpJornada({ onAbrirApuracao }) {
       */}
       <BlocoConteudo
         titulo="Jornada da obra"
-        descricao="Informe dias trabalhados, faltas apenas para registro, acréscimos, descontos e 13º. Para empreitada, selecione o regime e registre o serviço e o valor; anexos podem ser enviados após a jornada."
+        descricao={ETAPAS_HABILITADAS
+          ? 'Informe apenas dias e ajustes deste período. No mensalista, a primeira jornada libera 40% do salário; acréscimos, descontos e 13º dessa jornada entram no saldo de 60%, junto com os ajustes da segunda. O custo final é rateado pelos dias das duas etapas.'
+          : 'Informe dias trabalhados, faltas apenas para registro, acréscimos, descontos e 13º. Para empreitada, selecione o regime e registre o serviço e o valor; anexos podem ser enviados após a jornada.'}
         variante={linhas.length ? undefined : 'primario'}
         cor={linhas.length ? undefined : 'var(--c-primary)'}
         acoes={(
@@ -1149,6 +1216,24 @@ export default function RhDpJornada({ onAbrirApuracao }) {
               required: true,
               disabled: obras.length === 0
             },
+            ...(ETAPAS_HABILITADAS ? [{
+              id: 'etapaPagamento',
+              rotulo: 'Pagamento *',
+              tipo: 'select',
+              valor: etapaPagamento,
+              aoMudar: (valor) => {
+                setEtapaPagamento(valor);
+                setJornadaEnviada(null);
+                setLinhas([]);
+                const proximo = periodoPadraoEtapa(competencia, valor);
+                setPeriodicidade(proximo.periodicidade);
+                setPeriodoInicio(proximo.inicio);
+                setPeriodoFim(proximo.fim);
+                setDiasBase(proximo.diasBase);
+              },
+              opcoes: ETAPAS_PAGAMENTO,
+              required: true
+            }] : []),
             {
               id: 'competencia',
               rotulo: 'Competência',
@@ -1193,7 +1278,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
               max: 31
             }
           ].filter((campo) => (
-            ['obra', 'periodicidade', 'periodoInicio', 'periodoFim'].includes(campo.id)
+            ['obra', 'etapaPagamento', 'periodicidade', 'periodoInicio', 'periodoFim'].includes(campo.id)
             || visibilidadeFiltros.ehVisivel(campo.id)
           ))}
           filtros={dimensoesFiltro.filter((dim) => visibilidadeFiltros.ehVisivel(dim.id))}

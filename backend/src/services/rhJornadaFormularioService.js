@@ -1,9 +1,13 @@
 'use strict';
 
+const { createHash } = require('crypto');
 const { Op } = require('sequelize');
 const {
   RhImportacao,
   RhImportacaoLinha,
+  RhApuracao,
+  RhApuracaoEvento,
+  RhFechamento,
   RhJornadaEdicao,
   RhColaborador,
   RhColaboradorVinculo,
@@ -14,6 +18,7 @@ const {
 } = require('../models');
 const { ValidationError } = require('../middlewares/validation');
 const rhVinculoObraService = require('./rhVinculoObraService');
+const rhCalculoHistoricoService = require('./rhCalculoHistoricoService');
 const { diasVinculados } = require('./rhPessoalDomain');
 const { setorParaHistorico } = require('../utils/codigoDoSetor');
 const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
@@ -39,6 +44,11 @@ const { garantirCodigoRhSolicitacao } = require('./rhSolicitacaoCodigoService');
 
 const ORIGENS = new Set(['FORMULARIO', 'INDIVIDUAL', 'PLANILHA']);
 const PERIODICIDADES = new Set(['SEMANAL', 'QUINZENAL', 'MENSAL']);
+const ETAPAS_PAGAMENTO = new Set(['ADIANTAMENTO_40', 'SALDO_60', 'DIARIA']);
+
+function etapasHabilitadas() {
+  return String(process.env.RH_JORNADA_40_60_ETAPAS || 'OFF').toUpperCase() === 'ON';
+}
 
 function competenciaValida(valor) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(valor || '').trim());
@@ -136,7 +146,7 @@ async function linhasConfirmadasDaCompetencia(obraId, competencia, transaction =
     include: [{
       association: 'importacao',
       required: true,
-      attributes: ['id', 'competencia', 'periodicidade', 'periodo_inicio', 'periodo_fim', 'status'],
+      attributes: ['id', 'competencia', 'periodicidade', 'periodo_inicio', 'periodo_fim', 'etapa_pagamento', 'status'],
       where: { obra_id: obraId, competencia, tipo: 'JORNADA', status: 'CONFIRMADA' }
     }],
     order: [['id', 'DESC']],
@@ -167,11 +177,55 @@ async function registrarJornada(dados = {}, contexto = {}) {
     if (!obraId) throw new ValidationError('Informe a obra da jornada.');
 
     const periodo = normalizarPeriodo(dados, competencia);
+    const etapaPagamento = String(dados.etapa_pagamento || '').trim().toUpperCase() || null;
+    if (etapaPagamento && (!etapasHabilitadas() || !ETAPAS_PAGAMENTO.has(etapaPagamento))) {
+      throw new ValidationError('A etapa de pagamento da jornada nao esta habilitada ou e invalida.', 409);
+    }
+    const idempotencyKey = etapaPagamento ? String(dados.idempotency_key || '').trim() : '';
+    if (etapaPagamento && !/^[A-Za-z0-9-]{16,80}$/.test(idempotencyKey)) {
+      throw new ValidationError('Identificador de envio da jornada invalido. Atualize a tela e tente novamente.');
+    }
+    const envioHash = idempotencyKey
+      ? createHash('sha256').update(JSON.stringify({
+          ...dados,
+          idempotency_key: undefined,
+          competencia,
+          obra_id: obraId,
+          etapa_pagamento: etapaPagamento,
+          periodo_inicio: periodo.inicio,
+          periodo_fim: periodo.fim
+        })).digest('hex')
+      : null;
 
     // Serializa os envios da mesma obra para impedir dois cliques simultaneos de gravarem o mesmo
     // colaborador e periodo antes de um deles enxergar o outro.
     const obra = await Obra.findByPk(obraId, { transaction, lock: transaction.LOCK.UPDATE });
     if (!obra) throw new ValidationError('Obra da jornada nao encontrada.', 404);
+    if (idempotencyKey) {
+      const repetida = await RhImportacao.findOne({ where: { idempotency_key: idempotencyKey }, transaction });
+      if (repetida) {
+        if (Number(repetida.obra_id) !== obraId || repetida.competencia !== competencia
+          || repetida.resumo_json?.envio_hash !== envioHash) {
+          throw new ValidationError('Este identificador de envio ja foi utilizado em outra jornada.', 409);
+        }
+        const solicitacoes = await RhSolicitacao.findAll({
+          where: { tipo: 'JORNADA', obra_id: obraId },
+          order: [['id', 'DESC']],
+          transaction
+        });
+        const solicitacao = solicitacoes.find((pedido) => {
+          const detalhes = typeof pedido.dados_json === 'string'
+            ? JSON.parse(pedido.dados_json) : (pedido.dados_json || {});
+          return Number(detalhes.importacao_id) === Number(repetida.id);
+        }) || null;
+        return {
+          importacao: repetida,
+          linhas: await RhImportacaoLinha.findAll({ where: { importacao_id: repetida.id }, transaction }),
+          solicitacao,
+          repetido: true
+        };
+      }
+    }
 
     const linhas = Array.isArray(dados.linhas) ? dados.linhas : [];
     if (!linhas.length) throw new ValidationError('Informe ao menos um colaborador na jornada.');
@@ -204,9 +258,24 @@ async function registrarJornada(dados = {}, contexto = {}) {
       lock: transaction.LOCK.UPDATE
     });
     const porId = new Map(colaboradores.map((c) => [Number(c.id), c]));
+    const regimePorId = new Map();
 
     for (const id of vistos) {
       if (!porId.has(id)) throw new ValidationError(`Colaborador #${id} nao encontrado.`, 404);
+      if (etapaPagamento) {
+        // eslint-disable-next-line no-await-in-loop
+        const regime = await rhCalculoHistoricoService.regimeNoPeriodo(
+          porId.get(id), periodo.inicio, periodo.fim, transaction
+        );
+        if (etapaPagamento === 'DIARIA' && regime.forma_calculo !== 'DIARIA') {
+          throw new ValidationError(`${porId.get(id).nome}: selecione a etapa 40% ou 60% para mensalistas.`);
+        }
+        if (etapaPagamento !== 'DIARIA'
+          && (regime.forma_calculo !== 'MENSAL' || !regime.pagamento_automatico_40_60)) {
+          throw new ValidationError(`${porId.get(id).nome}: o pagamento 40%/60% exige regime mensal ativo no periodo.`);
+        }
+        regimePorId.set(id, regime);
+      }
     }
 
     const vinculosDistribuicao = await RhColaboradorVinculo.findAll({
@@ -257,10 +326,99 @@ async function registrarJornada(dados = {}, contexto = {}) {
 
     for (const linha of linhas) {
       const colaboradorId = Number(linha.colaborador_id);
+      if (['ADIANTAMENTO_40', 'SALDO_60'].includes(etapaPagamento)) {
+        // Depois que a primeira diaria da conversao foi enviada, o acerto mensal ja pode
+        // estar apurado. Um novo pagamento mensal mudaria retroativamente aquele saldo.
+        // eslint-disable-next-line no-await-in-loop
+        const conversao = await rhCalculoHistoricoService.conversaoMensalParaDiariaNaCompetencia(
+          colaboradorId, competencia, transaction
+        );
+        if (conversao) {
+          // eslint-disable-next-line no-await-in-loop
+          const diariaJaEnviada = await RhImportacaoLinha.findOne({
+            where: { colaborador_id: colaboradorId, status: 'CONFIRMADA' },
+            include: [{ association: 'importacao', required: true, where: {
+              competencia, tipo: 'JORNADA', status: 'CONFIRMADA', etapa_pagamento: 'DIARIA'
+            } }], transaction
+          });
+          if (diariaJaEnviada) {
+            throw new ValidationError(
+              `${porId.get(colaboradorId).nome}: a conversao mensal/diaria ja tem jornada diaria. `
+              + 'Corrija o acerto pelo DP antes de enviar outra etapa mensal.', 409
+            );
+          }
+        }
+      }
+      if (['ADIANTAMENTO_40', 'SALDO_60'].includes(etapaPagamento)) {
+        // Uma etapa ja transformada em titulo nao pode ser refeita por outro envio da
+        // mesma competencia. A correcao financeira exige estorno explicito pelo DP.
+        // eslint-disable-next-line no-await-in-loop
+        const etapaFechada = await RhApuracaoEvento.findOne({
+          where: { colaborador_id: colaboradorId },
+          include: [{ model: RhApuracao, as: 'apuracao', required: true, where: {
+            competencia, etapa_pagamento: etapaPagamento
+          }, include: [{ model: RhFechamento, as: 'fechamentoRh', required: true,
+            where: { status: 'FECHADO' } }] }],
+          transaction
+        });
+        if (etapaFechada) {
+          throw new ValidationError(
+            `${porId.get(colaboradorId).nome}: esta etapa ja gerou titulo. Solicite estorno antes de corrigir a jornada.`, 409
+          );
+        }
+      }
+      if (etapaPagamento === 'SALDO_60') {
+        // A segunda etapa so pode existir depois da primeira, em qualquer obra da competencia.
+        // eslint-disable-next-line no-await-in-loop
+        const adiantamento = await RhImportacaoLinha.findOne({
+          where: { colaborador_id: colaboradorId, status: 'CONFIRMADA' },
+          include: [{ association: 'importacao', required: true, where: {
+            competencia, tipo: 'JORNADA', status: 'CONFIRMADA', etapa_pagamento: 'ADIANTAMENTO_40'
+          } }],
+          transaction
+        });
+        if (!adiantamento) {
+          throw new ValidationError(`${porId.get(colaboradorId).nome}: envie primeiro a jornada dos 40%.`, 409);
+        }
+      }
+      if (['ADIANTAMENTO_40', 'SALDO_60'].includes(etapaPagamento)) {
+        const outraEtapa = etapaPagamento === 'ADIANTAMENTO_40' ? 'SALDO_60' : 'ADIANTAMENTO_40';
+        // O mesmo dia nao pode compor simultaneamente o adiantamento e o saldo, inclusive
+        // quando a pessoa foi transferida e os envios vieram de obras diferentes.
+        // eslint-disable-next-line no-await-in-loop
+        const outrasLinhas = await RhImportacaoLinha.findAll({
+          where: { colaborador_id: colaboradorId, status: 'CONFIRMADA' },
+          include: [{ association: 'importacao', required: true, where: {
+            competencia, tipo: 'JORNADA', status: 'CONFIRMADA', etapa_pagamento: outraEtapa
+          } }],
+          transaction
+        });
+        if (outrasLinhas.some((anterior) => periodosSobrepostos(periodo, periodoDaImportacao(anterior.importacao)))) {
+          throw new ValidationError(
+            `${porId.get(colaboradorId).nome}: os periodos das jornadas de 40% e 60% nao podem se sobrepor.`, 409
+          );
+        }
+      }
       const sobrepostas = existentes.filter((existente) => (
         Number(existente.colaborador_id) === colaboradorId
         && periodosSobrepostos(periodo, periodoDaImportacao(existente.importacao))
+        && (!etapaPagamento || existente.importacao.etapa_pagamento === etapaPagamento)
       ));
+      if (['ADIANTAMENTO_40', 'SALDO_60'].includes(etapaPagamento)) {
+        const outraDoMesmoEstagio = existentes.find((existente) => (
+          Number(existente.colaborador_id) === colaboradorId
+          && existente.importacao.etapa_pagamento === etapaPagamento
+          && !mesmoPeriodo(periodo, periodoDaImportacao(existente.importacao))
+        ));
+        if (outraDoMesmoEstagio) {
+          throw new ValidationError(
+            `${porId.get(colaboradorId).nome}: ja existe outra jornada desta etapa na obra. Corrija o periodo existente com autorizacao do DP.`, 409
+          );
+        }
+      }
+      // Cada envio de diaria e um pagamento proprio; o limite de dias acumulados e verificado
+      // abaixo. O mesmo periodo pode ser usado, sem substituir a linha anterior.
+      if (etapaPagamento === 'DIARIA') continue;
       if (!sobrepostas.length) continue;
 
       const periodoDiferente = sobrepostas.find(
@@ -310,6 +468,8 @@ async function registrarJornada(dados = {}, contexto = {}) {
         tipo: 'JORNADA',
         origem,
         competencia,
+        etapa_pagamento: etapaPagamento,
+        idempotency_key: idempotencyKey || null,
         periodicidade: periodo.periodicidade,
         periodo_inicio: periodo.inicio,
         periodo_fim: periodo.fim,
@@ -323,6 +483,7 @@ async function registrarJornada(dados = {}, contexto = {}) {
         total_linhas: linhas.length,
         total_validas: linhas.length,
         total_erros: 0,
+        resumo_json: envioHash ? { envio_hash: envioHash } : null,
         observacoes: dados.observacoes || null,
         criado_por: contexto.usuarioId || null,
         confirmado_por: contexto.usuarioId || null,
@@ -350,7 +511,8 @@ async function registrarJornada(dados = {}, contexto = {}) {
           ? 'AUTOMATICA_MESMO_RESPONSAVEL'
           : 'AGUARDANDO_RESPONSAVEIS')
         : 'NAO_APLICAVEL';
-      const formaCalculo = String(colaborador.forma_calculo_gerencial || 'MENSAL').toUpperCase();
+      const regimeVigente = regimePorId.get(colaboradorId) || rhCalculoHistoricoService.resumo(colaborador);
+      const formaCalculo = String(regimeVigente.forma_calculo || 'MENSAL').toUpperCase();
       const regimePagamento = String(linha.regime_pagamento || 'NORMAL').trim().toUpperCase();
       if (!['NORMAL', 'EMPREITADA'].includes(regimePagamento)) {
         throw new ValidationError(`${colaborador.nome}: regime de pagamento invalido.`);
@@ -370,6 +532,18 @@ async function registrarJornada(dados = {}, contexto = {}) {
         throw new ValidationError(
           `Dias trabalhados (${dias}) do colaborador #${colaboradorId} passam da base do periodo (${diasBase}).`
         );
+      }
+      if (etapaPagamento === 'DIARIA') {
+        const anteriores = existentes.filter((existente) => (
+          Number(existente.colaborador_id) === colaboradorId
+          && existente.importacao.etapa_pagamento === 'DIARIA'
+        ));
+        const totalDias = anteriores.reduce((total, anterior) => (
+          total + Number(anterior.payload_json?.dias_trabalhados || 0)
+        ), dias);
+        if (totalDias > diasVinculados(vinculosDaObra, colaborador, limitesDaCompetencia(competencia))) {
+          throw new ValidationError(`${colaborador.nome}: a soma das diarias enviadas ultrapassa os dias de vinculo nesta obra.`, 409);
+        }
       }
       const adicionais = numeroNaoNegativo(linha.adicionais, 'Acrescimos', colaboradorId);
       const descontos = numeroNaoNegativo(linha.descontos, 'Descontos', colaboradorId);
@@ -429,10 +603,13 @@ async function registrarJornada(dados = {}, contexto = {}) {
             valor_informado: regimePagamento === 'EMPREITADA'
               ? valorEmpreitada
               : formaCalculo === 'DIARIA'
-              ? Number((dias * Number(colaborador.valor_diaria || 0)).toFixed(2))
+              ? Number((dias * Number(regimeVigente.valor_diaria || 0)).toFixed(2))
               : numeroNaoNegativo(linha.valor_informado, 'Valor informado', colaboradorId),
             forma_calculo_gerencial: formaCalculo,
-            valor_diaria: Number(colaborador.valor_diaria || 0),
+            valor_diaria: Number(regimeVigente.valor_diaria || 0),
+            pagamento_automatico_40_60: Boolean(regimeVigente.pagamento_automatico_40_60),
+            salario_base: Number(colaborador.salario_base || 0),
+            valor_contratual: Number(colaborador.valor_contratual || 0),
             observacoes: observacoes || null
           }
         },
@@ -465,6 +642,7 @@ async function registrarJornada(dados = {}, contexto = {}) {
     const dadosSolicitacao = {
       importacao_id: importacao.id,
       competencia,
+      etapa_pagamento: etapaPagamento,
       periodicidade: periodo.periodicidade,
       periodo_inicio: periodo.inicio,
       periodo_fim: periodo.fim,
@@ -474,7 +652,7 @@ async function registrarJornada(dados = {}, contexto = {}) {
       observacoes: dados.observacoes || null
     };
     let solicitacao;
-    if (existente) {
+    if (existente && !etapaPagamento) {
       solicitacao = existente;
       await solicitacao.update({ dados_json: dadosSolicitacao }, { transaction });
       await RhSolicitacaoHistorico.create({
@@ -553,6 +731,10 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
   }
 
   const periodo = normalizarPeriodo(filtros, competencia);
+  const etapaPagamento = String(filtros.etapa_pagamento || '').trim().toUpperCase() || null;
+  if (etapaPagamento && (!etapasHabilitadas() || !ETAPAS_PAGAMENTO.has(etapaPagamento))) {
+    throw new ValidationError('A etapa de pagamento da jornada nao esta habilitada ou e invalida.', 409);
+  }
 
   const vinculos = await rhVinculoObraService.colaboradoresDaObraEm(obraId, periodo.inicio, periodo.fim);
 
@@ -604,9 +786,11 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
   });
 
   const confirmadas = await linhasConfirmadasDaCompetencia(obraId, competencia);
-  const jaInformado = confirmadas.filter(
-    (linha) => mesmoPeriodo(periodo, periodoDaImportacao(linha.importacao))
-  );
+  const jaInformado = confirmadas.filter((linha) => (
+    mesmoPeriodo(periodo, periodoDaImportacao(linha.importacao))
+    && (!etapaPagamento || linha.importacao.etapa_pagamento === etapaPagamento)
+    && etapaPagamento !== 'DIARIA'
+  ));
   const idsLinhas = jaInformado.map((linha) => Number(linha.id));
   const solicitacoesEdicao = idsLinhas.length ? await RhJornadaEdicao.findAll({
     where: { importacao_linha_id: { [Op.in]: idsLinhas } },
@@ -625,6 +809,21 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
     }])
   );
 
+  const regimesPorId = new Map();
+  for (const vinculo of vinculos) {
+    if (!vinculo.colaborador || regimesPorId.has(Number(vinculo.colaborador_id))) continue;
+    if (!etapaPagamento) continue;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const regime = await rhCalculoHistoricoService.regimeNoPeriodo(
+        vinculo.colaborador, periodo.inicio, periodo.fim
+      );
+      regimesPorId.set(Number(vinculo.colaborador_id), regime);
+    } catch (error) {
+      regimesPorId.set(Number(vinculo.colaborador_id), { em_transicao: true, erro: error.message });
+    }
+  }
+
   const linhaDe = (vinculo, extras = {}) => ({
     colaborador_id: Number(vinculo.colaborador_id),
     nome: vinculo.colaborador.nome,
@@ -635,9 +834,14 @@ async function colaboradoresParaJornada(obraId, competencia, filtros = {}) {
     cargo: vinculo.colaborador.cargo,
     tipo_vinculo: vinculo.colaborador.tipo_vinculo,
     salario_base: vinculo.colaborador.salario_base,
-    forma_calculo_gerencial: vinculo.colaborador.forma_calculo_gerencial || 'MENSAL',
-    valor_diaria: vinculo.colaborador.valor_diaria,
-    pagamento_automatico_40_60: Boolean(vinculo.colaborador.pagamento_automatico_40_60),
+    forma_calculo_gerencial: regimesPorId.get(Number(vinculo.colaborador_id))?.forma_calculo
+      || vinculo.colaborador.forma_calculo_gerencial || 'MENSAL',
+    valor_diaria: regimesPorId.get(Number(vinculo.colaborador_id))?.valor_diaria
+      ?? vinculo.colaborador.valor_diaria,
+    pagamento_automatico_40_60: regimesPorId.get(Number(vinculo.colaborador_id))?.pagamento_automatico_40_60
+      ?? Boolean(vinculo.colaborador.pagamento_automatico_40_60),
+    regime_em_transicao: Boolean(regimesPorId.get(Number(vinculo.colaborador_id))?.em_transicao),
+    regime_erro: regimesPorId.get(Number(vinculo.colaborador_id))?.erro || null,
     jornada_informada: porColaborador.get(Number(vinculo.colaborador_id))?.linha?.payload_json || null,
     jornada_linha_id: porColaborador.get(Number(vinculo.colaborador_id))?.linha?.id || null,
     edicao_jornada: porColaborador.get(Number(vinculo.colaborador_id))?.edicao || null,
