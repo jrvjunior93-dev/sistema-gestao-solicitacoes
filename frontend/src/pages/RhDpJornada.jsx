@@ -113,13 +113,6 @@ function diasInclusivos(inicio, fim) {
   return Math.floor((ate.getTime() - de.getTime()) / 86400000) + 1;
 }
 
-function limitarDiasDigitados(valor, limite) {
-  if (valor === '') return '';
-  const dias = Number(valor);
-  if (!Number.isFinite(dias)) return '';
-  return String(Math.max(0, Math.min(Math.trunc(dias), Math.max(0, limite))));
-}
-
 function formatarData(valor) {
   if (!valor) return '—';
   const data = new Date(`${valor}T00:00:00`);
@@ -1427,9 +1420,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                         aria-label={`Dias trabalhados de ${linha.nome}; máximo ${Math.min(Number(diasBase), linha.diasVinculados)}`}
                         value={linha.dias_trabalhados}
                         disabled={!podeEditarLinha(linha)}
-                        onChange={(e) => alterar(linha.__indice, 'dias_trabalhados', limitarDiasDigitados(
-                          e.target.value, Math.min(Number(diasBase), linha.diasVinculados)
-                        ))}
+                        onChange={(e) => alterar(linha.__indice, 'dias_trabalhados', e.target.value)}
                       />
                     )
                   ))
@@ -1448,9 +1439,7 @@ export default function RhDpJornada({ onAbrirApuracao }) {
                       aria-label={`Faltas de ${linha.nome}; máximo ${Math.min(Number(diasBase), linha.diasVinculados)}`}
                       value={linha.faltas}
                       disabled={!podeEditarLinha(linha)}
-                      onChange={(e) => alterar(linha.__indice, 'faltas', limitarDiasDigitados(
-                        e.target.value, Math.min(Number(diasBase), linha.diasVinculados)
-                      ))}
+                      onChange={(e) => alterar(linha.__indice, 'faltas', e.target.value)}
                     />
                   ))
                 },

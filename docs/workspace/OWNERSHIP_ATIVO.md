@@ -1141,3 +1141,13 @@ usuario com flag propria OFF por padrao, preservando alteracoes locais anteriore
 Sem banco remoto, EC2, migration aplicada, deploy, commit ou push nesta etapa.
 Commit/push deste pacote solicitados em 03/10/2026; ownership liberado após
 o envio. A homologação integrada e a ativação das flags permanecem separadas.
+
+## Ownership ativo - digitação de dias e faltas na jornada - 03/10/2026
+
+Sessão `/root` no worktree `backend-dependency-security`: reserva temporária de
+`frontend/src/pages/RhDpJornada.jsx`, validação focada do formulário,
+`docs/handoffs/2026-10-03-rhdp-digitacao-dias-faltas.md` e este registro.
+Escopo: não truncar a digitação nos campos controlados; preservar limites na
+validação de envio e no backend. Sem banco ou deploy nesta etapa. Commit/push
+na `refactor/frontend` solicitados em 03/10/2026; ownership liberado após
+o envio.
