@@ -21,6 +21,12 @@ O frontend fica na Vercel. `refactor-dev.jrfluxy.com.br` e o frontend de homolog
 - reiniciar apenas o processo do ambiente em deploy;
 - nao executar `npm audit fix --force` como parte de deploy;
 - preservar uma referencia do commit anterior para rollback.
+- antes de promover `refactor/frontend` para `main`, exigir snapshot do codigo
+  de `main` e dump consistente do MySQL de producao, ambos com copia externa e
+  restauracao/recuperacao testada; nao usar tag Git como substituto do dump;
+- backup automatico para Google Drive deve estar ativo, cifrado e monitorado,
+  com execucoes as 12h e 23h em `America/Sao_Paulo`, retencao de 30 dias e
+  teste mensal de restauracao em ambiente isolado.
 
 ## Sequencia resumida
 
@@ -51,6 +57,8 @@ Os comandos completos e a fotografia de migrations ficam em
 [`../deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`](../deploy/POS_DEPLOY_REFACTOR_FRONTEND.md).
 A promocao segura esta em
 [`promocao_refactor_frontend_para_main.md`](./promocao_refactor_frontend_para_main.md).
+O procedimento de backup esta em
+[`../deploy/BACKUP_PRODUCAO_GOOGLE_DRIVE.md`](../deploy/BACKUP_PRODUCAO_GOOGLE_DRIVE.md).
 
 ## Frontend
 

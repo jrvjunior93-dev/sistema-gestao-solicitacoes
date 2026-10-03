@@ -1,5 +1,25 @@
 # Ownership Ativo
 
+## Ownership temporario - documentacao e preparacao da promocao - 03/10/2026
+
+Sessao `/root` reserva `docs/README.md`, `docs/arquitetura/infra-deploy.md`,
+`docs/arquitetura/deploy_ambientes.md`,
+`docs/arquitetura/promocao_refactor_frontend_para_main.md`,
+`docs/contexto/ESTADO_ATUAL_REFACTOR_FRONTEND.md`,
+`docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`,
+`docs/deploy/BACKUP_PRODUCAO_GOOGLE_DRIVE.md`,
+`docs/seguranca/checklist-operacional.md`,
+`docs/modulos/financeiro/AUTORIZACAO_PROPRIETARIO_PAGAMENTOS_PWA.md`,
+`docs/modulos/rh-dp/GUIA_OPERACIONAL_PESSOAL.md`,
+`docs/handoffs/2026-10-03-backup-e-promocao-main.md`, `ops/backup/` e
+este registro. Escopo: revisao
+documental e preparacao de backups, sem acesso ao banco de producao,
+configuracao de credenciais, migration, reinicio, merge ou deploy.
+
+Ownership de edicao liberado apos concluir a preparacao documental; a
+configuracao efetiva do backup e a promocao permanecem pendentes, conforme
+`docs/handoffs/2026-10-03-backup-e-promocao-main.md`.
+
 ## Ownership ativo - guia operacional RH/DP Pessoal - 02/10/2026
 
 Sessao `/root` reserva temporariamente apenas `docs/modulos/rh-dp/GUIA_OPERACIONAL_PESSOAL.md`,

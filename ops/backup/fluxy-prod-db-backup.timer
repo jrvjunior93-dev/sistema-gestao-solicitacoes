@@ -1,0 +1,12 @@
+[Unit]
+Description=Fluxy production DB backup twice daily (Sao Paulo)
+
+[Timer]
+OnCalendar=*-*-* 12:00:00 America/Sao_Paulo
+OnCalendar=*-*-* 23:00:00 America/Sao_Paulo
+AccuracySec=1min
+Persistent=true
+Unit=fluxy-prod-db-backup.service
+
+[Install]
+WantedBy=timers.target

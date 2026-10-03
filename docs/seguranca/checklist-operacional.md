@@ -3,7 +3,10 @@
 ## Antes de deploy
 - confirmar branch e commit
 - confirmar diretorio, processo PM2, `DB_HOST` e `DB_NAME` sem expor segredo
-- confirmar backup funcional ou branch de rollback
+- confirmar copia verificavel do codigo anterior e backup recente do banco
+  fora da EC2; branch/tag de rollback so protege codigo, nao dados
+- confirmar duas execucoes diarias do backup cifrado no Google Drive, alerta
+  de falha e evidencia do ultimo teste mensal de restauracao
 - revisar impacto em `backend/src/app.js`, `backend/src/routes.js`, `frontend/src/App.jsx` e `frontend/src/layout/Layout.jsx`
 - revisar alteracoes de permissao e visibilidade
 - revisar mudancas de banco

@@ -9,8 +9,9 @@ Guia operacional para comparar a produção atual (`main`) com a linha de homolo
 
 ## 1. Fotografia usada nesta revisão
 
-Documento atualizado em **30/09/2026** com as referências remotas disponíveis naquele
-momento:
+Fotografia funcional de **30/09/2026**, com adendo de preparacao em
+**03/10/2026**. A tabela abaixo conserva o marco da auditoria original;
+o alvo atual esta no adendo da secao 1.1.
 
 | Referência | Commit |
 |---|---|
@@ -40,8 +41,35 @@ git log --oneline --reverse origin/main..origin/refactor/frontend
 git diff --stat origin/main..origin/refactor/frontend
 ```
 
-Se o commit de destino não for mais `ca6ac22a`, revise os commits posteriores e registre
-o novo SHA neste documento antes de promover.
+O alvo **ja avancou** alem de `ca6ac22a`. Nao usar a tabela acima como lista
+completa de migrations, flags ou testes do release final.
+
+### 1.1 Adendo de 03/10/2026 e gates de promocao
+
+Referencias remotas verificadas nesta preparacao: `origin/main=250b6520`,
+`origin/refactor/frontend=8e2afc13`, base comum `6e620310`; **52 commits
+exclusivos de `main` e 580 da refatoracao**. Recalcular antes do merge e da
+janela: ambas as branches podem avancar. O delta inclui backend e schema,
+nao somente a interface.
+
+**Nenhuma promocao, migration ou deploy de producao esta autorizada por este
+documento.** Antes, concluir os backups do codigo `main` e do banco de
+producao, configurar e testar as copias cifradas externas das 12h e 23h,
+reconciliar os hotfixes exclusivos de `main` e homologar o build integrado.
+Procedimento e criterios verificaveis em
+[`BACKUP_PRODUCAO_GOOGLE_DRIVE.md`](BACKUP_PRODUCAO_GOOGLE_DRIVE.md) e
+[`../arquitetura/promocao_refactor_frontend_para_main.md`](../arquitetura/promocao_refactor_frontend_para_main.md).
+
+Depois do marco de 30/09 entraram: autorizacao movel de pagamentos com
+WebAuthn/Redis e Push (homologada em modo `PILOT` em dev; producao continua
+`OFF`), correcoes de criacao da solicitacao de RH e da primeira lotacao,
+contatos adicionais na admissao, consulta direta de jornadas, adequacoes de
+apropriacoes/Compras e jornada gerencial RH/DP v2 sob flags desligadas.
+As migrations adicionais identificadas nesse intervalo sao
+`202609300004_pagamento_autorizacao_proprietario.js`,
+`202610020001_rh_colaborador_contatos_adicionais.js` e
+`202610020002_rh_jornada_etapas_pagamento.js`. **A lista efetivamente
+pendente em producao so pode vir do `preflight:schema` contra o banco real.**
 
 ## 2. Resumo executivo: produção atual versus novo comportamento
 
@@ -760,7 +788,9 @@ sessão que ainda carrega a fotografia anterior.
 
 ## 11. Migrations estruturais pendentes no delta
 
-Há **79 migrations JavaScript** adicionadas entre a base comum e o alvo revisado:
+Na fotografia de 30/09 havia **79 migrations JavaScript** adicionadas entre a
+base comum e `ca6ac22a`. Esta lista historica nao cobre os commits posteriores
+nem substitui o preflight contra a producao:
 
 ```text
 202608160050_obra_tipo_apropriacao_padrao.js
@@ -1069,8 +1099,14 @@ DEV_USER_SWITCH_ENABLED
 As duas primeiras protegem scripts com escrita. Para a troca rápida de usuário, configure
 `DEPLOYMENT_ENV=development` e `DEV_USER_SWITCH_ENABLED=true` somente no processo
 `backend-dev`. Em produção, mantenha `DEPLOYMENT_ENV` com identificação de produção (ou em
-branco) e `DEV_USER_SWITCH_ENABLED=false`. Não há nova variável obrigatória de runtime de
-produção neste intervalo.
+branco) e `DEV_USER_SWITCH_ENABLED=false`. No marco historico nao havia nova
+variavel obrigatoria, mas os commits posteriores adicionaram flags. Na
+primeira promocao para producao, deixar explicitamente
+`PAYMENT_OWNER_APPROVAL_MODE=OFF`, `RH_JORNADA_40_60_ETAPAS=OFF` e
+`RH_JORNADA_GERENCIAL_V2=OFF`; no build Vercel,
+`VITE_RH_JORNADA_40_60_ETAPAS=OFF` e
+`VITE_RH_JORNADA_GERENCIAL_V2=OFF`. Nao copiar Redis, RP ID WebAuthn, VAPID
+ou credenciais de dev para producao. Ativacao e mudanca separada.
 
 Preserve integralmente os `.env` atuais da EC2 e da Vercel. Nunca copie `.env` do ambiente
 de desenvolvimento para produção.
@@ -1085,6 +1121,9 @@ de desenvolvimento para produção.
   conflitos antes da janela;
 - [ ] revisar `git log` e `git diff` do intervalo final;
 - [ ] gerar backup verificável do MySQL;
+- [ ] registrar tag e `git bundle` do codigo de `main` fora da EC2, dump
+  manual pre-migration, checksum, copia cifrada no Drive e restauracao
+  isolada; confirmar rotina das 12h e 23h e retencao de 30 dias;
 - [ ] confirmar espaço, saúde do PM2, Nginx, S3 e Vercel;
 - [ ] exportar/fotografar configurações atuais de tipos, status, permissões e automações;
 - [ ] definir responsáveis pelos smokes de Solicitações, Compras, Financeiro, Contratos,
@@ -1096,12 +1135,12 @@ de desenvolvimento para produção.
 Use o diretório real da produção e reinicie somente `backend-solicitacoes`:
 
 ```bash
-cd /home/ubuntu/sistema-gestao-solicitacoes
+cd /home/ubuntu/sistema-gestao-solicitacoes-main
 git fetch origin --prune
 git status --short
 git pull --ff-only origin main
 cd backend
-npm install
+npm ci
 npm run preflight:schema
 ALLOW_SCHEMA_MIGRATIONS=true npm run migrate
 npm run preflight:schema
@@ -1126,8 +1165,12 @@ pm2 status
 pm2 logs backend-solicitacoes --lines 100
 ```
 
-Confirme os nomes de scripts em `backend/package.json` no SHA final. Se algum script tiver
-outro nome, use o nome versionado; não improvise um comando em produção.
+Este bloco e um roteiro historico, **nao um comando para colar inteiro**.
+No SHA integrado final, confira os nomes em `backend/package.json`, inclua
+os testes de autorizacao movel e RH/DP gerencial, revise as migrations
+pendentes e separe preflight (somente leitura) da aplicacao autorizada. Se
+algum script tiver outro nome, use o nome versionado; nao improvise um
+comando em producao.
 
 Nunca reinicie `backend-dev` numa implantação exclusiva de produção.
 
@@ -1480,7 +1523,8 @@ Após aplicar a migration em desenvolvimento:
 
 ## 23. Implementação inativa — autorização do proprietário para pagamentos
 
-A branch possui uma implementação ainda não implantada para inserir a autorização do
+A branch possui uma implementação testada em modo `PILOT` no ambiente dev,
+mas ainda nao implantada em producao, para inserir a autorização do
 proprietário entre a preparação dos títulos e a Fila de Pagamentos. A solução usa PWA,
 Web Push, cópia isolada dos documentos do dossiê e passkey/WebAuthn. A especificação e o
 estado de homologação estão em
@@ -1511,3 +1555,25 @@ Dependências de ativação: migration `202609300004_pagamento_autorizacao_propr
 Redis, RP ID/origins WebAuthn corretos por ambiente, chaves VAPID, autorizador nominal,
 permissões granulares e ao menos uma passkey homologada. O deploy de código/migration e a
 mudança para `PILOT` devem ocorrer em passos separados.
+
+## 24. Adendo RH/DP — jornada gerencial e primeira lotacao
+
+- `202610020001_rh_colaborador_contatos_adicionais.js` introduz telefone e
+  endereco adicionais no pedido de admissao/cadastro; validar a criacao,
+  consulta e permissao em usuario de OBRA e DP;
+- `202610020002_rh_jornada_etapas_pagamento.js` e estrutural e precisa ser
+  conferida pelo preflight antes do novo backend; **aplicar schema nao liga o
+  recurso**;
+- a jornada gerencial v2 usa intencao de pagamento (`40%`, `60%`,
+  `PROPORCIONAL`, `DIARIA`) por colaborador/competencia; obra informa dias
+  e ajustes, DP confere o valor liquido e fecha. O fluxo v2 permanece `OFF`
+  em producao ate homologacao integrada com banco, rateio, retornos, PIX e
+  titulos;
+- conversao mensalista→diarista com acerto misto ainda tem bloqueio
+  financeiro documentado; nao liberar a flag para contornar esse bloqueio;
+- o guia de regras e testes esta em
+  [`../modulos/rh-dp/README.md`](../modulos/rh-dp/README.md) e o estado de
+  implementacao no handoff `2026-10-03-rhdp-jornada-gerencial-v2.md`.
+
+Antes de cada liberacao de flag, executar uma matriz separada em dev e obter
+aceite do DP. Nao converter registros de jornada de dev em dados de producao.

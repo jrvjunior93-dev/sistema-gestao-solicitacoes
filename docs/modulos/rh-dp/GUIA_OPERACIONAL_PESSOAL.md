@@ -1,6 +1,6 @@
 # Guia operacional do RH/DP e da tela Pessoal
 
-Este guia partiu da revisão do código da `refactor/frontend` em 02/10/2026 (commit `f82dc339`) e inclui as alterações locais de 03/10/2026, ainda não publicadas. É um mapa funcional para operação, treinamento e homologação, não uma confirmação de que determinada migration, flag ou configuração já foi aplicada em cada ambiente. A tela **Pessoal** concentra sete abas; algumas só aparecem para quem tem a permissão correspondente. O cadastro completo, a gestão documental, as importações e os relatórios de RH/DP também têm páginas próprias.
+Este guia partiu da revisão do código da `refactor/frontend` em 02/10/2026 (commit `f82dc339`) e inclui a jornada gerencial v2 publicada nessa branch ate `8e2afc13` em 03/10/2026. A v2 continua desligada por padrao e sem homologacao integrada; publicacao do codigo nao significa ativacao em dev nem producao. É um mapa funcional para operação, treinamento e homologação, não uma confirmação de que determinada migration, flag ou configuração já foi aplicada em cada ambiente. A tela **Pessoal** concentra sete abas; algumas só aparecem para quem tem a permissão correspondente. O cadastro completo, a gestão documental, as importações e os relatórios de RH/DP também têm páginas próprias.
 
 ## Visão do processo
 

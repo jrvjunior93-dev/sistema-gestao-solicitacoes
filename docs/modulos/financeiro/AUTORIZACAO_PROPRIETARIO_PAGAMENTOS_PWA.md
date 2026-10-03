@@ -7,10 +7,11 @@ proprietário autorize, pelo celular, quais títulos podem entrar na Fila de
 Pagamentos. A solução prevista é uma PWA do próprio Fluxy, com notificações push
 e confirmação por passkey protegida pelo bloqueio biométrico ou PIN do aparelho.
 
-**Estado atual: implementação local concluída na branch `refactor/frontend`, build e
-validação estática aprovados, mas sem migration aplicada, deploy ou ativação. O modo
-continua obrigatoriamente `OFF`.** O recurso só se torna disponível depois da implantação
-estrutural, configuração, cadastro nominal, passkey e homologação em `PILOT`.
+**Estado em 03/10/2026:** implementado na `refactor/frontend` e exercitado
+em `PILOT` no ambiente dev, inclusive decisao com passkey apos correcoes
+observadas no piloto. Isso **nao** equivale a homologacao para producao.
+Na primeira promocao a `main`, o modo de producao deve ficar explicitamente
+`OFF`; ativacao posterior de `PILOT` exige procedimento e aceite separados.
 
 Objetivos:
 

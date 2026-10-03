@@ -1,6 +1,9 @@
 # Estado atual da `refactor/frontend`
 
-Fotografia revisada em 30/09/2026 contra `ca6ac22a`.
+Fotografia geral revisada em 30/09/2026 contra `ca6ac22a`. Adendo de
+03/10/2026: `refactor/frontend` em `8e2afc13` e `main` em `250b6520`,
+conforme referencias remotas consultadas. Revalidar imediatamente antes da
+integracao; a branch pode avancar.
 
 ## Finalidade da branch
 
@@ -17,6 +20,14 @@ Na fotografia:
 - intervalo base → refatoracao: 1.303 arquivos alterados.
 
 Esses numeros devem ser recalculados antes de qualquer promocao.
+
+Em 03/10/2026, a base comum ainda era `6e620310`, com **52** commits
+exclusivos de `main` e **580** de `refactor/frontend`. Depois da fotografia
+geral de 30/09, entraram autorizacao movel de pagamentos (homologada em
+`PILOT` em dev, mas manter `OFF` na producao), correcoes de RH/DP, contatos
+adicionais e a jornada gerencial v2 (flags desligadas, sem homologacao integrada).
+O modulo RH/DP documenta o estado atual em `modulos/rh-dp/README.md`; os
+detalhes de implantacao e os bloqueios estao no guia pos-deploy.
 
 ## Estrutura do repositorio
 

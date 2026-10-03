@@ -20,7 +20,8 @@ Os processos nao sao intercambiaveis. Uma atualizacao de dev deve reiniciar some
 
 1. confirmar backup e commit alvo;
 2. atualizar o codigo;
-3. executar `npm install` em `backend/`;
+3. executar `npm ci` em `backend/` quando o lockfile do SHA alvo estiver
+   consistente;
 4. executar `npm run preflight:schema`;
 5. aplicar migrations estruturais explicitamente, quando autorizadas;
 6. repetir `npm run preflight:schema` e exigir zero pendencias;
@@ -45,6 +46,8 @@ Rollback de codigo nao implica rollback automatico de banco. Toda migration deve
 
 Guia completo: `../deploy/POS_DEPLOY_REFACTOR_FRONTEND.md` e
 `promocao_refactor_frontend_para_main.md`.
+Backups pre-promocao e rotina externa:
+`../deploy/BACKUP_PRODUCAO_GOOGLE_DRIVE.md`.
 
 ## Observabilidade
 

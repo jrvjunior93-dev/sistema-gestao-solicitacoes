@@ -2,8 +2,9 @@
 
 Esta pasta descreve o sistema institucional em operacao. A documentacao deve refletir o codigo atual e deixar explicitas as dependencias que podem causar efeitos entre modulos.
 
-Fotografia documental revisada em **30/09/2026** contra o commit `ca6ac22a` da
-`refactor/frontend`. Consulte
+Fotografia geral revisada em **30/09/2026** contra `ca6ac22a`; o delta ate
+**03/10/2026** (`8e2afc13`) e a preparacao da promocao constam no contexto e no
+guia pos-deploy. Consulte
 [`contexto/ESTADO_ATUAL_REFACTOR_FRONTEND.md`](./contexto/ESTADO_ATUAL_REFACTOR_FRONTEND.md)
 para a entrada operacional e
 [`contexto/AUDITORIA_DOCUMENTAL_2026-09-30.md`](./contexto/AUDITORIA_DOCUMENTAL_2026-09-30.md)
@@ -47,6 +48,8 @@ tem precedencia.
 - `arquitetura/IDEMPOTENCIA_TRANSACOES.md`: protecoes de operacoes criticas;
 - `seguranca/autenticacao_autorizacao.md`: precedencia de permissoes;
 - `contexto/ESTADO_ATUAL_REFACTOR_FRONTEND.md`: fotografia da branch de homologacao;
+- `deploy/BACKUP_PRODUCAO_GOOGLE_DRIVE.md`: pre-requisitos e validacao dos backups
+  antes de qualquer promocao para `main`;
 - documento canonico do modulo afetado.
 
 ## Modulos documentados
