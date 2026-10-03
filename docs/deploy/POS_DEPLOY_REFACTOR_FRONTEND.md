@@ -54,7 +54,7 @@ nao somente a interface.
 
 **Nenhuma promocao, migration ou deploy de producao esta autorizada por este
 documento.** Antes, concluir os backups do codigo `main` e do banco de
-producao, configurar e testar as copias cifradas externas das 12h e 23h,
+producao, configurar e testar a copia cifrada externa diaria das 23h,
 reconciliar os hotfixes exclusivos de `main` e homologar o build integrado.
 Procedimento e criterios verificaveis em
 [`BACKUP_PRODUCAO_GOOGLE_DRIVE.md`](BACKUP_PRODUCAO_GOOGLE_DRIVE.md) e
@@ -1123,7 +1123,7 @@ de desenvolvimento para produção.
 - [ ] gerar backup verificável do MySQL;
 - [ ] registrar tag e `git bundle` do codigo de `main` fora da EC2, dump
   manual pre-migration, checksum, copia cifrada no Drive e restauracao
-  isolada; confirmar rotina das 12h e 23h e retencao de 30 dias;
+  isolada; confirmar rotina diaria das 23h e retencao de 30 dias;
 - [ ] confirmar espaço, saúde do PM2, Nginx, S3 e Vercel;
 - [ ] exportar/fotografar configurações atuais de tipos, status, permissões e automações;
 - [ ] definir responsáveis pelos smokes de Solicitações, Compras, Financeiro, Contratos,

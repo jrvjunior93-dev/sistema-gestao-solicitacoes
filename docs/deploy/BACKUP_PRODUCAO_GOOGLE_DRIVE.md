@@ -1,22 +1,29 @@
 # Backup de producao antes da promocao para `main`
 
-Estado em 03/10/2026: **procedimento e arquivos de automacao preparados no
-repositorio; backup do banco de producao e agendamento na EC2 ainda nao
-executados**. Foi criada uma tag **local** para `main=250b6520` e um bundle
+Estado em 03/10/2026: **um dump completo manual ja foi enviado ao Drive
+cifrado e teve o SHA-256 comparado com a leitura de volta; restauracao
+isolada e agendamento na EC2 ainda nao executados**. A conta empresarial,
+a API Drive, o cliente OAuth
+proprio e os remotos `gdrive:` e `fluxy-crypt:` foram configurados; escrita
+e leitura de um arquivo de teste foram confirmadas. A credencial MySQL de
+backup passou no teste de conexao TLS e no dump somente de estrutura. O
+snapshot manual do RDS `backup-antes-refactor-frontend`
+foi confirmado como disponivel em 03/10/2026 as 16:31 (Sao Paulo). Ele nao
+substitui a copia fora da AWS. Foi criada uma tag **local** para `main=250b6520` e um bundle
 local completo, validado com `git bundle verify`, em
 `tmp/main-code-backup-20261003/main-250b6520.bundle` (16.785.324 bytes,
 SHA-256 `DE87B04DDE5B8BDDDB1C5E8EC64284EE61B70FB21C0BCB3F46B00665C7C842CD`).
 O `tmp/` e ignorado pelo Git; **nao e copia externa**. O push da tag
 `backup/main-pre-refactor-20261003-250b6520` ainda nao foi confirmado no
-remoto. A conta proprietaria pretendida e `ti@cscconstrutora.com`.
-Falta autenticar o destino,
-enviar o bundle ao armazenamento externo, instalar o servico e comprovar
-uma restauracao isolada. Nao tratar este documento como evidencia de
-backup de producao pronto.
+remoto. A conta proprietaria confirmada e `ti@cscconstrutora.com`.
+Falta enviar o bundle ao armazenamento externo, instalar o servico, testar
+o script automatizado e comprovar uma restauracao isolada. A confirmacao
+do hash prova integridade da copia, mas nao recuperabilidade do banco.
+Nao tratar este documento como evidencia de rotina de backup pronta.
 
 ## Politica aprovada
 
-- duas copias completas diarias do MySQL de producao: **12:00 e 23:00 em
+- uma copia completa diaria do MySQL de producao: **23:00 em
   `America/Sao_Paulo`**;
 - copia fora da EC2 em **Google Drive**, cifrada no cliente antes do upload;
 - retencao no Drive: **30 dias**; teste de restauracao **mensal** em banco
@@ -24,7 +31,7 @@ backup de producao pronto.
 - snapshot do codigo de `main` imediatamente antes da integracao e outro
   imediatamente antes da janela de deploy; guardar tag/SHA e `git bundle`
   fora da EC2;
-- backup manual do banco imediatamente antes de qualquer migration de
+- backup manual adicional do banco imediatamente antes de qualquer migration de
   producao, mesmo que o agendamento tenha rodado naquele dia.
 
 ## 1. Definir a conta e o acesso antes de instalar
@@ -94,13 +101,76 @@ na linha de comando. O nome do banco vai em
 producao para o Drive**.
 
 O script `ops/backup/backup-prod-db.sh` usa `mysqldump` com
-`--single-transaction --quick --routines --events --triggers`, comprime,
+`--single-transaction --quick --routines --events --triggers
+--set-gtid-purged=OFF`, comprime,
 valida o gzip, envia pelo remoto cifrado, le o arquivo de volta do Drive e
 compara SHA-256. A limpeza remota so roda apos a verificacao e so para
-`fluxy-prod-db-*.sql.gz` com mais de 30 dias dentro da subpasta exata.
+backups diarios com timestamp `/fluxy-prod-db-[0-9]*.sql.gz` com mais de
+30 dias na raiz da subpasta exata. A copia manual pre-promocao fica fora
+desse filtro e exige decisao de retencao separada.
 Antes de habilitar o timer, executar uma vez manualmente e verificar nome,
 tamanho, checksum, tempo de execucao e presenca no Drive. Nao interpretar
 `mysqldump` com exit code zero como prova de restauracao.
+
+Validacao feita na EC2 em 03/10/2026: MySQL RDS 8.4.8 com
+`gtid_mode=OFF_PERMISSIVE`; cliente `mysqldump` 8.0.46. O teste de estrutura
+sem `--set-gtid-purged=OFF` pediu `FLUSH TABLES` e falhou por falta de
+`RELOAD`/`FLUSH_TABLES`. Com `--set-gtid-purged=OFF`, o mesmo teste
+`--no-data` passou sem ampliar privilegios. Essa opcao e adequada para o
+dump logico destinado a restauracao isolada; **nao inclui estado GTID para
+provisionar replica**. Aquele teste de estrutura, isoladamente, nao
+provava o dump de dados nem uma restauracao. A conta dedicada conecta com `VERIFY_IDENTITY` e TLS
+`TLS_AES_256_GCM_SHA384`; os arquivos de credenciais tem permissao `0600`.
+O primeiro dump completo foi executado manualmente com essa opcao, validado
+por `gzip -t`, enviado por `fluxy-crypt:` e relido do Drive; o SHA-256
+remoto coincidiu com o local. Arquivo local:
+`fluxy-prod-db-manual-20261003T210201Z-548199.sql.gz`, 21.793.224 bytes
+(aproximadamente 20,8 MiB). O hash completo nao foi fornecido. Na EC2 nao havia `docker`, `podman` nem
+`mysqld` local no PATH. Os endpoints de main e dev foram comparados na
+EC2: sao RDS distintos, mas ambos os bancos ativos se chamam
+`gestao_solicitacoes`. O RDS de staging pode servir como destino apenas
+com um **novo banco temporario** e permissao especifica; jamais importar
+no banco ativo de dev. A transferencia de dados reais para staging requer
+autorizacao explicita e controle de acesso. O usuario autorizou esse destino
+em 03/10/2026. O banco temporario e a conta restrita foram criados apos
+confirmar endpoint, UUID, nome temporario ausente, capacidade e grants.
+Backups e snapshots do RDS sao por instancia inteira: a copia temporaria
+de producao podera permanecer nos backups de staging mesmo depois da
+limpeza do banco de teste. Conferir criptografia, retencao e snapshots
+manuais do staging antes da importacao e registrar aceite desse efeito.
+
+Teste de restauracao em andamento: o RDS de staging tinha criptografia
+ativa, 20 GiB alocados, cerca de 17,73 GiB livres e retencao automatica
+de 7 dias; a porta 3306 nao tinha regra CIDR publica nos grupos de
+seguranca inspecionados. O usuario confirmou que o banco temporario estava
+vazio, com UUID correto e TLS `VERIFY_IDENTITY`, e importou diretamente
+do remoto cifrado `fluxy-crypt:` com a credencial limitada ao banco
+`fluxy_restore_20261003`. A leitura/importacao terminou sem erro e
+recriou as 253 tabelas base esperadas. Nesse ponto ainda faltavam
+verificacoes de conteudo e integridade, alem da limpeza
+controlada do banco temporario. O servico e o timer automaticos ainda
+nao foram instalados; a producao e o banco ativo de staging nao foram
+alterados por essa restauracao.
+
+Checagem amostral posterior: 253 tabelas no banco temporario, 116 com
+linhas estimadas e tamanho aproximado de 241,3 MiB; contagem exata de
+6.156 linhas em `solicitacoes` e 9.655 em `titulos_financeiros`.
+`CHECK TABLE` dessas duas tabelas retornou `OK`. Isso homologa o **smoke
+test de restauracao da copia no Drive**, nao uma auditoria integral de
+dados ou um teste completo da aplicacao. A copia temporaria ainda reside
+no RDS de staging.
+
+Antes de instalar o backup automatico, obter o `@@GLOBAL.server_uuid`
+do RDS de producao com a conta `fluxy_backup` e preencher
+`BACKUP_EXPECTED_SERVER_UUID`. O script cancela a execucao se o endpoint,
+UUID, usuario conectado ou banco nao corresponderem a producao, mesmo
+que o banco ativo de staging tenha o mesmo nome.
+Consulta executada em 03/10/2026 confirmou UUID de producao
+`5ed4b970-009f-11f1-809c-0ad0e0c90c53`, conta
+`fluxy_backup@172.31.23.63`, banco `gestao_solicitacoes` e TLS
+`TLS_AES_256_GCM_SHA384`. Esse UUID nao e senha e deve ser conferido
+novamente antes de instalar o timer; nao copiar o UUID do staging
+`60f043e9-4025-11f1-9a61-06d8a063012d` para a configuracao de producao.
 
 ## 4. Servico automatico na EC2
 
@@ -118,7 +188,6 @@ Antes de ligar o agendamento:
 
 ```bash
 sudo systemd-analyze verify /etc/systemd/system/fluxy-prod-db-backup.service /etc/systemd/system/fluxy-prod-db-backup.timer
-systemd-analyze calendar '*-*-* 12:00:00 America/Sao_Paulo'
 systemd-analyze calendar '*-*-* 23:00:00 America/Sao_Paulo'
 sudo systemctl start fluxy-prod-db-backup.service
 sudo systemctl status fluxy-prod-db-backup.service --no-pager
@@ -138,7 +207,7 @@ perdida pode iniciar ao voltar. O script usa `flock` para impedir sobreposicao.
 Observar disco local: os dumps locais **nao sao apagados automaticamente**
 por este primeiro pacote, para nao introduzir exclusao antes de medir tamanho
 e janela. Definir limpeza local segura apos a primeira semana de evidencias.
-Configurar monitor externo para alarmar se uma das duas janelas nao produzir
+Configurar monitor externo para alarmar se a janela diaria nao produzir
 backup valido, se o unit falhar, se o Drive ficar sem quota ou se o teste
 mensal atrasar. `systemctl status` sozinho nao e monitoramento proativo.
 

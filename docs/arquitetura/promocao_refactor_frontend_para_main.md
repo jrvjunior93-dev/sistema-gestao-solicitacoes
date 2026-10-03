@@ -38,7 +38,7 @@ de concluir e evidenciar todos os itens abaixo:**
    configuracoes operacionais necessarias, sem expo-las no Git;
 3. gerar dump consistente do MySQL de producao, cobrir procedures, triggers
    e events, conferir checksum e recuperar uma amostra em instancia isolada;
-4. comprovar a rotina das 12h e 23h (`America/Sao_Paulo`), retencao de 30
+4. comprovar a rotina diaria das 23h (`America/Sao_Paulo`), retencao de 30
    dias, monitoramento de falhas e teste mensal de restauracao;
 5. inventariar migrations pendentes **na producao real** com
    `npm run preflight:schema`; revisar cada `up`, inclusive referencias FK,

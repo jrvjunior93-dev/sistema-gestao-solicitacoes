@@ -5,7 +5,8 @@
 - confirmar diretorio, processo PM2, `DB_HOST` e `DB_NAME` sem expor segredo
 - confirmar copia verificavel do codigo anterior e backup recente do banco
   fora da EC2; branch/tag de rollback so protege codigo, nao dados
-- confirmar duas execucoes diarias do backup cifrado no Google Drive, alerta
+- confirmar a execucao diaria das 23h (America/Sao_Paulo) do backup cifrado
+  no Google Drive, alerta
   de falha e evidencia do ultimo teste mensal de restauracao
 - revisar impacto em `backend/src/app.js`, `backend/src/routes.js`, `frontend/src/App.jsx` e `frontend/src/layout/Layout.jsx`
 - revisar alteracoes de permissao e visibilidade

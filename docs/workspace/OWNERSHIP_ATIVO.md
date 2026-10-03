@@ -1171,3 +1171,30 @@ Escopo: não truncar a digitação nos campos controlados; preservar limites na
 validação de envio e no backend. Sem banco ou deploy nesta etapa. Commit/push
 na `refactor/frontend` solicitados em 03/10/2026; ownership liberado após
 o envio.
+
+## Ownership ativo - horario do backup de producao - 03/10/2026
+
+Sessao `/root` no worktree `backend-dependency-security`: reserva temporaria de
+`ops/backup/fluxy-prod-db-backup.timer`,
+`docs/deploy/BACKUP_PRODUCAO_GOOGLE_DRIVE.md`,
+`docs/deploy/POS_DEPLOY_REFACTOR_FRONTEND.md`,
+`docs/arquitetura/promocao_refactor_frontend_para_main.md`,
+`docs/handoffs/2026-10-03-backup-e-promocao-main.md` e este registro.
+Escopo: uma copia diaria as 23h de Sao Paulo, com 30 dias de retencao e
+teste mensal. Sem instalacao na EC2, banco, merge ou deploy nesta etapa.
+Ownership liberado apos ajustar timer e referencias canonicas, atualizar o
+handoff e validar `test:docs` e `git diff --check`. Alteracoes locais ainda
+nao commitadas nem publicadas.
+
+## Ownership ativo - compatibilidade do dump MySQL de producao - 03/10/2026
+
+Sessao `/root` no worktree `backend-dependency-security`: reserva temporaria de
+`ops/backup/backup-prod-db.sh`,
+`docs/deploy/BACKUP_PRODUCAO_GOOGLE_DRIVE.md`,
+`docs/handoffs/2026-10-03-backup-e-promocao-main.md` e deste registro.
+Escopo: fixar `--set-gtid-purged=OFF` apos teste estrutural bem-sucedido na
+EC2, registrar evidencia e validar localmente. Sem instalacao do servico,
+backup completo, banco de teste, merge ou deploy nesta etapa.
+Acrescentado `docs/seguranca/checklist-operacional.md` para corrigir a
+frequencia documental do backup de duas para uma execucao diaria, conforme
+politica aprovada pelo usuario.
