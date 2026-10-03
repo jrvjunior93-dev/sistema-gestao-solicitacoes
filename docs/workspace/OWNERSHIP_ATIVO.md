@@ -23,3 +23,13 @@ Sem acesso a EC2, banco, migrations ou deploy operacional.
 Implementacao e validacoes concluidas; ownership liberado para o commit isolado.
 14 cenarios especificos, importacao normal, compra direta, sintaxe e diff aprovados.
 Handoff: `docs/handoffs/2026-10-01-compras-criacao-isolada-main.md`.
+
+## Ownership temporario - integracao refactor/frontend em main - 03/10/2026
+
+Sessao `/root`, branch `codex/promocao-refactor-main-20261003`, criada de
+`main=250b6520` em worktree isolado. Reserva a resolucao dos conflitos de
+merge entre `main` e `refactor/frontend`, os arquivos resultantes da
+integracao e `docs/handoffs/2026-10-03-promocao-main.md`. Nao usar o
+checkout de producao, banco, PM2 ou Vercel nesta fase local. Preservar
+todos os hotfixes exclusivos de `main`; validar o resultado antes de
+qualquer push para `main` ou deploy.
